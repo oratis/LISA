@@ -11,10 +11,25 @@ and Pocket 1.3. The existing account service stays on Cloud Run.
    enables discovery, but does not authorize any phone.
 2. In Pocket, sign in to the **same LISA account**. Open **Settings → Connect your Mac**
    and select the online Mac. No IP address, QR code or Tailscale installation is needed.
-3. Compare the `XXXX XXXX XXXX` verification code on the phone and Mac. On the Mac,
-   choose **Allow this device**, then confirm that the codes match.
+3. Compare the `XXXX XXXX XXXX` verification code on the phone and Mac. If they match,
+   tap **Codes Match** in Pocket, and on the Mac choose **Allow this device**, then
+   confirm. Both confirmations are needed (see [Pairing v2](#pairing-v2-committed-codes)).
 4. Pocket remembers the Mac's public key. It prefers an authenticated LAN connection;
    if LAN is unavailable, it connects through the cloud relay. Settings shows the route.
+
+If either device shows **older pairing method**, that device's side of the pairing ran
+v1. Usually the other device runs Mac 0.30 or earlier, or Pocket 1.3 or earlier. It
+still connects, but a compromised relay can fake its code. Update the older device and
+pair again. If both devices are up to date and one still shows this warning, cancel:
+the connection may be tampered with.
+
+With the default settings an active relay can still force v1 pairing. To rule that out,
+turn on **Require secure pairing** on **both** the Mac and in Pocket; see
+[downgrades](#pairing-v2-committed-codes).
+
+If Pocket says your older Mac already allows this iPhone but shows no code, disconnect
+the iPhone under **Connect iPhone** on the Mac first, then select the Mac again so the Mac
+displays a code to compare.
 
 The Mac must be awake with its backend running. This connects to the Mac's existing
 LISA history, memory and tasks; it does not merge those with the independent Cloud
@@ -68,15 +83,100 @@ For `lisa-link-v1`, endpoints derive separate `c2h` and `h2c` keys using X25519 
 HKDF-SHA256 with `info = lisa-link-v1|hostID|clientID|direction`. AES-256-GCM envelopes
 use `{seq, box}`, with standard base64 of `12-byte nonce || ciphertext || 16-byte tag`.
 AAD is `lisa-link-v1|direction|seq`; receivers require the next exact counter. Public
-keys and salt also use standard base64. The comparison code is the first six bytes of
-SHA-256(host raw key || client raw key), uppercase hex grouped into fours.
-This version uses persistent agreement keys and does not claim forward secrecy.
-The comparison code is derived from both keys without a prior commitment, so it
-defends first pairing against a passive relay only. An actively malicious relay (or an
-interceptor of the account origin's TLS) that substitutes *both* keys can search for a
-matching pair: about 2^24 key generations per side, minutes on one CPU core. Approved
-devices and later connections are unaffected. A future protocol version should commit
-to keys before revealing them, or compare a longer code.
+keys and salt also use standard base64. This channel uses persistent agreement keys and
+does not claim forward secrecy. Pairing v2 leaves it unchanged.
+
+### Pairing v2: committed codes
+
+The phone learns the Mac's public key from the relay's list, and the Mac learns the
+phone's key from its hello. A malicious relay, or anyone who intercepts the account
+origin's TLS, can substitute both. The comparison code is what detects this.
+
+**v1 (Mac 0.30 and earlier, Pocket 1.3 and earlier).** The code is the first six bytes
+of SHA-256(host raw key ‖ client raw key), uppercase hex grouped into fours. It depends
+on the keys alone, so a relay that substitutes both keys can search offline for a pair
+whose codes collide: about 2^24 key generations per side, minutes on one CPU core.
+
+**v2 (`lisa-pair-v2`).** This is short-authentication-string comparison with a prior
+commitment, as in ZRTP and Bluetooth numeric comparison. `M` and `P` are the raw Mac
+and phone keys as the phone sees them. `Np` and `Nm` are fresh random 32-byte nonces.
+
+1. Phone → Mac, in the plaintext hello: `v: 2`, `pair: true` and
+   `commit = base64 SHA-256("lisa-pair-v2|commit|" ‖ M ‖ P ‖ Np)`.
+2. Mac → phone, in the sealed welcome: `v: 2`, `pending`, and `nonce = Nm`. A v2
+   welcome omits the v1 `code`.
+3. Phone → Mac, sealed: `{type: "pair", nonce: Np}`. The Mac checks it against the
+   commitment.
+4. Mac → phone, sealed: `{type: "paired", code}`. Both sides compute
+   `code` = the first six bytes of SHA-256(`"lisa-pair-v2|code|"` ‖ M ‖ P ‖ Np ‖ Nm),
+   in the same `XXXX XXXX XXXX` format. The phone rejects a Mac that reports a code it
+   did not derive.
+
+Each side fixes its nonce before it learns the other's, so a key-substituting relay
+can no longer search offline. Each attempt is one blind guess that succeeds with
+probability 2^-48. The design bounds the number of attempts:
+
+- **Mac.** It issues exactly one `Nm` per phone commitment. Retrying the same commitment
+  returns the same `Nm`; a new commitment gets a new one. One pairing request issues at
+  most five `Nm`, and at most ten requests can be open at once. Nonces are counted when
+  issued, not when opened: a relay knows its candidate code as soon as it sees `Nm`, so
+  each `Nm` is one guess. A request's lifetime (10 minutes) is fixed when it is created.
+  Its code becomes approvable only after its commitment is opened.
+- **Unproven hellos.** A hello does not prove possession of its key, so anyone on the
+  relay can send one with another phone's key. A new commitment therefore waits in a
+  separate slot beside the request: the code the phone already opened stays listed and
+  approvable until a valid opening, which only that phone can produce, replaces it.
+  Requests without a code are listed as waiting; the owner can clear them with
+  `POST /api/remote/dismiss`, which never removes a grant.
+- **Phone.** It pins the first `Nm` it reveals `Np` against. If a later welcome brings
+  a different `Nm`, the phone discards `Np` and starts again with a fresh commitment,
+  which shows a new code. It does this at most twice per pairing, then stops. After the
+  code is shown, the phone polls with `pair: false` and keeps the request unchanged.
+
+48 bits remains ample once offline search is impossible, so the code length is
+unchanged.
+
+The phone side also matters. A relay that shows the phone its own "Mac" key can claim
+the phone was approved, so v2 Pocket pins a Mac only after the user taps **Codes Match**
+on the phone, and the Mac has authorized it. This also applies to older Macs. If a v1
+Mac already allows the phone before any code was shown, it displays nothing to compare,
+and the v1 code H(M'‖P) is computable by a relay posing as that Mac. Pocket then offers
+no confirmation at all and asks the user to disconnect the phone on the Mac first.
+Re-pairing a phone the Mac already allows
+(for example after signing out of Pocket) also displays a request and code on the Mac, so
+the phone can still verify the Mac's key. That request closes on the phone's first
+authenticated request. Pairing runs over the cloud route only: LAN hellos never receive
+a nonce, and Pocket never uses cached LAN hints while pairing.
+
+**Negotiation and compatibility.** Every new hello carries `v: 2`. Older Macs ignore
+the unknown fields and answer with a v1 welcome, which carries `code` and no `v`. Older
+Pockets send no `v` and get the unchanged v1 flow, including the `code` they check on
+every connection. Paired devices, the channel cipher and `remote-link.json` (still
+`version: 1`) are unaffected. Grants record `pairing: 2` when they were approved with a
+committed code; a missing field means v1. Both UIs show v1 requests, pairings and devices
+as **older pairing method**. Each device reports only its own side, because only that
+side is authenticated to it. **Require secure pairing** refuses new v1 pairings and
+keeps existing grants working. On the Mac it is `requireSecurePairing` in
+`remote-link.json`, set with `POST /api/remote/policy`; in Pocket it is a toggle in
+**Connect your Mac**. Both are **off by default** for compatibility with shipped
+versions. With default settings an active relay can still force v1 pairing.
+
+**Downgrades.** The relay can strip or forge the version fields toward either side.
+
+- *Neither side strict.* It can run v1 with both, which reverts to v1's offline search.
+  Both screens then say **older pairing method**.
+- *Only one side strict.* It can run v2 with the strict side and v1 with the other.
+  - Phone strict, Mac lenient: the Mac's v1 code depends only on long-term keys. The
+    relay can tabulate it offline and then wait for one of the phone's fresh v2 codes to
+    land in the table. The phone's two-restart limit leaves it about three samples each time the user selects the Mac.
+  - Mac strict, phone lenient: the reverse, bounded by the Mac's five nonces per request.
+  - Either way, the lenient side shows **older pairing method**.
+- *Both sides strict.* The relay has no v1 side to work with. This is the only
+  configuration that fully closes the downgrade.
+
+The relay Worker
+forwards hellos and sealed frames without inspecting them, so it needed no change for
+v2; `deploy/relay-worker/test` checks that v2 frames pass through unchanged.
 
 The encrypted welcome proves possession of the pinned Mac key, reports authorization,
 and gives a fresh server challenge. Authorized welcomes also carry LAN endpoints.
@@ -110,10 +210,16 @@ dismissed for its 10-minute lifetime even while Pocket keeps polling.
 - Cloud `GET /api/relay/macs`: verified account session → `{hosts: [{id,name,publicKey,online}]}`.
 - Cloud WebSocket `/api/relay/host`: outbound Mac registration and multiplexed ciphertext.
 - Cloud WebSocket `/api/relay/client?host=ID`: one phone request/stream, same account only.
-- Mac owner `GET /api/remote/status`: connection state, pending code comparisons, authorized devices.
+- Mac owner `GET /api/remote/status`: connection state, pending code comparisons
+  (`secure`, `known`, `waiting`), authorized devices (`secure`), `pairingVersion`,
+  `requireSecurePairing` and `legacyRefused` (the last v1 pairing that was refused).
 - Mac owner `POST /api/remote/connect`: `{base?,session?}`; omitted values use the backend account config.
 - Mac owner `POST /api/remote/approve`: `{id,code}`; a current pending request and exact code are required.
 - Mac owner `POST /api/remote/revoke`: `{id}`; closes live connections and removes consent.
+- Mac owner `POST /api/remote/policy`: `{requireSecurePairing: boolean}`. When true, refuses new v1
+  pairings and withdraws open v1 requests. Existing grants keep working.
+- Mac owner `POST /api/remote/dismiss`: `{id}`; clears a pairing request for its lifetime without
+  touching any grant.
 - Mac owner `POST /api/remote/disconnect`: `{}`; disables both listeners/routes.
 
 ## Validation
@@ -132,6 +238,28 @@ expired/invalid sessions, explicit approval, cloud/LAN equivalence, SSE, cancell
 revocation, replay rejection and loopback privilege preservation. Pocket tests cover
 cross-language Node/CryptoKit ciphertext, LAN URL constraints, saved key pinning,
 failed-LAN fallback, network-change reprobes and no mutation replay after uncertain delivery.
+
+Pairing v2 tests:
+
+- **Relay probe** (`src/remote/host.test.ts`). A relay substitutes both keys against the
+  real Mac host. The codes differ, and approving the phone's code fails. Re-rolling the
+  Mac side never reuses a Mac nonce and stops after five commitments. Opening a
+  commitment to a different nonce, or answering a superseded nonce, is refused.
+- **Forged hellos** (`host.test.ts`). They can use up a request's nonces, but they never
+  replace the opened code or extend its expiry. Clearing a waiting re-pair request keeps
+  the device allowed.
+- **Downgrades** (`host.test.ts`). A relay that speaks v1 to the Mac is flagged by a
+  lenient Mac and refused by a strict one, while v2 still pairs. In
+  `RemoteMacTests.swift`, an older Mac that already allows the phone can never be
+  confirmed, a strict phone refuses v1, and pairing aborts after two restarts.
+- **v1 probe** (`protocol.test.ts`). With the code truncated to 16 bits, the same relay
+  finds colliding v1 keys offline in milliseconds.
+- **Negotiation, both ways.** A v2 Mac with v2 and v1 phones (`host.test.ts`, and through
+  the real server in `remote.test.ts`). A v2 phone with v2 and v1 Macs
+  (`RemoteMacTests.swift`).
+- **Pocket tests** also cover the Node-generated v2 vectors, nonce pinning, rejection of
+  a mismatched Mac code, no LAN while pairing, and the welcome check `open()` runs (the
+  v1 code is skipped only for v2 welcomes).
 
 Release acceptance still requires real iPhone testing over Wi-Fi → cellular → Wi-Fi,
 Mac sleep/wake, firewall denial and the deployed proxy. Local automated tests cannot

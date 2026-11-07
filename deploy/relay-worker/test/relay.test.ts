@@ -92,6 +92,37 @@ test(
         }),
       );
       assert.deepEqual(await response, { seq: 0, box: "opaque" });
+      // Pairing v2 (lisa-pair-v2) needs no Worker change: the hello's extra fields and
+      // the sealed reveal that follows it reach the Mac byte-for-byte, on the same channel.
+      const v2 = await call(`client?host=${id}`, token("alice"), { Upgrade: "websocket" });
+      assert.equal(v2.status, 101);
+      const pocket = v2.webSocket!;
+      pocket.accept();
+      sockets.push(pocket);
+      const commit = randomBytes(32).toString("base64");
+      const helloV2 = { ...hello, v: 2, commit };
+      const firstV2 = message(host);
+      pocket.send(JSON.stringify(helloV2));
+      const forwardedV2 = await firstV2;
+      assert.deepEqual(forwardedV2.payload, helloV2);
+      assert.notEqual(forwardedV2.channel, forwarded.channel);
+      const welcome = message(pocket);
+      host.send(
+        JSON.stringify({
+          type: "frame",
+          channel: forwardedV2.channel,
+          payload: { seq: 0, box: "sealed-welcome-with-mac-nonce" },
+        }),
+      );
+      assert.deepEqual(await welcome, { seq: 0, box: "sealed-welcome-with-mac-nonce" });
+      const reveal = { seq: 0, box: randomBytes(96).toString("base64") };
+      const revealed = message(host);
+      pocket.send(JSON.stringify(reveal));
+      assert.deepEqual(await revealed, {
+        type: "frame",
+        channel: forwardedV2.channel,
+        payload: reveal,
+      });
       // A small numeric encoding expands during JSON normalization. Close only
       // this offending phone, preserving the host and another active phone.
       const large = await call(`client?host=${id}`, token("alice"), { Upgrade: "websocket" });

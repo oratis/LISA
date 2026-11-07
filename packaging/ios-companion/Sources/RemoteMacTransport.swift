@@ -11,14 +11,35 @@ struct RemoteMacTarget: Codable, Hashable, Identifiable {
 }
 
 enum RemoteLinkError: LocalizedError {
-    case signIn, pairing(String), invalidPeer, interrupted
+    case signIn, notAllowed, invalidPeer, interrupted, pairingRestarted, pairingAborted
     var errorDescription: String? {
         switch self {
         case .signIn: return "Sign in to the same LISA account again to connect your Mac."
-        case .pairing(let code): return "Approve this iPhone on your Mac. Compare the code: \(code)."
+        case .notAllowed: return "Your Mac no longer allows this iPhone. Pair it again from Settings → Connect your Mac."
         case .invalidPeer: return "This connection couldn't verify your Mac. Pair it again from Settings."
         case .interrupted: return "The Mac connection was interrupted. Check the task's status before sending it again."
+        case .pairingRestarted: return "Your Mac started a new pairing request, so the code changed. Compare the new code."
+        case .pairingAborted: return "Pairing stopped because the Mac's request kept changing, which can mean the connection is being tampered with. Select your Mac to try again."
         }
+    }
+}
+
+/// One poll of the pairing screen. `secure` describes this iPhone's side only: it ran
+/// pairing v2 (a committed code). False means the Mac answered in v1, whose code a
+/// key-substituting relay can forge. The Mac reports its own side separately.
+struct RemotePairingStatus: Equatable {
+    let authorized: Bool
+    let code: String
+    let secure: Bool
+    /// False when a v2 Mac has no open request for this iPhone (dismissed, expired or full).
+    let open: Bool
+    /// False when an older Mac already allowed this iPhone before any code existed: it
+    /// shows nothing to compare, so the code proves nothing and must not be confirmed.
+    var comparable = true
+
+    /// Pocket pins a Mac only after the user confirmed a code the Mac can display.
+    func mayConnect(confirmed: Bool, requireSecure: Bool) -> Bool {
+        authorized && confirmed && comparable && !code.isEmpty && (secure || !requireSecure)
     }
 }
 
@@ -32,11 +53,25 @@ final class RemoteLinkCipher {
     static func keyID(_ data: Data) -> String {
         SHA256.hash(data: data).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
-    static func code(host: Data, client: Data) -> String {
-        let hex = SHA256.hash(data: host + client).prefix(6).map { String(format: "%02X", $0) }.joined()
+    private static func grouped(_ digest: SHA256.Digest) -> String {
+        let hex = digest.prefix(6).map { String(format: "%02X", $0) }.joined()
         return stride(from: 0, to: 12, by: 4).map { n in
             String(hex.dropFirst(n).prefix(4))
         }.joined(separator: " ")
+    }
+    /// Pairing v1 (Mac 0.30 and earlier): no commitment, so a relay that substitutes both
+    /// keys can grind a matching pair. Kept for older Macs, and flagged as weaker.
+    static func code(host: Data, client: Data) -> String {
+        grouped(SHA256.hash(data: host + client))
+    }
+    /// Pairing v2 (`lisa-pair-v2`), identical to src/remote/protocol.ts: the phone commits
+    /// to its nonce before the Mac picks one, and reveals it only afterwards.
+    static let pairingVersion = 2
+    static func pairingCommitment(host: Data, client: Data, nonce: Data) -> Data {
+        Data(SHA256.hash(data: Data("lisa-pair-v2|commit|".utf8) + host + client + nonce))
+    }
+    static func pairingCode(host: Data, client: Data, clientNonce: Data, hostNonce: Data) -> String {
+        grouped(SHA256.hash(data: Data("lisa-pair-v2|code|".utf8) + host + client + clientNonce + hostNonce))
     }
     init(privateKey: Curve25519.KeyAgreement.PrivateKey, host: Data, salt: Data) throws {
         let peer = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: host)
@@ -144,16 +179,34 @@ actor RemoteMacTransport {
     private var active: [UUID: any RemoteConnection] = [:]
     private var invalidated = false
     private let credentialProvider: (() throws -> String)?
-    private let connector: ((URL, String?, UInt64) async throws -> any RemoteConnection)?
+    /// Test hook: (url, Bearer token, timeout, hello fields) → an opened connection.
+    private let connector: ((URL, String?, UInt64, [String: Any]) async throws -> any RemoteConnection)?
     private let pairing: Bool
+    private let deviceKey: Curve25519.KeyAgreement.PrivateKey?
+    /// One v2 pairing attempt: the phone nonce it committed to, and the only Mac nonce
+    /// that nonce may ever be revealed against.
+    private struct PairingAttempt {
+        let nonce = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
+        var macNonce: Data?
+        var code: String?
+        var secure = false
+        var comparable = true
+    }
+    private var attempt = PairingAttempt()
+    /// Each restart draws a fresh code, i.e. another chance for a relay holding a table of
+    /// v1 codes against a lenient Mac. A real Mac restarts a request rarely, so stop after two.
+    static let maxPairingRestarts = 2
+    private var restarts = 0
 
     init(target: RemoteMacTarget, pairing: Bool = false, credentialProvider: (() throws -> String)? = nil,
          sessionConfiguration: URLSessionConfiguration = .ephemeral,
-         connector: ((URL, String?, UInt64) async throws -> any RemoteConnection)? = nil) {
+         deviceKey: Curve25519.KeyAgreement.PrivateKey? = nil,
+         connector: ((URL, String?, UInt64, [String: Any]) async throws -> any RemoteConnection)? = nil) {
         self.target = target
         self.session = URLSession(configuration: sessionConfiguration, delegate: RemoteSessionDelegate(), delegateQueue: nil)
         self.pairing = pairing
         self.credentialProvider = credentialProvider
+        self.deviceKey = deviceKey
         self.connector = connector
         self.lanURLs = (UserDefaults.standard.stringArray(forKey: "lisa.link.\(target.id).lanURLs") ?? []).compactMap(Self.validLANURL)
     }
@@ -185,11 +238,15 @@ actor RemoteMacTransport {
               ip[0] == 10 || (ip[0] == 192 && ip[1] == 168) || (ip[0] == 172 && (16...31).contains(ip[1])) else { return nil }
         return parts.url
     }
-    private func open(url: URL, token: String?, timeout: UInt64) async throws -> any RemoteConnection {
-        if let connector { return try await connector(url, token, timeout) }
+    private func deviceKeyPair() throws -> Curve25519.KeyAgreement.PrivateKey {
+        if let deviceKey { return deviceKey }
+        return try RemoteDeviceKey.load()
+    }
+    private func open(url: URL, token: String?, timeout: UInt64, fields: [String: Any]) async throws -> any RemoteConnection {
+        if let connector { return try await connector(url, token, timeout, fields) }
         guard !invalidated, let hostKey = Data(base64Encoded: target.publicKey),
               RemoteLinkCipher.keyID(hostKey) == target.id else { throw RemoteLinkError.invalidPeer }
-        let key = try RemoteDeviceKey.load()
+        let key = try deviceKeyPair()
         let salt = Curve25519.KeyAgreement.PrivateKey().rawRepresentation
         let cipher = try RemoteLinkCipher(privateKey: key, host: hostKey, salt: salt)
         var request = URLRequest(url: url)
@@ -203,26 +260,37 @@ actor RemoteMacTransport {
         task.resume()
         do {
             return try await withTaskCancellationHandler(operation: {
-                let hello: [String: Any] = ["type": "hello", "publicKey": key.publicKey.rawRepresentation.base64EncodedString(),
-                    "salt": salt.base64EncodedString(), "name": await UIDevice.current.name, "pair": pairing]
+                var hello: [String: Any] = ["type": "hello", "publicKey": key.publicKey.rawRepresentation.base64EncodedString(),
+                    "salt": salt.base64EncodedString(), "name": await UIDevice.current.name]
+                hello.merge(fields) { _, field in field }
                 try await task.send(.data(JSONSerialization.data(withJSONObject: hello)))
                 socket.welcome = try await socket.receive()
-                guard socket.welcome["type"] as? String == "welcome",
-                      socket.welcome["code"] as? String == RemoteLinkCipher.code(host: hostKey, client: key.publicKey.rawRepresentation) else {
-                    throw RemoteLinkError.invalidPeer
-                }
+                try Self.verifyWelcome(socket.welcome, host: hostKey, client: key.publicKey.rawRepresentation)
                 return socket
             }, onCancel: { socket.close() })
         } catch { socket.close(); throw error }
     }
-    private func connection() async throws -> any RemoteConnection {
+    /// A v2 Mac never sends the uncommitted v1 code; a v1 Mac's must match both keys.
+    static func verifyWelcome(_ welcome: [String: Any], host: Data, client: Data) throws {
+        guard welcome["type"] as? String == "welcome" else { throw RemoteLinkError.invalidPeer }
+        if welcome["v"] as? Int != RemoteLinkCipher.pairingVersion {
+            guard welcome["code"] as? String == RemoteLinkCipher.code(host: host, client: client) else {
+                throw RemoteLinkError.invalidPeer
+            }
+        }
+    }
+    private func connection(hello: [String: Any] = [:]) async throws -> any RemoteConnection {
         guard !invalidated else { throw RemoteLinkError.signIn }
         let token = try credentials()
-        if Date() >= nextLANProbe {
+        // Every hello announces pairing v2; a v1 Mac ignores the extra fields.
+        var fields: [String: Any] = ["v": RemoteLinkCipher.pairingVersion, "pair": false]
+        fields.merge(hello) { _, field in field }
+        // Pairing verifies a Mac picked from the cloud list, so it only uses the cloud route.
+        if !pairing && Date() >= nextLANProbe {
             nextLANProbe = Date().addingTimeInterval(20)
             for url in lanURLs.prefix(2) {
                 do {
-                    let socket = try await open(url: url, token: nil, timeout: 900_000_000)
+                    let socket = try await open(url: url, token: nil, timeout: 900_000_000, fields: fields)
                     guard socket.welcome["authorized"] as? Bool == true else { socket.close(); continue }
                     nextLANProbe = .distantPast
                     report("Local network")
@@ -236,7 +304,7 @@ actor RemoteMacTransport {
         parts.scheme = "wss"; parts.path = "/api/relay/client"
         parts.queryItems = [URLQueryItem(name: "host", value: target.id)]
         guard let url = parts.url else { throw RemoteLinkError.invalidPeer }
-        let socket = try await open(url: url, token: token, timeout: 10_000_000_000)
+        let socket = try await open(url: url, token: token, timeout: 10_000_000_000, fields: fields)
         let wasEmpty = lanURLs.isEmpty
         lanURLs = (socket.welcome["lanURLs"] as? [String] ?? []).compactMap(Self.validLANURL)
         if wasEmpty && !lanURLs.isEmpty { nextLANProbe = .distantPast }
@@ -247,9 +315,64 @@ actor RemoteMacTransport {
     private func report(_ route: String) {
         NotificationCenter.default.post(name: .lisaRemoteRoute, object: target.id, userInfo: ["route": route])
     }
-    func authorization() async throws -> (authorized: Bool, code: String) {
-        let socket = try await connection(); defer { socket.close() }
-        return (socket.welcome["authorized"] as? Bool == true, socket.welcome["code"] as? String ?? "")
+    /// One poll of the pairing screen. Until a code exists this runs the v2 commitment
+    /// round (or reads an older Mac's v1 code); afterwards it only asks for approval.
+    func pairingStatus() async throws -> RemotePairingStatus {
+        guard pairing, let hostKey = Data(base64Encoded: target.publicKey) else { throw RemoteLinkError.invalidPeer }
+        guard restarts <= Self.maxPairingRestarts else { throw RemoteLinkError.pairingAborted }
+        let client = try deviceKeyPair().publicKey.rawRepresentation
+        let current = attempt
+        var hello: [String: Any] = ["pair": current.code == nil]
+        if current.code == nil {
+            hello["commit"] = RemoteLinkCipher.pairingCommitment(host: hostKey, client: client,
+                                                                 nonce: current.nonce).base64EncodedString()
+        }
+        let socket = try await connection(hello: hello)
+        defer { socket.close() }
+        // Another poll restarted the attempt while this one was connecting.
+        guard attempt.nonce == current.nonce else { throw RemoteLinkError.pairingRestarted }
+        let welcome = socket.welcome
+        let authorized = welcome["authorized"] as? Bool == true
+        let v2 = welcome["v"] as? Int == RemoteLinkCipher.pairingVersion
+        if let code = current.code {
+            // A Mac that paired with v2 cannot fall back to v1 halfway through.
+            if current.secure && !v2 { throw RemoteLinkError.invalidPeer }
+            return RemotePairingStatus(authorized: authorized, code: code, secure: current.secure,
+                                       open: authorized || !v2 || welcome["pending"] as? Bool == true,
+                                       comparable: current.comparable)
+        }
+        guard v2 else {
+            // Mac 0.30 and earlier: open() already checked this v1 code against both keys.
+            // If it already allows this iPhone, it lists no request and shows no code, so
+            // there is nothing to compare (and a relay posing as such a Mac needs no grinding).
+            let code = welcome["code"] as? String ?? ""
+            attempt.code = code
+            attempt.secure = false
+            attempt.comparable = !authorized
+            return RemotePairingStatus(authorized: authorized, code: code, secure: false, open: true,
+                                       comparable: !authorized)
+        }
+        guard let raw = welcome["nonce"] as? String, let macNonce = Data(base64Encoded: raw), macNonce.count == 32 else {
+            return RemotePairingStatus(authorized: authorized, code: "", secure: true, open: false)
+        }
+        if let pinned = attempt.macNonce, pinned != macNonce {
+            // This phone nonce may already be revealed. Pairing it with a second Mac nonce
+            // would let a relay pick that nonce knowing ours, so start a fresh attempt.
+            restarts += 1
+            attempt = PairingAttempt()
+            throw restarts > Self.maxPairingRestarts ? RemoteLinkError.pairingAborted : RemoteLinkError.pairingRestarted
+        }
+        attempt.macNonce = macNonce
+        try await socket.send(["type": "pair", "nonce": current.nonce.base64EncodedString()])
+        let reply = try await socket.receive()
+        let code = RemoteLinkCipher.pairingCode(host: hostKey, client: client, clientNonce: current.nonce, hostNonce: macNonce)
+        guard reply["type"] as? String == "paired", reply["code"] as? String == code else {
+            throw RemoteLinkError.invalidPeer
+        }
+        guard attempt.nonce == current.nonce else { throw RemoteLinkError.pairingRestarted }
+        attempt.code = code
+        attempt.secure = true
+        return RemotePairingStatus(authorized: authorized, code: code, secure: true, open: true)
     }
     func data(path: String, method: String, body: Data?) async throws -> (Data, HTTPURLResponse) {
         var data = Data()
@@ -271,7 +394,7 @@ actor RemoteMacTransport {
         let socket = try await connection()
         guard !invalidated else { socket.close(); throw RemoteLinkError.signIn }
         guard socket.welcome["authorized"] as? Bool == true else {
-            socket.close(); throw RemoteLinkError.pairing(socket.welcome["code"] as? String ?? "")
+            socket.close(); throw RemoteLinkError.notAllowed
         }
         let id = UUID(); active[id] = socket
         defer { active.removeValue(forKey: id); socket.close() }

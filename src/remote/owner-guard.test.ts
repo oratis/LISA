@@ -110,6 +110,19 @@ test(
           (await raw(port, "POST", "/api/remote/approve", headers, { id: "x", code: "y" })).status,
           403,
         );
+        // ...nor clear a real request, or relax the policy to let a v1 (grindable) pairing in.
+        assert.equal(
+          (await raw(port, "POST", "/api/remote/dismiss", headers, { id: "x" })).status,
+          403,
+        );
+        assert.equal(
+          (
+            await raw(port, "POST", "/api/remote/policy", headers, {
+              requireSecurePairing: false,
+            })
+          ).status,
+          403,
+        );
       }
       await new Promise((r) => setTimeout(r, 300));
       assert.deepEqual(
@@ -164,6 +177,17 @@ test(
       assert.equal(
         ((await raw(port, "GET", "/api/remote/status", owner)).json.devices as []).length,
         0,
+      );
+      // The owner can require secure (v2) pairing; that withdraws this v1 request.
+      const policy = await raw(port, "POST", "/api/remote/policy", owner, {
+        requireSecurePairing: true,
+      });
+      assert.equal(policy.status, 200);
+      assert.equal(policy.json.requireSecurePairing, true);
+      assert.deepEqual(policy.json.pending, []);
+      assert.equal(
+        (await raw(port, "POST", "/api/remote/policy", owner, { requireSecurePairing: 1 })).status,
+        409,
       );
     } finally {
       for (const ws of sockets) ws.terminate();

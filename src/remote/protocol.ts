@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-/** v1 wire format shared with RemoteMacTransport.swift. No credentials in routing metadata. */
+/** Wire format shared with RemoteMacTransport.swift. No credentials in routing metadata. */
 export const MAX_FRAME = 1024 * 1024;
 export const MAX_BUFFER = 4 * MAX_FRAME;
 export interface LinkIdentity {
@@ -25,25 +25,80 @@ export function identity(): LinkIdentity {
     privateKey: Buffer.from(jwk.d!, "base64url").toString("base64"),
   };
 }
-export function keyBytes(value: unknown): Buffer {
-  if (typeof value !== "string" || !/^[A-Za-z0-9+/]{43}=$/.test(value))
-    throw new Error("invalid_key");
+function bytes32(value: unknown, error: string): Buffer {
+  if (typeof value !== "string" || !/^[A-Za-z0-9+/]{43}=$/.test(value)) throw new Error(error);
   const bytes = Buffer.from(value, "base64");
-  if (bytes.length !== 32) throw new Error("invalid_key");
+  if (bytes.length !== 32) throw new Error(error);
   return bytes;
+}
+export function keyBytes(value: unknown): Buffer {
+  return bytes32(value, "invalid_key");
 }
 export function keyId(publicKey: string): string {
   return crypto.createHash("sha256").update(keyBytes(publicKey)).digest("hex").slice(0, 32);
 }
+function groupedCode(digest: Buffer): string {
+  return digest.toString("hex").slice(0, 12).toUpperCase().match(/.{4}/g)!.join(" ");
+}
+/** Pairing v1 (Mac ≤ 0.30, Pocket ≤ 1.3): no commitment, so a relay that substitutes
+ * BOTH keys can grind two keypairs into a collision (~2^24 keygens per side). */
 export function verificationCode(hostKey: string, clientKey: string): string {
+  return groupedCode(
+    crypto
+      .createHash("sha256")
+      .update(Buffer.concat([keyBytes(hostKey), keyBytes(clientKey)]))
+      .digest(),
+  );
+}
+
+/**
+ * Pairing v2 (`lisa-pair-v2`): SAS with a prior commitment, as in ZRTP and Bluetooth
+ * numeric comparison. The phone commits to (host key, its key, random Np) in its hello,
+ * the Mac answers with a fresh random Nm, and only then does the phone reveal Np. Both
+ * nonces feed the code, and each side fixes its own nonce before it learns the other's,
+ * so a key-substituting relay gets one blind 2^-48 guess per round instead of an offline
+ * search. The channel cipher (`lisa-link-v1`) is unchanged.
+ */
+export const PAIRING_VERSION = 2;
+export function nonceBytes(value: unknown): Buffer {
+  return bytes32(value, "invalid_nonce");
+}
+export function pairingNonce(): string {
+  return crypto.randomBytes(32).toString("base64");
+}
+export function pairingCommitment(hostKey: string, clientKey: string, clientNonce: string): string {
   return crypto
     .createHash("sha256")
-    .update(Buffer.concat([keyBytes(hostKey), keyBytes(clientKey)]))
-    .digest("hex")
-    .slice(0, 12)
-    .toUpperCase()
-    .match(/.{4}/g)!
-    .join(" ");
+    .update(
+      Buffer.concat([
+        Buffer.from("lisa-pair-v2|commit|"),
+        keyBytes(hostKey),
+        keyBytes(clientKey),
+        nonceBytes(clientNonce),
+      ]),
+    )
+    .digest("base64");
+}
+export function pairingCode(
+  hostKey: string,
+  clientKey: string,
+  clientNonce: string,
+  hostNonce: string,
+): string {
+  return groupedCode(
+    crypto
+      .createHash("sha256")
+      .update(
+        Buffer.concat([
+          Buffer.from("lisa-pair-v2|code|"),
+          keyBytes(hostKey),
+          keyBytes(clientKey),
+          nonceBytes(clientNonce),
+          nonceBytes(hostNonce),
+        ]),
+      )
+      .digest(),
+  );
 }
 
 /** Separate directional keys + exact counters prevent reflection/reordering/replay. */
