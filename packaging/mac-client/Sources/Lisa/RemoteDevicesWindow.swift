@@ -1,0 +1,126 @@
+import AppKit
+import Foundation
+
+@MainActor
+final class RemoteDevicesWindow: NSWindowController {
+    static let shared = RemoteDevicesWindow()
+    private let stack = NSStackView()
+    private var refreshTask: Task<Void, Never>?
+    private var message = ""
+
+    private convenience init() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = "Connect iPhone"
+        window.isReleasedWhenClosed = false
+        self.init(window: window)
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
+        stack.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.documentView = stack
+        window.contentView = scroll
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.widthAnchor.constraint(equalTo: scroll.widthAnchor).isActive = true
+        window.center()
+    }
+    func show() {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.window?.isVisible == true else { return }
+                await self.refresh()
+                do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+            }
+        }
+    }
+    static func request(_ path: String, body: [String: String]? = nil) async throws -> [String: Any] {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:5757/api/remote/\(path)")!, timeoutInterval: 15)
+        if let body {
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "LISARemote", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                "Couldn't update the connection. Check that the backend is up to date and you're signed in."])
+        }
+        return result
+    }
+    private func label(_ text: String, bold: Bool = false) {
+        let field = NSTextField(wrappingLabelWithString: text)
+        field.font = bold ? .boldSystemFont(ofSize: 15) : .systemFont(ofSize: 13)
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true
+        stack.addArrangedSubview(field)
+    }
+    private func button(_ title: String, action: Selector, value: String? = nil) {
+        let button = NSButton(title: title, target: self, action: action)
+        button.bezelStyle = .rounded
+        button.identifier = value.map { NSUserInterfaceItemIdentifier(rawValue: $0) }
+        stack.addArrangedSubview(button)
+    }
+    private func refresh() async {
+        let status: [String: Any]
+        do { status = try await Self.request("status") }
+        catch { status = [:]; message = error.localizedDescription }
+        for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
+        label("Your Mac, wherever you are", bold: true)
+        label("Sign in to the same LISA account in Pocket. On your phone, open Settings → Connect your Mac. Connections are encrypted between your devices.")
+        let enabled = status["enabled"] as? Bool == true
+        let online = status["online"] as? Bool == true
+        label(online ? "Online · ready for Lisa Pocket" : enabled ? "Reconnecting to LISA Cloud…" : "Phone connections are off.")
+        if !message.isEmpty { label(message) }
+        let signedIn = !(BackendController.shared.configEnvValue("LISA_MANAGED_SESSION") ?? "").isEmpty
+        if signedIn {
+            button(enabled ? "Reconnect" : "Enable phone connections", action: #selector(connect))
+            if enabled { button("Turn off phone connections", action: #selector(disconnect)) }
+        } else { button("Sign in to LISA", action: #selector(signIn)) }
+        for pending in status["pending"] as? [[String: Any]] ?? [] {
+            guard let id = pending["id"] as? String, let code = pending["code"] as? String else { continue }
+            label("\(pending["name"] as? String ?? "iPhone") wants to connect", bold: true)
+            label("Compare with the code on your phone: \(code)")
+            button("Allow this device", action: #selector(approve(_:)), value: "\(id)|\(code)")
+            button("Dismiss request", action: #selector(revoke(_:)), value: id)
+        }
+        let devices = status["devices"] as? [[String: Any]] ?? []
+        if !devices.isEmpty { label("Authorized devices", bold: true) }
+        for device in devices {
+            guard let id = device["id"] as? String else { continue }
+            button("Disconnect \(device["name"] as? String ?? "iPhone")", action: #selector(revoke(_:)), value: id)
+        }
+        label("Keep this Mac awake and LISA running. Pocket uses your local network when available and cloud relay when you're away.")
+        button("Legacy QR pairing…", action: #selector(legacy))
+    }
+    private func perform(_ path: String, body: [String: String]) {
+        Task {
+            do { _ = try await Self.request(path, body: body); message = "" }
+            catch { message = error.localizedDescription }
+            await refresh()
+        }
+    }
+    @objc private func connect() {
+        perform("connect", body: [
+            "base": BackendController.shared.configEnvValue("LISA_MANAGED_BASE") ?? "https://cloud.meetlisa.ai",
+            "session": BackendController.shared.configEnvValue("LISA_MANAGED_SESSION") ?? "",
+        ])
+    }
+    @objc private func disconnect() { perform("disconnect", body: [:]) }
+    @objc private func approve(_ sender: NSButton) {
+        let parts = (sender.identifier?.rawValue ?? "").split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return }
+        let alert = NSAlert()
+        alert.messageText = "Does your phone show \(parts[1])?"
+        alert.informativeText = "Only allow it if the codes match. This device can access this Mac's LISA and its permitted remote controls."
+        alert.addButton(withTitle: "Codes match — allow"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        perform("approve", body: ["id": parts[0], "code": parts[1]])
+    }
+    @objc private func revoke(_ sender: NSButton) { perform("revoke", body: ["id": sender.identifier?.rawValue ?? ""]) }
+    @objc private func signIn() { AccountWindowController.shared.show() }
+    @objc private func legacy() { PairController.shared.showPairing() }
+}

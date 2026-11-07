@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lisa-relay",
+  "main": "src/index.ts",
+  "account_id": "905b414662eeded1a3a1ebb6fa1c4237",
+  "compatibility_date": "2026-11-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "cloud.meetlisa.ai/api/relay/*",
+      "zone_name": "meetlisa.ai",
+    },
+  ],
+  "vars": {
+    "AUTH_ORIGIN": "https://cloud.meetlisa.ai",
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ACCOUNTS",
+        "class_name": "AccountRelay",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AccountRelay"],
+    },
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+  },
+}

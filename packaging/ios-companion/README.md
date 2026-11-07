@@ -1,4 +1,10 @@
 # Lisa Pocket — iOS companion
+Account-based Mac connections now use **Settings → Connect your Mac**: sign in to
+the same LISA account on both devices, compare the verification code, and approve
+the phone on the Mac. Pocket then prefers encrypted LAN access and falls back to
+the encrypted cloud relay, without Tailscale. Requires the updated cloud relay,
+Mac backend/app and Pocket build; see [setup, deployment and protocol](../../docs/REMOTE_CONNECTIONS.md).
+
 
 A native SwiftUI app that turns your phone into a **remote telemetry + control
 terminal for Dispatch**: see every Claude Code / Codex / managed / PTY agent on

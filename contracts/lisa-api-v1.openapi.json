@@ -1998,6 +1998,123 @@
           }
         }
       }
+    },
+    "/api/relay/macs": {
+      "get": {
+        "operationId": "listAccountMacs",
+        "description": "Cloud only; verified account session required. Lists online Macs owned by this account; local approval is still required before access.",
+        "responses": {
+          "200": {
+            "description": "Online encrypted relay hosts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "hosts"
+                  ],
+                  "properties": {
+                    "hosts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RelayHost"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account session required, or relay is disabled."
+          }
+        }
+      }
+    },
+    "/api/remote/status": {
+      "get": {
+        "operationId": "remoteMacStatus",
+        "description": "Mac localhost owner only. See docs/REMOTE_CONNECTIONS.md. Never accessible through a remote device connection.",
+        "responses": {
+          "200": {
+            "description": "Current remote connection status; no private keys or account tokens."
+          },
+          "403": {
+            "description": "Local owner required."
+          },
+          "409": {
+            "description": "Connection or authorization could not be completed."
+          }
+        }
+      }
+    },
+    "/api/remote/connect": {
+      "post": {
+        "operationId": "remoteMacConnect",
+        "description": "Mac localhost owner only. See docs/REMOTE_CONNECTIONS.md. Never accessible through a remote device connection.",
+        "responses": {
+          "200": {
+            "description": "Current remote connection status; no private keys or account tokens."
+          },
+          "403": {
+            "description": "Local owner required."
+          },
+          "409": {
+            "description": "Connection or authorization could not be completed."
+          }
+        }
+      }
+    },
+    "/api/remote/approve": {
+      "post": {
+        "operationId": "remoteMacApprove",
+        "description": "Mac localhost owner only. See docs/REMOTE_CONNECTIONS.md. Never accessible through a remote device connection.",
+        "responses": {
+          "200": {
+            "description": "Current remote connection status; no private keys or account tokens."
+          },
+          "403": {
+            "description": "Local owner required."
+          },
+          "409": {
+            "description": "Connection or authorization could not be completed."
+          }
+        }
+      }
+    },
+    "/api/remote/revoke": {
+      "post": {
+        "operationId": "remoteMacRevoke",
+        "description": "Mac localhost owner only. See docs/REMOTE_CONNECTIONS.md. Never accessible through a remote device connection.",
+        "responses": {
+          "200": {
+            "description": "Current remote connection status; no private keys or account tokens."
+          },
+          "403": {
+            "description": "Local owner required."
+          },
+          "409": {
+            "description": "Connection or authorization could not be completed."
+          }
+        }
+      }
+    },
+    "/api/remote/disconnect": {
+      "post": {
+        "operationId": "remoteMacDisconnect",
+        "description": "Mac localhost owner only. See docs/REMOTE_CONNECTIONS.md. Never accessible through a remote device connection.",
+        "responses": {
+          "200": {
+            "description": "Current remote connection status; no private keys or account tokens."
+          },
+          "403": {
+            "description": "Local owner required."
+          },
+          "409": {
+            "description": "Connection or authorization could not be completed."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4583,6 +4700,31 @@
           "connectors"
         ],
         "additionalProperties": false
+      },
+      "RelayHost": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "publicKey",
+          "online"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "First 16 bytes of SHA-256(raw X25519 public key), lowercase hex."
+          },
+          "name": {
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string",
+            "description": "32-byte X25519 public key, standard base64."
+          },
+          "online": {
+            "type": "boolean"
+          }
+        }
       }
     }
   }
