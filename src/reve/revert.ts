@@ -19,14 +19,22 @@
  * already written are rolled back to their current content. Every revert is
  * appended to the record and to reve/audit.jsonl.
  *
- * A memory revert never pushes MEMORY.md / USER.md past the memory store's
- * byte cap: past it the memory tool refuses every write, so such a revert is
- * refused (`memory_full`), even under `force`, and nothing is written.
+ * A memory revert never grows MEMORY.md / USER.md past the memory store's
+ * byte cap (the store's own rule: the cap blocks growth only), so such a
+ * revert is refused (`memory_full`), even under `force`, and nothing is
+ * written.
+ *
+ * Locks, always in this order: reve → kb (when the KB is selected) → memory
+ * (when memory is selected, the memory store's own write lock, which the
+ * memory tool, the entries API and forget take). Each memory file is read,
+ * planned and written inside the memory lock, so a chat's "remember X" that
+ * arrives meanwhile waits and then lands on the reverted file: it is never
+ * overwritten by a revert planned on the text before it.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { appendLine, atomicWrite } from "../fs-utils.js";
-import { memoryMaxBytes, type MemoryStore } from "../memory/store.js";
+import { memoryMaxBytes, withMemoryLock, type MemoryStore } from "../memory/store.js";
 import { lisaHome, memoryFile, userFile } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { reveAuditFile } from "./paths.js";
@@ -91,6 +99,12 @@ export interface RevertResult {
   changedSince: string[];
   forced: boolean;
 }
+
+/**
+ * Test seam: `afterPlan` runs inside the locks, after every file is planned
+ * and before any is written. Production code never sets it.
+ */
+export const revertTestSeams: { afterPlan?: () => Promise<void> } = {};
 
 /** Validate the requested parts. "soul" is refused with a pointer to reconsider. */
 export function parseRevertParts(raw: unknown): UserPart[] {
@@ -371,6 +385,7 @@ export async function revertDream(
     const blocking = conflicts.filter((c) => BLOCKS_EVEN_FORCED.has(c.reason));
     if (blocking.length) throw new RevertConflictError(force ? blocking : conflicts);
     if (conflicts.length && !force) throw new RevertConflictError(conflicts);
+    await revertTestSeams.afterPlan?.();
     result.skipped = conflicts.filter((c) => c.reason !== "modified_since").map((c) => c.path);
 
     const written: PlannedWrite[] = [];
@@ -414,11 +429,13 @@ export async function revertDream(
     }
   };
 
+  // reve → kb → memory, never another order (see the header).
+  const inMemoryLock = () => (parts.includes("memory") ? withMemoryLock(body) : body());
   await lockReve(async () => {
-    if (!parts.includes("kb")) return await body();
-    // Same lock the KB store takes for every write; order is reve → kb.
+    if (!parts.includes("kb")) return await inMemoryLock();
+    // Same lock the KB store takes for every write.
     const { kbLockPath } = await import("../kb/paths.js");
-    return await withFileLock(kbLockPath(), body, { timeoutMs: 10_000 });
+    return await withFileLock(kbLockPath(), inMemoryLock, { timeoutMs: 10_000 });
   });
 
   if (result.reverted.some((p) => p.startsWith("kb/"))) {

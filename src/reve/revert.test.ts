@@ -9,7 +9,7 @@ process.env.LISA_SOUL_GIT = "0";
 
 const { withDream, beginDream, OUTSIDE_WRITE_REASON } = await import("./record.js");
 const { listDreams, readDream } = await import("./store.js");
-const { revertDream, RevertConflictError, RevertInputError, parseRevertParts } =
+const { revertDream, RevertConflictError, RevertInputError, parseRevertParts, revertTestSeams } =
   await import("./revert.js");
 const { appendMemory, removeFromMemory, writeMemory, memoryMaxBytes } =
   await import("../memory/store.js");
@@ -391,5 +391,31 @@ describe("revert guards (#423 review follow-up)", () => {
     assert.ok(rec);
     const change = rec.changes.find((c) => c.path === "memory/MEMORY.md");
     assert.equal(change?.revertible, false);
+  });
+});
+
+describe("revert takes the memory write lock (#421 integration)", () => {
+  test("a concurrent appendMemory during a revert waits, then lands: it is never lost", async () => {
+    const id = await idleDream(async () => {
+      await appendMemory("memory", "dream entry");
+    });
+    let pending: Promise<void> | undefined;
+    revertTestSeams.afterPlan = async () => {
+      revertTestSeams.afterPlan = undefined;
+      // A chat's "remember X" arrives after the revert read the file.
+      pending = appendMemory("memory", "remember X: arrived during the revert");
+      await new Promise((r) => setTimeout(r, 150)); // every chance to land first
+    };
+    try {
+      const res = await revertDream(id, { parts: ["memory"] });
+      assert.deepEqual(res.reverted, ["memory/MEMORY.md"]);
+    } finally {
+      revertTestSeams.afterPlan = undefined;
+    }
+    await pending;
+    assert.equal(
+      read("memory/MEMORY.md"),
+      "- user prefers tea\n- remember X: arrived during the revert\n",
+    );
   });
 });
