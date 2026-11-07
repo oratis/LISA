@@ -58,6 +58,7 @@ export interface ParsedArgs {
     | "tasks"
     | "approvals"
     | "warden"
+    | "reve"
     | "forget"
     | "export"
     | "import";
@@ -84,7 +85,7 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", 
  * global flags (`mail connect --host/--port/--provider …`), which would
  * otherwise be swallowed as global settings and never reach the handler.
  */
-const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing", "approvals", "warden"]);
+const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing", "approvals", "warden", "reve"]);
 
 /**
  * Data commands (memory sovereignty). A one-shot prompt can start with these
@@ -332,6 +333,7 @@ function parseArgvOnce(argv: string[], dataSubcommands: boolean): ParsedArgs {
       first === "tasks" ||
       first === "approvals" ||
       first === "warden" ||
+      first === "reve" ||
       (dataSubcommands && isDataSubcommand(first))
     ) {
       out.subcommand = first;

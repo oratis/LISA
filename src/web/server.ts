@@ -210,6 +210,7 @@ import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
 import { handleMemoryApi } from "./memory-api.js";
+import { handleReveApi } from "./reve-api.js";
 import { createWebWarden, handleWardenApi, wardenTrust, crossSiteProblem } from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
@@ -2867,6 +2868,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     ) {
       return;
     }
+    // W9 auditable Dream log. lisaHome() is already this account's subtree on
+    // the cloud edition; a cloud caller with no account is refused. Same
+    // trust as the Warden: cross-site / rebinding refused, and only the
+    // loopback owner or a signed-in account may revert or reconsider.
+    if (
+      await handleReveApi(req, res, url, {
+        allowed: !cloud || accountUid !== null,
+        ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+        actor: accountUid ? `uid:${accountUid}` : "local",
+      })
+    ) {
+      return;
+    }
     if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
     if (
       await taskHost.handle(
@@ -5479,5 +5493,7 @@ self.addEventListener('fetch', (event) => {
   await githubConnector?.start().catch(() => logError("[connectors] GitHub state unavailable"));
   for (const [provider, service] of taskConnectors)
     await service.start().catch(() => logError(`[connectors] ${provider} state unavailable`));
+  // Dream-log retention on startup (then at most hourly, from the passes).
+  void import("../reve/store.js").then((m) => m.maybeApplyRetention()).catch(() => undefined);
   return server;
 }
