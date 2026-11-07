@@ -106,6 +106,9 @@ export function planUpstream(
   return {
     url: `${base.replace(/\/$/, "")}${subpath}`,
     headers: {
+      // Preset headers (e.g. Perplexity's integration tag) go first so they
+      // can never replace the swapped-in credentials.
+      ...preset?.defaultHeaders,
       "content-type": "application/json",
       authorization: `Bearer ${key}`,
     },
