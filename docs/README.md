@@ -35,6 +35,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 | [ROADMAP_v1.0.md](./ROADMAP_v1.0.md) | The 1.0 roadmap: four pillars (Sense · Dispatch · Reve · Model) and what "1.0" means. Never archived — it is the map. |
 | [PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md](./PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) | Approved 2026-10-02, in progress: the upgrade after the always-on agent wave — Task Engine, Warden, Home + Relay, one portable Lisa; re-prioritizes the pillars and redefines 1.0. |
 | [PLAN_PLUGINS_CONNECTORS_2026-11-07.md](./PLAN_PLUGINS_CONNECTORS_2026-11-07.md) | GitHub read-only connection preview with durable chat continuation; roadmap for a shared plugin and connector system. |
+| [PLAN_CONNECTOR_EXPANSION_2026-11-07.md](./PLAN_CONNECTOR_EXPANSION_2026-11-07.md) | Other connector research, provider-specific authorization limits, and phased Calendar / Gmail / Linear integration plan. |
 | [POLICY_REACH_OUT.md](./POLICY_REACH_OUT.md) | The Reach-out charter: when Lisa may contact you first — dial, budget, quiet hours, red lines. Replaces the autonomy roadmap's "never reach out" non-goal. |
 | [AUTONOMY_ROADMAP.md](./AUTONOMY_ROADMAP.md) | The autonomy arc (idle, heartbeat, examen, soul evolution) behind the Reve pillar. |
 | [PLAN_PERSONAL_ASSISTANT_2026-09-27.md](./PLAN_PERSONAL_ASSISTANT_2026-09-27.md) | The personal-assistant review and execution plan behind v0.27 and Lisa Pocket 1.2. Its open follow-ups (durable tasks, cross-device Lisa, cloud connectors, tenant push) are picked up by PLAN_ALWAYS_ON_UPGRADE. |
