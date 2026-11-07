@@ -110,9 +110,9 @@ const categoryOrder = ["emotion", "activity", "weather", "festive", "outfit", "p
     .mood figcaption em { color: var(--muted); font-style: normal; font-size: .78rem; }
     .mood details { margin-top: .45rem; text-align: left; }
     .mood details summary {
-      cursor: pointer; color: var(--blue); font-family: var(--mono); font-size: .7rem;
+      cursor: pointer; color: var(--blue); font-family: var(--mono); font-size: .8rem; min-height: 44px; padding: .65rem 0;
     }
-    .mood details p { margin: .4rem 0 0; font-size: .74rem; color: var(--faint); line-height: 1.5; }
+    .mood details p { margin: .4rem 0 0; font-size: .8rem; color: var(--muted); line-height: 1.6; }
 
     /* Reproduce block */
     .repro {
@@ -122,6 +122,14 @@ const categoryOrder = ["emotion", "activity", "weather", "festive", "outfit", "p
     .repro code {
       font-family: var(--mono); font-size: .85rem; line-height: 1.7; color: var(--ink);
       background: none; border: 0; padding: 0; display: block; white-space: pre;
+    }
+    @media (max-width: 640px) {
+      .mood-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+      .mood figcaption strong { font-size: .75rem; overflow-wrap: anywhere; word-break: normal; }
+      .mood { min-width: 0; }
+    }
+    @media (hover: none), (prefers-reduced-motion: reduce) {
+      .mood:hover { transform: none; }
     }
   </style>
 </Base>
