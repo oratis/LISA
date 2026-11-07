@@ -159,6 +159,23 @@ test.describe("conversation expressions", () => {
     ).toBe(403);
   });
 
+  test("phone shell settings controls are full-size touch targets without focus zoom", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(lisa.baseURL + "/#settings");
+    for (const id of ["#expressionDisplay", "#expressionFrequency"]) {
+      const control = page.locator(id);
+      await expect(control).toBeEnabled();
+      const { fontSize, height } = await control.evaluate((el) => ({
+        fontSize: parseFloat(getComputedStyle(el).fontSize),
+        height: el.getBoundingClientRect().height,
+      }));
+      expect(fontSize).toBeGreaterThanOrEqual(16);
+      expect(height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
   test("Mac host visibility, view changes, offscreen and reduce motion pause finite playback", async ({
     page,
   }) => {
