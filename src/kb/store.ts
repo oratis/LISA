@@ -10,6 +10,7 @@
  */
 import fs from "node:fs/promises";
 import { ensureDir, atomicWrite, pathExists, readTextOrEmpty } from "../fs-utils.js";
+import { noteHomeWrite } from "../reve/scope.js";
 import { withFileLock } from "../soul/lock.js";
 import { assertSafeSlug } from "../soul/slug.js";
 import { kbSlug } from "./slug.js";
@@ -455,6 +456,7 @@ export async function removeEntry(layer: KbLayer, slug: string): Promise<boolean
   return withFileLock(kbLockPath(), async () => {
     const file = entryFile(layer, slug);
     if (!(await pathExists(file))) return false;
+    noteHomeWrite(file); // a running dream must not offer to revert this (W9)
     await fs.rm(file, { force: true });
     await regenerateIndexLocked();
     await commitKb(`kb: remove ${layer}/${slug}`);
