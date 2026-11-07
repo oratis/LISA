@@ -1,5 +1,7 @@
 # Lisa.app — native Mac client
 
+**Pocket connection:** sign in to LISA, then open **Connect iPhone…** to approve a phone on the same account. Pocket automatically uses encrypted LAN or cloud relay; no Tailscale is required. See [connection setup and deployment](../../docs/REMOTE_CONNECTIONS.md).
+
 Dockable macOS app hosting the LISA chat GUI. The always-on-top notch pill
 ("Lisa Island") is built in — toggle it from **Lisa ▸ Settings… ▸ Show Lisa
 Island**. (It used to be a separate `LisaIsland.app`; its window code now

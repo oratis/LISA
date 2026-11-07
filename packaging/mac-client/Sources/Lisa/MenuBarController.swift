@@ -569,7 +569,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // Full-width "Pair iPhone…" — shows a scannable QR. Needs the backend up
         // (it mints a device token), so it's hidden in the offline popover.
         if !offline {
-            let pair = NSButton(title: "Pair iPhone…", target: self, action: #selector(pairPhone))
+            let pair = NSButton(title: "Connect iPhone…", target: self, action: #selector(pairPhone))
             pair.bezelStyle = .rounded
             pair.translatesAutoresizingMaskIntoConstraints = false
             pair.widthAnchor.constraint(equalToConstant: inner).isActive = true
@@ -616,7 +616,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     @objc private func pairPhone() {
         popover?.close()
-        PairController.shared.showPairing()
+        RemoteDevicesWindow.shared.show()
     }
 
     @objc private func openBackendSetup() {

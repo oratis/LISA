@@ -73,6 +73,7 @@ final class AppState: ObservableObject {
     /// LAN IP is definitely unreachable. Drives the "you've left your Mac's Wi-Fi"
     /// banner (docs/PLAN_IOS_REACHABILITY_v1.0.md R3).
     @Published var onCellular = false
+    @Published var remoteRoute = "Connecting…"
     private let pathMonitor = NWPathMonitor()
 
     /// Fire a haptic + show a brief toast. Use `ok: false` for failures.
@@ -110,7 +111,7 @@ final class AppState: ObservableObject {
         self.appearance = d.string(forKey: "lisa.appearance") ?? "nebula"
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
-        self.locked = lockOn && cfg.token != nil  // require unlock at launch when armed
+        self.locked = lockOn && cfg.isConfigured  // require unlock at launch when armed
         // Guided setup auto-opens for a brand-new (unpaired, never-onboarded) install.
         self.showOnboarding = !cfg.isConfigured && !d.bool(forKey: "lisa.onboarded")
         // The AppDelegate posts the APNs device token here once it arrives.
@@ -128,9 +129,21 @@ final class AppState: ObservableObject {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let cell = path.status == .satisfied
                 && path.usesInterfaceType(.cellular) && !path.usesInterfaceType(.wifi)
-            Task { @MainActor in self?.onCellular = cell }
+            Task { @MainActor in
+                guard let self else { return }
+                if self.onCellular != cell { self.client.networkChanged() }
+                self.onCellular = cell
+            }
         }
         pathMonitor.start(queue: DispatchQueue(label: "ai.meetlisa.pathmonitor"))
+        NotificationCenter.default.addObserver(forName: .lisaRemoteRoute, object: nil, queue: .main) { [weak self] note in
+            let host = note.object as? String
+            let route = note.userInfo?["route"] as? String
+            Task { @MainActor in
+                guard let self, self.config.remoteMac?.id == host, let route else { return }
+                self.remoteRoute = route
+            }
+        }
     }
 
     // ── APNs registration (client half; delivery needs the Mac's APNs key) ──
@@ -202,6 +215,8 @@ final class AppState: ObservableObject {
     /// Replace the active transport and discard all state belonging to its predecessor.
     private func activate(_ cfg: ServerConfig) {
         guard cfg != config else { return }
+        client.invalidate()
+        remoteRoute = "Connecting…"
         withdrawAIConsent()
         config = cfg
         client = LisaClient(config: cfg)
@@ -213,6 +228,20 @@ final class AppState: ObservableObject {
         SharedStore.writeSnapshot(.empty)
         WidgetCenter.shared.reloadAllTimelines()
         LiveActivityController.endAll()
+    }
+
+    var savedCloudConfig: ServerConfig { profiles.load(.cloud) }
+
+    func connectRemoteMac(_ target: RemoteMacTarget) {
+        var config = ServerConfig(host: "\(target.id).lisa.invalid", port: 443, token: nil, scheme: "https")
+        config.remoteMac = target
+        guard profiles.save(config, for: .mac) else {
+            notify("Couldn't save this Mac securely.", ok: false); return
+        }
+        profiles.activeMode = .mac
+        connectionMode = .mac
+        activate(config)
+        notify("Connected to \(target.name).")
     }
 
     @discardableResult
@@ -374,6 +403,9 @@ final class AppState: ObservableObject {
 
     /// Drop the account session locally (the token is stateless server-side).
     func signOutCloud() {
+        if profiles.load(.mac).remoteMac != nil {
+            _ = profiles.save(ServerConfig(host: "", port: 5757, token: nil), for: .mac)
+        }
         if update(host: "", port: 443, token: nil, scheme: "https", mode: .cloud) { account = nil }
     }
 
@@ -477,7 +509,7 @@ final class AppState: ObservableObject {
 
     /// Re-arm the lock when the app leaves the foreground (called on background).
     func lockIfEnabled() {
-        if biometricLockEnabled && config.token != nil { locked = true }
+        if biometricLockEnabled && config.isConfigured { locked = true }
     }
 
     /// Prompt Face ID / Touch ID (falling back to the device passcode). If no auth
