@@ -39,7 +39,13 @@ import { findPreset } from "../providers/registry.js";
 import type { ProviderUsage } from "../providers/types.js";
 import type { AccountRecord } from "./accounts.js";
 import { admitInference, type InferenceAdmission } from "../billing/admission.js";
-import { explicitPriceForModel, normalizeModelId, tokensAffordable } from "../billing/prices.js";
+import {
+  billsBeyondTextTokens,
+  explicitPriceForModel,
+  normalizeModelId,
+  tokensAffordable,
+} from "../billing/prices.js";
+import { recordFunnel } from "../billing/funnel.js";
 import { readCappedText, BodyTooLargeError } from "./http-body.js";
 import { estimateUsageFromBytes } from "../billing/usage-floor.js";
 
@@ -123,10 +129,184 @@ const ZERO: ProviderUsage = {
 };
 
 /**
+ * The upstream path a non-Gemini face forwards, relative to the provider base,
+ * or null when the path is refused.
+ *
+ * Only the synchronous generation endpoint is served. Batches, files,
+ * embeddings, images and token counting are refused: the gateway meters one
+ * request/response, so an asynchronous job (a batch that completes later) would
+ * be billed to the operator's key with nothing left to settle it against.
+ *
+ * Anthropic: `/v1/messages`, optionally `?beta=true` (the SDK's beta client).
+ * OpenAI-compatible: the managed client's base is `/gw/openai/v1`, so it sends
+ * `/v1/chat/completions`; the provider base already carries its own version
+ * (`https://api.openai.com/v1`, `…/paas/v4`), so the upstream path is
+ * `/chat/completions`.
+ */
+export function gatewayUpstreamPath(face: "anthropic" | "openai", subpath: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(subpath, "http://gw.invalid");
+  } catch {
+    return null;
+  }
+  if (parsed.host !== "gw.invalid") return null;
+  if (face === "anthropic") {
+    if (parsed.pathname !== "/v1/messages") return null;
+    for (const [key, value] of parsed.searchParams) {
+      if (key !== "beta" || value !== "true") return null;
+    }
+    return parsed.search ? "/v1/messages?beta=true" : "/v1/messages";
+  }
+  if (parsed.search !== "") return null;
+  return parsed.pathname === "/v1/chat/completions" || parsed.pathname === "/chat/completions"
+    ? "/chat/completions"
+    : null;
+}
+
+/**
+ * Anthropic tool types the gateway forwards: custom tools (no `type`, or
+ * `custom`) and the client-executed Anthropic-defined tools, which bill as
+ * tokens only. Server tools — web search and fetch, code execution, the
+ * advisor, MCP toolsets — carry per-use or per-model charges the meter never
+ * sees, so a request naming one is refused.
+ */
+const ANTHROPIC_CLIENT_TOOL =
+  /^(custom|bash_\d+|text_editor_\d+|computer_\d+|computer_toolset_\d+|memory_\d+)$/;
+
+/** Anthropic request fields that bill outside the token rates, or run another model. */
+const ANTHROPIC_REFUSED_FIELDS = ["mcp_servers", "container", "fallbacks"] as const;
+
+/** OpenAI service tiers priced at or below standard (Fast/Priority and Ultrafast cost 2–6×). */
+const OPENAI_TIERS = new Set(["auto", "default", "flex"]);
+
+/**
+ * Why this Anthropic / OpenAI-compatible request cannot be metered, or null.
+ *
+ * The gateway bills tokens at the price-table rates. It refuses what is billed
+ * any other way, before admission and before anything reaches the upstream:
+ *  - Anthropic server tools, MCP servers, containers, server-side fallbacks
+ *    and fast mode (`speed`);
+ *  - OpenAI-compatible: audio or realtime/search/transcription model ids,
+ *    audio input or output, `web_search_options`, non-function tools (a
+ *    preset's built-in web search or retrieval), a Fast/Ultrafast
+ *    `service_tier`, and `n` above 1 — which multiplies the output past the
+ *    ceiling `clampOutputTokens` sets.
+ */
+export function gatewayRequestRefusal(
+  face: "anthropic" | "openai",
+  model: string,
+  body: Record<string, unknown>,
+): string | null {
+  const tools = Array.isArray(body.tools) ? (body.tools as unknown[]) : [];
+  if (face === "anthropic") {
+    for (const tool of tools) {
+      const type = isObject(tool) ? tool.type : undefined;
+      if (type !== undefined && (typeof type !== "string" || !ANTHROPIC_CLIENT_TOOL.test(type)))
+        return `tool type ${JSON.stringify(type)} is billed per use and is not served`;
+    }
+    for (const field of ANTHROPIC_REFUSED_FIELDS) {
+      if (body[field] !== undefined) return `"${field}" is not served`;
+    }
+    if (body.speed !== undefined && body.speed !== "standard") return `"speed" is not served`;
+    return null;
+  }
+  if (billsBeyondTextTokens(model)) return `model ${model} is not billed by text tokens`;
+  if (body.n !== undefined && body.n !== 1) return `"n" above 1 is not served`;
+  if (body.audio !== undefined) return `"audio" is not served`;
+  if (
+    body.modalities !== undefined &&
+    (!Array.isArray(body.modalities) || body.modalities.some((m) => m !== "text"))
+  )
+    return `only text "modalities" are served`;
+  if (body.web_search_options !== undefined) return `"web_search_options" is not served`;
+  if (
+    body.service_tier !== undefined &&
+    body.service_tier !== null &&
+    !(typeof body.service_tier === "string" && OPENAI_TIERS.has(body.service_tier))
+  )
+    return `service_tier ${JSON.stringify(body.service_tier)} is not served`;
+  for (const tool of tools) {
+    // Function and custom (free-form) tools bill as tokens; a preset's
+    // built-in tools (web search, retrieval) bill per use.
+    if (!isObject(tool) || (tool.type !== "function" && tool.type !== "custom"))
+      return "only function and custom tools are served";
+  }
+  const messages = Array.isArray(body.messages) ? (body.messages as unknown[]) : [];
+  for (const message of messages) {
+    const content = isObject(message) ? message.content : undefined;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (isObject(part) && part.type === "input_audio") return "audio input is not served";
+    }
+  }
+  return null;
+}
+
+/**
+ * Hold the output side of an Anthropic / OpenAI-compatible request to what the
+ * admitted budget can pay for, the way `clampGeminiOutput` does for Gemini. A
+ * client ceiling below the affordable one is kept; a missing one is set.
+ * Returns the ceiling now in the request. Mutates `body`.
+ *
+ * Without this a premium turn admitted on any positive balance could run to the
+ * model's own output limit and leave the balance far below zero.
+ */
+export function clampOutputTokens(
+  face: "anthropic" | "openai",
+  body: Record<string, unknown>,
+  model: string,
+  budgetMicroUSD: number,
+  upstreamUrl: string,
+): number {
+  const affordable = tokensAffordable(model, Number.isFinite(budgetMicroUSD) ? budgetMicroUSD : 0);
+  const lower = (key: string): number => {
+    const asked = body[key];
+    const ceiling =
+      typeof asked === "number" && Number.isInteger(asked) && asked > 0 && asked <= affordable
+        ? asked
+        : affordable;
+    body[key] = ceiling;
+    return ceiling;
+  };
+  if (face === "anthropic") {
+    const ceiling = lower("max_tokens");
+    // A manual thinking budget must stay below max_tokens or Anthropic refuses
+    // the request; keep it inside the clamped ceiling.
+    const thinking = body.thinking;
+    if (
+      isObject(thinking) &&
+      typeof thinking.budget_tokens === "number" &&
+      thinking.budget_tokens >= ceiling
+    ) {
+      // Anthropic's floor for a thinking budget is 1,024 tokens, below
+      // max_tokens. A ceiling that leaves no room for it drops the manual
+      // budget (the request runs without extended thinking) rather than
+      // sending one the API refuses.
+      if (ceiling > 1_024) body.thinking = { ...thinking, budget_tokens: ceiling - 1 };
+      else delete body.thinking;
+    }
+    return ceiling;
+  }
+  const present = ["max_completion_tokens", "max_tokens", "max_output_tokens"].filter(
+    (key) => body[key] !== undefined,
+  );
+  if (present.length === 0) {
+    // OpenAI's own API rejects `max_tokens` for its reasoning models; the
+    // OpenAI-compatible presets (GLM, DeepSeek, Qwen …) take `max_tokens`.
+    present.push(
+      new URL(upstreamUrl).host === "api.openai.com" ? "max_completion_tokens" : "max_tokens",
+    );
+  }
+  return Math.min(...present.map(lower));
+}
+
+/**
  * Fold one upstream SSE `data:` JSON object into the running usage.
  * Anthropic: message_start carries input/cache counts, message_delta the
- * cumulative output count (take maxima, never sum snapshots). OpenAI-compat: the final chunk (stream_options.include_usage)
- * carries {usage:{prompt_tokens, completion_tokens}}.
+ * cumulative usage (take maxima, never sum snapshots). OpenAI-compat: the
+ * final chunk (stream_options.include_usage) carries {usage:{prompt_tokens,
+ * completion_tokens, prompt_tokens_details}}.
  */
 export function foldUsage(
   face: "anthropic" | "openai",
@@ -134,34 +314,62 @@ export function foldUsage(
   acc: ProviderUsage,
 ): ProviderUsage {
   if (face === "anthropic") {
-    if (obj.type === "message_start") {
-      const usage = ((obj.message as Record<string, unknown> | undefined)?.usage ?? {}) as Record<
-        string,
-        unknown
-      >;
-      return {
-        ...acc,
-        inputTokens: Math.max(acc.inputTokens, num(usage.input_tokens)),
-        cacheReadTokens: Math.max(acc.cacheReadTokens, num(usage.cache_read_input_tokens)),
-        cacheWriteTokens: Math.max(acc.cacheWriteTokens, num(usage.cache_creation_input_tokens)),
-        outputTokens: Math.max(acc.outputTokens, num(usage.output_tokens)),
-      };
-    }
-    if (obj.type === "message_delta") {
-      const usage = (obj.usage ?? {}) as Record<string, unknown>;
-      return { ...acc, outputTokens: Math.max(acc.outputTokens, num(usage.output_tokens)) };
-    }
-    return acc;
+    // message_start carries the prompt counts; message_delta restates the
+    // usage cumulatively, prompt counts included (they grow during a turn
+    // that runs server-side work). Every counter is merged by maximum.
+    const usage =
+      obj.type === "message_start"
+        ? (obj.message as Record<string, unknown> | undefined)?.usage
+        : obj.type === "message_delta"
+          ? obj.usage
+          : undefined;
+    return isObject(usage) ? mergeUsage(acc, anthropicCounts(usage)) : acc;
   }
   const usage = obj.usage as Record<string, unknown> | undefined | null;
-  if (usage && typeof usage === "object") {
-    return {
-      ...acc,
-      inputTokens: Math.max(acc.inputTokens, num(usage.prompt_tokens)),
-      outputTokens: Math.max(acc.outputTokens, num(usage.completion_tokens)),
-    };
-  }
+  if (usage && typeof usage === "object") return mergeUsage(acc, openaiCounts(usage));
   return acc;
+}
+
+/** Anthropic `usage` → counters, the 1-hour share of the cache writes included. */
+function anthropicCounts(usage: Record<string, unknown>): ProviderUsage {
+  const creation = isObject(usage.cache_creation) ? usage.cache_creation : {};
+  const oneHour = num(creation.ephemeral_1h_input_tokens);
+  return {
+    inputTokens: num(usage.input_tokens),
+    outputTokens: num(usage.output_tokens),
+    cacheReadTokens: num(usage.cache_read_input_tokens),
+    cacheWriteTokens: num(usage.cache_creation_input_tokens),
+    ...(oneHour > 0 ? { cacheWrite1hTokens: oneHour } : {}),
+  };
+}
+
+/**
+ * OpenAI-compatible `usage` → counters. `prompt_tokens` includes the cached
+ * prompt (`prompt_tokens_details.cached_tokens`), which is billed at the cache
+ * rate instead — the split the OpenAI provider makes for chat.
+ */
+function openaiCounts(usage: Record<string, unknown>): ProviderUsage {
+  const prompt = num(usage.prompt_tokens);
+  const details = isObject(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {};
+  const cached = Math.min(num(details.cached_tokens), prompt);
+  return {
+    inputTokens: prompt - cached,
+    outputTokens: num(usage.completion_tokens),
+    cacheReadTokens: cached,
+    cacheWriteTokens: 0,
+  };
+}
+
+/** Counters merged by maximum: a later snapshot restates, it never adds. */
+function mergeUsage(acc: ProviderUsage, next: ProviderUsage): ProviderUsage {
+  const oneHour = Math.max(acc.cacheWrite1hTokens ?? 0, next.cacheWrite1hTokens ?? 0);
+  return {
+    inputTokens: Math.max(acc.inputTokens, next.inputTokens),
+    outputTokens: Math.max(acc.outputTokens, next.outputTokens),
+    cacheReadTokens: Math.max(acc.cacheReadTokens, next.cacheReadTokens),
+    cacheWriteTokens: Math.max(acc.cacheWriteTokens, next.cacheWriteTokens),
+    ...(oneHour > 0 ? { cacheWrite1hTokens: oneHour } : {}),
+  };
 }
 
 function num(v: unknown): number {
@@ -192,13 +400,7 @@ export function usageFromJson(
   body: Record<string, unknown>,
 ): ProviderUsage {
   if (face === "anthropic") {
-    const usage = (body.usage ?? {}) as Record<string, unknown>;
-    return {
-      inputTokens: num(usage.input_tokens),
-      outputTokens: num(usage.output_tokens),
-      cacheReadTokens: num(usage.cache_read_input_tokens),
-      cacheWriteTokens: num(usage.cache_creation_input_tokens),
-    };
+    return anthropicCounts(isObject(body.usage) ? body.usage : {});
   }
   return foldUsage("openai", body, ZERO);
 }
@@ -895,7 +1097,14 @@ export async function handleGateway(
   }
   const subpath = geminiRoute
     ? geminiRoute.upstreamPath
-    : url.slice(face === "anthropic" ? "/gw/anthropic".length : "/gw/openai".length);
+    : gatewayUpstreamPath(
+        face === "anthropic" ? "anthropic" : "openai",
+        url.slice(face === "anthropic" ? "/gw/anthropic".length : "/gw/openai".length),
+      );
+  if (subpath === null) {
+    sendJson(res, 404, { error: "unsupported_gateway_route" });
+    return;
+  }
 
   let raw: string;
   try {
@@ -910,7 +1119,6 @@ export async function handleGateway(
     }
     return;
   }
-  const requestBytes = Buffer.byteLength(raw, "utf8");
   let body: Record<string, unknown>;
   try {
     body = JSON.parse(raw) as Record<string, unknown>;
@@ -945,6 +1153,18 @@ export async function handleGateway(
       return;
     }
     outbound = check.request;
+  } else {
+    // Refused before admission, like the Gemini checks: a request billed
+    // outside the token rates must not reach the upstream.
+    const refusal = gatewayRequestRefusal(
+      face === "anthropic" ? "anthropic" : "openai",
+      model,
+      body,
+    );
+    if (refusal) {
+      sendJson(res, 400, { error: "unsupported_request", detail: refusal });
+      return;
+    }
   }
   const plan = planUpstream(face, subpath, model, req.headers, deps.env ?? process.env);
   if (!plan) {
@@ -955,6 +1175,10 @@ export async function handleGateway(
 
   const admission = await (deps.admit ?? admitInference)(acct, model);
   if (!admission.ok) {
+    recordFunnel("admission_denied", {
+      uid: acct.uid,
+      props: { reason: String(admission.body.error ?? admission.status), via: "gateway" },
+    });
     res.writeHead(admission.status, { "content-type": "application/json" });
     res.end(JSON.stringify(admission.body));
     return;
@@ -968,14 +1192,20 @@ export async function handleGateway(
     }
     if (face === "gemini") {
       clampGeminiOutput(outbound, model, admission.permit.budgetMicroUSD);
+    } else {
+      clampOutputTokens(face, outbound, model, admission.permit.budgetMicroUSD, plan.url);
     }
 
+    // The byte floor is measured on what the provider receives, which the
+    // clamps above may have grown, not on the client's raw body.
+    const sentBody = JSON.stringify(outbound);
+    const requestBytes = Buffer.byteLength(sentBody, "utf8");
     let upstream: Response;
     try {
       upstream = await (deps.fetch ?? fetch)(plan.url, {
         method: "POST",
         headers: plan.headers,
-        body: JSON.stringify(outbound),
+        body: sentBody,
       });
     } catch {
       res.writeHead(502, { "content-type": "application/json" });

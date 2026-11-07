@@ -94,7 +94,7 @@ struct CloudSignInForm: View {
         } header: {
             Text("LISA account")
         } footer: {
-            Text("Sign in and go — no Mac, no API key, no password to remember. New here? The code creates your account. A free usage allowance refreshes every 12 hours.")
+            Text("Sign in and go — no Mac, no API key, no password to remember. New here? The code creates your account. A free usage allowance refreshes every day.")
         }
         // Attach discovery to visible content. A trailing empty Section in a
         // lazy Form may never appear, leaving configured sign-in options hidden.
@@ -386,7 +386,7 @@ struct AccountCard: View {
                     let remaining = q.remainingMicroUSD ?? 0
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Session allowance")
+                            Text("Daily allowance")
                             Spacer()
                             Text("\(Self.dollars(remaining)) of \(Self.dollars(window)) left")
                                 .foregroundStyle(.secondary)
@@ -395,7 +395,7 @@ struct AccountCard: View {
                         ProgressView(value: Double(min(spent, window)), total: Double(window))
                             .tint(remaining > 0 ? Theme.green : Theme.danger)
                             // Green vs red is the only "you're out" cue here (D1).
-                            .accessibilityLabel("Session allowance")
+                            .accessibilityLabel("Daily allowance")
                             .accessibilityValue("\(Self.dollars(remaining)) of \(Self.dollars(window)) left")
                         if let reset = q.resetAt, remaining <= 0 {
                             Text("Refreshes \(Date(timeIntervalSince1970: reset / 1000), style: .relative)")
@@ -403,6 +403,9 @@ struct AccountCard: View {
                         }
                     }
                     LabeledContent("Tier", value: Self.tierLabels[q.tier ?? "free"] ?? (q.tier ?? "Free"))
+                    if let grant = q.grantMicroUSD, grant > 0 {
+                        LabeledContent("Welcome credit", value: Self.dollars(grant))
+                    }
                     LabeledContent("Credits", value: Self.dollars(max(0, q.paidMicroUSD ?? 0)))
                 } else {
                     LabeledContent("Plan", value: (acct.plan ?? "free").capitalized)

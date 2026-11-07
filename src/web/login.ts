@@ -67,7 +67,7 @@ export const LOGIN_HTML = `<!doctype html>
 <body>
 <div class="card">
   <h1>LISA Cloud</h1>
-  <p class="sub">Sign in to reach your Lisa. A free usage allowance refreshes every 12 hours.</p>
+  <p class="sub">Sign in to reach your Lisa. A free usage allowance refreshes every day.</p>
   <div id="apple-wrap">
     <button id="apple-btn" type="button"> Sign in with Apple</button>
   </div>

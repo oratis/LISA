@@ -198,6 +198,9 @@ test("cloud edition denies connector metadata and authorization before touching 
   process.env.LISA_EDITION = "cloud";
   process.env.LISA_PUBLIC_ORIGIN = "https://lisa.example";
   process.env.LISA_WEB_TOKEN = "fixture-cloud-gate";
+  // The shared token only authorizes cloud requests under the demo opt-in;
+  // this test is about the capability deny behind the gate, not the gate.
+  process.env.LISA_CLOUD_SHARED_TOKEN_OK = "1";
   const server = await boot();
   try {
     const before = auths;
@@ -228,6 +231,30 @@ test("cloud edition denies connector metadata and authorization before touching 
       );
     }
     assert.equal(auths, before);
+  } finally {
+    await server.close();
+    delete process.env.LISA_EDITION;
+    delete process.env.LISA_PUBLIC_ORIGIN;
+    delete process.env.LISA_WEB_TOKEN;
+    delete process.env.LISA_CLOUD_SHARED_TOKEN_OK;
+  }
+});
+
+test("cloud edition refuses the shared token without the demo opt-in", async () => {
+  process.env.LISA_EDITION = "cloud";
+  process.env.LISA_PUBLIC_ORIGIN = "https://lisa.example";
+  process.env.LISA_WEB_TOKEN = "fixture-cloud-gate";
+  delete process.env.LISA_CLOUD_SHARED_TOKEN_OK;
+  const server = await boot();
+  try {
+    const response = await fetch(server.base + "/api/connectors", {
+      headers: { authorization: "Bearer fixture-cloud-gate" },
+    });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), {
+      error: "unauthorized",
+      reason: "account_session_required",
+    });
   } finally {
     await server.close();
     delete process.env.LISA_EDITION;

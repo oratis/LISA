@@ -3,7 +3,11 @@ import { GeminiProvider } from "./gemini.js";
 import { OpenAIProvider } from "./openai.js";
 import { FallbackProvider } from "./fallback.js";
 import { DEFAULT_MODEL } from "../llm.js";
-import { explicitPriceForModel, normalizeModelId } from "../billing/prices.js";
+import {
+  billsBeyondTextTokens,
+  explicitPriceForModel,
+  normalizeModelId,
+} from "../billing/prices.js";
 import type { Provider } from "./types.js";
 
 export type ProviderName = "anthropic" | "openai" | "gemini";
@@ -209,10 +213,13 @@ export function hasCredentialsForModel(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   // A managed session can drive any gateway-served model. The anthropic and
-  // openai faces take any model id; the gemini face serves only what it can
-  // price (see managedGeminiServed).
+  // openai faces take any text model id (not audio, realtime or search ones —
+  // see billsBeyondTextTokens); the gemini face serves only what it can price
+  // (see managedGeminiServed).
   if (managedConfig(env)) {
-    if (detectProvider(model, env) !== "gemini" || managedGeminiServed(model)) return true;
+    const provider = detectProvider(model, env);
+    if (provider === "gemini" ? managedGeminiServed(model) : !billsBeyondTextTokens(model))
+      return true;
   }
   return hasOwnCredentialsForModel(model, env);
 }

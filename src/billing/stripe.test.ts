@@ -2,8 +2,13 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 
-const { stripeConfig, STRIPE_PACKS, createCheckoutSession, verifyStripeSignature, classifyStripeEvent } =
-  await import("./stripe.js");
+const {
+  stripeConfig,
+  STRIPE_PACKS,
+  createCheckoutSession,
+  verifyStripeSignature,
+  classifyStripeEvent,
+} = await import("./stripe.js");
 
 describe("stripe config + packs", () => {
   test("unset env → nulls; packs mirror the IAP face economics", () => {
@@ -19,10 +24,17 @@ describe("checkout session creation", () => {
     let captured: { url: string; body: string } | null = null;
     const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
       captured = { url: String(url), body: String(init?.body) };
-      return new Response(JSON.stringify({ id: "cs_123", url: "https://checkout.stripe.com/x" }), { status: 200 });
+      return new Response(JSON.stringify({ id: "cs_123", url: "https://checkout.stripe.com/x" }), {
+        status: 200,
+      });
     }) as typeof fetch;
-    const s = await createCheckoutSession("em-abc", "10", "https://cloud.meetlisa.ai",
-      { secretKey: "sk_test", webhookSecret: null }, fakeFetch);
+    const s = await createCheckoutSession(
+      "em-abc",
+      "10",
+      "https://cloud.meetlisa.ai",
+      { secretKey: "sk_test", webhookSecret: null },
+      fakeFetch,
+    );
     assert.equal(s?.id, "cs_123");
     const body = new URLSearchParams(captured!.body);
     assert.equal(body.get("metadata[uid]"), "em-abc");
@@ -32,9 +44,29 @@ describe("checkout session creation", () => {
   });
 
   test("unknown pack or missing key → null, no network call", async () => {
-    const boom = (async () => { throw new Error("no"); }) as unknown as typeof fetch;
-    assert.equal(await createCheckoutSession("u", "99", "https://x", { secretKey: "sk", webhookSecret: null }, boom), null);
-    assert.equal(await createCheckoutSession("u", "5", "https://x", { secretKey: null, webhookSecret: null }, boom), null);
+    const boom = (async () => {
+      throw new Error("no");
+    }) as unknown as typeof fetch;
+    assert.equal(
+      await createCheckoutSession(
+        "u",
+        "99",
+        "https://x",
+        { secretKey: "sk", webhookSecret: null },
+        boom,
+      ),
+      null,
+    );
+    assert.equal(
+      await createCheckoutSession(
+        "u",
+        "5",
+        "https://x",
+        { secretKey: null, webhookSecret: null },
+        boom,
+      ),
+      null,
+    );
   });
 });
 
@@ -65,12 +97,74 @@ describe("event classification", () => {
   test("completed checkout → credit with uid/pack; refund → payment_intent; else ignore", () => {
     const credit = classifyStripeEvent({
       type: "checkout.session.completed",
-      data: { object: { id: "cs_1", metadata: { uid: "em-x", pack: "20" } } },
+      data: {
+        object: { id: "cs_1", payment_status: "paid", metadata: { uid: "em-x", pack: "20" } },
+      },
     });
     assert.deepEqual(credit, { kind: "credit", id: "cs_1", uid: "em-x", pack: "20" });
-    const refund = classifyStripeEvent({ type: "charge.refunded", data: { object: { payment_intent: "pi_9" } } });
+    const refund = classifyStripeEvent({
+      type: "charge.refunded",
+      data: { object: { payment_intent: "pi_9" } },
+    });
     assert.equal(refund.kind, "refund");
     assert.equal(refund.id, "pi_9");
-    assert.equal(classifyStripeEvent({ type: "invoice.paid", data: { object: {} } }).kind, "ignore");
+    assert.equal(
+      classifyStripeEvent({ type: "invoice.paid", data: { object: {} } }).kind,
+      "ignore",
+    );
+  });
+
+  test("an unpaid completed session is not credited; async success is", () => {
+    const meta = { uid: "em-x", pack: "5" };
+    assert.equal(
+      classifyStripeEvent({
+        type: "checkout.session.completed",
+        data: { object: { id: "cs_2", payment_status: "unpaid", metadata: meta } },
+      }).kind,
+      "ignore",
+    );
+    assert.equal(
+      classifyStripeEvent({
+        type: "checkout.session.completed",
+        data: { object: { id: "cs_2", metadata: meta } },
+      }).kind,
+      "ignore",
+    );
+    assert.deepEqual(
+      classifyStripeEvent({
+        type: "checkout.session.async_payment_succeeded",
+        data: { object: { id: "cs_2", payment_status: "paid", metadata: meta } },
+      }),
+      { kind: "credit", id: "cs_2", uid: "em-x", pack: "5" },
+    );
+    assert.equal(
+      classifyStripeEvent({
+        type: "checkout.session.async_payment_failed",
+        data: { object: { id: "cs_2", payment_status: "unpaid", metadata: meta } },
+      }).kind,
+      "ignore",
+    );
+  });
+
+  test("a partial refund is reported, not clawed back as a full pack", () => {
+    const partial = classifyStripeEvent({
+      type: "charge.refunded",
+      data: {
+        object: { payment_intent: "pi_3", amount: 1999, amount_refunded: 500, refunded: false },
+      },
+    });
+    assert.deepEqual(partial, {
+      kind: "partial_refund",
+      id: "pi_3",
+      refundedCents: 500,
+      amountCents: 1999,
+    });
+    const full = classifyStripeEvent({
+      type: "charge.refunded",
+      data: {
+        object: { payment_intent: "pi_3", amount: 1999, amount_refunded: 1999, refunded: true },
+      },
+    });
+    assert.deepEqual(full, { kind: "refund", id: "pi_3" });
   });
 });

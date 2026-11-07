@@ -37,6 +37,7 @@ export class IapError extends Error {
       | "bad_signature"
       | "wrong_bundle"
       | "wrong_account"
+      | "unbound_transaction"
       | "unknown_product"
       | "duplicate_transaction"
       | "root_unavailable"
@@ -650,8 +651,15 @@ export async function creditTransaction(
   uid: string,
   tx: AppleTransaction,
   now: number = Date.now(),
-  opts: { sandbox?: boolean } = {},
+  opts: { sandbox?: boolean; requireAccountToken?: boolean } = {},
 ): Promise<number> {
+  // Every Lisa Pocket build that reached the App Store binds its purchases to
+  // the LISA account (appAccountToken). The hosted edition requires that
+  // binding, so a signed transaction can only ever credit the account that
+  // bought it, not whichever account posts it first.
+  if (opts.requireAccountToken && tx.appAccountToken === undefined) {
+    throw new IapError("unbound_transaction");
+  }
   if (
     tx.appAccountToken !== undefined &&
     tx.appAccountToken.toLowerCase() !== iapAccountToken(uid)

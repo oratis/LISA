@@ -395,3 +395,25 @@ test("StoreKit account binding refuses another LISA account before crediting", a
   );
   assert.equal(iapAccountToken("buyer-a"), "516122a1-3bf8-303f-9fbf-f13a64d42582");
 });
+
+test("the hosted edition refuses a purchase that is not bound to a LISA account", async () => {
+  const unbound = validateTransaction({
+    transactionId: "unbound-purchase",
+    productId: "ai.meetlisa.main.credits.5",
+    bundleId: "ai.meetlisa.main",
+  });
+  await assert.rejects(
+    creditTransaction("buyer-c", unbound, 1000, { requireAccountToken: true }),
+    (e: unknown) => e instanceof IapError && e.code === "unbound_transaction",
+  );
+  const bound = validateTransaction({
+    transactionId: "bound-purchase-c",
+    productId: "ai.meetlisa.main.credits.5",
+    bundleId: "ai.meetlisa.main",
+    appAccountToken: iapAccountToken("buyer-c"),
+  });
+  assert.equal(
+    await creditTransaction("buyer-c", bound, 1000, { requireAccountToken: true }),
+    PRODUCTS["ai.meetlisa.main.credits.5"],
+  );
+});
