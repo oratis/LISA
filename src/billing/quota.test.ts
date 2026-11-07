@@ -21,6 +21,7 @@ const {
   FREE_WINDOW_UNVERIFIED,
   TIER1_WINDOW,
   TIER2_WINDOW,
+  SIGNUP_GRANT,
 } = quota;
 import type { AccountRecord } from "../web/accounts.js";
 
@@ -46,6 +47,8 @@ const EMAIL_UNVERIFIED: AccountRecord = {
 
 beforeEach(() => {
   fs.rmSync(path.join(TMP, "billing"), { recursive: true, force: true });
+  // Each test starts as a person who has never had a welcome grant.
+  fs.rmSync(path.join(TMP, "welcome-grants.json"), { force: true });
 });
 
 describe("quota engine", () => {
@@ -77,7 +80,7 @@ describe("quota engine", () => {
     );
   });
 
-  test("first standard turn opens a 12h window with the tier allowance", async () => {
+  test("first standard turn opens a 24h window with the tier allowance", async () => {
     const pre = await precheckTurn(APPLE, "glm-4.6", T0);
     assert.ok(pre.ok);
     const q = await quotaStatus(APPLE, T0 + 1);
@@ -104,13 +107,14 @@ describe("quota engine", () => {
     assert.equal(q.windowMicroUSD, FREE_WINDOW_UNVERIFIED);
   });
 
-  test("debit draws free window first, then paid; exhaustion → 402 shape; window reset restores", async () => {
+  test("debit draws free window, then welcome grant, then paid; exhaustion → 402 shape; window reset restores", async () => {
     await creditPurchase({ at: T0, microUSD: 2_000_000, transactionId: "t1" }, T0);
     await precheckTurn(APPLE, "glm-4.6", T0);
-    // burn the whole free window + $1 of paid
-    await debitTurn(APPLE, "glm-4.6", FREE_WINDOW_FULL + 1_000_000, T0 + 1000);
+    // burn the whole free window, the whole welcome grant and $1 of paid
+    await debitTurn(APPLE, "glm-4.6", FREE_WINDOW_FULL + SIGNUP_GRANT + 1_000_000, T0 + 1000);
     const q = await quotaStatus(APPLE, T0 + 2000);
     assert.equal(q.remainingMicroUSD, 0);
+    assert.equal(q.grantMicroUSD, 0);
     assert.equal(q.paidMicroUSD, 1_000_000);
     // still ok: paid remains
     let pre = await precheckTurn(APPLE, "glm-4.6", T0 + 3000);
@@ -152,6 +156,105 @@ describe("quota engine", () => {
     q = await quotaStatus(APPLE, later);
     assert.equal(q.tier, "free");
     assert.equal(q.paidMicroUSD, 19_990_000);
+  });
+
+  test("a verified account gets the welcome grant once, for standard models only", async () => {
+    // Shown before first use, issued at the first admission.
+    assert.equal((await quotaStatus(APPLE, T0)).grantMicroUSD, SIGNUP_GRANT);
+    assert.ok((await precheckTurn(APPLE, "glm-4.6", T0)).ok);
+    let balance = await readBalance();
+    assert.equal(balance.grantMicroUSD, SIGNUP_GRANT);
+    assert.equal(balance.signupGrantAt, T0);
+    // Window first, then the grant.
+    await debitTurn(APPLE, "glm-4.6", FREE_WINDOW_FULL + 500_000, T0 + 1);
+    assert.equal((await quotaStatus(APPLE, T0 + 2)).grantMicroUSD, SIGNUP_GRANT - 500_000);
+    // Premium models never draw on it.
+    const premium = await precheckTurn(APPLE, "claude-sonnet-5-5", T0 + 3);
+    assert.ok(!premium.ok && premium.error === "premium_requires_balance");
+    // Spend the rest: exhausted until the window rolls, and a new window
+    // does not re-issue the grant.
+    await debitTurn(APPLE, "glm-4.6", SIGNUP_GRANT - 500_000, T0 + 4);
+    const spent = await precheckTurn(APPLE, "glm-4.6", T0 + 5);
+    assert.ok(!spent.ok && spent.error === "quota_exhausted");
+    assert.ok((await precheckTurn(APPLE, "glm-4.6", T0 + WINDOW_MS + 1)).ok);
+    balance = await readBalance();
+    assert.equal(balance.grantMicroUSD, 0);
+    assert.equal(balance.signupGrantAt, T0);
+  });
+
+  test("deleting the account and signing in again does not issue a second welcome grant (#447 review)", async () => {
+    const first: AccountRecord = { ...APPLE, uid: "apple-first", appleSub: "001.sub" };
+    assert.ok((await precheckTurn(first, "glm-4.6", T0)).ok);
+    assert.equal((await readBalance()).grantMicroUSD, SIGNUP_GRANT);
+    // Account deletion erases the balance; the same Apple ID then signs in
+    // again and is minted a new uid.
+    fs.rmSync(path.join(TMP, "billing"), { recursive: true, force: true });
+    const again: AccountRecord = { ...first, uid: "apple-again" };
+    assert.equal((await quotaStatus(again, T0 + 1)).grantMicroUSD, 0);
+    assert.ok((await precheckTurn(again, "glm-4.6", T0 + 2)).ok);
+    let balance = await readBalance();
+    assert.equal(balance.grantMicroUSD ?? 0, 0);
+    // Recorded as settled, so later turns do not claim again.
+    assert.equal(balance.signupGrantAt, T0 + 2);
+    // The same inbox under another sign-in method is the same person too.
+    fs.rmSync(path.join(TMP, "billing"), { recursive: true, force: true });
+    const viaEmail: AccountRecord = {
+      ...EMAIL_UNVERIFIED,
+      uid: "em-first",
+      email: "Person@Example.com",
+      verified: true,
+    };
+    assert.ok((await precheckTurn(viaEmail, "glm-4.6", T0 + 3)).ok);
+    assert.equal((await readBalance()).grantMicroUSD, SIGNUP_GRANT);
+    fs.rmSync(path.join(TMP, "billing"), { recursive: true, force: true });
+    const viaGoogle: AccountRecord = {
+      ...viaEmail,
+      uid: "g-second",
+      kind: "google",
+      googleSub: "1234",
+      email: "person@example.com",
+    };
+    assert.ok((await precheckTurn(viaGoogle, "glm-4.6", T0 + 4)).ok);
+    balance = await readBalance();
+    assert.equal(balance.grantMicroUSD ?? 0, 0);
+    // The claim file holds hashes only, never an identity.
+    const claims = fs.readFileSync(path.join(TMP, "welcome-grants.json"), "utf8");
+    for (const secret of ["001.sub", "person@example.com", "1234", "apple-first"]) {
+      assert.ok(!claims.toLowerCase().includes(secret), secret);
+    }
+  });
+
+  test("an unreachable claim store leaves the welcome grant pending, not lost (#447 review)", async () => {
+    // A directory where the claim file should be: every read fails.
+    fs.mkdirSync(path.join(TMP, "welcome-grants.json"));
+    try {
+      assert.ok((await precheckTurn(APPLE, "glm-4.6", T0)).ok);
+      const balance = await readBalance();
+      assert.equal(balance.grantMicroUSD ?? 0, 0);
+      assert.equal(balance.signupGrantAt, undefined);
+    } finally {
+      fs.rmSync(path.join(TMP, "welcome-grants.json"), { recursive: true, force: true });
+    }
+    assert.ok((await precheckTurn(APPLE, "glm-4.6", T0 + 1)).ok);
+    assert.equal((await readBalance()).grantMicroUSD, SIGNUP_GRANT);
+  });
+
+  test("an unverified account earns no welcome grant until it is verified", async () => {
+    assert.equal((await quotaStatus(EMAIL_UNVERIFIED, T0)).grantMicroUSD, 0);
+    await precheckTurn(EMAIL_UNVERIFIED, "glm-4.6", T0);
+    assert.equal((await readBalance()).signupGrantAt, undefined);
+    await precheckTurn({ ...EMAIL_UNVERIFIED, verified: true }, "glm-4.6", T0 + 1);
+    assert.equal((await readBalance()).grantMicroUSD, SIGNUP_GRANT);
+  });
+
+  test("a malformed welcome grant fails closed", async () => {
+    const dir = path.join(TMP, "billing");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "balance.json"),
+      JSON.stringify({ paidMicroUSD: 0, purchases: [], grantMicroUSD: -1 }),
+    );
+    await assert.rejects(readBalance(), BillingStateError);
   });
 
   test("refund clawback reverses the purchase and can go negative; premium locks, standard window survives", async () => {

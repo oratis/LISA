@@ -299,6 +299,8 @@ final class LisaClient {
         var spentMicroUSD: Int?
         var remainingMicroUSD: Int?
         var paidMicroUSD: Int?
+        /// Unspent one-time welcome credit (standard models only); absent on older servers.
+        var grantMicroUSD: Int?
         var resetAt: Double?
     }
 

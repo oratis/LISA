@@ -75,6 +75,7 @@ const PLANTED_SECRETS = [
   "billing/ledger.json",
   "billing-global.json",
   "iap-transactions.json",
+  "welcome-grants.json",
   "mail/accounts.json",
   "mail/oauth-tokens.json",
   "relay/keys.json",

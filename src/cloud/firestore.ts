@@ -101,7 +101,7 @@ export function fromFsValue(v: FsValue): unknown {
     return arr.map(fromFsValue);
   }
   if ("mapValue" in v) {
-    return fromFsFields(((v.mapValue as { fields?: Record<string, FsValue> }).fields ?? {}));
+    return fromFsFields((v.mapValue as { fields?: Record<string, FsValue> }).fields ?? {});
   }
   return null;
 }
@@ -128,13 +128,18 @@ export interface FsDoc {
 }
 
 export class FirestoreError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
     this.name = "FirestoreError";
   }
 }
 
-async function base(fetchFn: typeof fetch): Promise<{ url: string; headers: Record<string, string> }> {
+async function base(
+  fetchFn: typeof fetch,
+): Promise<{ url: string; headers: Record<string, string> }> {
   const [token, project] = await Promise.all([adcToken(fetchFn), projectId(fetchFn)]);
   return {
     url: `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`,
@@ -191,6 +196,40 @@ export async function deleteDoc(path: string, fetchFn: typeof fetch = fetch): Pr
   if (!res.ok && res.status !== 404) throw new FirestoreError(res.status, `delete ${path} failed`);
 }
 
+/**
+ * Ids of the documents directly under `collectionPath` (`col` or
+ * `col/doc/sub`), across all pages. Account deletion uses it to reach
+ * subcollections, which Firestore does not delete with their parent.
+ */
+export async function listDocIds(
+  collectionPath: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<string[]> {
+  const b = await base(fetchFn);
+  const ids: string[] = [];
+  let pageToken = "";
+  for (let page = 0; page < 1_000; page++) {
+    const query = new URLSearchParams({ pageSize: "300", "mask.fieldPaths": "__name__" });
+    if (pageToken) query.set("pageToken", pageToken);
+    const res = await fetchFn(`${b.url}/${collectionPath}?${query.toString()}`, {
+      headers: b.headers,
+    });
+    if (res.status === 404) return ids;
+    if (!res.ok) throw new FirestoreError(res.status, `list ${collectionPath} failed`);
+    const body = (await res.json()) as {
+      documents?: Array<{ name?: string }>;
+      nextPageToken?: string;
+    };
+    for (const doc of body.documents ?? []) {
+      const id = doc.name?.split("/").pop();
+      if (id) ids.push(id);
+    }
+    if (!body.nextPageToken) return ids;
+    pageToken = body.nextPageToken;
+  }
+  throw new FirestoreError(500, `list ${collectionPath}: too many pages`);
+}
+
 /** Contention statuses worth retrying: CAS conflict / aborted. */
 function isContention(e: unknown): boolean {
   return e instanceof FirestoreError && (e.status === 409 || e.status === 412 || e.status === 429);
@@ -203,7 +242,10 @@ function isContention(e: unknown): boolean {
  */
 export async function casUpdate<T>(
   path: string,
-  fn: (current: Record<string, unknown> | null) => { next: Record<string, unknown> | null; result: T },
+  fn: (current: Record<string, unknown> | null) => {
+    next: Record<string, unknown> | null;
+    result: T;
+  },
   fetchFn: typeof fetch = fetch,
   attempts = 5,
 ): Promise<T> {
@@ -288,7 +330,10 @@ export async function renewLease(
 }
 
 /** Release a held lease (best-effort; expiry is the backstop). */
-export async function releaseLease(handle: LeaseHandle, fetchFn: typeof fetch = fetch): Promise<void> {
+export async function releaseLease(
+  handle: LeaseHandle,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
   try {
     await casUpdate(
       handle.path.replace(/^lisa-leases\//, "lisa-leases/"),

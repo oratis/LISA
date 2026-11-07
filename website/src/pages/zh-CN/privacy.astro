@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 ---
 <Base title="隐私" lang="zh-CN" description="LISA 云与本地 Mac 模式的账号、对话及 AI 数据处理说明。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-10-07</b></p>
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-11-07</b></p>
     <h1>隐私政策</h1>
     <p class="lede">
       LISA 是个人 AI 助手，支持由我们运营的 <strong>LISA Cloud</strong> 与
@@ -16,10 +16,10 @@ import Base from "../../layouts/Base.astro";
     <p class="eyebrow"><b>我们收集什么</b></p>
     <p class="big">本地模式:对我们,什么都不收集。</p>
     <p>
-      Lisa Pocket 与 Lisa 不含任何分析统计、广告标识或第三方追踪 SDK。
-      本地模式不要求 LISA Cloud 账号。若你自愿开通
+      Lisa Pocket 与 Lisa 不含任何分析统计 SDK 或第三方追踪 SDK，也不收集广告标识。
+      本地模式不要求 LISA Cloud 账号，我们不从本地或自托管安装收集任何数据。若你自愿开通
       <strong>LISA Cloud 账号</strong>,我们持有的仅限下文列出的内容 ——
-      你的邮箱、登录标识与你的 Lisa 数据 —— 可以在应用内申请删除账号。
+      你的邮箱、登录标识、你的 Lisa 数据，以及服务器端的计费与账号事件记录 —— 可以在应用内申请删除账号。
     </p>
   </div>
 
@@ -105,6 +105,14 @@ import Base from "../../layouts/Base.astro";
           <strong>我们处理什么</strong> —— 聊天消息经账号计费的大模型提供商处理以生成回复;
           token 用量计入账单。我们保留一份只追加的用量账本(模型、token 数、费用),
           不含消息内容。
+        </li>
+        <li>
+          <strong>账号事件记录</strong> —— LISA Cloud 在服务器端记录账号事件：登录尝试及结果、
+          账号创建、完成的聊天轮次、额度用尽，以及购买和退款。这些记录以假名化的账号哈希保存，
+          用于计费和产品指标统计，由我们自己的服务器写入；不使用第三方分析服务或客户端 SDK，
+          也不从本地或自托管安装收集任何数据。删除账号会移除你的余额和用量记录；
+          假名化的事件记录作为汇总历史保留，购买交易记录也会保留，以便处理退款和对账；
+          登录身份的单向哈希也会保留，以免同一个人再次获得一次性欢迎额度。
         </li>
         <li>
           <strong>服务提供商</strong> —— Google Cloud（托管与存储）、Google Gemini（AI 推理）、

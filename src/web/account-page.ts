@@ -48,12 +48,13 @@ export const ACCOUNT_HTML = `<!doctype html>
   <div class="ok" id="paid-ok">✓ Payment received — credits are being applied.</div>
   <div class="row"><span class="k">Signed in as</span><span id="who">…</span></div>
   <div class="row"><span class="k">Tier</span><span id="tier">…</span></div>
-  <div class="row"><span class="k">Session allowance</span><span id="allow">…</span></div>
+  <div class="row"><span class="k">Daily allowance</span><span id="allow">…</span></div>
   <div class="bar"><div id="barfill" style="width:0%"></div></div>
+  <div class="row"><span class="k">Welcome credit</span><span id="grant">…</span></div>
   <div class="row"><span class="k">Credits</span><span id="credits">…</span></div>
 
   <div id="topup" style="display:none">
-    <h2>Add credits (never expire; also raise your daily session for 30 days)</h2>
+    <h2>Add credits (never expire; any purchase also raises your free daily allowance for 30 days)</h2>
     <button data-pack="5"><span>$5.00 credits · Tier 1</span><b>$4.99</b></button>
     <button data-pack="10"><span>$10.50 credits (+5%) · Tier 1</span><b>$9.99</b></button>
     <button data-pack="20"><span>$22.00 credits (+10%) · Tier 2</span><b>$19.99</b></button>
@@ -81,6 +82,7 @@ export const ACCOUNT_HTML = `<!doctype html>
     if (q && q.available) {
       $("tier").textContent = q.tier;
       $("allow").textContent = dollars(q.remainingMicroUSD) + " of " + dollars(q.windowMicroUSD) + " left";
+      $("grant").textContent = dollars(q.grantMicroUSD);
       $("credits").textContent = dollars(q.paidMicroUSD);
       const pct = q.windowMicroUSD ? Math.min(100, 100 * (q.remainingMicroUSD / q.windowMicroUSD)) : 0;
       $("barfill").style.width = pct + "%";

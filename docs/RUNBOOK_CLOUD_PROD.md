@@ -69,7 +69,7 @@ PROJECT=$PROJECT SECRETS_MODE=sm LISA_FIRESTORE=1 MAX_INSTANCES=3 \
 | Apple web Services ID | Apple Developer portal | 见 RUNBOOK_ACCOUNTS_LAUNCH §B8b；域名验证 cloud.meetlisa.ai |
 | Turnstile widget | Cloudflare dash → Turnstile | hostname = cloud.meetlisa.ai；site key/secret 即两个 `LISA_TURNSTILE_*` |
 | Resend 域名 | Resend dash | `meetlisa.ai` 已验证（B8a）；确认 SPF/DKIM 仍绿 |
-| Stripe webhook | Stripe dash | endpoint `https://cloud.meetlisa.ai/api/billing/stripe/webhook`，事件 checkout.session.completed + charge.refunded |
+| Stripe webhook | Stripe dash | endpoint `https://cloud.meetlisa.ai/api/billing/stripe/webhook`，事件 checkout.session.completed + checkout.session.async_payment_succeeded + charge.refunded（部分退款只记录、不自动回收，见 §7.5） |
 
 ## 4. 域名 `cloud.meetlisa.ai`
 
@@ -267,6 +267,23 @@ jq '.paidMicroUSD -= 4200' $H/balance.json > $H/balance.next && mv $H/balance.ne
 
 `LISA_BILLING_OUTBOX=0` 只关掉 outbox 那一次写，T-8 之前就有的 fail-closed 检查一个都不动。
 **它不是急停开关**——关掉它等于回到"崩溃就丢账"的旧行为。要停计费用 `LISA_BILLING_KILL=1`（见下节）。
+
+### 7.5 2026-11 M0 变更（运营需知）
+
+- **面值倍率 1.4× → 2.0×**，价目表按 2026-11-07 官方价重做（`PRICES_VERSION` 3）。已购余额仍以面值美元计，但同样的余额能买到的 token 约为之前的 70%。
+- **免费额度**：24 小时滚动窗口，已验证账号 $0.30、未验证 $0.10；30 天内购买 ≥ $4.99 → $0.60、≥ $19.99 → $1.20。已验证账号首次使用时一次性获得 $2 欢迎额度，仅限标准模型；按登录身份（Apple / Google subject、已验证邮箱）的单向哈希认领，记录在 Firestore `lisa-grant-claims/{hash}`（文件模式为全局 home 的 `welcome-grants.json`），删号后保留，删号重登不会再发一次。
+- **计费按单次模型调用**：对话轮次里每次模型调用单独定价（长上下文阶梯按单次请求判断），中途失败或客户端断开的轮次也按已发生的调用结算。
+- **共享 token 在托管版不再授权**：`LISA_WEB_TOKEN` 与旧设备 token 只在 `LISA_CLOUD_SHARED_TOKEN_OK=1` 时可用（演示用，不计量）。生产不要设置。
+- **IAP 必须绑定账号**：托管版拒绝没有 `appAccountToken` 的交易（`unbound_transaction`）。
+- **Stripe**：只有 `payment_status: "paid"` 的会话入账；部分退款写一条 error 日志 `[stripe] partial refund needs manual settlement`，由运营手工按比例扣减，不再整包回收。
+- **网关**：只转发 `/v1/messages`（Anthropic）和 `/v1/chat/completions`（OpenAI 兼容），其它路径 404；Anthropic / OpenAI 面按余额钳制输出 token。不按 token 计费的请求一律 400 `unsupported_request`：Anthropic 服务端工具（web search/fetch、code execution、advisor、MCP）、`mcp_servers`、`container`、`fallbacks`、`speed`；OpenAI 兼容的音频/实时/搜索模型、音频输入输出、`web_search_options`、非 function 工具、Fast/Ultrafast `service_tier`、`n > 1`。
+- **删号**：Firestore 模式下同时删除余额、usage outbox 与异常告警文档；交易索引保留用于退款。
+- **漏斗事件**：托管版在 `/data/analytics/events-YYYY-MM-DD.<实例>.jsonl` 追加假名化事件（登录结果、建号、完成的对话轮次、准入拒绝、购买、退款）。查看基线：
+
+```bash
+gcloud storage cp -r gs://$PROJECT-lisa-cloud-data/analytics ./funnel
+lisa billing funnel --dir ./funnel --days 30
+```
 
 ## 8. 急停开关（记住这三个）
 

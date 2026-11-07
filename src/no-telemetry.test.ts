@@ -2,11 +2,14 @@
  * "No telemetry" is a published promise, not just a design preference:
  *
  *   website/src/pages/index.astro    "No cloud sync, no telemetry, no account of any kind."
- *   website/src/pages/privacy.astro  "…collect no analytics, no advertising identifiers,
- *                                     and contain no third-party tracking SDKs."
+ *   website/src/pages/privacy.astro  "…contain no analytics or third-party tracking SDKs
+ *                                     and collect no advertising identifiers."
  *   website/src/pages/cloud.astro    "…no training on your data, no analytics SDKs."
  *
- * plus the Chinese mirrors of all three. Today those statements are true — there
+ * plus the Chinese mirrors of all three. (LISA Cloud's own server-side account
+ * event records, src/billing/funnel.ts, are disclosed separately on the privacy
+ * page; they are written by the hosted server, not by any client or SDK.)
+ * Today those statements are true — there
  * is no analytics SDK, no tracking pixel, and no phone-home anywhere in the
  * tree. Nothing enforced it, so one `npm install` of a convenience wrapper, or
  * one copy-pasted snippet in a layout, would quietly turn a published privacy
@@ -210,11 +213,7 @@ describe("no telemetry — the promise on the website stays true", () => {
   test("no promise page loads a tracker", () => {
     for (const rel of PROMISE_PAGES) {
       const hits = trackersIn(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
-      assert.deepEqual(
-        hits,
-        [],
-        `${rel} promises no analytics but references: ${hits.join(", ")}`,
-      );
+      assert.deepEqual(hits, [], `${rel} promises no analytics but references: ${hits.join(", ")}`);
     }
   });
 
@@ -245,9 +244,10 @@ describe("no telemetry — the promise on the website stays true", () => {
   });
 
   test("no analytics package is declared as a dependency", () => {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
-    ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
     const named = [
       ...Object.keys(pkg.dependencies ?? {}),
       ...Object.keys(pkg.devDependencies ?? {}),

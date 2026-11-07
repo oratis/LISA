@@ -45,9 +45,46 @@ export interface UsageRecord {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Of `cacheWriteTokens`, the 1-hour writes (absent when none). */
+  cacheWrite1hTokens?: number;
   /** Face cost, micro-USD, priced by prices.ts at PRICES_VERSION. */
   microUSD: number;
   pricesVersion: number;
+}
+
+/**
+ * Face cost of a turn. With `calls`, each provider call is priced on its own
+ * and the results summed: prompt-size (long-context) rates are decided per
+ * request, so pricing a multi-call agent turn's summed usage would bill every
+ * call at the long rate once the turn's total crossed the threshold.
+ */
+/** The usage of several provider calls added up (the 1-hour write share included). */
+export function sumUsage(calls: readonly ProviderUsage[]): ProviderUsage {
+  const total: ProviderUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
+  let oneHour = 0;
+  for (const call of calls) {
+    total.inputTokens += call.inputTokens;
+    total.outputTokens += call.outputTokens;
+    total.cacheReadTokens += call.cacheReadTokens;
+    total.cacheWriteTokens += call.cacheWriteTokens;
+    oneHour += call.cacheWrite1hTokens ?? 0;
+  }
+  if (oneHour > 0) total.cacheWrite1hTokens = oneHour;
+  return total;
+}
+
+export function priceTurn(
+  model: string,
+  usage: ProviderUsage,
+  calls?: readonly ProviderUsage[],
+): number {
+  if (!calls || calls.length === 0) return costMicroUSD(model, usage);
+  return calls.reduce((sum, call) => sum + costMicroUSD(model, call), 0);
 }
 
 /**
@@ -68,6 +105,7 @@ export async function recordUsage(
   model: string,
   usage: ProviderUsage,
   now: Date = new Date(),
+  opts: { calls?: readonly ProviderUsage[] } = {},
 ): Promise<UsageRecord> {
   const rec: UsageRecord = {
     at: now.toISOString(),
@@ -77,7 +115,8 @@ export async function recordUsage(
     outputTokens: usage.outputTokens,
     cacheReadTokens: usage.cacheReadTokens,
     cacheWriteTokens: usage.cacheWriteTokens,
-    microUSD: costMicroUSD(model, usage),
+    ...(usage.cacheWrite1hTokens ? { cacheWrite1hTokens: usage.cacheWrite1hTokens } : {}),
+    microUSD: priceTurn(model, usage, opts.calls),
     pricesVersion: PRICES_VERSION,
   };
   // Audit-log append is best-effort and DECOUPLED from pricing/debit.
@@ -85,7 +124,9 @@ export async function recordUsage(
     await appendLine(usageFile(), JSON.stringify(rec));
     void trimIfNeeded();
   } catch (err) {
-    logError(`[billing] usage audit append failed (turn still priced + debited): ${(err as Error).message}`);
+    logError(
+      `[billing] usage audit append failed (turn still priced + debited): ${(err as Error).message}`,
+    );
   }
   // Global daily cap accounting + anomaly alert (B7). Best-effort, and run
   // whether or not the audit line landed.

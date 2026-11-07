@@ -23,8 +23,16 @@ export interface InferencePermit {
   budgetMicroUSD: number;
   /** Ties this turn's usage outbox event back to the admission that ran it (T-8). */
   reservationId: string;
-  /** Price, audit and debit this permit's aggregated provider usage once. */
-  settle(source: string, usage: ProviderUsage): Promise<UsageRecord>;
+  /**
+   * Price, audit and debit this permit's aggregated provider usage once. Pass
+   * `calls` — the per-call usages that sum to `usage` — for a multi-call turn,
+   * so each call is priced at its own prompt size.
+   */
+  settle(
+    source: string,
+    usage: ProviderUsage,
+    calls?: readonly ProviderUsage[],
+  ): Promise<UsageRecord>;
   release(): Promise<void>;
 }
 
@@ -44,6 +52,7 @@ export interface AdmissionDependencies {
     model: string,
     usage: ProviderUsage,
     reservationId: string,
+    calls?: readonly ProviderUsage[],
   ): Promise<UsageRecord>;
 }
 
@@ -56,8 +65,8 @@ const DEFAULT_DEPS: AdmissionDependencies = {
   // T-8: the debit now goes through the durable usage outbox. recordUsage
   // stays the AUDIT append (best-effort, never throws); settleUsage owns the
   // money and fails closed if the event cannot be made durable first.
-  settle: async (acct, source, model, usage, reservationId) => {
-    const record = await recordUsage(source, model, usage);
+  settle: async (acct, source, model, usage, reservationId, calls) => {
+    const record = await recordUsage(source, model, usage, new Date(), { calls });
     await settleUsage({
       acct,
       kind: source,
@@ -125,8 +134,8 @@ export async function admitInference(
       permit: {
         budgetMicroUSD: pre.budgetMicroUSD,
         reservationId,
-        settle: (source, usage) => {
-          settlement ??= deps.settle(acct, source, model, usage, reservationId);
+        settle: (source, usage, calls) => {
+          settlement ??= deps.settle(acct, source, model, usage, reservationId, calls);
           return settlement;
         },
         release,

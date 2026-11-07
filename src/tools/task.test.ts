@@ -112,12 +112,12 @@ describe("task tool — subagents spend inside the parent's USD cap", () => {
       userMessage: "go",
       model: "gemini-2.5-flash",
       maxIterations: 32,
-      costCapMicroUSD: 20_000,
+      costCapMicroUSD: 28_572, // $0.02 at the old 1.4× margin, scaled to 2.0×
     });
     assert.equal(r.stopReason, "budget_exceeded");
     assert.ok(child.calls.length >= 1, "the subagent did run");
     const total = parentSpend + child.spend();
-    assert.ok(total <= 20_000, `parent ${parentSpend} + subagent ${child.spend()} = ${total}`);
+    assert.ok(total <= 28_572, `parent ${parentSpend} + subagent ${child.spend()} = ${total}`);
     // The subagent was held to the parent's remaining cap at opus rates.
     assert.ok(child.calls.every((c) => (c.maxTokens ?? 16_000) < 16_000));
   });

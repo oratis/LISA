@@ -9,7 +9,7 @@ test("duration prices use provider-native units plus the shared margin", () => {
       model: "scribe_v2",
       durationMs: 3_600_000,
     }),
-    308_000,
+    440_000, // $0.22/h × 2.0 margin
   );
   assert.equal(
     mediaCostMicroUSD({
@@ -17,7 +17,7 @@ test("duration prices use provider-native units plus the shared margin", () => {
       model: "whisper-1",
       durationMs: 60_000,
     }),
-    8_400,
+    12_000, // $0.006/min × 2.0 margin
   );
 });
 
@@ -29,7 +29,7 @@ test("an unknown media model gets the conservative supported fallback", () => {
       model: "future-model",
       durationMs: 3_600_000,
     }),
-    504_000,
+    720_000,
   );
 });
 

@@ -8,10 +8,13 @@
  * /account page and the website.
  *
  * Flow: POST /api/billing/stripe/checkout (account session) → hosted Checkout
- * → Stripe webhook `checkout.session.completed` → credit through the SAME
- * global transaction index the IAP path uses (`stripe-<sessionId>`), so
- * replays and cross-account double-credits are impossible by construction.
- * `charge.refunded` claws back via a session lookup.
+ * → Stripe webhook `checkout.session.completed` with `payment_status: "paid"`
+ * (or, for a delayed payment method, `checkout.session.async_payment_succeeded`)
+ * → credit through the SAME global transaction index the IAP path uses
+ * (`stripe-<sessionId>`), so replays and cross-account double-credits are
+ * impossible by construction. A FULL `charge.refunded` claws the pack back via
+ * a session lookup; a partial refund is reported for an operator to settle,
+ * never clawed back in full.
  *
  * Zero deps: Checkout sessions via form-encoded REST; webhook signatures are
  * HMAC-SHA256 over `${t}.${payload}` (Stripe-Signature v1 scheme).
@@ -33,7 +36,10 @@ export function stripeConfig(env: Record<string, string | undefined> = process.e
 }
 
 /** Same face economics as the IAP packs (see billing/iap.ts PRODUCTS). */
-export const STRIPE_PACKS: Record<string, { usdCents: number; faceMicroUSD: number; name: string }> = {
+export const STRIPE_PACKS: Record<
+  string,
+  { usdCents: number; faceMicroUSD: number; name: string }
+> = {
   "5": { usdCents: 499, faceMicroUSD: 5_000_000, name: "LISA Credits — $5.00" },
   "10": { usdCents: 999, faceMicroUSD: 10_500_000, name: "LISA Credits — $10.50 (+5%)" },
   "20": { usdCents: 1999, faceMicroUSD: 22_000_000, name: "LISA Credits — $22.00 (+10%)" },
@@ -73,7 +79,9 @@ export async function createCheckoutSession(
     body: form.toString(),
   });
   if (!res.ok) {
-    console.error(`[stripe] checkout create failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
+    console.error(
+      `[stripe] checkout create failed (${res.status}): ${(await res.text()).slice(0, 200)}`,
+    );
     return null;
   }
   const body = (await res.json()) as { id?: string; url?: string };
@@ -110,25 +118,38 @@ export function verifyStripeSignature(
     } catch {
       continue;
     }
-    if (presented.length === expected.length && crypto.timingSafeEqual(presented, expected)) return true;
+    if (presented.length === expected.length && crypto.timingSafeEqual(presented, expected))
+      return true;
   }
   return false;
 }
 
 /** The bits of a webhook event we act on. */
 export interface StripeEventSummary {
-  kind: "credit" | "refund" | "ignore";
+  kind: "credit" | "refund" | "partial_refund" | "ignore";
   /** checkout session id (credit) or payment_intent id (refund). */
   id: string;
   uid?: string;
   pack?: string;
+  /** Partial refund: cents refunded so far, of the charge's `amount`. */
+  refundedCents?: number;
+  amountCents?: number;
 }
 
 /** Classify a parsed webhook event (pure). */
 export function classifyStripeEvent(evt: Record<string, unknown>): StripeEventSummary {
   const type = String(evt.type ?? "");
-  const object = ((evt.data as Record<string, unknown> | undefined)?.object ?? {}) as Record<string, unknown>;
-  if (type === "checkout.session.completed") {
+  const object = ((evt.data as Record<string, unknown> | undefined)?.object ?? {}) as Record<
+    string,
+    unknown
+  >;
+  if (
+    type === "checkout.session.completed" ||
+    type === "checkout.session.async_payment_succeeded"
+  ) {
+    // A completed session can still be unpaid (a delayed payment method such
+    // as a bank debit): it is credited by async_payment_succeeded instead.
+    if (object.payment_status !== "paid") return { kind: "ignore", id: "" };
     const meta = (object.metadata ?? {}) as Record<string, unknown>;
     return {
       kind: "credit",
@@ -138,7 +159,15 @@ export function classifyStripeEvent(evt: Record<string, unknown>): StripeEventSu
     };
   }
   if (type === "charge.refunded") {
-    return { kind: "refund", id: String(object.payment_intent ?? "") };
+    const id = String(object.payment_intent ?? "");
+    const amount = typeof object.amount === "number" ? object.amount : null;
+    const refunded = typeof object.amount_refunded === "number" ? object.amount_refunded : null;
+    // Stripe sends `refunded: true` once the whole charge is refunded. An
+    // event without amounts is treated as full, as before.
+    const full =
+      object.refunded === true || amount === null || refunded === null || refunded >= amount;
+    if (full) return { kind: "refund", id };
+    return { kind: "partial_refund", id, refundedCents: refunded, amountCents: amount };
   }
   return { kind: "ignore", id: "" };
 }
