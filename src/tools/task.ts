@@ -75,8 +75,13 @@ export function createTaskTool(deps: {
         prompt: input.prompt,
         systemPrompt: system,
         tools,
-        cwd: deps.cwd,
-        signal: deps.signal,
+        // The calling turn's world, not the process's: its working directory
+        // (a task run's own folder), its execution world (that folder's
+        // sandbox and file tools) and its signal (a stopped run stops its
+        // subagent too).
+        cwd: ctx?.cwd ?? deps.cwd,
+        signal: ctx?.signal ? AbortSignal.any([deps.signal, ctx.signal]) : deps.signal,
+        ...(ctx?.caps ? { caps: ctx.caps } : {}),
         model,
         ...(deps.providerFor ? { provider: deps.providerFor(model) } : {}),
         // A dispatched subagent inherits the parent turn's confinement — it must

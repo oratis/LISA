@@ -19,6 +19,13 @@
 
 import { renderMarkdown, MD_RENDER_CSS } from "./md-render.js";
 import { ROOM_SCENE_JS } from "./room-scene.js";
+import { SOFT_INK_JS } from "./soft-ink.js";
+import { readFileSync } from "node:fs";
+
+const ROOM_EFFECTS_JS = readFileSync(
+  new URL("./assets/client/room-effects.js", import.meta.url),
+  "utf8",
+);
 
 export const ROOM_HTML = `<!doctype html>
 <html lang="en">
@@ -145,7 +152,26 @@ ${MD_RENDER_CSS}
   }
   #chair-front { clip-path: var(--chair-front); }
   #plant-front { clip-path: var(--plant-front); }
-  body.art-paused * { animation-play-state: paused !important; }
+  body.art-paused *, body.art-paused *::before, body.art-paused *::after { animation-play-state: paused !important; transition: none !important; }
+  #lisa { position: relative; }
+  .motion-layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; visibility: hidden; }
+  #lisa.motion-ready, #gramophone.motion-ready { background-image: none !important; animation: none; }
+  #room-details { position: absolute; inset: 0; pointer-events: none; }
+  .room-detail { position: absolute; pointer-events: none; background-repeat: no-repeat; }
+  .detail-leaves { transform-origin: 50% 85%; mask-image: radial-gradient(ellipse, #000 45%, transparent 74%); animation: leaves-sway 8s ease-in-out infinite; }
+  @keyframes leaves-sway { 0%,100% { transform: rotate(-.3deg); } 50% { transform: rotate(.3deg); } }
+  .detail-light { border-radius: 50%; background: radial-gradient(ellipse, rgba(255,210,125,.18), transparent 68%); mix-blend-mode: screen; animation: object-glow 9s ease-in-out infinite; }
+  .detail-screen { background: radial-gradient(ellipse, rgba(120,225,245,.16), transparent 70%); mix-blend-mode: screen; animation: object-glow 7s ease-in-out infinite; }
+  .detail-sky { background: linear-gradient(120deg, transparent 30%, rgba(255,250,223,.09) 50%, transparent 70%); background-size: 200% 100%; mask-image: radial-gradient(ellipse, #000 30%, transparent 72%); animation: sky-drift 20s linear infinite alternate; }
+  @keyframes object-glow { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+  @keyframes sky-drift { from { background-position: 0 0; } to { background-position: 100% 0; } }
+  .detail-steam { background: radial-gradient(ellipse at 50% 70%, rgba(255,248,223,.25), transparent 60%); filter: blur(2px); animation: steam-rise 4s ease-in-out infinite; }
+  .detail-touch { opacity: 0; mask-image: radial-gradient(ellipse, #000 35%, transparent 72%); transition: opacity 500ms ease, filter 500ms ease; }
+  .detail-touch.noticed { opacity: 1; filter: brightness(1.07); }
+  #tea-steam { position: absolute; left: 48%; top: 36%; width: 3%; height: 7%; border-radius: 50%; background: rgba(255,245,223,.3); filter: blur(3px); opacity: 0; pointer-events: none; }
+  [data-pose="tea"] #tea-steam { animation: steam-rise 3.8s ease-in-out infinite; }
+  @keyframes steam-rise { 0%,100% { opacity: 0; transform: translateY(0); } 50% { opacity: .5; transform: translateY(-30%); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
   body[data-room="room2"] #glow-monitor { left: 10%; top: 64%; width: 11%; height: 8%; }
   body[data-room="room2"] #shelf { left: 15%; top: 46%; width: 15%; height: 27%; }
   body[data-room="room2"] #letter { left: 16%; top: 73%; }
@@ -461,7 +487,7 @@ ${MD_RENDER_CSS}
     <div id="shadow"></div>
     <div id="foot-shadow"></div>
     <div id="lisa-wrap">
-      <div id="lisa" role="img" aria-label="Lisa"></div>
+      <div id="lisa" role="img" aria-label="Lisa"><img id="lisa-motion" class="motion-layer" alt=""><span id="tea-steam"></span></div>
       <div id="zzz"><span>Z</span><span>Z</span><span>Z</span></div>
     </div>
     <div id="chair-front" class="furniture-front" aria-hidden="true"></div>
@@ -471,7 +497,7 @@ ${MD_RENDER_CSS}
       <div class="count" id="letter-count"></div>
     </div>
     <div id="shelf" role="button" aria-label="What Lisa has been thinking about" title="what she's been thinking about"></div>
-    <div id="gramophone" role="button" tabindex="0" aria-label="Put on some music" title="Put on some music"></div>
+    <div id="gramophone" role="button" tabindex="0" aria-label="Put on some music" title="Put on some music"><img id="gramophone-motion" class="motion-layer" alt=""></div>
     <div id="notes" aria-hidden="true"><span>&#9834;</span><span>&#9835;</span><span>&#9833;</span></div>
    </div>
     <div id="lighting"></div>
@@ -530,6 +556,8 @@ ${MD_RENDER_CSS}
   </div>
 
 <script>
+${SOFT_INK_JS}
+${ROOM_EFFECTS_JS}
 function __name(t){return t}
 ${renderMarkdown}
 (() => {
@@ -598,6 +626,7 @@ ${renderMarkdown}
     stage.style.setProperty('--room-art', bgUrl());
     stage.style.setProperty('--chair-front', geometry.chairFront);
     stage.style.setProperty('--plant-front', geometry.plantFront);
+    window.LisaRoomEffects.setTheme(state.theme);
     ['day', 'dusk', 'night'].forEach(function (t) {
       var el = $('bg-' + t);
       el.style.backgroundImage = bgUrl();
@@ -644,14 +673,34 @@ ${renderMarkdown}
   var ACT = ['read', 'tea', 'listen', 'stretch', 'window'];
   var ACT_CAPTION = { read: 'reading', tea: 'having some tea', listen: 'listening to music', stretch: 'stretching', window: 'gazing out the window' };
   function idleEligible() {
-    return state.online && !state.thinking && !state.dreaming && poseFor() === 'stand';
+    return state.online && !state.thinking && !state.dreaming && poseFor() === 'stand' && !/stretching|listening-music/.test(state.mood);
   }
   function applyActivity() {
     applyOutfit();
   }
   function applyOutfit() {
     renderCharacter();
+    syncMotion();
   }
+  function syncMotion() {
+    var pose = lisaWrap.dataset.pose;
+    var clip = { stand: 'standing', pjs: 'pajamas', sleep: 'sleeping', read: 'room-reading', tea: 'room-tea', listen: 'listening', stretch: 'stretching', window: 'window' }[pose];
+    if (pose === 'work') clip = /coding|debugging|typing|writing/.test(state.mood) || state.thinking ? 'typing' : 'seated';
+    if (pose === 'stand' && lisa.classList.contains('lookup')) clip = 'looking-up';
+    var image = $('lisa-motion');
+    var seated = ROOM_SEATED.poses[pose];
+    // Animation canvases are square. Register their hips to the same cushion
+    // as the cropped static drawing, without moving the furniture or wrapper.
+    var contact = { work: [67, 76], sleep: [64, 77], read: [62, 66], tea: [62, 66] }[pose];
+    var height = seated ? 100 / .88 : 100;
+    var width = seated ? height / seated.aspect : 100;
+    image.style.width = width + '%'; image.style.height = height + '%';
+    image.style.left = (seated ? seated.contact[0] - contact[0] * width / 100 : 0) + '%';
+    image.style.top = (seated ? seated.contact[1] - contact[1] * height / 100 : 4) + '%';
+    window.LisaMotion.bind(image, state.online ? clip : null, null);
+    window.LisaMotion.bind($('gramophone-motion'), body.classList.contains('music') ? 'gramophone' : null, null);
+  }
+
   // Room-space placement is independent of viewport aspect ratio. Each new
   // seated drawing declares its hip contact and tightly cropped aspect ratio.
   // A short fade hides the location change; nobody slides across the floor in
@@ -719,6 +768,7 @@ ${renderMarkdown}
         lisa.style.backgroundPosition = seated ? 'center' : atlasPositions[pose];
         var descriptions = { work: 'working in her chair', sleep: 'resting in her chair', read: 'reading in her chair', tea: 'having tea in her chair', window: 'by the window', stand: 'standing on the rug', pjs: 'relaxing at home', listen: 'listening to music', stretch: 'stretching on the rug' };
         lisa.setAttribute('aria-label', 'Lisa ' + descriptions[pose]);
+        syncMotion();
         requestAnimationFrame(function () {
           if (request !== characterRevision) return;
           characterVisible(true);
@@ -749,6 +799,7 @@ ${renderMarkdown}
   }
   function scheduleAmbient() {
     clearTimeout(ambientTimer);
+    if (!window.LisaMotion.active()) return;
     ambientTimer = setTimeout(ambientTick, 22000 + Math.random() * 26000);
   }
 
@@ -757,10 +808,11 @@ ${renderMarkdown}
   // only while she's plainly standing idle. ─────────────────────────────────
   var lookupTimer = null;
   function presenceBeat() {
-    if (poseFor() !== 'stand' || state.activity || document.hidden) return;
+    if (lisaWrap.dataset.pose !== 'stand' || state.activity || !window.LisaMotion.active()) return;
     lisa.classList.add('lookup');
+    syncMotion();
     clearTimeout(lookupTimer);
-    lookupTimer = setTimeout(function () { lisa.classList.remove('lookup'); }, 1600);
+    lookupTimer = setTimeout(function () { lisa.classList.remove('lookup'); syncMotion(); }, 1600);
   }
   function setMood(slug) {
     if (!slug) return;
@@ -770,13 +822,16 @@ ${renderMarkdown}
     refreshWeather();
   }
   // Blink: briefly flip to the eyes-closed frame, only while standing idle.
+  var blinkTimer = null, blinkEndTimer = null;
   function scheduleBlink() {
-    setTimeout(function () {
+    clearTimeout(blinkTimer);
+    if (!window.LisaMotion.active()) return;
+    blinkTimer = setTimeout(function () {
       // Only the standing idle sheet has a blink frame — never during an
       // activity pose, the look-up beat, or a sit/sleep single-frame image.
-      if (roomPose(state) === 'stand' && !lisa.classList.contains('lookup') && !document.hidden) {
+      if (lisaWrap.dataset.pose === 'stand' && !state.activity && !lisa.classList.contains('motion-ready') && !lisa.classList.contains('lookup') && !lisaWrap.classList.contains('pjs') && window.LisaMotion.active()) {
         lisa.classList.add('blink');
-        setTimeout(function () { lisa.classList.remove('blink'); }, 130);
+        blinkEndTimer = setTimeout(function () { lisa.classList.remove('blink'); }, 130);
       }
       scheduleBlink();
     }, 2600 + Math.random() * 3400);
@@ -1025,8 +1080,8 @@ ${renderMarkdown}
     if (pAudio.currentTime > 3) { pAudio.currentTime = 0; return; }
     pPlayAt(pOrderPos - 1 >= 0 ? pOrderPos - 1 : pOrder.length - 1);
   }
-  pAudio.addEventListener('play', function () { document.body.classList.add('music'); $('btn-play').textContent = '⏸'; });
-  pAudio.addEventListener('pause', function () { document.body.classList.remove('music'); $('btn-play').textContent = '▶'; pPrefsSave(); });
+  pAudio.addEventListener('play', function () { document.body.classList.add('music'); syncMotion(); $('btn-play').textContent = '⏸'; });
+  pAudio.addEventListener('pause', function () { document.body.classList.remove('music'); syncMotion(); $('btn-play').textContent = '▶'; pPrefsSave(); });
   pAudio.addEventListener('ended', function () { if (pRepeat === 'one') pPlayAt(pOrderPos); else pNext(true); });
   pAudio.addEventListener('timeupdate', function () {
     var d = pAudio.duration || 0;
@@ -1073,21 +1128,34 @@ ${renderMarkdown}
   $('player-close').addEventListener('click', closePlayer);
   $('player').addEventListener('click', function (e) { if (e.target === $('player')) closePlayer(); });
 
-  // Camera motion moves the entire scene, including the contact and furniture.
-  var px = 0, py = 0, tx = 0, ty = 0;
+  // Camera motion keeps the scene, figure and furniture in one coordinate system.
+  var px = 0, py = 0, tx = 0, ty = 0, rafId = null;
   window.addEventListener('mousemove', function (e) {
+    if (!window.LisaMotion.active()) return;
     tx = (e.clientX / window.innerWidth - 0.5);
     ty = (e.clientY / window.innerHeight - 0.5);
+    if (rafId === null) rafId = requestAnimationFrame(raf);
   });
   function raf() {
-    requestAnimationFrame(raf);
-    // Don't burn frames or touch layout while the room isn't visible (it runs
-    // as a hidden iframe when you're on another GUI view, or when backgrounded).
-    if (document.hidden || reduceMotion.matches) return;
+    rafId = null;
+    if (!window.LisaMotion.active()) return;
     px += (tx - px) * 0.06; py += (ty - py) * 0.06;
     stage.style.transform = 'translateX(-50%) translate(' + (-px * 14) + 'px,' + (-py * 8) + 'px)';
+    if (Math.abs(tx - px) + Math.abs(ty - py) > .001) rafId = requestAnimationFrame(raf);
   }
-  requestAnimationFrame(raf);
+  function motionLifecycle() {
+    var active = window.LisaMotion.active();
+    body.classList.toggle('art-paused', !active);
+    clearTimeout(ambientTimer); clearTimeout(blinkTimer); clearTimeout(blinkEndTimer); clearTimeout(lookupTimer);
+    lisa.classList.remove('blink', 'lookup');
+    syncMotion();
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = null; px = py = tx = ty = 0;
+    stage.style.transform = 'translateX(-50%)';
+    if (!active) document.getAnimations().forEach(function (animation) { if (animation.effect && animation.effect.target === body) animation.cancel(); });
+    else { scheduleBlink(); scheduleAmbient(); }
+  }
+  window.addEventListener('lisa-motion-change', motionLifecycle);
 
   // ── Server state: ping snapshot + SSE pulses (shared with the Island). ───
   function applyPing(j) {
@@ -1109,12 +1177,12 @@ ${renderMarkdown}
     fetch('/api/island/ping', { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
       .then(applyPing)
-      .catch(function () { state.online = false; body.classList.add('offline'); refreshDot(); refreshCaption(); });
+      .catch(function () { state.online = false; body.classList.add('offline'); syncMotion(); refreshDot(); refreshCaption(); });
   }
 
   function subscribe() {
     var es = new EventSource('/events');
-    es.addEventListener('open', function () { state.online = true; body.classList.remove('offline'); refreshDot(); });
+    es.addEventListener('open', function () { state.online = true; body.classList.remove('offline'); syncMotion(); refreshDot(); });
     es.addEventListener('message', function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       switch (m.type) {
@@ -1131,21 +1199,19 @@ ${renderMarkdown}
           if (state.letters.length > 12) state.letters = state.letters.slice(-12);  // cap the desk pile
           state.idleText = _txt;
           refreshDot(); refreshCaption(); refreshLetter();
-          if (!reduceMotion.matches) document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
+          if (window.LisaMotion.active()) document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
           break;
       }
     });
-    es.addEventListener('error', function () { state.online = false; body.classList.add('offline'); refreshDot(); });
+    es.addEventListener('error', function () { state.online = false; body.classList.add('offline'); syncMotion(); refreshDot(); });
   }
 
   // ── Boot ────────────────────────────────────────────────────────────────
   setMood('neutral');
   applyTOD();
   applyPose();
-  scheduleBlink();
-  scheduleAmbient();                                   // Phase C: autonomous ambient life
+  motionLifecycle();
   setTimeout(presenceBeat, 900);                       // Phase B: greet you on open
-  document.addEventListener('visibilitychange', function () { body.classList.toggle('art-paused', document.hidden); if (!document.hidden) presenceBeat(); });
   window.addEventListener('focus', presenceBeat);
   lisa.addEventListener('mouseenter', presenceBeat);
   pollPing();

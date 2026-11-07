@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-07",
+  "browser": "Playwright Chromium",
+  "checks": {
+    "allFiveAnimatedWebpFiles": true,
+    "frameCountsDurationsAndAlpha": true,
+    "gifPlayback": true,
+    "playStop": true,
+    "roomActionSwitch": true,
+    "mobile360NoOverflow": true,
+    "reducedMotion": true,
+    "inlinePlaybackAndStop": true
+  },
+  "observedDistinctTeaBrowserFrames": 4,
+  "nativeIOSPlaybackTested": false,
+  "productionIntegration": false
+}

@@ -109,12 +109,22 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
 
         webView = wv
         view = container
+        NotificationCenter.default.addObserver(self, selector: #selector(syncMotionVisibility), name: NSWindow.didChangeOcclusionStateNotification, object: nil)
 
         observeBackend()
         load()
     }
 
     // MARK: - Load / retry
+
+    @objc private func syncMotionVisibility() {
+        let visible = webView?.window?.occlusionState.contains(.visible) == true
+        webView?.evaluateJavaScript("window.LisaMotion?.setHostVisible(\(visible ? "true" : "false"));", completionHandler: nil)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        syncMotionVisibility()
+    }
 
     func load() {
         let request = URLRequest(

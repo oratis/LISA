@@ -200,3 +200,12 @@ Smaller, self-contained design write-ups that aren't plans with phases.
 | [SHOW_HN_DRAFT.md](./SHOW_HN_DRAFT.md) | The launch post draft. |
 
 - [2026-10-07 open PR integration and App Store audit](./REVIEW_OPEN_PRS_2026-10-07.md) — per-PR fixes, AI Personal Assistant positioning and release gates.
+- [2026-10-24 Lisa Pocket live verification](./REVIEW_POCKET_LIVE_2026-10-24.md) — confirmed US App Store availability, Cloudflare 1010 diagnosis and production native-client login/chat checks.
+
+## Desktop fixes and personal improvement planning
+
+| Document | Scope |
+|---|---|
+| [PLAN_IMPROVE_LISA_2026-11-07.md](PLAN_IMPROVE_LISA_2026-11-07.md) | Dedicated improvement sessions, personal capability versions, activation/rollback and upstream PRs. |
+| [REVIEW_E2E_2026-11-07.md](REVIEW_E2E_2026-11-07.md) | Historical installed-app diagnosis and E01–E07 findings. |
+| [REVIEW_E2E_FIXES_2026-11-07.md](REVIEW_E2E_FIXES_2026-11-07.md) | Historical local repair, regression and installation receipt; PR checks are recorded separately. |

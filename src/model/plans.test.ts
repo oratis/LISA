@@ -109,7 +109,7 @@ describe("detectPlan: claude", () => {
       fakeProbe({
         platform: "darwin",
         readdir: (p) => (p.endsWith("claude-code") ? ["1.2.3", "0.9.0", "junk"] : []),
-        exists: (p) => p === bundle,
+        onPath: (p) => p === bundle,
       }),
     );
     assert.equal(s.binary, bundle);
@@ -118,7 +118,10 @@ describe("detectPlan: claude", () => {
   test("LISA_PTY_CLAUDE_CMD override is honored", () => {
     const s = detectPlan(
       "claude",
-      fakeProbe({ env: { LISA_PTY_CLAUDE_CMD: "/opt/claude" }, onPath: (c) => c === "/opt/claude" }),
+      fakeProbe({
+        env: { LISA_PTY_CLAUDE_CMD: "/opt/claude" },
+        onPath: (c) => c === "/opt/claude",
+      }),
     );
     assert.equal(s.binary, "/opt/claude");
   });
@@ -164,7 +167,10 @@ describe("detectPlan: copilot", () => {
 describe("detectPlans", () => {
   test("returns all known plans, in order", () => {
     const all = detectPlans(fakeProbe());
-    assert.deepEqual(all.map((p) => p.id), [...PLAN_IDS]);
+    assert.deepEqual(
+      all.map((p) => p.id),
+      [...PLAN_IDS],
+    );
   });
 });
 
@@ -188,7 +194,10 @@ describe("planMark", () => {
 describe("planSummaryLine", () => {
   test("marks the selected plan with ★ and names it in the head", () => {
     const line = planSummaryLine(
-      [mkStatus({ id: "claude" }), mkStatus({ id: "codex", label: "ChatGPT plan (Codex)", available: false, binary: null })],
+      [
+        mkStatus({ id: "claude" }),
+        mkStatus({ id: "codex", label: "ChatGPT plan (Codex)", available: false, binary: null }),
+      ],
       "claude",
     );
     assert.match(line, /coding plan → claude/);
@@ -217,5 +226,30 @@ describe("planPreflight", () => {
     const r = planPreflight({ ...base, loggedIn: false });
     assert.equal(r.ok, false);
     assert.match(r.reason!, /not logged in/);
+  });
+});
+
+describe("Codex app bundle discovery", () => {
+  for (const app of ["ChatGPT.app", "Codex.app"]) {
+    test(`finds the CLI inside ${app} without PATH`, () => {
+      const binary = `/Applications/${app}/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`;
+      const status = detectPlan(
+        "codex",
+        fakeProbe({ platform: "darwin", onPath: (p) => p === binary }),
+      );
+      assert.equal(status.binary, binary);
+      assert.equal(status.available, true);
+    });
+  }
+  test("an invalid explicit override never silently uses a different installation", () => {
+    const status = detectPlan(
+      "codex",
+      fakeProbe({
+        platform: "darwin",
+        env: { LISA_PTY_CODEX_CMD: "/missing" },
+        onPath: (p) => p !== "/missing",
+      }),
+    );
+    assert.equal(status.available, false);
   });
 });

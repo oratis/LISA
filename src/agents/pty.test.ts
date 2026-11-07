@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   stripAnsi,
   derivePtyState,
@@ -107,10 +110,54 @@ test("ptyEnabled reflects LISA_PTY_AGENTS", async () => {
   if (prev !== undefined) process.env.LISA_PTY_AGENTS = prev;
 });
 
-test("resolveCli + normalizeAgentKind map agent kinds", () => {
-  assert.equal(resolveCli("claude"), "claude");
-  assert.equal(resolveCli("claude-code"), "claude");
-  assert.equal(resolveCli("codex"), "codex");
+test("resolveCli + normalizeAgentKind map agent kinds", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-pty-cli-"));
+  const saved = {
+    PATH: process.env.PATH,
+    LISA_PTY_CLAUDE_CMD: process.env.LISA_PTY_CLAUDE_CMD,
+    LISA_PTY_CODEX_CMD: process.env.LISA_PTY_CODEX_CMD,
+  };
+  try {
+    const bin = path.join(tmp, "bin");
+    await fs.mkdir(bin);
+    for (const name of ["claude", "codex"])
+      await fs.writeFile(path.join(bin, name), "#!/bin/sh\n", { mode: 0o700 });
+    process.env.LISA_PTY_CLAUDE_CMD = path.join(bin, "claude");
+    delete process.env.LISA_PTY_CODEX_CMD;
+    process.env.PATH = bin;
+    assert.equal(resolveCli("claude"), path.join(bin, "claude"));
+    assert.equal(resolveCli("claude-code"), path.join(bin, "claude"));
+    // A bare PATH hit resolves to the absolute file that was checked.
+    assert.equal(resolveCli("codex"), path.join(bin, "codex"));
+
+    // Planted in the task's project: an empty/relative PATH entry or a
+    // relative override must never resolve to it.
+    const project = path.join(tmp, "project");
+    await fs.mkdir(path.join(project, "bin"), { recursive: true });
+    await fs.writeFile(path.join(project, "codex"), "#!/bin/sh\n", { mode: 0o700 });
+    await fs.writeFile(path.join(project, "bin/codex"), "#!/bin/sh\n", { mode: 0o700 });
+    const cwd = process.cwd();
+    process.chdir(project);
+    try {
+      process.env.PATH = ":.:bin";
+      // (An installed ChatGPT/Codex app may still be found; never the plant.)
+      const viaPath = resolveCli("codex");
+      assert.ok(
+        viaPath === null || (path.isAbsolute(viaPath) && !viaPath.startsWith(project)),
+        String(viaPath),
+      );
+      process.env.LISA_PTY_CODEX_CMD = "bin/codex";
+      assert.equal(resolveCli("codex"), null);
+    } finally {
+      process.chdir(cwd);
+    }
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
   assert.equal(normalizeAgentKind("claude"), "claude-code");
   assert.equal(normalizeAgentKind("claude-code"), "claude-code");
   assert.equal(normalizeAgentKind("codex"), "codex");
@@ -218,7 +265,13 @@ test("process exit marks the agent done", async () => {
   await withFlag(async () => {
     const f = fakePty();
     const reg = new PtyRegistry();
-    await reg.start({ agent: "codex", task: "go", cwd: "/tmp/p", ptyModule: f.module });
+    await reg.start({
+      agent: "codex",
+      task: "go",
+      cwd: "/tmp/p",
+      cli: "codex",
+      ptyModule: f.module,
+    });
     f.emitExit(0);
     const view = reg.list()[0];
     assert.equal(view.agent, "codex");
@@ -233,7 +286,13 @@ test("registry emits 'output' chunks (ANSI-stripped) for the live attach stream"
     const reg = new PtyRegistry();
     const chunks: Array<{ id: string; chunk: string }> = [];
     reg.on("output", (e) => chunks.push(e as { id: string; chunk: string }));
-    const v = await reg.start({ agent: "claude", task: "go", cwd: "/tmp/p", ptyModule: f.module });
+    const v = await reg.start({
+      agent: "claude",
+      task: "go",
+      cwd: "/tmp/p",
+      cli: "claude",
+      ptyModule: f.module,
+    });
     // The initial task is a write (stdin), not output — no chunk yet.
     assert.equal(chunks.length, 0);
     f.emitData(ESC + "[32mhello" + ESC + "[0m world");

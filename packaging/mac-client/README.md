@@ -71,6 +71,29 @@ Output: `Lisa.app` in this directory. App icon is generated at build
 time from `src/web/assets/lisa-mascot.png` via `sips` + `iconutil` —
 no binary blobs committed to git.
 
+### Optional interactive CLI runtime
+
+For a build that includes interactive Claude/Codex terminals, compile `node-pty`
+against the embedded Node version, then pass `LISA_EMBED_PTY_DIR` (the absolute
+package directory) to the build. `embed-runtime.sh` checks both `pty.node` and
+`spawn-helper` against every architecture in `LISA_EMBED_ARCHS`; an arm64-only
+module must not be shipped in a universal app. It copies only `package.json`,
+`lib/` and those two binaries (an npm install's `prebuilds/` and node-gyp
+intermediates would be unsigned Mach-O files that fail notarization), ad-hoc
+signs them, and checks that the embedded Node can load the module. The release
+signing script then signs both binaries with the same Team ID as the hardened
+embedded Node. Do not disable library validation to work around a mismatched
+signature.
+
+Enable the installed terminal capability with `LISA_PTY_AGENTS=1`. The delegate
+dialog checks `/api/agents/pty/status` and disables unavailable choices. Coding
+Plans uses normal child processes and does not require this optional module.
+Codex detection supports PATH, `LISA_PTY_CODEX_CMD`, and ChatGPT/Codex application
+bundles; detection, login checks, dispatch and the PTY bridge all use the same
+discovered absolute executable. Overrides must be absolute paths, and empty or
+relative `PATH` entries are ignored, so a binary inside a task's project is never
+picked up in place of the one that was checked.
+
 ## Run
 
 Start LISA first:

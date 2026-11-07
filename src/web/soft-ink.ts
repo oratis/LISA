@@ -5,6 +5,14 @@ export const SOFT_INK_MANIFEST = JSON.parse(
   readFileSync(new URL("./assets/visuals/soft-ink-v1/manifest.json", import.meta.url), "utf8"),
 );
 export const SOFT_INK_JS =
+  "window.LISA_MOTION_ART = " +
+  readFileSync(
+    new URL("./assets/visuals/soft-ink-motion-v1/manifest.json", import.meta.url),
+    "utf8",
+  ) +
+  ";\n" +
+  readFileSync(new URL("./assets/client/motion.js", import.meta.url), "utf8") +
+  "\n" +
   "window.LISA_ART = " +
   JSON.stringify(SOFT_INK_MANIFEST) +
   ";\n" +

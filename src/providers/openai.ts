@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
-import { withStreamRetry } from "./stream-retry.js";
+import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
 import type { StoredMessage } from "../types.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
@@ -9,10 +9,13 @@ export class OpenAIProvider implements Provider {
   readonly name = "openai";
   private client: OpenAI;
 
-  constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
+  constructor(
+    opts: { apiKey?: string; baseURL?: string; defaultHeaders?: Record<string, string> } = {},
+  ) {
     this.client = new OpenAI({
       apiKey: opts.apiKey,
       baseURL: opts.baseURL,
+      defaultHeaders: opts.defaultHeaders,
       fetch: proxyAwareFetch,
     });
   }
@@ -30,7 +33,7 @@ export class OpenAIProvider implements Provider {
 
     // Per-attempt state lives inside the retry closure so it resets cleanly on
     // a transient empty-stream retry (see withStreamRetry).
-    return withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
+    return withStreamRetry(streamRetryOpts(opts), async (markEmitted) => {
       const stream = await this.client.chat.completions.create(
         {
           model: opts.model,

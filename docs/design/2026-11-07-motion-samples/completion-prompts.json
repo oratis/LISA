@@ -1,0 +1,65 @@
+[
+  {
+    "id": "portrait-tea",
+    "index": 21,
+    "kind": "portrait",
+    "action": "Hold a teal cup near chest, lift for one gentle sip and lower, relaxed smile.",
+    "prompt": "Use case: identity-preserve. Production LISA portrait animation KEYFRAME SHEET. Reference is a 6 columns by 4 rows atlas: use ONLY row 4 column 4. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Hold a teal cup near chest, lift for one gentle sip and lower, relaxed smile. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "portrait-stretching",
+    "index": 22,
+    "kind": "portrait",
+    "action": "One hand on opposite shoulder, closed eyes, small slow neck stretch and relax.",
+    "prompt": "Use case: identity-preserve. Production LISA portrait animation KEYFRAME SHEET. Reference is a 6 columns by 4 rows atlas: use ONLY row 4 column 5. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: One hand on opposite shoulder, closed eyes, small slow neck stretch and relax. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "portrait-napping",
+    "index": 23,
+    "kind": "portrait",
+    "action": "Eyes closed, cheek resting on own hand, slow tiny breathing, stay asleep.",
+    "prompt": "Use case: identity-preserve. Production LISA portrait animation KEYFRAME SHEET. Reference is a 6 columns by 4 rows atlas: use ONLY row 4 column 6. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Eyes closed, cheek resting on own hand, slow tiny breathing, stay asleep. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "sticker-well-done",
+    "index": 1,
+    "kind": "sticker",
+    "action": "Hold a thumbs-up, a friendly wink, thumb lifts a little and settles.",
+    "prompt": "Use case: identity-preserve. Production LISA sticker animation KEYFRAME SHEET. Reference is a 4 columns by 2 rows atlas: use ONLY row 1 column 2. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Hold a thumbs-up, a friendly wink, thumb lifts a little and settles. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "sticker-thinking",
+    "index": 2,
+    "kind": "sticker",
+    "action": "Hand on chin stays there, gaze moves up thoughtfully, gentle blink, return.",
+    "prompt": "Use case: identity-preserve. Production LISA sticker animation KEYFRAME SHEET. Reference is a 4 columns by 2 rows atlas: use ONLY row 1 column 3. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Hand on chin stays there, gaze moves up thoughtfully, gentle blink, return. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "sticker-celebrate",
+    "index": 4,
+    "kind": "sticker",
+    "action": "Both small fists raised near shoulders, joyful smile, tiny upward fist gesture and settle; original small confetti stays fixed.",
+    "prompt": "Use case: identity-preserve. Production LISA sticker animation KEYFRAME SHEET. Reference is a 4 columns by 2 rows atlas: use ONLY row 2 column 1. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Both small fists raised near shoulders, joyful smile, tiny upward fist gesture and settle; original small confetti stays fixed. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "sticker-here-for-you",
+    "index": 5,
+    "kind": "sticker",
+    "action": "Hand stays on chest, reassuring smile, tiny caring nod and gentle blink, return.",
+    "prompt": "Use case: identity-preserve. Production LISA sticker animation KEYFRAME SHEET. Reference is a 4 columns by 2 rows atlas: use ONLY row 2 column 2. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Hand stays on chest, reassuring smile, tiny caring nod and gentle blink, return. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "sticker-make-a-plan",
+    "index": 6,
+    "kind": "sticker",
+    "action": "Hold notebook and pen, one small writing gesture then look back up and blink.",
+    "prompt": "Use case: identity-preserve. Production LISA sticker animation KEYFRAME SHEET. Reference is a 4 columns by 2 rows atlas: use ONLY row 2 column 3. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Hold notebook and pen, one small writing gesture then look back up and blink. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  },
+  {
+    "id": "sticker-tea-break",
+    "index": 7,
+    "kind": "sticker",
+    "action": "Hold mint teal cup near chest, lift to lips for one small sip, lower, peaceful smile.",
+    "prompt": "Use case: identity-preserve. Production LISA sticker animation KEYFRAME SHEET. Reference is a 4 columns by 2 rows atlas: use ONLY row 2 column 4. Same adult teal bob woman, blue eyes, navy hoodie, original gesture and props, Soft Ink clean cel-shaded illustration. Action: Hold mint teal cup near chest, lift to lips for one small sip, lower, peaceful smile. Output exactly NINE sequential upper-body frames in a 3 by 3 equal-cell grid. Frame 9 returns to first. Each frame central 82% of cell, fully opaque body and genuine transparent background/gutters. Same size, position, camera, shoulders baseline, clothing, hairstyle throughout. No text, labels, grid, border, scenery or new objects."
+  }
+]

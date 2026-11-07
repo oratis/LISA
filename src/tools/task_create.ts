@@ -84,7 +84,10 @@ export const taskCreateTool: ToolDefinition<TaskCreateInput, string> = {
         type: "array",
         items: { type: "string" },
         maxItems: 64,
-        description: "Optional: restrict the run to exactly these tool names.",
+        description:
+          "Optional: restrict the run to exactly these tool names. This only restricts — it " +
+          "pre-approves nothing. When the user switches the task on they are shown what it may do " +
+          "and decide themselves whether those actions may run without asking.",
       },
       max_tokens: {
         type: "integer",

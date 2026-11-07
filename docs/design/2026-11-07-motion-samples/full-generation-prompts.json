@@ -1,0 +1,124 @@
+{
+  "mode": "built-in ImageGen; referenced identity, transparent keyframe sheets",
+  "portraits": [
+    {
+      "id": "laughing",
+      "index": 2,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 1, column 3, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Eyes closed joyful laughter, mouth changes only slightly, tiny shoulder bounce and return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "giggling",
+      "index": 3,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 1, column 4, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: One hand stays near the mouth, eyes narrow in amusement, restrained giggle and return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "confused",
+      "index": 5,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 1, column 6, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: One raised eyebrow, slight head tilt, blink and return to puzzled expression. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "worried",
+      "index": 7,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 2, column 2, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Sympathetic inward raised brows, tiny downward eye glance, blink, return. No tears. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "sad",
+      "index": 8,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 2, column 3, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Downcast eyes and small frown, slow blink and tiny sigh, return. No tears or smile. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "apologetic",
+      "index": 9,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 2, column 4, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Hand stays on chest, earnest downward gaze, tiny apologetic nod, blink, return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "proud",
+      "index": 11,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 2, column 6, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Satisfied confident gentle smile, slight chin lift and blink, return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "determined",
+      "index": 12,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 3, column 1, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Attentive resolute gaze, very small firm nod, blink, return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "cheering",
+      "index": 14,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 3, column 3, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: One raised fist with joyful closed-eye smile, tiny upward fist movement and settle. Do not add confetti. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "working",
+      "index": 16,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 3, column 5, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Focused coding: both hands OUT OF FRAME, no hand on chin, blue reflected light gently shifts across attentive face, eyes glance down and blink. No props. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "research",
+      "index": 18,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 4, column 1, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Curious upward gaze, index finger stays near temple, eyes glance up, blink, return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "writing",
+      "index": 19,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 4, column 2, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Small pen stays in hand at lower edge, looking down, fingers make two subtle writing strokes, blink, return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "portrait-reading",
+      "index": 20,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 4, column 3, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Holding a small navy open book below chin, eyes scan line, one page edge lifts subtly, blink, return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "portrait-tea",
+      "index": 21,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 4, column 4, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Holding a teal cup near chest, lift slightly toward lips for a restrained sip and lower, blink, return. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "portrait-stretching",
+      "index": 22,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 4, column 5, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Hand stays touching opposite shoulder, eyes closed relaxed smile, tiny neck and shoulder stretch then relax. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    },
+    {
+      "id": "portrait-napping",
+      "index": 23,
+      "prompt": "Use case: identity-preserve. Create ONE production LISA animated portrait KEYFRAME SHEET, not a finished GIF. Input reference is a 6 columns by 4 rows atlas. Copy ONLY the character in row 4, column 6, counting from top left. Identity: adult woman, chin-length teal bob, blue eyes, navy hoodie, Soft Ink clean 2D cel shading. Action: Eyes closed, cheek resting on own hand, tiny slow breathing, no waking or smile changes. Output exactly nine sequential head-and-shoulder frames in an exact 3 by 3 equal-cell grid on a genuinely transparent background. Frame 9 returns to frame 1. Same head size, fixed camera, shoulders baseline, lighting, hairstyle and clothing throughout. Central 82% of each cell only, with empty transparent gutters. Opaque skin and clothes; no new objects, text, labels, grid lines, shadows or decorative symbols. Preserve reference expression and gesture precisely."
+    }
+  ],
+  "notes": "Selected source files and hashes are in production-sources.json and production-report.json; the last three portraits were completed with completion-prompts.json after the tool session ended.",
+  "poses": [
+    {
+      "id": "standing",
+      "index": 0,
+      "action": "Standing calmly, arms relaxed at sides, a gentle blink and tiny breath, feet and torso fixed.",
+      "prompt": "Use case: identity-preserve. ONE LISA Room animation keyframe PNG sheet, exactly 9 full-body character frames in a 3 by 3 equal-cell grid. Reference is a 4 by 3 atlas; copy row 1 column 1. Standing calmly, arms relaxed at sides, a gentle blink and tiny breath, feet and torso fixed. Preserve adult teal bob character, proportions, Soft Ink navy linework, clothing and pose. Each frame sequential restrained loop; frame 9 returns to first. Same camera, scale, fixed feet baseline. Entire figure central 80% of every cell with generous transparent gutters, genuine transparent background and opaque figure interiors. No environment, shadow, text, grid, labels or objects not in referenced pose."
+    },
+    {
+      "id": "looking-up",
+      "index": 4,
+      "action": "Standing, eyes and head slowly look up to meet the viewer and settle back, restrained attentive expression, feet fixed.",
+      "prompt": "Use case: identity-preserve. ONE LISA Room animation keyframe PNG sheet, exactly 9 full-body character frames in a 3 by 3 equal-cell grid. Reference is a 4 by 3 atlas; copy row 2 column 1. Standing, eyes and head slowly look up to meet the viewer and settle back, restrained attentive expression, feet fixed. Preserve adult teal bob character, proportions, Soft Ink navy linework, clothing and pose. Each frame sequential restrained loop; frame 9 returns to first. Same camera, scale, fixed feet baseline. Entire figure central 80% of every cell with generous transparent gutters, genuine transparent background and opaque figure interiors. No environment, shadow, text, grid, labels or objects not in referenced pose."
+    },
+    {
+      "id": "window",
+      "index": 9,
+      "action": "Standing in slight side profile looking toward the window, a tiny thoughtful head turn and breath, gaze returns, feet fixed.",
+      "prompt": "Use case: identity-preserve. ONE LISA Room animation keyframe PNG sheet, exactly 9 full-body character frames in a 3 by 3 equal-cell grid. Reference is a 4 by 3 atlas; copy row 3 column 2. Standing in slight side profile looking toward the window, a tiny thoughtful head turn and breath, gaze returns, feet fixed. Preserve adult teal bob character, proportions, Soft Ink navy linework, clothing and pose. Each frame sequential restrained loop; frame 9 returns to first. Same camera, scale, fixed feet baseline. Entire figure central 80% of every cell with generous transparent gutters, genuine transparent background and opaque figure interiors. No environment, shadow, text, grid, labels or objects not in referenced pose."
+    },
+    {
+      "id": "pajamas",
+      "index": 10,
+      "action": "Standing wearing the exact loose pale teal pajamas from this reference cell, arms relaxed, slow sleepy blink and tiny breath, no change of clothing, feet fixed.",
+      "prompt": "Use case: identity-preserve. ONE LISA Room animation keyframe PNG sheet, exactly 9 full-body character frames in a 3 by 3 equal-cell grid. Reference is a 4 by 3 atlas; copy row 3 column 3. Standing wearing the exact loose pale teal pajamas from this reference cell, arms relaxed, slow sleepy blink and tiny breath, no change of clothing, feet fixed. Preserve adult teal bob character, proportions, Soft Ink navy linework, clothing and pose. Each frame sequential restrained loop; frame 9 returns to first. Same camera, scale, fixed feet baseline. Entire figure central 80% of every cell with generous transparent gutters, genuine transparent background and opaque figure interiors. No environment, shadow, text, grid, labels or objects not in referenced pose."
+    }
+  ],
+  "stickers": [
+    {
+      "id": "sticker-hello",
+      "index": 0,
+      "prompt": "Use case: identity-preserve. Create ONE animated LISA sticker keyframe PNG sheet with exactly 9 head-and-upper-body frames in a 3 by 3 equal-cell grid on a genuinely transparent background. Reference sticker atlas is 4 columns by 2 rows. Use only row 1 column 1, preserve the SAME teal bob adult LISA, navy hoodie, Soft Ink hand-drawn style, original gesture and props. Raise the open waving palm, gently wave at wrist once then return; friendly open eyes and smile. Sequential restrained motion reading left-right then down; last frame returns to first. Same head size, shoulder baseline, camera and lighting throughout. Entire head, hand, props must fit central 82% of each cell with transparent gutters. Opaque figure interiors. No text, grid, labels, new decorative symbols, backgrounds or cast shadows."
+    },
+    {
+      "id": "sticker-thank-you",
+      "index": 3,
+      "prompt": "Use case: identity-preserve. Create ONE animated LISA sticker keyframe PNG sheet with exactly 9 head-and-upper-body frames in a 3 by 3 equal-cell grid on a genuinely transparent background. Reference sticker atlas is 4 columns by 2 rows. Use only row 1 column 4, preserve the SAME teal bob adult LISA, navy hoodie, Soft Ink hand-drawn style, original gesture and props. Palms stay together, warm closed-eye smile, tiny grateful nod then return. Sequential restrained motion reading left-right then down; last frame returns to first. Same head size, shoulder baseline, camera and lighting throughout. Entire head, hand, props must fit central 82% of each cell with transparent gutters. Opaque figure interiors. No text, grid, labels, new decorative symbols, backgrounds or cast shadows."
+    }
+  ]
+}

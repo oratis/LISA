@@ -216,6 +216,7 @@ test("cloud edition denies connector metadata and authorization before touching 
       "/api/connectors",
       "/api/connectors/google-calendar/requests?sessionId=test",
       "/api/connectors/gmail/requests?sessionId=test",
+      "/api/connectors/linear/requests?sessionId=test",
     ]) {
       assert.equal(
         (

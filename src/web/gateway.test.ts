@@ -34,6 +34,23 @@ describe("planUpstream", () => {
     assert.equal(plan?.headers.authorization, "Bearer zk");
   });
 
+  test("openai face forwards a preset's default headers only to that preset", () => {
+    const plan = planUpstream(
+      "openai",
+      "/chat/completions",
+      "sonar-pro",
+      {},
+      {
+        PERPLEXITY_API_KEY: "pk",
+      },
+    );
+    assert.ok(plan?.url.startsWith("https://api.perplexity.ai/"));
+    assert.equal(plan?.headers["X-Pplx-Integration"], "lisa");
+    assert.equal(plan?.headers.authorization, "Bearer pk");
+    const glm = planUpstream("openai", "/chat/completions", "glm-4.6", {}, { ZHIPU_API_KEY: "zk" });
+    assert.equal(glm?.headers["X-Pplx-Integration"], undefined);
+  });
+
   test("no operator key for the face → null (503 upstream)", () => {
     assert.equal(planUpstream("anthropic", "/v1/messages", "claude-3", {}, {}), null);
     assert.equal(planUpstream("openai", "/chat/completions", "glm-4.6", {}, {}), null);
