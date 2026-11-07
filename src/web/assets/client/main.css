@@ -3440,3 +3440,7 @@
 .warden-pending-row .warden-actions { margin-top: 6px; }
 
   .ce-art { display: block; width: 112px; height: 112px; object-fit: contain; margin: 0 0 16px; }
+
+/* Keep the shell's status decoration on the same lifecycle as Lisa's portrait. */
+html[data-motion="paused"] *, html[data-motion="paused"] *::before, html[data-motion="paused"] *::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

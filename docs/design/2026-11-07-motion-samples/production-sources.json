@@ -1,0 +1,368 @@
+[
+  {
+    "id": "blink",
+    "source": "exec-613db3c2-6350-48dd-a546-584abf24c309.png",
+    "size": 192,
+    "fill": 0.9,
+    "frames": [0, 2, 3, 2, 0],
+    "delay": [2700, 70, 110, 70, 450]
+  },
+  {
+    "id": "thinking",
+    "source": "exec-84919767-c614-4993-947a-e41945fac28e.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 4, 2, 1, 0],
+    "delay": [1200, 240, 800, 130, 800, 240, 600]
+  },
+  {
+    "id": "tea",
+    "source": "exec-8c2c8cec-17f2-4e45-8a11-9088ba67ba34.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 3, 4, 3, 2, 1, 0],
+    "delay": [1300, 160, 170, 240, 540, 240, 170, 160, 900]
+  },
+  {
+    "id": "reading",
+    "source": "exec-b7c90b20-08e6-43c1-a9bf-6eb29f868e0f.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7, 0],
+    "delay": [1600, 180, 220, 250, 220, 220, 180, 260, 900]
+  },
+  {
+    "id": "gramophone",
+    "source": "exec-b44d6303-c87f-481b-82a6-39bb14bb6536.png",
+    "size": 256,
+    "fill": 0.86,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7],
+    "delay": [140, 140, 140, 140, 140, 140, 140, 140]
+  },
+  {
+    "id": "happy",
+    "source": "exec-6843ba12-4cfb-429a-a0f0-5177e107e96f.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "surprised",
+    "source": "exec-0abbed55-519c-4726-92a6-f581b884d579.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "grateful",
+    "source": "exec-777b074c-617f-48ce-aab3-ffd8926322b0.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "excited",
+    "source": "exec-0049b0bc-383f-4339-ae90-b041e3843b35.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sleepy",
+    "source": "exec-e8c0bc98-5e9c-4926-8b91-000f7da86b47.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "debugging",
+    "source": "exec-16d6d5a5-ffdb-4493-ba02-277c480b05f6.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "typing",
+    "source": "exec-c0ae0833-3c8c-4c5e-8e13-c1e2f942f2b9.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7, 0],
+    "delay": [1300, 260, 260, 260, 160, 260, 260, 260, 900]
+  },
+  {
+    "id": "stretching",
+    "source": "exec-f68f826d-58a2-4f7d-81b3-51e2a0a90212.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7, 0],
+    "delay": [1300, 260, 260, 260, 160, 260, 260, 260, 900]
+  },
+  {
+    "id": "listening",
+    "source": "exec-33fdf4ef-1ca5-4c7e-9b17-b895b759520f.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7, 0],
+    "delay": [1300, 260, 260, 260, 160, 260, 260, 260, 900]
+  },
+  {
+    "id": "sleeping",
+    "source": "exec-4c5e6605-cd59-4220-bbf9-9be1ce3764e1.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7, 0],
+    "delay": [1100, 400, 400, 400, 700, 400, 400, 400, 1100]
+  },
+  {
+    "id": "worried",
+    "source": "exec-0bef84e5-eae0-4e23-8321-c4891a4211c7.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-thank-you",
+    "source": "exec-139d6ffb-1c78-4a59-91d4-79ad93300240.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "window",
+    "source": "exec-185aa7a8-9c32-432c-9a7b-5c4f52841646.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "proud",
+    "source": "exec-256a31b7-ab33-4b01-815f-cdba14ad9330.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "looking-up",
+    "source": "exec-27904c96-3b31-4adc-ab64-c7b0e8990193.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "research",
+    "source": "exec-33817788-aabb-4ed2-81f3-2ed0a3349ccc.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "working",
+    "source": "exec-33a85007-f687-4359-ba49-0defd5216762.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "confused",
+    "source": "exec-4482e816-6371-44c4-9f47-789db16e688f.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "pajamas",
+    "source": "exec-57ef2627-4967-444f-9960-ee9aa0fd2c04.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sad",
+    "source": "exec-64ed0073-26d4-4f08-a935-d72bfd51ba3e.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "standing",
+    "source": "exec-7442035b-8c8d-47b8-a8ee-94c7829792b9.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "apologetic",
+    "source": "exec-7e9ac4a0-7ab5-4f4d-8cec-afb99e056e3c.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "cheering",
+    "source": "exec-8a886e34-1b31-4a5c-a481-c21605c15824.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-hello",
+    "source": "exec-a8115d56-8c69-4f04-95f7-4a36a58d5335.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "portrait-reading",
+    "source": "exec-b6e263ba-32db-40bf-a110-2e424ccd3069.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "giggling",
+    "source": "exec-c8b3daf0-0010-4798-b2c6-86d765652fd2.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "determined",
+    "source": "exec-e7d55afc-6804-42f0-b89f-c06f86859e9e.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "writing",
+    "source": "exec-f9f3c1c8-fed5-4b0a-8ca7-df164147e765.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "laughing",
+    "source": "exec-fb4bba7d-718e-492b-a1ce-03c65a46167c.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "seated",
+    "source": "exec-c0ae0833-3c8c-4c5e-8e13-c1e2f942f2b9.png",
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 4, 0],
+    "delay": [3000, 150, 1500]
+  },
+  {
+    "id": "portrait-tea",
+    "source": "exec-178e7264-a18b-4da6-b65f-a11f0eddd4da.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "portrait-stretching",
+    "source": "exec-2a6c6334-e0f9-434b-a782-c9fd9745893a.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "portrait-napping",
+    "source": "exec-4e54df44-f7ca-4657-b9dd-8e92028d07d2.png",
+    "size": 192,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-well-done",
+    "source": "exec-99dd8b4e-5a89-4bc2-b8ce-e96be0c14f09.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-thinking",
+    "source": "exec-673c8ebb-8acd-4f73-b538-76c9b394d656.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-celebrate",
+    "source": "exec-061f88cc-6972-4050-8807-043387125081.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-here-for-you",
+    "source": "exec-d076d1af-6e72-4a69-b92f-6a29f46bc6cd.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-make-a-plan",
+    "source": "exec-7f6b0a19-31f3-42b7-ac69-4338d0637b92.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "sticker-tea-break",
+    "source": "exec-41429ec8-7d65-4c1d-a8e5-91d8949b443d.png",
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 2, 4, 6, 0],
+    "delay": [2200, 340, 120, 340, 900]
+  },
+  {
+    "id": "room-reading",
+    "source": "exec-691313eb-ab15-4966-b5f7-63dcdd31575a.png",
+    "size": 384,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    "delay": [1500, 160, 160, 180, 450, 180, 160, 250, 1500]
+  },
+  {
+    "id": "room-tea",
+    "source": "exec-cfb9cd61-ee76-494a-b1d9-9c9e0851c60c.png",
+    "size": 384,
+    "frames": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    "delay": [1500, 160, 160, 180, 450, 180, 160, 250, 1500]
+  }
+]

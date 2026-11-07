@@ -22,6 +22,9 @@
   },
   "include": [
     "src/web/assets/client/main.js",
+    "src/web/assets/client/motion.js",
+    "src/web/assets/client/room-effects.js",
+    "src/web/assets/client/soft-ink.js",
     "src/web/assets/client/connectors.js",
     "types/web-client.d.ts"
   ]

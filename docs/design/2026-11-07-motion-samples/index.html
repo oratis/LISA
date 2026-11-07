@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LISA · 五个动作样片</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f4f2eb;
+        color: #243d43;
+        font:
+          15px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "PingFang SC",
+          sans-serif;
+      }
+      main {
+        max-width: 1120px;
+        margin: auto;
+        padding: 32px 24px 50px;
+      }
+      header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      h1 {
+        font-size: 30px;
+        font-weight: 600;
+        margin: 0 0 5px;
+      }
+      h2 {
+        font-size: 20px;
+        font-weight: 600;
+        margin: 0;
+      }
+      p {
+        margin: 0;
+        color: #5c7277;
+      }
+      .eyebrow {
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        color: #68877e;
+        margin-bottom: 10px;
+      }
+      .summary {
+        margin: 24px 0;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .metric {
+        border-top: 1px solid #b9c9c4;
+        padding-top: 12px;
+      }
+      .metric strong {
+        display: block;
+        font-size: 25px;
+        font-weight: 550;
+        font-variant-numeric: tabular-nums;
+      }
+      .metric span {
+        font-size: 13px;
+        color: #5c7277;
+      }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+      button,
+      select {
+        font: inherit;
+        color: inherit;
+        background: #fffef9;
+        border: 1px solid #b5c8c1;
+        border-radius: 9px;
+        padding: 7px 13px;
+        min-height: 40px;
+        cursor: pointer;
+      }
+      button:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #75a9aa;
+        outline-offset: 2px;
+      }
+      button.primary {
+        background: #244e50;
+        color: #fff;
+        border-color: #244e50;
+      }
+      label {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+      .sample {
+        min-width: 0;
+        background: #fffef9;
+        border: 1px solid #e0e5dc;
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .stage {
+        height: 260px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #e0e9e2;
+        background-image:
+          linear-gradient(45deg, #d6e2da 25%, transparent 25%),
+          linear-gradient(-45deg, #d6e2da 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #d6e2da 75%),
+          linear-gradient(-45deg, transparent 75%, #d6e2da 75%);
+        background-size: 20px 20px;
+        background-position:
+          0 0,
+          0 10px,
+          10px -10px,
+          -10px 0;
+      }
+      .stage img {
+        display: block;
+        width: 240px;
+        height: 240px;
+        max-width: 100%;
+        object-fit: contain;
+      }
+      .stage[data-background="light"] {
+        background: #f9f7f0;
+      }
+      .stage[data-background="dark"] {
+        background: #152b36;
+      }
+      .sample-body {
+        padding: 14px 18px 18px;
+      }
+      .sample-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .sample-top h2 {
+        font-size: 18px;
+      }
+      .bytes {
+        font-size: 18px;
+        font-variant-numeric: tabular-nums;
+      }
+      .spec {
+        font-size: 12px;
+        color: #607477;
+        margin: 3px 0 8px;
+      }
+      .comparison {
+        font-size: 13px;
+        color: #56706f;
+      }
+      .links {
+        display: flex;
+        gap: 14px;
+        font-size: 13px;
+        margin-top: 10px;
+      }
+      a {
+        color: #236366;
+        text-underline-offset: 3px;
+      }
+      .room-section {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(230px, 0.65fr);
+        gap: 24px;
+        align-items: center;
+      }
+      .room {
+        aspect-ratio: 1;
+        position: relative;
+        border-radius: 14px;
+        overflow: hidden;
+        background: url("../../../src/web/assets/visuals/soft-ink-v1/room.webp") center/contain
+          no-repeat;
+      }
+      .room img {
+        position: absolute;
+        object-fit: contain;
+      }
+      .room .person {
+        left: 26.7%;
+        bottom: 7.5%;
+        width: 46%;
+      }
+      .room .gramo {
+        left: 80%;
+        bottom: 7.5%;
+        width: 19%;
+      }
+      .room-details p {
+        margin: 10px 0 18px;
+      }
+      .note {
+        font-size: 13px;
+        margin-top: 24px;
+        padding-top: 18px;
+        border-top: 1px solid #cbd6cd;
+      }
+      .budget {
+        height: 7px;
+        background: #d9e2d9;
+        border-radius: 20px;
+        margin-top: 8px;
+        overflow: hidden;
+      }
+      .budget i {
+        display: block;
+        height: 100%;
+        background: #568c79;
+      }
+      footer {
+        margin-top: 28px;
+        color: #5c7277;
+        font-size: 12px;
+      }
+      footer a {
+        margin-right: 15px;
+      }
+      @media (max-width: 800px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .room-section {
+          grid-template-columns: 1fr;
+        }
+        .room {
+          max-width: 570px;
+          width: 100%;
+        }
+      }
+      @media (max-width: 460px) {
+        main {
+          padding: 22px 16px;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .summary {
+          gap: 10px;
+        }
+        .metric strong {
+          font-size: 20px;
+        }
+        .metric span {
+          font-size: 11px;
+        }
+        h1 {
+          font-size: 25px;
+        }
+        .stage {
+          height: 280px;
+        }
+        .stage img {
+          height: 256px;
+          width: 256px;
+        }
+        .toolbar {
+          align-items: stretch;
+        }
+        .toolbar label {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div style="padding: 14px 24px; text-align: center">
+      <a href="http://127.0.0.1:8768">查看完整版本：44 组动画、全部表情与两套 Room →</a>
+    </div>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">LISA / SOFT INK MOTION STUDIES</div>
+          <h1>安静一点，也生动一点。</h1>
+          <p>眨眼、思考、喝茶、翻书和唱机 · 五个循环样片</p>
+        </div>
+        <button class="primary" id="play" type="button">停止动画</button>
+      </header>
+      <section class="summary" aria-label="资源体积">
+        <div class="metric"><strong id="total">—</strong><span>五个 WebP 动画</span></div>
+        <div class="metric"><strong id="publish">—</strong><span>含五张静态备用图</span></div>
+        <div class="metric">
+          <strong id="remaining">—</strong><span>距 3 MiB 资源上限剩余</span>
+          <div class="budget"><i id="used"></i></div>
+        </div>
+      </section>
+      <div class="toolbar">
+        <label
+          >透明边缘检查
+          <select id="background">
+            <option value="checker">棋盘背景</option>
+            <option value="light">浅色背景</option>
+            <option value="dark">深色背景</option>
+          </select></label
+        ><label
+          >播放格式
+          <select id="format">
+            <option value="webp">WebP · 发布候选</option>
+            <option value="gif">GIF · 体积对照</option>
+          </select></label
+        >
+      </div>
+      <section class="grid" id="samples" aria-label="五个动画样片"></section>
+      <section class="room-section">
+        <div class="room" aria-label="现有 Room 背景中的人物和唱机动画">
+          <img class="person" id="room-person" alt="LISA 喝茶" /><img
+            class="gramo"
+            id="room-gramophone"
+            alt="唱机转动"
+          />
+        </div>
+        <div class="room-details">
+          <div class="eyebrow">IN THE ROOM</div>
+          <h2>放回熟悉的房间里</h2>
+          <p>人物和唱机分别播放，房间背景保持静止。这里复用项目原有背景，不增加一份背景资源。</p>
+          <label
+            >人物动作
+            <select id="room-action">
+              <option value="tea">喝茶</option>
+              <option value="reading">翻书</option>
+            </select></label
+          >
+          <p class="note">
+            这是动作样片预览，尚未接入正式界面的状态切换。人物动作保留停顿，唱机连续循环；开启系统“减少动态效果”时默认静止，可手动播放。
+          </p>
+        </div>
+      </section>
+      <footer>
+        制作方式：内置 ImageGen 生成连续 PNG 关键帧，再对齐、组装为动画；不是 GPT Image 2.6 原生 GIF
+        直出。<br /><a href="report.json">完整体积与帧信息</a><a href="prompts.json">生成提示词</a
+        ><span id="saving"></span>
+      </footer>
+    </main>
+    <script src="report.js"></script>
+    <script>
+      (() => {
+        "use strict";
+        const report = window.LISA_MOTION;
+        const byId = Object.fromEntries(report.samples.map((s) => [s.id, s]));
+        const kb = (n) => (n / 1024).toFixed(1) + " KiB";
+        const mb = (n) => (n / 1048576).toFixed(2) + " MiB";
+        const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+        let playing = !reduce.matches;
+        let format = "webp";
+        document.getElementById("total").textContent = kb(report.animationsBytes);
+        document.getElementById("publish").textContent = kb(report.publishBytes);
+        document.getElementById("remaining").textContent = mb(
+          report.budgetBytes - report.publishBytes,
+        );
+        document.getElementById("used").style.width =
+          (report.publishBytes / report.budgetBytes) * 100 + "%";
+        document.getElementById("saving").textContent =
+          "同尺寸 GIF 对照共 " + kb(report.gifComparisonBytes) + "。";
+        const host = document.getElementById("samples");
+        for (const s of report.samples) {
+          const card = document.createElement("article");
+          card.className = "sample";
+          card.innerHTML =
+            '<div class="stage"><img alt="' +
+            s.name +
+            '动画样片" data-id="' +
+            s.id +
+            '"></div><div class="sample-body"><div class="sample-top"><h2>' +
+            s.name +
+            '</h2><span class="bytes">' +
+            kb(s.webpBytes) +
+            '</span></div><div class="spec">' +
+            s.width +
+            " × " +
+            s.height +
+            " · " +
+            s.frames +
+            " 帧 · " +
+            (s.durationMs / 1000).toFixed(2) +
+            ' 秒循环</div><div class="comparison">GIF ' +
+            kb(s.gifBytes) +
+            " → WebP " +
+            kb(s.webpBytes) +
+            " · 减少 " +
+            ((1 - s.webpBytes / s.gifBytes) * 100).toFixed(0) +
+            '%</div><div class="links"><a href="' +
+            s.webp +
+            '" download>WebP</a><a href="' +
+            s.gif +
+            '" download>GIF</a><a href="' +
+            s.poster +
+            '" download>静态图</a></div></div>';
+          host.append(card);
+        }
+        const src = (s) => (playing && !document.hidden ? s[format] : s.poster);
+        function update() {
+          host.querySelectorAll("img[data-id]").forEach((img) => {
+            img.src = src(byId[img.dataset.id]);
+          });
+          const id = document.getElementById("room-action").value;
+          document.getElementById("room-person").src = src(byId[id]);
+          document.getElementById("room-person").alt = "LISA " + byId[id].name;
+          document.getElementById("room-gramophone").src = src(byId.gramophone);
+          document.getElementById("play").textContent = playing ? "停止动画" : "播放动画";
+          document.getElementById("play").setAttribute("aria-pressed", String(playing));
+        }
+        document.getElementById("play").addEventListener("click", () => {
+          playing = !playing;
+          update();
+        });
+        document.getElementById("format").addEventListener("change", (e) => {
+          format = e.target.value;
+          update();
+        });
+        document.getElementById("background").addEventListener("change", (e) => {
+          host.querySelectorAll(".stage").forEach((el) => (el.dataset.background = e.target.value));
+        });
+        document.getElementById("room-action").addEventListener("change", update);
+        document.addEventListener("visibilitychange", update);
+        reduce.addEventListener("change", (e) => {
+          if (e.matches) {
+            playing = false;
+            update();
+          }
+        });
+        update();
+      })();
+    </script>
+  </body>
+</html>

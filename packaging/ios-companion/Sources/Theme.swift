@@ -174,21 +174,70 @@ struct ServerPortrait: View {
     let client: LisaClient
     let path: String
     @State private var image: UIImage?
+    @State private var animation: UIImage?
+    @State private var visible = false
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var canAnimate: Bool { visible && scenePhase == .active && !reduceMotion }
 
     private var request: URLRequest? { try? client.makeRequest(path, timeout: 15) }
 
     var body: some View {
         Group {
-            if let image { Image(uiImage: image).resizable().scaledToFit() }
+            if let image { PortraitImage(image: image, animation: animation, playing: canAnimate) }
             else { Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary) }
         }
         .task(id: request) {
             guard request != nil else { return }
+            animation = nil
             do {
                 let next = try await LisaArtwork.load(client: client, path: path)
                 try Task.checkCancellation()
                 if let next { image = next }
             } catch { /* Keep the fallback; a later request or reconnect retries. */ }
         }
+        .onAppear { visible = true }
+        .onDisappear { visible = false; animation = nil }
+        .task(id: "\(request?.url?.absoluteString ?? "")|\(canAnimate)") {
+            guard canAnimate else { animation = nil; return }
+            do {
+                let next = try await LisaArtwork.motion(client: client, path: path)
+                try Task.checkCancellation()
+                animation = next
+            } catch { /* The static atlas remains visible on old servers or failed loads. */ }
+        }
+    }
+}
+
+private struct PortraitImage: UIViewRepresentable {
+    let image: UIImage
+    let animation: UIImage?
+    let playing: Bool
+
+    func makeUIView(context: Context) -> UIImageView {
+        let view = UIImageView()
+        view.contentMode = .scaleAspectFit
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return view
+    }
+    func updateUIView(_ view: UIImageView, context: Context) {
+        let next = playing ? (animation ?? image) : (animation?.images?.first ?? image)
+        if view.image !== next {
+            view.stopAnimating()
+            // Clear first: UIKit can otherwise retain an animated image when
+            // the replacement static image shares its first CGImage.
+            view.image = nil
+            view.image = next
+        }
+        if playing && animation != nil { if !view.isAnimating { view.startAnimating() } }
+        else { view.stopAnimating() }
+    }
+    static func dismantleUIView(_ view: UIImageView, coordinator: ()) {
+        view.stopAnimating()
+        view.image = nil
     }
 }

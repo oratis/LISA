@@ -10,6 +10,12 @@ const catalog = JSON.parse(
   await fs.readFile(path.join(root, "src/web/assets/lisa/index.json"), "utf8"),
 );
 const aliases = manifest.portraits.aliases;
+const motion = JSON.parse(
+  await fs.readFile(
+    path.join(root, "src/web/assets/visuals/soft-ink-motion-v1/manifest.json"),
+    "utf8",
+  ),
+);
 if (
   catalog.moods.length !== Object.keys(aliases).length ||
   catalog.moods.some((m) => !Object.hasOwn(aliases, m.slug)) ||
@@ -25,6 +31,11 @@ const swift = [
   '    static let atlasPath = "' + manifest.portraits.nativeSrc + '"',
   "    static let columns = " + manifest.portraits.columns,
   "    static let rows = " + manifest.portraits.rows,
+  "    static let motion: [Int: String] = [",
+  ...Object.entries(motion.portraits).map(
+    ([index, id]) => "        " + index + ': "' + motion.clips[id].native + '",',
+  ),
+  "    ]",
   "    static let moods: [String: Int] = [",
   ...Object.entries(aliases).map(([slug, index]) => '        "' + slug + '": ' + index + ","),
   "    ]",

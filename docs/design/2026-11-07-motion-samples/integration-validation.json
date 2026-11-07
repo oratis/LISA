@@ -1,0 +1,53 @@
+{
+  "date": "2026-11-07",
+  "scope": {
+    "corePortraits": 24,
+    "compatibleStates": 114,
+    "independentStickers": 8,
+    "characterClips": 13,
+    "gramophoneClips": 1,
+    "roomObjectRegions": {
+      "studio": 19,
+      "sunroom": 23
+    },
+    "roomSeatedVariants": 2
+  },
+  "resources": {
+    "totalBytes": 8188175,
+    "maxSingleAnimationBytes": 243806,
+    "perFileLimitBytes": 262144
+  },
+  "checks": {
+    "webUnitAndServer": 56,
+    "chromium": 5,
+    "webkit": 5,
+    "iosMotion": 3,
+    "macBuild": "passed",
+    "browserVisualQA": {
+      "errors": [],
+      "animatedScreenshots": 12,
+      "pausedScreenshots": 1,
+      "mobileOverflow": false
+    },
+    "allNodeTests": 3512,
+    "macTests": 23
+  },
+  "generation": {
+    "mode": "built-in ImageGen reference edits to PNG keyframes, registered and encoded as animated WebP and GIF",
+    "promptFiles": [
+      "prompts.json",
+      "production-prompts.json",
+      "full-generation-prompts.json",
+      "completion-prompts.json",
+      "room-seated-prompts.json"
+    ],
+    "sourceManifest": "production-sources.json"
+  },
+  "notes": [
+    "Total includes all shipped motion images, GIF companions, still posters, manifests and two new client scripts. Authoring sheets and review screenshots are excluded.",
+    "Page/iframe/host visibility, offscreen images, prefers-reduced-motion and load failures are verified.",
+    "114 states retain the existing 24-core alias mapping; these are not 114 distinct new drawings.",
+    "Room props use texture reuse and CSS effects; structural furniture responds to pointer attention rather than moving continuously.",
+    "Two additional seated reading/tea clips preserve the merged Room v2 contact geometry and furniture masks."
+  ]
+}

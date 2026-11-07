@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LISA · 完整动画预览</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: light-dark(#f3f5f2, #0d1522);
+        --panel: light-dark(#fff, #172334);
+        --text: light-dark(#183333, #edf6f5);
+        --muted: light-dark(#54706c, #aac3c0);
+        --line: light-dark(#d7e4dd, #314650);
+        --accent: light-dark(#14786f, #7bddd2);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          15px/1.6 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      main {
+        max-width: 1150px;
+        margin: auto;
+        padding: 32px 24px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        justify-content: space-between;
+      }
+      h1 {
+        font-size: clamp(28px, 5vw, 48px);
+        letter-spacing: -0.04em;
+        margin: 18px 0 8px;
+      }
+      h2 {
+        font-size: 23px;
+        margin: 0 0 8px;
+      }
+      p {
+        color: var(--muted);
+        margin: 8px 0;
+      }
+      section {
+        border-top: 1px solid var(--line);
+        margin-top: 32px;
+        padding-top: 28px;
+      }
+      .eyebrow {
+        letter-spacing: 0.15em;
+        font-size: 12px;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .stats {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 24px 0;
+      }
+      .stat {
+        border: 1px solid var(--line);
+        padding: 12px 18px;
+        border-radius: 12px;
+        background: var(--panel);
+      }
+      .stat strong {
+        display: block;
+        font-size: 22px;
+      }
+      .stat span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      button,
+      select {
+        font: inherit;
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 14px;
+        min-height: 44px;
+      }
+      button {
+        cursor: pointer;
+      }
+      a {
+        color: var(--accent);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 20px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        text-align: center;
+        min-width: 0;
+      }
+      .card img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+      }
+      .card b {
+        font-size: 14px;
+      }
+      .card small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .card a {
+        font-size: 12px;
+        text-decoration: none;
+      }
+      .stickers {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 18px 0;
+      }
+      iframe {
+        width: 100%;
+        height: min(75vw, 680px);
+        border: 0;
+        border-radius: 18px;
+        background: #101d2b;
+      }
+      .room-note {
+        font-size: 13px;
+      }
+      footer {
+        margin: 40px 0 20px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      @media (max-width: 700px) {
+        main {
+          padding: 24px 14px;
+        }
+        .grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .stickers {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        header {
+          align-items: flex-start;
+        }
+        .card {
+          padding: 8px;
+        }
+        iframe {
+          height: 100vw;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="eyebrow">LISA / SOFT INK MOTION</span
+        ><button id="pause" aria-pressed="false">暂停动画</button>
+      </header>
+      <h1>让每个表情，都有一点回应。</h1>
+      <p>24 个核心表情覆盖全部 114 个状态，8 张独立贴纸，加上 Room 的人物与物品动效。</p>
+      <div class="stats">
+        <div class="stat"><strong id="count">—</strong><span>独立动画</span></div>
+        <div class="stat"><strong id="total">—</strong><span>完整新增资源</span></div>
+        <div class="stat"><strong id="maximum">—</strong><span>最大单个动画文件</span></div>
+      </div>
+      <p id="status" aria-live="polite">按需播放 · 切出页面自动暂停 · 遵循系统减少动态效果</p>
+      <section>
+        <h2>24 个表情</h2>
+        <p>保留每个状态原本的含义。头像以 192 像素保存，适合聊天和 Island 的显示尺寸。</p>
+        <div class="grid" id="portraits"></div>
+      </section>
+      <section>
+        <h2>8 张动图贴纸</h2>
+        <p>下载透明 GIF 或 WebP，用于支持该格式的应用。</p>
+        <div class="grid stickers" id="stickers"></div>
+      </section>
+      <section>
+        <h2>Room 人物动作</h2>
+        <p>站立、眨眼、回应、阅读、喝茶、伸展、听音乐、望窗、睡衣、坐姿、打字和睡眠。</p>
+        <div class="grid" id="poses"></div>
+      </section>
+      <section>
+        <h2>放回房间里看</h2>
+        <p>
+          植物轻摆、窗光移动、杯口蒸汽、灯光与屏幕变化；桌椅、挂画、书架和地毯在经过或轻触时回应。
+        </p>
+        <div class="toolbar">
+          <select id="room-theme" aria-label="房间">
+            <option value="room">书房</option>
+            <option value="room2">阳光房</option></select
+          ><select id="room-mood" aria-label="人物活动">
+            <option value="neutral">在家休息</option>
+            <option value="reading-book">阅读</option>
+            <option value="drinking-tea">喝茶</option>
+            <option value="stretching">伸展</option>
+            <option value="listening-music">听音乐</option>
+            <option value="working-coding">打字</option>
+            <option value="watching-movie">坐着看屏幕</option>
+            <option value="napping">睡眠</option>
+          </select>
+        </div>
+        <iframe id="room-frame" title="LISA Room 动画预览"></iframe>
+        <p class="room-note">
+          此处使用示例状态展示已接入的 Room；不会改变你的真实工作状态。唱机在播放音乐时转动。
+        </p>
+      </section>
+      <footer>
+        透明原画由内置 ImageGen 生成，逐帧对齐并压缩为动画。资源按文件实测，GIF
+        副本、静态回退和播放代码均计入总量。
+      </footer>
+    </main>
+    <script src="/assets/visuals/soft-ink-motion-v1/manifest.js"></script>
+    <script src="/assets/client/motion.js"></script>
+    <script>
+      const m = window.LISA_MOTION_ART;
+      const names = [
+        "平静 / 眨眼",
+        "开心",
+        "大笑",
+        "偷笑",
+        "思考",
+        "疑惑",
+        "惊讶",
+        "担心",
+        "难过",
+        "抱歉",
+        "感谢",
+        "自豪",
+        "坚定",
+        "兴奋",
+        "庆祝",
+        "困倦",
+        "专注",
+        "排查",
+        "研究",
+        "写作",
+        "阅读",
+        "喝茶",
+        "伸展",
+        "小憩",
+      ];
+      const stickerNames = [
+        "你好",
+        "做得好",
+        "让我想想",
+        "谢谢",
+        "庆祝一下",
+        "我在这里",
+        "写下计划",
+        "喝杯茶",
+      ];
+      const poseNames = {
+        standing: "站立 / 眨眼",
+        seated: "坐着看屏幕",
+        typing: "打字",
+        sleeping: "睡眠",
+        "looking-up": "抬头回应",
+        reading: "翻书",
+        tea: "喝茶",
+        stretching: "伸展",
+        listening: "听音乐",
+        window: "望窗",
+        pajamas: "睡衣",
+        gramophone: "唱机",
+        "room-reading": "坐着翻书",
+        "room-tea": "坐着喝茶",
+      };
+      function card(id, name, target) {
+        const c = m.clips[id],
+          tile = document.createElement("article");
+        tile.className = "card";
+        const img = document.createElement("img");
+        img.alt = name;
+        img.width = c.width;
+        img.height = c.height;
+        const title = document.createElement("b");
+        title.textContent = name;
+        const size = document.createElement("small");
+        size.textContent =
+          (c.bytes / 1024).toFixed(1) + " KiB · " + (c.durationMs / 1000).toFixed(1) + " 秒";
+        tile.append(img, title, size);
+        for (const [label, url] of [
+          ["WebP", c.src],
+          ["GIF", c.native],
+        ])
+          if (url) {
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = url.split("/").pop();
+            a.textContent = label + " ↓ ";
+            tile.append(a);
+          }
+        document.getElementById(target).append(tile);
+        LisaMotion.bind(img, id, c.poster);
+      }
+      Object.entries(m.portraits).forEach(([i, id]) => card(id, names[+i], "portraits"));
+      m.stickers.forEach((id, i) => card(id, stickerNames[i], "stickers"));
+      Object.entries(poseNames).forEach(([id, name]) => card(id, name, "poses"));
+      document.getElementById("count").textContent = Object.keys(m.clips).length;
+      document.getElementById("maximum").textContent =
+        (
+          Math.max(...Object.values(m.clips).flatMap((c) => [c.bytes, c.nativeBytes || 0])) / 1024
+        ).toFixed(1) + " KiB";
+      fetch("/preview/report.json")
+        .then((r) => r.json())
+        .then(
+          (r) =>
+            (document.getElementById("total").textContent =
+              (r.totalBytes / 1048576).toFixed(2) + " MiB"),
+        );
+      let paused = false;
+      document.getElementById("pause").onclick = () => {
+        paused = !paused;
+        LisaMotion.setHostVisible(!paused);
+        document.getElementById("pause").textContent = paused ? "播放动画" : "暂停动画";
+        document.getElementById("pause").setAttribute("aria-pressed", String(paused));
+      };
+      const room = document.getElementById("room-frame");
+      function roomVisibility() {
+        room.contentWindow?.postMessage(
+          { type: "lisa-room-visibility", visible: LisaMotion.active() },
+          location.origin,
+        );
+      }
+      room.onload = roomVisibility;
+      window.addEventListener("lisa-motion-change", roomVisibility);
+      window.addEventListener("message", (e) => {
+        if (
+          e.source === room.contentWindow &&
+          e.origin === location.origin &&
+          e.data.type === "lisa-room-ready"
+        )
+          roomVisibility();
+      });
+      function updateRoom() {
+        room.src =
+          "/preview/room?theme=" +
+          document.getElementById("room-theme").value +
+          "&mood=" +
+          document.getElementById("room-mood").value;
+      }
+      document.getElementById("room-theme").onchange = updateRoom;
+      document.getElementById("room-mood").onchange = updateRoom;
+      updateRoom();
+    </script>
+  </body>
+</html>

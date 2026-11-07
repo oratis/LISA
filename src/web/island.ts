@@ -511,6 +511,8 @@ ${MD_RENDER_CSS}
 
   /* Offline state — desaturate + dim */
   body.offline #avatar { filter: grayscale(1); opacity: 0.5; }
+  html[data-motion="paused"] *, html[data-motion="paused"] *::before, html[data-motion="paused"] *::after { animation-play-state: paused !important; transition: none !important; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   body.offline #label  { color: var(--fg-faint); }
 
   /* Agents-advisor card (cross-agent suggestions with actions) */

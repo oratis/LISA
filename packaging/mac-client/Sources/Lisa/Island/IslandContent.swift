@@ -33,6 +33,7 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
     }
 
     override func loadView() {
+        NotificationCenter.default.addObserver(self, selector: #selector(syncMotionVisibility), name: NSWindow.didChangeOcclusionStateNotification, object: nil)
         let config = WKWebViewConfiguration()
         // Receive postMessage from window.webkit.messageHandlers.island.
         config.userContentController.add(self, name: "island")
@@ -87,6 +88,15 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
     }
 
     // MARK: - WKNavigationDelegate
+
+    @objc private func syncMotionVisibility() {
+        let visible = webView?.window?.occlusionState.contains(.visible) == true
+        webView?.evaluateJavaScript("window.LisaMotion?.setHostVisible(\(visible ? "true" : "false"));", completionHandler: nil)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        syncMotionVisibility()
+    }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         loadOfflineSplash()
