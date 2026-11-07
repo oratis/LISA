@@ -92,7 +92,17 @@ describe("forget coverage", () => {
         .filter(([, v]) => v.forget === "scanned")
         .map(([k]) => k)
         .sort(),
-      ["connectors", "embeddings", "kb", "memory", "reflections", "sessions", "soul", "tasks"],
+      [
+        "connectors",
+        "embeddings",
+        "kb",
+        "memory",
+        "reflections",
+        "reve",
+        "sessions",
+        "soul",
+        "tasks",
+      ],
     );
   });
 });

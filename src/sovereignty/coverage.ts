@@ -33,6 +33,13 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
     what: "journal and relationships (literal redactions); identity, values, opinions and desires reported, never edited",
   },
   memory: { forget: "scanned", what: "MEMORY.md and USER.md entries" },
+  // The dream log copies memory, KB and soul text: diffs, memory entries,
+  // KB pages in revert sidecars, reconsider notes. A sidecar that holds the
+  // topic is deleted, so a later revert cannot bring it back.
+  reve: {
+    forget: "scanned",
+    what: "dream log: records, summaries, revert copies, reconsider notes and its audit",
+  },
   kb: { forget: "scanned", what: "knowledge-base pages (wiki/, sources/) and their index" },
   sessions: { forget: "scanned", what: "conversation transcripts" },
   reflections: { forget: "scanned", what: "per-conversation reflection records" },

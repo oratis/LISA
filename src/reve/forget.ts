@@ -24,11 +24,16 @@
  *  - the audit log (`reve/audit.jsonl`): matching string values are replaced
  *    (a line that is not JSON is replaced whole).
  *
- * A dry run (`apply: false`) writes nothing and lists the same items. Every
- * item carries a stable id — its location plus the content it was planned
- * on — so a caller can preview, confirm, then apply exactly the confirmed
- * set (`only`): items outside it are left alone. Apply runs under the reve
- * lock (every reve writer takes it) and appends a counts-only audit line.
+ * A dry run (`apply: false`) writes nothing and lists the same items, each
+ * with a `sample` of the matching text for the preview. Every item carries a
+ * stable id — its location plus the content it was planned on — so a caller
+ * can preview, confirm, then apply exactly the confirmed set (`only`): items
+ * outside it are left alone. Apply runs under the reve lock (every reve
+ * writer takes it) and appends a counts-only audit line.
+ *
+ * The match is always decided on text (parsed JSON string values, Markdown
+ * and diff lines), never on serialized JSON, where an escape such as `\n`
+ * would hide a word boundary from forget's whole-word matcher.
  */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
@@ -79,6 +84,8 @@ export interface ReveForgetItem {
   /** Fields / lines replaced; 1 for a deletion. */
   matches: number;
   action: "redact" | "delete";
+  /** Dry run only: the first matching text, for the preview's snippet. */
+  sample?: string;
 }
 
 export interface ReveForgetResult {
@@ -157,41 +164,47 @@ function redactLines(text: string, match: ReveForgetMatch): { text: string; n: n
   return { text: out.join("\n"), n };
 }
 
-/** Redact a parsed record in place; returns the number of fields / lines replaced. */
-function redactRecord(rec: Obj, match: ReveForgetMatch): number {
+/** The first matching line of a text, or undefined. */
+function firstHitLine(text: string, match: ReveForgetMatch): string | undefined {
+  return text.split("\n").find((line) => lineHit(line, match));
+}
+
+/**
+ * Redact a parsed record in place; returns the number of fields / lines
+ * replaced and the first text replaced.
+ */
+function redactRecord(rec: Obj, match: ReveForgetMatch): { n: number; sample?: string } {
   let n = 0;
+  let sample: string | undefined;
   const lines = (o: Obj, key: string) => {
     if (typeof o[key] !== "string") return;
+    sample ??= firstHitLine(o[key], match);
     const r = redactLines(o[key], match);
     if (r.n) {
       o[key] = r.text;
       n += r.n;
     }
   };
+  const value = (v: unknown): boolean => {
+    if (!valueHit(v, match)) return false;
+    sample ??= v;
+    n++;
+    return true;
+  };
   for (const c of arr(rec.changes)) {
     lines(c, "diff");
     for (const key of ["entriesAdded", "entriesRemoved"]) {
       const list = c[key];
       if (!Array.isArray(list)) continue;
-      c[key] = list.map((e: unknown) => {
-        if (!valueHit(e, match)) return e;
-        n++;
-        return REVE_FORGOTTEN;
-      });
+      c[key] = list.map((e: unknown) => (value(e) ? REVE_FORGOTTEN : e));
     }
   }
   for (const c of arr(rec.soulCommits)) {
     lines(c, "diff");
-    if (valueHit(c.subject, match)) {
-      c.subject = REVE_FORGOTTEN;
-      n++;
-    }
+    if (value(c.subject)) c.subject = REVE_FORGOTTEN;
   }
-  if (valueHit(rec.summary, match)) {
-    rec.summary = REVE_FORGOTTEN;
-    n++;
-  }
-  return n;
+  if (value(rec.summary)) rec.summary = REVE_FORGOTTEN;
+  return { n, sample };
 }
 
 /** Paths and names in a record that match: structure, never rewritten. */
@@ -219,13 +232,21 @@ function strings(v: unknown, out: string[] = []): string[] {
 /** Audit keys that are structure (when, what, which dream / request). */
 const AUDIT_STRUCTURAL = new Set(["at", "action", "dreamId", "requestId"]);
 
-function redactAuditValue(v: unknown, match: ReveForgetMatch, key?: string): [unknown, number] {
+function redactAuditValue(
+  v: unknown,
+  match: ReveForgetMatch,
+  hits: string[],
+  key?: string,
+): [unknown, number] {
   if (key && AUDIT_STRUCTURAL.has(key)) return [v, 0];
-  if (valueHit(v, match)) return [REVE_FORGOTTEN, 1];
+  if (valueHit(v, match)) {
+    hits.push(v);
+    return [REVE_FORGOTTEN, 1];
+  }
   if (Array.isArray(v)) {
     let n = 0;
     const out = v.map((x) => {
-      const [y, k] = redactAuditValue(x, match);
+      const [y, k] = redactAuditValue(x, match, hits);
       n += k;
       return y;
     });
@@ -235,7 +256,7 @@ function redactAuditValue(v: unknown, match: ReveForgetMatch, key?: string): [un
     let n = 0;
     const out: Obj = {};
     for (const [k, x] of Object.entries(v)) {
-      const [y, c] = redactAuditValue(x, match, k);
+      const [y, c] = redactAuditValue(x, match, hits, k);
       out[k] = y;
       n += c;
     }
@@ -274,10 +295,18 @@ async function forgetPass(
     kind: keyof ReveForgetCounts,
     matches: number,
     action: ReveForgetItem["action"],
+    sample?: string,
   ): boolean => {
     const id = itemId(location, content);
     if (opts.apply && opts.only && !opts.only.has(id)) return false;
-    result.items.push({ id, location, kind, matches, action });
+    result.items.push({
+      id,
+      location,
+      kind,
+      matches,
+      action,
+      ...(!opts.apply && sample !== undefined ? { sample } : {}),
+    });
     result.counts[kind]++;
     return opts.apply;
   };
@@ -288,13 +317,13 @@ async function forgetPass(
     const sidePath = dreamSnapshotFile(id);
     const sideText = await readOrNull(sidePath);
     if (sideText !== null) {
-      let hit: boolean;
+      let hit: string | undefined;
       try {
-        hit = strings(JSON.parse(sideText)).some((s) => valueHit(s, match));
+        hit = strings(JSON.parse(sideText)).find((s) => valueHit(s, match));
       } catch {
-        hit = match(sideText);
+        hit = match(sideText) ? sideText : undefined;
       }
-      if (hit && take(toRel(sidePath), sideText, "sidecars", 1, "delete")) {
+      if (hit !== undefined && take(toRel(sidePath), sideText, "sidecars", 1, "delete", hit)) {
         await fs.rm(sidePath, { force: true });
         sidecarGone = true;
       }
@@ -306,14 +335,14 @@ async function forgetPass(
       const parsed = parseObj(recText);
       if (!parsed) {
         // Unreadable as a record: it cannot be redacted field by field.
-        if (match(recText) && take(toRel(recPath), recText, "records", 1, "delete")) {
+        if (match(recText) && take(toRel(recPath), recText, "records", 1, "delete", recText)) {
           await fs.rm(recPath, { force: true });
         }
       } else {
         const redacted = structuredClone(parsed);
-        const n = redactRecord(redacted, match);
+        const { n, sample } = redactRecord(redacted, match);
         if (structuralHit(parsed, match)) result.untouched.push(toRel(recPath));
-        const taken = n > 0 && take(toRel(recPath), recText, "records", n, "redact");
+        const taken = n > 0 && take(toRel(recPath), recText, "records", n, "redact", sample);
         const rec = taken ? redacted : parsed;
         let write = taken;
         if (sidecarGone) {
@@ -333,7 +362,8 @@ async function forgetPass(
     const mdText = await readOrNull(mdPath);
     if (mdText !== null) {
       const r = redactLines(mdText, match);
-      if (r.n && take(toRel(mdPath), mdText, "summaries", r.n, "redact")) {
+      const sample = firstHitLine(mdText, match);
+      if (r.n && take(toRel(mdPath), mdText, "summaries", r.n, "redact", sample)) {
         await atomicWrite(mdPath, r.text);
       }
     }
@@ -346,7 +376,7 @@ async function forgetPass(
     const parsed = parseObj(rcText);
     const queue = parsed && Array.isArray(parsed.requests) ? parsed : null;
     if (!queue) {
-      if (match(rcText) && take(toRel(rcPath), rcText, "reconsider", 1, "delete")) {
+      if (match(rcText) && take(toRel(rcPath), rcText, "reconsider", 1, "delete", rcText)) {
         await fs.rm(rcPath, { force: true });
       }
     } else {
@@ -354,7 +384,7 @@ async function forgetPass(
       for (const r of arr(queue.requests)) {
         if (!valueHit(r.note, match)) continue;
         const where = `${toRel(rcPath)}#${typeof r.id === "string" ? r.id : "?"}`;
-        if (take(where, r.note, "reconsider", 1, "redact")) {
+        if (take(where, r.note, "reconsider", 1, "redact", r.note)) {
           r.note = REVE_FORGOTTEN;
           changed = true;
         }
@@ -369,19 +399,30 @@ async function forgetPass(
   if (auditText !== null) {
     let changed = false;
     const lines = auditText.split("\n").map((line, i) => {
-      if (!line.trim() || !match(line)) return line;
+      if (!line.trim()) return line;
       let next: string;
       let n: number;
+      const hits: string[] = [];
+      let parsed: unknown;
+      let json = true;
       try {
-        const [v, k] = redactAuditValue(JSON.parse(line), match);
+        parsed = JSON.parse(line);
+      } catch {
+        json = false;
+      }
+      if (json) {
+        // Decided on the parsed values, never on the serialized line.
+        const [v, k] = redactAuditValue(parsed, match, hits);
         next = JSON.stringify(v);
         n = k;
-      } catch {
+      } else {
+        if (!match(line)) return line;
+        hits.push(line);
         next = JSON.stringify({ action: "forgotten" });
         n = 1;
       }
-      if (n === 0) return line; // only structure matched
-      if (!take(`${toRel(auditPath)}:${i + 1}`, line, "audit", n, "redact")) return line;
+      if (n === 0) return line; // nothing, or only structure, matched
+      if (!take(`${toRel(auditPath)}:${i + 1}`, line, "audit", n, "redact", hits[0])) return line;
       changed = true;
       return next;
     });

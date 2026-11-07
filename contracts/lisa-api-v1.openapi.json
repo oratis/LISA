@@ -5405,7 +5405,7 @@
           },
           "counts": {
             "type": "object",
-            "description": "Matches per layer: memory, user, kb, memory_kb_links, sessions, reflections, tasks, connectors, search_index, relationships, journal. search_index is non-zero only when another layer is.",
+            "description": "Matches per layer: memory, user, kb, memory_kb_links, sessions, reflections, tasks, connectors, reve, search_index, relationships, journal. search_index is non-zero only when another layer is.",
             "additionalProperties": {
               "type": "integer",
               "minimum": 0
