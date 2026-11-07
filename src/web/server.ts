@@ -36,7 +36,14 @@ import { logInfo, logWarn, logError, redactId, redactEmail } from "../log.js";
 import { fireHooks } from "../hooks/runner.js";
 import type { HookSpec } from "../plugins/types.js";
 import { saveConfigEnv } from "../env.js";
-import { detectPlans, selectedPlan, parsePlanRef, planMark, PLAN_IDS } from "../model/plans.js";
+import {
+  detectPlans,
+  verifyPlanLogin,
+  selectedPlan,
+  parsePlanRef,
+  planMark,
+  PLAN_IDS,
+} from "../model/plans.js";
 import { planUsage, formatUsage } from "../model/plan-usage.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
@@ -128,7 +135,7 @@ import {
 } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
-import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
+import { ptyRegistry, ptyEnabled, ptyAvailability, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { sweepAll, pollNewMail, probeAccount } from "../mail/service.js";
 import { friendlyMailError } from "../mail/connect-error.js";
@@ -3727,6 +3734,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Real `claude`/`codex` CLIs LISA spawns under a pseudo-terminal: it types
     // your task + follow-ups and can read the terminal tail. Behind the same
     // auth gate; 503 when the spike flag is off / node-pty is absent.
+    if (req.method === "GET" && url === "/api/agents/pty/status") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(await ptyAvailability()));
+      return;
+    }
+
     if (req.method === "POST" && url === "/api/agents/pty/start") {
       const pBody = await readRequestText(req, res);
       if (pBody === null) return;
@@ -4221,6 +4234,49 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
+    if (["/api/session-names", "/api/skills", "/api/skills/import"].includes(url)) {
+      const problem = crossSiteProblem(req, !cloud && isLoopbackAddress(remoteAddr));
+      if (problem) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: problem }));
+        return;
+      }
+    }
+
+    if (url === "/api/session-names" && req.method === "GET") {
+      const { listSessionNames } = await import("../sessions/names.js");
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ names: await listSessionNames() }));
+      return;
+    }
+
+    if (url === "/api/session-names" && req.method === "POST") {
+      const body = await readJsonBody(req, res, 4096);
+      if (!body) return;
+      const { saveSessionName, InvalidSessionNameError } = await import("../sessions/names.js");
+      try {
+        const entry = await saveSessionName(body);
+        broadcast({ type: "session_renamed", ...entry });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ...entry }));
+      } catch (error) {
+        const invalid = error instanceof InvalidSessionNameError;
+        const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
+        res.writeHead(invalid ? 400 : missing ? 404 : 500, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: invalid
+              ? "invalid_session_name"
+              : missing
+                ? "session_not_found"
+                : "rename_failed",
+          }),
+        );
+      }
+      return;
+    }
+
     if (req.method === "GET" && url === "/api/sessions") {
       // Lisa's own chat sessions on disk — the session tree/tabs + the iOS
       // roster's LISA group. Contract: LisaSessionsResponse (the on-disk
@@ -4331,18 +4387,71 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
-    if (req.method === "GET" && url === "/api/skills") {
-      const { listSkills } = await import("../skills/manager.js");
-      const skills = await listSkills();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          skills: skills.map((s) => ({
-            name: s.frontmatter.name,
-            description: s.frontmatter.description,
-          })),
-        }),
-      );
+    if (url === "/api/skills" && req.method === "GET") {
+      const { discoverSkills } = await import("../skills/discovery.js");
+      const { findProjectRoot } = await import("../instructions/chain.js");
+      const { skillImportCatalog } = await import("../skills/catalog.js");
+      const canManage = !cloud && isLoopbackAddress(remoteAddr);
+      const runtime = await ctxForRequest();
+      try {
+        const project = cloud ? null : await findProjectRoot(runtime.value.session.header.cwd);
+        const { skills } = await discoverSkills(project);
+        const imports = canManage ? await skillImportCatalog() : [];
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(
+          JSON.stringify({
+            skills: skills.map((s) => ({
+              name: s.frontmatter.name,
+              description: s.frontmatter.description,
+              scope: s.scope,
+            })),
+            imports,
+            canManage,
+          }),
+        );
+      } finally {
+        runtime.release();
+      }
+      return;
+    }
+
+    if (req.method === "POST" && (url === "/api/skills" || url === "/api/skills/import")) {
+      if (cloud || !isLoopbackAddress(remoteAddr)) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Skill management is only available on this Mac" }));
+        return;
+      }
+      const input = await readJsonBody(req, res);
+      if (input === null) return;
+      try {
+        if (typeof input.name !== "string") throw new Error("A skill name is required");
+        if (url === "/api/skills/import") {
+          const { importSkill } = await import("../skills/catalog.js");
+          if (input.source !== "codex" && input.source !== "claude")
+            throw new Error("Unknown skill source");
+          await importSkill(input.source, input.name);
+        } else {
+          const { createSkill } = await import("../skills/manager.js");
+          if (
+            typeof input.description !== "string" ||
+            !input.description.trim() ||
+            typeof input.body !== "string" ||
+            !input.body.trim() ||
+            input.body.length > 100_000
+          ) {
+            throw new Error("Enter a description and instructions (up to 100,000 characters)");
+          }
+          await createSkill(
+            { name: input.name, description: input.description.trim() },
+            input.body,
+          );
+        }
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (error) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: (error as Error).message }));
+      }
       return;
     }
 
@@ -4536,11 +4645,13 @@ self.addEventListener('fetch', (event) => {
     if (req.method === "GET" && url === "/api/plans") {
       const nowMs = Date.now();
       const sel = selectedPlan();
-      const plans = detectPlans().map((p) => {
+      const statuses = await Promise.all(detectPlans().map(verifyPlanLogin));
+      const plans = statuses.map((p) => {
         const row: Record<string, unknown> = {
           id: p.id,
           label: p.label,
           cli: p.cli,
+          binary: p.binary,
           detail: p.detail,
           available: p.available,
           loggedIn: p.loggedIn,

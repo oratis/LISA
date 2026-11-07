@@ -324,6 +324,41 @@ describe("T-4 /api/sessions ETag revalidation", () => {
   });
 });
 
+test("session names validate input and survive a server restart", async () => {
+  let srv = await boot();
+  let closed = false;
+  try {
+    const sessions = JSON.parse((await request(srv.port, "GET", "/api/sessions")).text).sessions;
+    const entry = { kind: "lisa", id: sessions[0].id, name: "Renamed session" };
+    const post = (body: unknown) =>
+      request(srv.port, "POST", "/api/session-names", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    assert.equal((await post({ ...entry, name: " " })).status, 400);
+    assert.equal((await post({ ...entry, id: "../outside" })).status, 400);
+    assert.equal((await post({ ...entry, id: "missing" })).status, 404);
+    assert.equal(
+      (await request(srv.port, "POST", "/api/session-names", { body: JSON.stringify(entry) }))
+        .status,
+      415,
+    );
+    assert.equal((await post(entry)).status, 200);
+    await srv.close();
+    closed = true;
+    srv = await boot();
+    closed = false;
+    const result = await request(srv.port, "GET", "/api/session-names");
+    assert.equal(result.status, 200);
+    assert.deepEqual(
+      JSON.parse(result.text).names.find((n: { id: string }) => n.id === entry.id),
+      entry,
+    );
+  } finally {
+    if (!closed) await srv.close();
+  }
+});
+
 describe("T-9 /api/config over the real server", () => {
   const KEY = "sk-test-0123456789abcdefghij";
   const cleanup: string[] = [];

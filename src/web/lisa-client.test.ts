@@ -103,7 +103,10 @@ function extractFunction(src: string, name: string): string {
 
 describe("sessionLabel names an empty session instead of showing its raw id (UX-4)", () => {
   const src = extractFunction(MAIN_CLIENT_JS, "sessionLabel");
-  const ctx = i18nContext({ relativeTime: (iso: string) => (iso ? "2m" : "") });
+  const ctx = i18nContext({
+    sessionNames: new Map(),
+    relativeTime: (iso: string) => (iso ? "2m" : ""),
+  });
   runInContext(`${I18N_SRC}\n${src}; globalThis.__label = sessionLabel;`, ctx);
   const label = (ctx as { __label: (s: unknown) => string }).__label;
   const ID = "20260905-220846-9f7d58";

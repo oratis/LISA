@@ -858,8 +858,8 @@
   }
   /* Mini source glyph (project-view leaves, the context chip). */
   .agent-glyph.mini {
-    width: 14px; height: 14px;
-    border-radius: 4px;
+    width: 18px; height: 18px;
+    border-radius: 5px;
     font-size: 8px;
   }
   .agent-glyph.mini:empty { display: none; }
@@ -898,8 +898,10 @@
   .tsub.closed > .tchildren { display: none; }
   .tsub.closed > .tnode .twist { transform: rotate(-90deg); }
   .agent-glyph {
-    width: 19px; height: 19px; flex: none;
-    border-radius: 5px;
+    width: 24px; height: 24px; flex: none;
+    border-radius: 7px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 0 0 1px var(--border-new);
     font-size: 11.5px; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
     color: #fff;
@@ -908,6 +910,47 @@
   .agent-glyph.cc { background: var(--claude); }
   .agent-glyph.codex { background: var(--codex); }
   .agent-glyph.other { background: var(--fg-3); }
+  .agent-glyph img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+  .session-context-menu {
+    position: fixed; z-index: 110; min-width: 205px; padding: 5px;
+    background: var(--bg-card-strong); color: var(--fg);
+    border: 1px solid var(--border-strong); border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.3);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  }
+  .session-context-menu button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    border: 0; border-radius: 7px; padding: 9px 10px; background: transparent;
+    color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+  }
+  .session-context-menu button:hover, .session-context-menu button:focus-visible { background: var(--accent-soft); outline: none; }
+  .session-context-menu kbd { margin-left: auto; color: var(--fg-3); font: inherit; font-size: 11.5px; }
+  .session-rename-dialog {
+    width: min(400px, calc(100vw - 32px)); padding: 24px;
+    color: var(--fg); background: var(--bg-card-strong);
+    border: 1px solid var(--border-strong); border-radius: 18px;
+    box-shadow: 0 24px 80px rgba(0,0,0,.4);
+  }
+  .session-rename-dialog::backdrop, .attachment-viewer::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(6px); }
+  .session-rename-form { display: flex; flex-direction: column; gap: 12px; }
+  .session-rename-form h2 { margin: 0 0 6px; font-size: 18px; }
+  .session-rename-form label { font-size: 12px; color: var(--fg-2); }
+  .session-rename-form input {
+    width: 100%; min-width: 0; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid var(--border-strong); background: var(--bg-inset); color: var(--fg); font: inherit;
+  }
+  .session-rename-form input:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .session-rename-form p { margin: 0; color: var(--err-color); font-size: 12px; }
+  .session-rename-form p:empty { display: none; }
+  .session-rename-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+  .session-rename-actions button {
+    border: 1px solid var(--border-strong); border-radius: 9px; padding: 8px 16px;
+    background: transparent; color: var(--fg-2); font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .session-rename-actions .rename-save { background: var(--accent); color: #06202e; border-color: transparent; font-weight: 600; }
+  body[data-theme="calm"] .session-rename-actions .rename-save { color: #fff; }
+  .session-rename-actions button:disabled { opacity: .5; cursor: wait; }
   .tcount {
     margin-left: auto;
     font-size: 11.5px;
@@ -1604,17 +1647,18 @@
   }
   .pp-tag.warn { color: var(--warm); }
 
-  /* "Focus" big card (current desire / objective analog) */
+  /* Focus uses the same body and metadata scale as the adjacent cards. */
   .focus-card {
     background: var(--bg-card);
     border: 1px solid var(--border-new);
     border-radius: 14px;
-    padding: 15px;
+    padding: 13px 15px;
     margin-bottom: 18px;
   }
-  .focus-card .fc-top { display: flex; align-items: flex-start; gap: 10px; }
-  .focus-card .fc-title { font-size: 14.5px; font-weight: 700; color: var(--fg); }
-  .focus-card .fc-desc { margin: 4px 0 0; font-size: 12px; color: var(--fg-2); line-height: 1.5; }
+  .focus-card .fc-top { display: flex; align-items: center; gap: 10px; }
+  .focus-card .fc-label { font-size: 11.5px; color: var(--fg-3); }
+  .focus-card .fc-title { margin: 10px 0 0; font-size: 13px; font-weight: 400; line-height: 1.6; color: var(--fg); overflow-wrap: anywhere; }
+  .focus-card .fc-desc { margin: 0; font-size: 11.5px; color: var(--fg-2); line-height: 1.5; }
   .focus-card .fc-pill {
     margin-left: auto;
     flex-shrink: 0;
@@ -1624,7 +1668,6 @@
     border-radius: 999px;
     padding: 2px 10px;
   }
-  .focus-card .fc-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 11px; font-size: 11.5px; color: var(--fg-3); }
 
   /* Horizontally-scrolling agent / task cards */
   .card-scroll {
@@ -2384,14 +2427,19 @@
 
   /* Composer */
   #attachPreview {
-    padding: 4px 22px 0;
+    padding: 12px 22px 0;
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    overflow-x: auto;
+    gap: 10px;
     min-height: 0;
   }
   #attachPreview:empty { padding: 0; }
   .attach-chip {
+    position: relative;
+    flex: none;
+    max-width: 240px;
     background: var(--bg-card-strong);
     border: 1px solid var(--border-strong);
     color: var(--fg-2);
@@ -2402,6 +2450,29 @@
     align-items: center;
     gap: 6px;
   }
+  .attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach-chip.attach-image { width: 112px; padding: 0; display: block; overflow: hidden; border-radius: 13px; }
+  .attach-open { display: block; width: 100%; height: 104px; border: 0; padding: 0; background: var(--bg-card); cursor: zoom-in; }
+  .attach-open img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .attach-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 12px 12px 0 0; }
+  .attach-image .attach-name { display: block; padding: 6px 8px; font-size: 11.5px; border-top: 1px solid var(--border-new); }
+  .attach-image .attach-rm {
+    position: absolute; top: 5px; right: 5px; margin: 0; width: 24px; height: 24px;
+    border: 1px solid rgba(255,255,255,.22); border-radius: 50%;
+    color: #fff; background: rgba(10,15,25,.78); box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  }
+  .attach-image .attach-rm:hover { background: #ad304c; color: #fff; }
+  .image-unavailable .attach-open { height: 52px; }
+  .image-unavailable .attach-open img { font-size: 11.5px; color: var(--fg-2); }
+  .attachment-viewer {
+    padding: 0; width: fit-content; max-width: min(1000px, 92vw); max-height: 90vh;
+    background: var(--bg-card-strong); color: var(--fg); border: 1px solid var(--border-strong);
+    border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,.5); overflow: hidden;
+  }
+  .attachment-viewer-head { display: flex; align-items: center; gap: 20px; padding: 10px 14px; font-size: 12px; }
+  .attachment-viewer-head span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attachment-viewer-head button { margin-left: auto; flex: none; width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--bg-card); color: var(--fg); font-size: 20px; cursor: pointer; }
+  .attachment-viewer > img { display: block; max-width: 100%; max-height: calc(90vh - 52px); margin: auto; object-fit: contain; }
   .attach-rm {
     background: transparent;
     border: 0;
@@ -3440,3 +3511,15 @@
 .warden-pending-row .warden-actions { margin-top: 6px; }
 
   .ce-art { display: block; width: 112px; height: 112px; object-fit: contain; margin: 0 0 16px; }
+
+/* Skill management shares the existing modal typography and controls. */
+.skills-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.skill-scope { font-size: 11.5px; font-weight: 400; color: var(--dim); margin-left: 8px; }
+.skill-form { display: grid; gap: 14px; }
+.skill-form label { display: grid; gap: 6px; }
+.skill-form input, .skill-form textarea { width: 100%; box-sizing: border-box; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+#skillError { color: var(--err-color); }
+
+/* Keep the shell's status decoration on the same lifecycle as Lisa's portrait. */
+html[data-motion="paused"] *, html[data-motion="paused"] *::before, html[data-motion="paused"] *::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

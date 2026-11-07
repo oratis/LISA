@@ -109,6 +109,21 @@ cp "$REPO_ROOT/package.json" "$RES/backend/package.json"
 cp -RL "$REPO_ROOT/dist" "$RES/backend/dist"
 cp -R "$STAGE/node_modules" "$RES/backend/node_modules"
 
+# Optional, explicitly prepared native PTY module. Never bundle a library for
+# the wrong architecture or silently ship an incomplete install.
+if [ -n "${LISA_EMBED_PTY_DIR:-}" ]; then
+    PTY="$LISA_EMBED_PTY_DIR"
+    for binary in pty.node spawn-helper; do
+        test -f "$PTY/build/Release/$binary" || { echo "missing PTY $binary" >&2; exit 1; }
+        for arch in $ARCHS; do
+            macho_arch="$arch"
+            if [ "$arch" = "x64" ]; then macho_arch="x86_64"; fi
+            lipo -verify_arch "$macho_arch" "$PTY/build/Release/$binary"
+        done
+    done
+    cp -R "$PTY" "$RES/backend/node_modules/node-pty"
+fi
+
 # ── 2. Node runtime ─────────────────────────────────────────────────
 mkdir -p "$CACHE/node"
 SUMS="$CACHE/node/SHASUMS256-$NODE_VERSION.txt"

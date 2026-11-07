@@ -59,10 +59,18 @@ export interface SkillDiscovery {
 }
 
 /** The directories scanned for a given working directory, in rank order. */
-export function skillSources(projectRoot: string): SkillSource[] {
+export function skillSources(projectRoot: string | null): SkillSource[] {
   return [
-    { dir: path.join(projectRoot, ".lisa", "skills"), rank: 100, scope: "project" },
-    { dir: path.join(projectRoot, ".agents", "skills"), rank: 200, scope: "project" },
+    ...(projectRoot
+      ? [
+          { dir: path.join(projectRoot, ".lisa", "skills"), rank: 100, scope: "project" as const },
+          {
+            dir: path.join(projectRoot, ".agents", "skills"),
+            rank: 200,
+            scope: "project" as const,
+          },
+        ]
+      : []),
     { dir: skillsDir(), rank: 400, scope: "home" },
   ];
 }
@@ -110,7 +118,7 @@ async function readSkillsIn(source: SkillSource): Promise<DiscoveredSkill[]> {
  * Discover skills for a working directory. Home skills are resolved first so
  * they own their names; project skills fill in the rest.
  */
-export async function discoverSkills(projectRoot: string): Promise<SkillDiscovery> {
+export async function discoverSkills(projectRoot: string | null): Promise<SkillDiscovery> {
   const sources = skillSources(projectRoot);
   const home = sources.filter((s) => s.scope === "home");
   const project = sources.filter((s) => s.scope === "project");

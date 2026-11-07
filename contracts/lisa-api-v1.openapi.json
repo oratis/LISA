@@ -2005,6 +2005,387 @@
           }
         }
       }
+    },
+    "/api/skills": {
+      "get": {
+        "operationId": "listSkillsCatalog",
+        "responses": {
+          "200": {
+            "description": "Active personal/project skills; local owner also sees explicit import candidates.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "skills",
+                    "imports",
+                    "canManage"
+                  ],
+                  "properties": {
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "description",
+                          "scope"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "enum": [
+                              "home",
+                              "project"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "imports": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "description",
+                          "source"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "enum": [
+                              "codex",
+                              "claude"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "canManage": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPersonalSkill",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "description",
+                  "body"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Personal skill saved; local owner only.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or operation unavailable"
+          },
+          "403": {
+            "description": "Local owner required"
+          }
+        }
+      }
+    },
+    "/api/skills/import": {
+      "post": {
+        "operationId": "importPersonalSkill",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source",
+                  "name"
+                ],
+                "properties": {
+                  "source": {
+                    "enum": [
+                      "codex",
+                      "claude"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Copied a chosen compatible skill with supporting files.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or operation unavailable"
+          },
+          "403": {
+            "description": "Local owner required"
+          }
+        }
+      }
+    },
+    "/api/agents/pty/status": {
+      "get": {
+        "operationId": "getPtyAvailability",
+        "responses": {
+          "200": {
+            "description": "Interactive CLI capability without starting an agent.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "installed",
+                    "available",
+                    "agents"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "installed": {
+                      "type": "boolean"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "available"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "available": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/session-names": {
+      "get": {
+        "operationId": "listSessionNames",
+        "summary": "List custom names in the current Lisa home",
+        "responses": {
+          "200": {
+            "description": "Saved custom names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "names"
+                  ],
+                  "properties": {
+                    "names": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "id",
+                          "name"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "description": "lisa or agent/<integration>"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveSessionName",
+        "summary": "Save a custom display name without changing the session transcript",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "description": "lisa or agent/<integration>"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "id",
+                    "name"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "description": "lisa or agent/<integration>"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session name"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "415": {
+            "description": "JSON content type required"
+          }
+        }
+      }
     }
   },
   "components": {
