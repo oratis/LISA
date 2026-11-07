@@ -117,6 +117,23 @@ describe("theme tokens meet WCAG AA contrast on the surfaces they are used on", 
     ["Nebula", nebula, nebSurfaces],
     ["Calm", calm, calmSurfaces],
   ] as const) {
+    test(`${themeName} primary actions and code remain readable`, () => {
+      for (const [foreground, background] of [
+        ["--on-accent", "--accent"],
+        ["--code-text", "--code-bg"],
+        ["--code-inline", "--bg-card"],
+        ["--proactive", "--bg-3"],
+        ["--warm", "--bg-3"],
+        ["--dream", "--bg-3"],
+        ["--claude", "--bg-3"],
+        ["--codex", "--bg-3"],
+        ["--err-color", "--bg-3"],
+      ]) {
+        const base = text(theme, "--bg-1");
+        const ratio = contrast(text(theme, foreground!), surface(theme, background!, base));
+        assert.ok(ratio >= 4.5, `${foreground} on ${background}: ${ratio.toFixed(2)}:1`);
+      }
+    });
     for (const [token, floor] of [
       ["--fg", 7],
       ["--fg-2", 4.5],

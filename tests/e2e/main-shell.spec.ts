@@ -56,6 +56,7 @@ test.describe("main shell", () => {
   });
 
   test("theme toggle flips the body class and persists lisa-theme", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
     const initial = await page.evaluate(() => localStorage.getItem("lisa-theme"));
     expect(initial === null || initial === "nebula").toBeTruthy();
 
@@ -75,6 +76,38 @@ test.describe("main shell", () => {
     await expect
       .poll(async () => await page.evaluate(() => localStorage.getItem("lisa-theme")))
       .toBe("nebula");
+  });
+
+  test("new profiles follow the system; explicit appearance survives system changes", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(page.locator("body")).toHaveAttribute("data-theme", "calm");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f5f6fa");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("body")).not.toHaveAttribute("data-theme", "calm");
+    await page.locator("#fnTheme").click();
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("body")).toHaveAttribute("data-theme", "calm");
+
+    await page.locator('#navList [data-view="settings"]').click();
+    await expect(page.getByLabel("Appearance", { exact: true })).toHaveValue("calm");
+    await expect(page.getByLabel("Appearance", { exact: true })).toBeInViewport();
+    await page.getByLabel("Appearance", { exact: true }).selectOption("system");
+    await expect(page.locator("body")).not.toHaveAttribute("data-theme", "calm");
+    await page.reload();
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(page.locator("body")).toHaveAttribute("data-theme", "calm");
+  });
+
+  test("appearance preference synchronizes between open windows", async ({ page, context }) => {
+    const other = await context.newPage();
+    await other.goto(lisa.baseURL);
+    await page.locator('#navList [data-view="settings"]').click();
+    await page.getByLabel("Appearance", { exact: true }).selectOption("nebula");
+    await expect(other.locator("body")).not.toHaveAttribute("data-theme", "calm");
+    await page.getByLabel("Appearance", { exact: true }).selectOption("calm");
+    await expect(other.locator("body")).toHaveAttribute("data-theme", "calm");
+    await other.close();
   });
 
   test("＋ New adds a leaf to the session tree", async ({ page }) => {

@@ -148,7 +148,7 @@ final class AppState: ObservableObject {
         self.config = cfg
         self.client = LisaClient(config: cfg)
         self.connectionMode = mode
-        self.appearance = d.string(forKey: "lisa.appearance") ?? "nebula"
+        self.appearance = d.string(forKey: "lisa.appearance") ?? "auto"
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
         self.locked = lockOn && cfg.isConfigured  // require unlock at launch when armed

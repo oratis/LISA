@@ -2602,25 +2602,43 @@ document.addEventListener('keydown', function (e) {
   };
 }
 
-// Theme — Nebula (dark, default) vs Calm (light), persisted. The CSS keys off
-// <body data-theme="calm">; the fnbar #fnTheme button toggles, and the
-// moon/sun glyph swap is pure CSS (body[data-theme] show/hide rules).
+// Existing choices survive; new profiles follow the OS, including live changes.
+// The tiny body-start script applies the same preference before the first paint.
 {
-  let theme = 'nebula';
-  try { theme = localStorage.getItem('lisa-theme') === 'calm' ? 'calm' : 'nebula'; } catch (e) {}
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+  const normalize = (t) => t === 'calm' || t === 'nebula' ? t : 'system';
+  let preference = 'system';
+  try { preference = normalize(localStorage.getItem('lisa-theme')); } catch (e) {}
+  let theme;
   const applyTheme = () => {
+    theme = preference === 'system' ? (systemTheme.matches ? 'nebula' : 'calm') : preference;
+    document.documentElement.style.colorScheme = theme === 'calm' ? 'light' : 'dark';
     if (theme === 'calm') document.body.setAttribute('data-theme', 'calm');
     else document.body.removeAttribute('data-theme');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'calm' ? '#f5f6fa' : '#07091a');
+    const picker = document.getElementById('setTheme');
+    if (picker) picker.value = preference;
+    const button = document.getElementById('fnTheme');
+    const label = theme === 'calm' ? 'Switch to dark mode' : 'Switch to light mode';
+    if (button) { button.title = label; button.setAttribute('aria-label', label); }
+    // Keep native window chrome and the offline screen in the same appearance.
+    try { window.webkit?.messageHandlers?.lisa?.postMessage({ type: 'appearance', preference }); } catch (_) {}
   };
   applyTheme();
   window.lisaGetTheme = () => theme;
+  window.lisaGetThemePreference = () => preference;
   window.lisaSetTheme = (t) => {
-    const next = t === 'calm' ? 'calm' : 'nebula';
-    if (next === theme) return;
-    theme = next;
-    try { localStorage.setItem('lisa-theme', theme); } catch (e) {}
+    preference = normalize(t);
+    try { localStorage.setItem('lisa-theme', preference); } catch (e) {}
     applyTheme();
   };
+  systemTheme.addEventListener('change', () => { if (preference === 'system') applyTheme(); });
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'lisa-theme' || event.key === null) {
+      preference = normalize(event.newValue);
+      applyTheme();
+    }
+  });
   const themeBtn = document.getElementById('fnTheme');
   if (themeBtn) themeBtn.addEventListener('click', () => {
     window.lisaSetTheme(theme === 'calm' ? 'nebula' : 'calm');
@@ -5783,10 +5801,14 @@ if ('serviceWorker' in navigator) {
     var chip = function (ok) { return '<span class="set-chip' + (ok ? ' ok' : '') + '">' + (ok ? 'configured' : 'not set') + '</span>'; };
     var compactOn = (typeof window.lisaGetCompact === 'function') ? window.lisaGetCompact() : false;
     var edName = (edition && edition.edition) ? edition.edition : '—';
-    var sw = function (id, on) {
-      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    var sw = function (id, on, label) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-label="' + esc(label) + '" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
     };
     var html = '';
+    html += '<div class="view-sec-label">Display</div><div class="set-card">';
+    html += '<div class="set-row"><div class="set-main"><label class="set-name" for="setTheme">Appearance</label><div class="set-sub">Choose a look, or follow your device automatically</div></div><select class="set-input set-theme" id="setTheme"><option value="system">System</option><option value="calm">Light · Calm</option><option value="nebula">Dark · Nebula</option></select></div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn, 'Compact mode') + '</div>';
+    html += '</div>';
     // Provider list + one picker, driven by the same table the key gate uses
     // (UX-1 wave 2). Was an Anthropic-and-OpenAI-only pair of inputs, which
     // made every other provider a config.env edit.
@@ -5795,28 +5817,25 @@ if ('serviceWorker' in navigator) {
       html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
       for (var pi = 0; pi < provs.length; pi++) {
         var pv = provs[pi];
-        if (!pv.configured && pv.custom) continue;
+        if (!pv.configured) continue;
         html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
-          '</div><div class="set-sub">' + esc(pv.envKey) + '</div></div>' + chip(pv.configured) + '</div>';
+          '</div></div>' + chip(pv.configured) + '</div>';
       }
       html += '<div class="set-form">' +
-        '<select class="set-input" id="setProvider"></select>' +
-        '<input class="set-input" id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
-        '<input class="set-input" id="setBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
-        '<input class="set-input" id="setModel" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
+        '<select class="set-input" id="setProvider" aria-label="Model provider"></select>' +
+        '<input class="set-input" id="setKey" aria-label="API key" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
+        '<input class="set-input" id="setBaseUrl" aria-label="Provider URL" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
+        '<input class="set-input" id="setModel" aria-label="Model (optional)" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
         '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
-        '<div class="set-note">Saved to ~/.lisa/config.env (0600), on this machine. Accepted from localhost only.</div></div>';
+        '<div class="set-note">Saved on the machine running Lisa. Leave the key blank to keep your existing connection.</div></div>';
       html += '</div>';
     }
     html += '<div class="view-sec-label">Automation</div><div class="set-card">';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn) + '</div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn, 'Proactive mode') + '</div>';
     html += '</div>';
     // Reach-out charter controls (docs/POLICY_REACH_OUT.md): filled in by
     // loadReachOut() once /api/reachout/settings answers.
     html += '<div class="view-sec-label">Proactivity</div><div class="set-card" id="setReachOut"><div class="set-row"><div class="set-note">loading…</div></div></div>';
-    html += '<div class="view-sec-label">Display</div><div class="set-card">';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn) + '</div>';
-    html += '</div>';
     html += '<div class="view-sec-label">About</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Edition</div><div class="set-sub">Runtime build</div></div><span class="set-chip">' + esc(edName) + '</span></div>';
     // A discoverable entry point for the shortcut list — "press ?" is only
@@ -5827,6 +5846,11 @@ if ('serviceWorker' in navigator) {
     scroll.innerHTML = html;
     void window.LisaExpressions.mountSettings(scroll);
 
+    var themePicker = document.getElementById('setTheme');
+    if (themePicker) {
+      themePicker.value = window.lisaGetThemePreference();
+      themePicker.addEventListener('change', function () { window.lisaSetTheme(themePicker.value); });
+    }
     var pt = document.getElementById('setProactiveToggle');
     if (pt) {
       pt.addEventListener('click', toggleProactive);
@@ -5925,8 +5949,8 @@ if ('serviceWorker' in navigator) {
     if (!box) return;
     if (!view || !view.settings) { box.innerHTML = '<div class="set-row"><div class="set-note">Proactivity settings are unavailable.</div></div>'; return; }
     var s = view.settings, b = view.budget || {}, q = s.quietHours || {}, src = s.sources || {};
-    var sw = function (id, on) {
-      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    var sw = function (id, on, label) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-label="' + esc(label) + '" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
     };
     var row = function (name, sub, control) {
       return '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(name) + '</div><div class="set-sub">' + esc(sub) + '</div></div>' + control + '</div>';
@@ -5941,12 +5965,12 @@ if ('serviceWorker' in navigator) {
     var times = '<span style="display:flex;gap:6px;align-items:center">' +
       '<input class="set-input" id="roQuietStart" type="time" style="width:auto" aria-label="Quiet hours start" value="' + esc(q.start || '22:00') + '">' +
       '<input class="set-input" id="roQuietEnd" type="time" style="width:auto" aria-label="Quiet hours end" value="' + esc(q.end || '08:00') + '">' +
-      sw('roQuietToggle', !!q.enabled) + '</span>';
+      sw('roQuietToggle', !!q.enabled, 'Quiet hours') + '</span>';
     h += row('Quiet hours', (view.quietNow ? 'Quiet now. ' : '') + 'Pushes wait until the window ends' + (q.tz ? ' (' + q.tz + ')' : '') + '.', times);
     for (var j = 0; j < RO_SOURCES.length; j++) {
-      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false));
+      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false, RO_SOURCES[j][1]));
     }
-    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush));
+    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush, 'Push her own notes'));
     var note = function (text) { return '<div class="set-row"><div class="set-note">' + esc(text) + '</div></div>'; };
     if (view.channelsAvailable && view.channelsAvailable.push === false) {
       h += note('Push is not available here, so everything stays in the app.');
