@@ -13,3 +13,14 @@ The item author works from the task description without inspecting the implement
 - Report correction passes, grounding passes, trials with unsupported writes (all valid trials as denominator), requests, and input, output, cache-read and cache-write tokens. Add the four mutually exclusive token categories for total consumption. Cache duration subcategories are part of cache writes. Totals measure tokens and do not estimate the bill.
 
 The two batches answer different comparisons. Neither batch is pooled with the earlier development set. The unit of observation is one synthetic scenario per arm. A holdout used to guide a further repair becomes diagnostic and must be labeled accordingly.
+
+## Run and verify
+
+The [evaluation report](../../../docs/REVE_CROSS_SESSION_HOLDOUT_2026-11-08.md) links the two raw ledgers and both anonymous-grading audits. Each measured checkout needs the project's dependencies. Run from the checkout containing this harness, using full checkouts of the named commits and a fresh output filename.
+
+```sh
+node --import tsx research/reve-memory-eval/holdout/run.ts --fixtures=research/reve-memory-eval/holdout/confirmation.json --left=../before-fix --right=../candidate --output=/tmp/reve-confirmation-recheck.json --model=claude-sonnet-4-6 --jobs=3
+node research/reve-memory-eval/holdout/verify.mjs
+```
+
+The first command consumes real model tokens. The verifier runs offline, checks fixture hashes, paired coverage, response model and recorded request counts, and recomputes the published aggregates.
