@@ -5702,6 +5702,19 @@ if ('serviceWorker' in navigator) {
   menuButton.addEventListener('click', () => openSheet(menu, menuButton));
   more.addEventListener('click', () => openSheet(menu, more));
   toolsButton.addEventListener('click', () => openSheet(tools, toolsButton));
+  // Native modal sheets make the rest of the document inert. Hand focus back
+  // before the existing global shortcuts open a non-dialog overlay or field.
+  // Capture runs before those document-level bubbling handlers.
+  document.addEventListener('keydown', event => {
+    if (!menu.open && !tools.open) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const globalShortcut = mod && !event.altKey && ['k', 'f', '/'].includes(event.key.toLowerCase());
+    const helpShortcut = event.key === '?' && !mod && !isTypingTarget(event.target);
+    if (globalShortcut || helpShortcut) {
+      menu.close();
+      tools.close();
+    }
+  }, true);
   [menu, tools].forEach(dialog => {
     dialog.querySelector('[data-close-sheet]').addEventListener('click', () => dialog.close());
     // Check coordinates: empty space inside the sheet must not dismiss it.

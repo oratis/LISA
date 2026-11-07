@@ -147,6 +147,35 @@ test.describe("mobile app shell", () => {
     await expect(page.locator("#mobileTools #fnTheme")).toBeVisible();
   });
 
+  test("global keyboard shortcuts hand off focus from native sheets", async ({ page }) => {
+    await page.goto(lisa.baseURL);
+    await page.locator("#mobileMenuBtn").click();
+    await page.keyboard.press("Control+k");
+    await expect(page.locator("#mobileMenu")).not.toBeVisible();
+    await expect(page.locator("#switcherInput")).toBeFocused();
+    await page.locator("#switcherInput").fill("New session");
+    await expect(page.locator("#switcherList .kbd-row").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.locator("#mobileToolsBtn").click();
+    await page.keyboard.press("?");
+    await expect(page.locator("#mobileTools")).not.toBeVisible();
+    await expect(page.locator("#modalBg")).toBeVisible();
+    await page.locator("#modalClose").click();
+    await expect(page.locator("#modalBg")).not.toBeVisible();
+
+    await page.locator("#mobileMenuBtn").click();
+    await page.keyboard.press("Meta+f");
+    await expect(page.locator("#mobileMenu")).not.toBeVisible();
+    await expect(page.locator("#fnFind")).toBeFocused();
+    await page.keyboard.press("Escape");
+
+    await page.locator("#mobileToolsBtn").click();
+    await page.keyboard.press("Control+/");
+    await expect(page.locator("#mobileTools")).not.toBeVisible();
+    await expect(page.locator("#input")).toBeFocused();
+  });
+
   test("visual viewport keyboard resize keeps the composer reachable", async ({ page }) => {
     // Browsers in automation do not open an OS keyboard. Exercise the same
     // visualViewport events Safari sends, including restoration after dismissal.
