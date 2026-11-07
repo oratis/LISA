@@ -86,23 +86,35 @@ final class RemoteDevicesWindow: NSWindowController {
             strict.state = status["requireSecurePairing"] as? Bool == true ? .on : .off
             stack.addArrangedSubview(strict)
         }
+        // Never suggest turning strict mode off here: the "older" phone may be a relay
+        // that stripped the secure-pairing fields.
         if let refused = status["legacyRefused"] as? [String: Any] {
-            label("\(refused["name"] as? String ?? "An iPhone") tried to pair using an older Lisa Pocket. Update Lisa Pocket on that phone, or turn off Require secure pairing.")
+            label("A pairing request from \(refused["name"] as? String ?? "an iPhone") used the older pairing method, which this Mac refuses. If that iPhone runs Lisa Pocket 1.3 or earlier, update it and try again.")
         }
         for pending in status["pending"] as? [[String: Any]] ?? [] {
-            guard let id = pending["id"] as? String, let code = pending["code"] as? String, !code.isEmpty else { continue }
+            guard let id = pending["id"] as? String, let code = pending["code"] as? String else { continue }
             let name = pending["name"] as? String ?? "iPhone"
-            // `secure` is pairing v2 (committed code). v1 codes can be forged by a relay.
+            if code.isEmpty {
+                // Holds one of ten request slots; anyone on the relay can open one.
+                label("\(name): pairing request waiting for its code", bold: true)
+                label("If you aren't pairing Lisa Pocket right now, clear it.")
+                button("Clear request", action: #selector(dismiss(_:)), value: id)
+                continue
+            }
+            // `secure` describes this Mac's side only: pairing v2 (a committed code).
             let secure = pending["secure"] as? Bool == true
             let known = pending["known"] as? Bool == true
             label(known ? "\(name) is pairing with this Mac again" : "\(name) wants to connect", bold: true)
             label("Compare with the code on your phone: \(code)")
-            if !secure {
-                label("⚠︎ Older pairing method. This iPhone runs a Lisa Pocket version whose code a compromised relay could fake. Update Lisa Pocket, then pair again.")
+            if secure {
+                label("This Mac is using secure pairing. If your phone warns about an older pairing method, dismiss this request.")
+            } else {
+                label("⚠︎ Older pairing method: this request arrived as Lisa Pocket 1.3 or earlier, so a compromised relay could fake its code. Update Lisa Pocket, then pair again.")
             }
             button(known ? "Codes match" : "Allow this device", action: #selector(approve(_:)),
                    value: "\(secure ? "v2" : "v1")|\(id)|\(code)")
-            button(known ? "Disconnect \(name)" : "Dismiss request", action: #selector(revoke(_:)), value: id)
+            if known { button("Disconnect \(name)", action: #selector(revoke(_:)), value: id) }
+            else { button("Dismiss request", action: #selector(dismiss(_:)), value: id) }
         }
         let devices = status["devices"] as? [[String: Any]] ?? []
         if !devices.isEmpty { label("Authorized devices", bold: true) }
@@ -135,7 +147,7 @@ final class RemoteDevicesWindow: NSWindowController {
         let alert = NSAlert()
         alert.messageText = "Does your phone show \(parts[2])?"
         alert.informativeText = "Only allow it if the codes match. This device can access this Mac's LISA and its permitted remote controls."
-            + (parts[0] == "v2" ? "" : "\n\nThis iPhone uses the older pairing method: a compromised relay could make the codes match. Prefer updating Lisa Pocket first.")
+            + (parts[0] == "v2" ? "" : "\n\nThis request uses the older pairing method: a compromised relay could make the codes match. Prefer updating Lisa Pocket first.")
         if parts[0] != "v2" { alert.alertStyle = .warning }
         alert.addButton(withTitle: "Codes match — allow"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -144,6 +156,7 @@ final class RemoteDevicesWindow: NSWindowController {
     @objc private func toggleSecurePairing(_ sender: NSButton) {
         perform("policy", body: ["requireSecurePairing": sender.state == .on])
     }
+    @objc private func dismiss(_ sender: NSButton) { perform("dismiss", body: ["id": sender.identifier?.rawValue ?? ""]) }
     @objc private func revoke(_ sender: NSButton) { perform("revoke", body: ["id": sender.identifier?.rawValue ?? ""]) }
     @objc private func signIn() { AccountWindowController.shared.show() }
     @objc private func legacy() { PairController.shared.showPairing() }
