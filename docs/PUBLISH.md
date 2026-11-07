@@ -1,35 +1,29 @@
 # Publishing Lisa
 
-How to push a new release. The **GitHub Release** flow is automated —
-you just push a tag and the workflow builds three artifacts and posts
-them. The **npm + Homebrew** flow is still manual (intentionally — they
-need account credentials I shouldn't ever see).
+Tag pushes publish the GitHub release and npm package automatically. The
+separate Mac workflow signs and notarizes `Lisa.app` and its DMG. Homebrew is
+updated by dispatching its workflow after npm publication succeeds.
 
 ## Quick reference
 
 ```sh
-# 1. Bump version in package.json + create the tag.
-npm version patch    # or: minor / major / 0.3.0
+# On a release branch, before review; do not create the tag yet.
+npm version patch --no-git-tag-version
+# Write docs/RELEASE_vX.Y.Z.md, commit, open a PR, and merge after CI passes.
 
-# 2. (Optional) Write release notes:
-#    docs/RELEASE_v0.X.Y.md  (otherwise auto-generated from commits)
+# Tag the reviewed merge commit, then push that tag explicitly.
+git tag -a vX.Y.Z <merge-commit> -m "Lisa vX.Y.Z"
+git push origin vX.Y.Z
 
-# 3. Push the tag → triggers the GitHub Release workflow.
-git push --follow-tags
-# → the release.yml workflow builds + uploads:
-#     lisa-source-v0.X.Y.tar.gz
-#     lisa-mac-bundle-v0.X.Y.zip
-#     lisa-linux-bundle-v0.X.Y.tar.gz
-#     SHA256SUMS.txt
-
-# 4. Then publish to npm:
-npm publish --access public
-
-# 5. Then bump the Homebrew tap (after npm publish lands):
-gh workflow run "Release — Homebrew tap"
+# Wait for release.yml (artifacts + npm) and release-mac-apps.yml (notarized DMG).
+npm view @oratis/lisa version
+# Only after npm serves the new version:
+gh workflow run release-homebrew.yml --repo oratis/LISA -f version=X.Y.Z
 ```
 
-Total: ~10 minutes per release.
+`workflow_dispatch` on `release.yml` rebuilds artifacts but does **not** publish
+to npm. The manual npm procedure below is a recovery path, not a second step
+for a successful tag release. Never rebuild or move a published version tag.
 
 ## 0. GitHub Release artifacts (automated)
 
@@ -51,7 +45,7 @@ Triggered by `git push --follow-tags` after `npm version`. The
 4. If `docs/RELEASE_v<version>.md` exists, uses it as release body; otherwise GitHub auto-generates from commit messages.
 5. Posts the GitHub Release.
 
-User caveat for the Mac/Linux bundles: they still need **Node.js 20+**
+User caveat for the Mac/Linux bundles: they still need **Node.js 22.19+**
 on PATH. The bundles include all npm deps but not Node itself.
 Bundling Node would mean a 130-150 MB tarball *per platform* and
 fighting the `sharp` native dep across architectures — trade-off

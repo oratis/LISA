@@ -25,7 +25,7 @@ const c = zh ? {
     "在设置中删除云端账号会移除 Lisa 账号数据并使会话失效。供应商记录、账单留存及 Apple 授权处理见隐私政策。",
     "额外额度是消耗型购买。未使用余额保存在同一 LISA 账号；刷新余额不会恢复已用额度，也不会新建充值。",
   ],
-  privacy: "阅读隐私政策", support: "获取支持", pocket: "Lisa Pocket 的 iPhone 与 iPad 版本正在等待 App Store 审核，尚未公开上架。",
+  privacy: "阅读隐私政策", support: "获取支持", pocket: "Lisa Pocket 1.2 已在美区 App Store 上架，支持 iPhone 与 iPad。可用性因地区而异。", pocketDownload: "前往 App Store",
 } : {
   title: "LISA Cloud", description: "Sign in to your AI Personal Assistant for planning, writing and personal knowledge. LISA Cloud needs no Mac or model API key.",
   heading: "Your personal AI assistant,", accent: "one sign-in away.",
@@ -48,7 +48,7 @@ const c = zh ? {
     "Delete your cloud account in Settings to remove Lisa account data and invalidate sessions. The privacy policy explains provider records, billing retention and Apple authorization handling.",
     "Extra credits are consumable purchases. Unused balance belongs to the same LISA account; refreshing it does not restore spending or create another purchase.",
   ],
-  privacy: "Read the privacy policy", support: "Get support", pocket: "Lisa Pocket for iPhone and iPad is waiting for App Store review and is not publicly available yet.",
+  privacy: "Read the privacy policy", support: "Get support", pocket: "Lisa Pocket 1.2 is available on the US App Store for iPhone and iPad. Availability varies by region.", pocketDownload: "View on the App Store",
 };
 ---
 <Base title={c.title} lang={lang} description={c.description}>
@@ -69,7 +69,7 @@ const c = zh ? {
     <h2>{c.control}</h2>
     <ul>{c.items.map((text) => <li>{text}</li>)}</ul>
     <div class="actions"><a href={`${prefix}/privacy`}>{c.privacy} →</a><a href={`${prefix}/support`}>{c.support} →</a></div>
-    <p class="note">{c.pocket}</p>
+    <p class="note">{c.pocket} <a href="https://apps.apple.com/us/app/lisa-pocket/id6784690058">{c.pocketDownload} →</a></p>
   </section>
 </Base>
 <style>

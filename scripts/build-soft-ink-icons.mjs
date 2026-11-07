@@ -1,4 +1,4 @@
-/** Standard native/PWA size exports from the approved, unmodified ImageGen master. */
+/** Soft Ink character art. Mac/web branding is maintained by sync-brand-icons.mjs. */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,9 +9,7 @@ const master = path.join(
   "docs/design/2026-10-08-visual-refresh/soft-ink-sources/icon-master.png",
 );
 const exports = [
-  ["src/web/assets/lisa-app-icon.png", 1024],
   ["src/web/assets/lisa-mascot.png", 256],
-  ["packaging/mac-client/Resources/app-icon-1024.png", 1024],
   ["packaging/ios-companion/Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png", 1024],
   ["packaging/mac-client/Resources/MenuBarIcon.png", 64],
 ];
