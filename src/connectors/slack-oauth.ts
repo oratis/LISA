@@ -77,7 +77,7 @@ function token(
 ): SlackCredential {
   const u = r.authed_user ? record(r.authed_user) : r;
   const scopes = typeof u.scope === "string" ? u.scope.split(/[ ,]+/).filter(Boolean) : [];
-  assertSlackScopes(scopes);
+  assertSlackScopes(scopes, !!previous);
   if (
     !secret(u.access_token) ||
     u.token_type !== "user" ||
@@ -87,7 +87,7 @@ function token(
     (r.authed_user && (r.access_token || r.bot_user_id || r.scope))
   )
     throw new ConnectorError("slack_invalid_response");
-  const userId = u.id ?? previous?.userId;
+  const userId = u.id ?? u.user_id ?? previous?.userId;
   const workspaceId = r.team ? record(r.team).id : previous?.workspaceId;
   if (!slackId(userId, "UW") || !slackId(workspaceId, "T"))
     throw new ConnectorError("slack_invalid_response");
@@ -109,7 +109,7 @@ function token(
     accessToken: u.access_token,
     userId,
     workspaceId,
-    scopes,
+    scopes: scopes.filter((scope) => scope !== "identify"),
     ...(rotating
       ? {
           refreshToken: u.refresh_token as string,

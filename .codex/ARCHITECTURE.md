@@ -45,7 +45,7 @@ Drive 使用 Google 桌面 Picker OAuth（仅 `drive.file`、`trigger_onepick`�
 
 Notion 使用 confidential OAuth + state + 预注册 localhost 回调；不假称供应商支持 PKCE。`notion-http.ts` 固定 API 版本和读路由，OAuth introspection 必须返回且仅返回 `read_content`。凭据轮换串行保存，身份绑定 workspace ID 与 users/me ID（兼容 person/bot）。确认页面后最多读取 200 普通块、4 层、12 次 children 请求和 30,000 字；不展开子页面、数据库、同步块或外部链接。读取前后复核页面与已遍历容器，所有正文均为不可信数据。两者沿用公共取消、租约、重启恢复和单次结果提交。
 
-Slack 使用注册桌面应用的 PKCE + user OAuth 和轮换令牌，无客户端密钥；四项频道读取 scope 精确匹配，实时 scope 头仅额外允许隐式 `identify`。`slack_read` 固定 Web API 读取所选成员频道的历史/讨论串，禁止私信、共享频道、搜索、文件和写入；不是官方 MCP 透传。默认七天、最多 31 天、100 条/40,000 字符，读取前后检查账号/频道，结果一律不可信。成员列表可省略 `is_member`，但确认和读取的频道详情必须明确为 true。配置、边界及真实验收见 `docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md` 第 11 节。
+Slack 使用注册桌面应用的 PKCE + user OAuth 和轮换令牌，无客户端密钥；四项频道读取 scope 精确匹配，实时 scope 头与刷新响应仅额外允许隐式 `identify`。`slack_read` 固定 Web API 读取所选成员频道的历史/讨论串，禁止私信、共享频道、搜索、文件和写入；不是官方 MCP 透传。默认七天、最多 31 天、100 条/40,000 字符，读取前后检查账号/频道，结果一律不可信。成员列表可省略 `is_member`，但确认和读取的频道详情必须明确为 true。配置、边界及真实验收见 `docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md` 第 11 节。
 
 `src/agent.ts` 的核心职责：
 

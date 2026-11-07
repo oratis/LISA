@@ -197,7 +197,8 @@ test("Slack rotates user tokens, preserves identity and rejects broader scopes/b
     refresh_token: "rotated-refresh",
     expires_in: 43200,
     token_type: "user",
-    scope: SLACK_READ_SCOPES.join(","),
+    scope: "identify," + SLACK_READ_SCOPES.join(","),
+    user_id: credential.userId,
   };
   const next = await refreshSlack(
     credential,
@@ -210,9 +211,12 @@ test("Slack rotates user tokens, preserves identity and rejects broader scopes/b
     signal(),
   );
   assert.equal(next.refreshToken, "rotated-refresh");
+  assert.deepEqual(next.scopes, SLACK_READ_SCOPES);
   assert.equal(next.workspaceId, credential.workspaceId);
   for (const extra of [
     { token_type: "bot" },
+    { user_id: "UOTHER" },
+    { scope: response.scope + ",identify" },
     { scope: response.scope + ",chat:write" },
     { team: { id: "TOTHER" } },
     { app_id: "AOTHER" },

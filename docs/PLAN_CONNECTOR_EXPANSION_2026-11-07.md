@@ -273,7 +273,7 @@ C3 PR [#445](https://github.com/oratis/LISA/pull/445) 已合并。本批继续�
 
 使用 [Slack 桌面 PKCE](https://docs.slack.dev/authentication/using-pkce/)：预注册应用，开启 PKCE 和 token rotation；`/oauth/v2/authorize` 仅请求 user scopes，`oauth.v2.access` 交换携带 S256 verifier，无桌面 client secret。回调 `http://localhost:4861/oauth/slack` 同时绑定 IPv4/IPv6 loopback，复用 state、Host、路径、单次消费和十分钟超时校验。端口可配置，必须与 Slack 应用注册值完全一致。
 
-精确请求 `channels:read`、`channels:history`、`groups:read`、`groups:history`，拒绝 bot grant、组织级安装和其他内容/写入权限。真实验证发现 `auth.test` 响应头比 OAuth grant 多出基础 `identify`，实时检查仅允许这一项隐式权限；OAuth 返回的内容权限仍必须精确匹配。过期前刷新或明确失效后重试一次，新 token 先串行持久化，再继续操作；工作区与用户 ID 变化即拒绝。断开先删除本地凭据并阻止在途结果提交，再尽力 `auth.revoke`，不宣称卸载了 Slack 应用。[OAuth](https://docs.slack.dev/authentication/installing-with-oauth/) · [token rotation](https://docs.slack.dev/authentication/using-token-rotation/)
+精确请求 `channels:read`、`channels:history`、`groups:read`、`groups:history`，拒绝 bot grant、组织级安装和其他内容/写入权限。真实验证发现 `auth.test` 响应头比 OAuth grant 多出基础 `identify`，实时检查与刷新响应仅允许这一项隐式权限；OAuth 返回的内容权限仍必须精确匹配。过期前刷新或明确失效后重试一次，新 token 先串行持久化，再继续操作；工作区与用户 ID 变化即拒绝。断开先删除本地凭据并阻止在途结果提交，再尽力 `auth.revoke`，不宣称卸载了 Slack 应用。[OAuth](https://docs.slack.dev/authentication/installing-with-oauth/) · [token rotation](https://docs.slack.dev/authentication/using-token-rotation/)
 
 本机配置 `LISA_SLACK_CLIENT_FILE` 指向权限为 `0600` 的 JSON 文件，包含 `clientId`、`appId`、`redirectUri`；也支持 `LISA_SLACK_CLIENT_ID`、`LISA_SLACK_APP_ID`、`LISA_SLACK_REDIRECT_URI`。文件中不需要 client secret。应用 manifest 示例（真实客户端 ID 由 Slack 创建后提供）：
 
@@ -300,4 +300,4 @@ C3 PR [#445](https://github.com/oratis/LISA/pull/445) 已合并。本批继续�
 
 真实 Slack PKCE 授权已回调，首次实时 scope 检查因隐式 `identify` 被拒绝，修复后用同一已获得的有效授权完成账号检查和频道选择。并修复了 `users.conversations` 成员列表不返回 `is_member` 的兼容问题，确认及读取仍要求 `conversations.info.is_member=true`。在隔离本机预览中选择一个验收频道，原聊天自动返回近七天 **2 条消息、未截断**，未输出正文；刷新后仍仅有一份结果。临时授权诊断数据已移除，正式实现无凭据诊断旁路。
 
-自动测试涵盖真实 loopback state/PKCE 回调（供应商响应为替身）、精确权限和身份、令牌轮换、成员/共享频道、分页、越界参数和响应拒绝、文本截断与附件剥离、读取后权限变化、断开与重启恢复去重。浏览器测试覆盖卡片默认未选、回调后选择频道、同一任务仅完成一次、刷新、后续复用、取消与混合来源提示。真实刷新到期、真实撤权、限流与讨论串正文读取尚未做账号级验收，这些路径由自动测试覆盖；不将此次 2 条频道消息验收扩展为全功能验证。
+自动测试涵盖真实 loopback state/PKCE 回调（供应商响应为替身）、精确权限和身份、令牌轮换、成员/共享频道、分页、越界参数和响应拒绝、文本截断与附件剥离、读取后权限变化、断开与重启恢复去重。浏览器测试覆盖卡片默认未选、回调后选择频道、同一任务仅完成一次、刷新、后续复用、取消与混合来源提示。此外已用真实刷新令牌验证轮换、持久化与账号保持一致，修复刷新响应同样附带 `identify` 的兼容问题。真实撤权、限流与讨论串正文读取尚未做账号级验收，这些路径由自动测试覆盖；不将此次 2 条频道消息验收扩展为全功能验证。

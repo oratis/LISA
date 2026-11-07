@@ -85,11 +85,7 @@ export class SlackReadonlyDriver implements ReadonlyDriver<SlackAccount, SlackRe
   };
   private async identity(c: SlackCredential, signal: AbortSignal): Promise<SlackAccount> {
     const { data: r, scopes } = await this.http("auth.test", signal, { token: c.accessToken });
-    // Slack adds its implicit identity scope to live headers, but not the OAuth grant.
-    // Only this documented baseline is optional; all content scopes remain exact.
-    assertSlackScopes(scopes?.filter((scope) => scope !== "identify"));
-    if ((scopes?.filter((scope) => scope === "identify").length ?? 0) > 1)
-      throw new ConnectorError("slack_read_scope_required");
+    assertSlackScopes(scopes, true);
     if (
       r.user_id !== c.userId ||
       r.team_id !== c.workspaceId ||

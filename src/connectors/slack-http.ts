@@ -8,15 +8,22 @@ export const SLACK_READ_SCOPES = [
   "groups:read",
   "groups:history",
 ] as const;
-export function assertSlackScopes(scopes: unknown): asserts scopes is string[] {
+/** OAuth grants are exact; live headers and rotated tokens may add implicit identify. */
+export function assertSlackScopes(
+  scopes: unknown,
+  implicitIdentity = false,
+): asserts scopes is string[] {
   if (
     !Array.isArray(scopes) ||
-    scopes.length !== SLACK_READ_SCOPES.length ||
     new Set(scopes).size !== scopes.length ||
-    !SLACK_READ_SCOPES.every((scope) => scopes.includes(scope))
+    !SLACK_READ_SCOPES.every((scope) => scopes.includes(scope)) ||
+    scopes.some(
+      (scope) => !SLACK_READ_SCOPES.includes(scope) && !(implicitIdentity && scope === "identify"),
+    )
   )
     throw new ConnectorError("slack_read_scope_required");
 }
+
 const methods = [
   "oauth.v2.access",
   "auth.test",
