@@ -226,11 +226,11 @@ Google 的桌面流程采用 PKCE 与临时 loopback callback；实现依据 [Go
 
 ## 10 C3 Google Drive / Notion 实现与验收（2026-11-07）
 
-PR [#438](https://github.com/oratis/LISA/pull/438) 已合并。本批复用 `ReadonlyConnector`，固定目录扩为六项，增加 `google_drive_read` / `notion_read` 三种操作：`list`、`metadata`、`content`。Web 连接卡、取消、重新授权、断开、原聊天自动恢复、重启租约与结果去重均复用现有实现；Cloud 和远程设备仍拒绝访问。每个来源仅一个账号/工作区，混合来源仍提示拆开请求。
+本批为 PR [#445](https://github.com/oratis/LISA/pull/445)，基于已合并的 Linear 只读连接 PR [#438](https://github.com/oratis/LISA/pull/438)。本批复用 `ReadonlyConnector`，固定目录扩为六项，增加 `google_drive_read` / `notion_read` 三种操作：`list`、`metadata`、`content`。Web 连接卡、取消、重新授权、断开、原聊天自动恢复、重启租约与结果去重均复用现有实现；Cloud 和远程设备仍拒绝访问。每个来源仅一个账号/工作区，混合来源仍提示拆开请求。
 
 ### Drive
 
-采用 [Google 桌面 Picker OAuth](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker)：只请求 `drive.file`，不叠加 openid/email；以 `about.user.permissionId` 绑定账号。授权使用 PKCE、随机 state、临时 loopback 回调，并验证 `picked_file_ids`（最多 30 个）。不通过全盘列表推断用户选中了什么，不向网页发送 access token。Google 的文件级 scope 包含写能力，连接卡明确披露；LISA 仅实现读取，且再次限制为卡片确认的文件。
+采用 [Google 桌面 Picker OAuth](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker)：只请求 `drive.file`，不叠加 openid/email；以 `about.user.permissionId` 绑定账号。授权使用 PKCE、随机 state、临时 loopback 回调，并验证 `picked_file_ids`（最多 30 个，超出时提示 `drive_selection_limit_exceeded`）。已删除、移入回收站或类型不支持的单个文件不再列出，其余选择照常可确认。断开时不调用 Google 撤销接口：Google 撤销会移除整个项目已授予的全部 scope，会同时断开共用客户端的 Gmail / Calendar 连接。不通过全盘列表推断用户选中了什么，不向网页发送 access token。Google 的文件级 scope 包含写能力，连接卡明确披露；LISA 仅实现读取，且再次限制为卡片确认的文件。
 
 仅支持 Docs/Slides 的纯文本导出、Sheets 首个工作表 CSV、普通文本/Markdown/CSV/TSV/JSON。文件类型、选定 ID、账号、下载权限和访问状态均验证；内容最多 1 MB、输出最多 30,000 字。禁止文件夹、快捷方式、PDF、二进制附件、任意 URL 和全盘搜索。来源内容作为不可信数据，正文不成为系统指令。
 
@@ -240,7 +240,7 @@ PR [#438](https://github.com/oratis/LISA/pull/438) 已合并。本批复用 `Rea
 
 采用 [Notion OAuth](https://developers.notion.com/guides/authorization/overview) 和固定 REST API，应用只启用 **Read content**，关闭写入、更新、评论和用户资料权限。每次使用前通过 [token introspection](https://developers.notion.com/reference/introspect-token) 验证 `active=true` 且 scope 仅为 `read_content`；未知/更宽 scope 拒绝。令牌轮换先持久化，再继续读取。身份按工作区 ID 加 users/me 稳定 ID 绑定，兼容 bot/person。
 
-授权采用 confidential Basic token exchange、随机 state 和预注册 `http://localhost:4860/oauth/notion`。Notion 开发者门户拒绝 IP 形式回调；供应商未文档化 PKCE/issuer，本实现不假称支持。回调仅监听 127.0.0.1，严格校验 Host、路径、state 和单次消费，十分钟超时。
+授权采用 confidential Basic token exchange、随机 state 和预注册 `http://localhost:4860/oauth/notion`。Notion 开发者门户拒绝 IP 形式回调；供应商未文档化 PKCE/issuer，本实现不假称支持。回调同时占用 127.0.0.1 与 ::1 的同一端口（浏览器解析 `localhost` 时优先尝试 ::1，避免其他本机进程抢先监听），任一被占用即返回 `notion_callback_port_in_use`；严格校验 Host、路径、state 和单次消费，十分钟超时。Notion 返回 `refresh_token: null` 时保留原刷新令牌；完全没有刷新令牌时，令牌失效即要求重新连接。断开连接时尽力调用 Notion 撤销接口，失败不影响本机删除。
 
 创建 OAuth connection 后，把 `clientId`、`clientSecret`、`redirectUri` 写入私有本机 JSON（权限 0600），在 `~/.lisa/config.env` 设置 `LISA_NOTION_CLIENT_FILE` 指向它；也支持 `LISA_NOTION_CLIENT_ID`、`LISA_NOTION_CLIENT_SECRET`、`LISA_NOTION_REDIRECT_URI`。密钥不得放入仓库、聊天或模型上下文。固定回调端口须可用。
 
