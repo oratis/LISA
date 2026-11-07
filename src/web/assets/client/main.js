@@ -636,6 +636,7 @@ function setActiveSessionUI(id) {
   window.lisaActiveSessionId = id;
   sessionEl.textContent = id;
   updateTitlebarSession();
+  void githubRefresh();
 }
 // UX-4: the title bar used to read "Lisa · 20260905-220846-9f7d58". It shows
 // the session's human label now ("New session · just now" until the first
@@ -749,7 +750,10 @@ function connectEvents() {
   es.addEventListener('message', (e) => {
     noteEventBytes();
     const ev = JSON.parse(e.data);
-    if (ev.type === 'mood') {
+    if (ev.type === 'github_connection_changed') {
+      if (ev.sessionId === window.lisaActiveSessionId) void githubRefresh();
+      else if (typeof window.lisaMarkUnread === 'function') window.lisaMarkUnread(ev.sessionId);
+    } else if (ev.type === 'mood') {
       setMood(ev.slug);
     } else if (ev.type === 'idle_start') {
       if (!idlePulseEl) {
@@ -1454,6 +1458,7 @@ async function loadHistoryPage() {
     historyLoading = false;
     historyFetched = true;
     renderChatEmpty();
+    void githubRefresh();
   }
 }
 
@@ -2399,6 +2404,7 @@ async function runChat(message, filesToSend) {
     // onto a finished (or failed) turn.
     clearTimeout(waitTimer);
     sendBtn.disabled = false;
+    void githubRefresh();
     input.focus();
     // F6 — a reply that finished after its session was switched away:
     // refresh if the user is back on that session, else mark it unread.

@@ -104,6 +104,7 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/push/",
   "/api/screen-advisor/",
   "/api/sense/",
+  "/api/connectors/github/",
   "/api/vision/",
 ] as const;
 

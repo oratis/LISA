@@ -58,11 +58,7 @@ function schemaErrors(schemaInput: Schema, value: unknown, path = "$"): string[]
   if (schema.enum && !schema.enum.includes(value)) {
     errors.push(`${path} is not in enum`);
   }
-  const allowedTypes = Array.isArray(schema.type)
-    ? schema.type
-    : schema.type
-      ? [schema.type]
-      : [];
+  const allowedTypes = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
   if (allowedTypes.length > 0) {
     const actual =
       value === null
@@ -151,6 +147,26 @@ describe("API contract source and generated constants", () => {
 });
 
 describe("actual server DTOs conform to OpenAPI v1", () => {
+  test("GitHub cards exclude credentials and retain stable lifecycle fields", () => {
+    const request = {
+      id: "request-1",
+      sessionId: "session-1",
+      status: "selecting",
+      createdAt: 1,
+      expiresAt: 2,
+      account: { id: 12, login: "octocat" },
+      repositories: [],
+      connected: false,
+    };
+    assertContract("GitHubRequestsResponse", { requests: [request] });
+    assertContract("GitHubConnectionChangedEvent", {
+      type: "github_connection_changed",
+      sessionId: "session-1",
+    });
+    const schema = contract.components.schemas.GitHubConnectionRequest!;
+    assert.ok(schemaErrors(schema, { ...request, token: "forbidden" }).length > 0);
+    assert.ok(schemaErrors(schema, { ...request, status: "silently_authorized" }).length > 0);
+  });
   test("agent session serializer emits date-time strings and resumable state", () => {
     const sessions: AgentSession[] = [
       {

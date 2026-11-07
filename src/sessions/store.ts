@@ -129,6 +129,53 @@ export class SessionStore {
     await appendLine(this.path, JSON.stringify(entry));
   }
 
+  /** Called within the session turn queue and the connector's cross-process lease. */
+  async hasConnectorResult(id: string): Promise<boolean> {
+    for await (const line of jsonlLines(this.path)) {
+      try {
+        const entry = JSON.parse(line) as Partial<SessionEntry>;
+        if (entry.type === "message" && entry.connectorRequestId === id) return true;
+      } catch {
+        /* A torn append has no committed result. */
+      }
+    }
+    return false;
+  }
+
+  /** Diagnostic transcript, separate from visible chat and never treated as user authorization. */
+  async appendConnectorTrace(requestId: string, message: StoredMessage): Promise<void> {
+    const entry: SessionEntry = {
+      type: "connector_trace",
+      ts: new Date().toISOString(),
+      requestId,
+      message,
+    };
+    await appendLine(this.path, JSON.stringify(entry));
+  }
+
+  async appendConnectorResult(id: string, message: StoredMessage): Promise<boolean> {
+    if (await this.hasConnectorResult(id)) return false;
+    // One durable JSONL record carries both the visible result and its idempotency key.
+    // Prefixing a newline also isolates an interrupted previous append.
+    const file = await fs.open(this.path, "a", 0o600);
+    try {
+      await file.writeFile(
+        "\n" +
+          JSON.stringify({
+            type: "message",
+            ts: new Date().toISOString(),
+            message,
+            connectorRequestId: id,
+          }) +
+          "\n",
+      );
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    return true;
+  }
+
   async appendReflection(summary: string): Promise<void> {
     const entry: SessionEntry = {
       type: "reflection",
