@@ -214,6 +214,46 @@ test(
           .status,
         403,
       );
+      // Owner-only surfaces added since (memory sovereignty, Warden/task approvals,
+      // read-only connectors, dreams, transcripts) must classify the hop as remote too.
+      for (const [route, method, body] of [
+        ["/api/memory/forget", "POST", { query: "anything" }],
+        ["/api/memory/entries/x", "DELETE", undefined],
+        ["/api/export", "GET", undefined],
+        ["/api/approvals/x/approve", "POST", {}],
+        ["/api/warden/rules", "PUT", { rules: [] }],
+        ["/api/connectors", "GET", undefined],
+        ["/api/connectors/github", "GET", undefined],
+        ["/api/reve/dreams/x/revert", "POST", {}],
+        ["/api/agents/transcript?id=x", "GET", undefined],
+      ] as const) {
+        const reply = await request(await connect(), route, method, body);
+        assert.equal(reply.status, 403, `${method} ${route} must refuse a relayed device`);
+        // ...while the same read from the local owner is served (the 403 is the classification).
+        if (method === "GET" && route !== "/api/agents/transcript?id=x")
+          assert.notEqual((await fetch(`${macBase}${route}`)).status, 403, route);
+      }
+      // Connection management never crosses the tunnel, however the path is spelled.
+      for (const route of ["/api/remote/status", "/api/relay/macs", "/api/%72emote/status"]) {
+        const tunnel = await connect();
+        tunnel.ws.send(
+          JSON.stringify(
+            tunnel.cipher.seal({
+              type: "request",
+              id: crypto.randomUUID(),
+              challenge: tunnel.welcome.challenge,
+              expiresAt: Date.now() + 60_000,
+              path: route,
+              method: "GET",
+            }),
+          ),
+        );
+        const first = await tunnel.receive().then(
+          (frame) => tunnel.cipher.open(JSON.parse(frame)),
+          () => null,
+        );
+        assert.ok(first === null || (first.type === "headers" && first.status !== 200), route);
+      }
       const forged = await fetch(`${macBase}/api/pair/start`, {
         method: "POST",
         headers: {
@@ -225,8 +265,12 @@ test(
       });
       assert.equal(forged.status, 401);
 
-      const lanURL = (connected.welcome.lanURLs as string[])[0];
-      assert.ok(lanURL, "test host needs a network interface for real LAN verification");
+      const advertised = (connected.welcome.lanURLs as string[])[0];
+      assert.ok(advertised, "test host needs a network interface for real LAN verification");
+      assert.match(advertised, /^ws:\/\/(?:\d{1,3}\.){3}\d{1,3}:\d+\/link$/);
+      // Dial the same 0.0.0.0 listener over loopback: host firewalls (macOS
+      // stealth mode, CI sandboxes) often drop a socket to the machine's own LAN IP.
+      const lanURL = advertised.replace(/^ws:\/\/[^:/]+:/, "ws://127.0.0.1:");
       const direct = await connect({ lan: lanURL });
       assert.deepEqual(await request(direct, "/api/edition"), edition);
       const pendingCount = (await local("status")).body.pending.length;
