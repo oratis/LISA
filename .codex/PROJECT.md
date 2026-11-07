@@ -29,7 +29,7 @@ LISA 定位为开源 AI Personal Assistant（个人 AI 助手），帮助用户�
 | Warden / Reach-out | `src/warden/`、`src/reachout/` | Web 聊天动作策略（需 opt-in）、审批、审计及统一主动消息规则 |
 | Orchestrator | `src/orchestrator/` | 观察与管理 Claude、Codex、OpenCode、Aider、GitHub 等外部代理 |
 | macOS | `packaging/mac-client/` | Swift 原生壳、后端进程控制、Web 内容和 Island |
-| iOS | `packaging/ios-companion/` | SwiftUI 客户端、REST/SSE、Widget、Live Activity、认证与 IAP |
+| iOS | `packaging/ios-companion/` | Lisa Pocket 1.2 已在美区 App Store 上架（2026-10-24 核实）；SwiftUI、REST/SSE、Widget、Live Activity、认证与 IAP；验证边界见 `docs/REVIEW_POCKET_LIVE_2026-10-24.md` |
 | 官网 | `website/` | Astro 双语静态网站 |
 
 ## 技术栈

@@ -1,13 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { isRetryableStreamError, withStreamRetry } from "./stream-retry.js";
+import { isRetryableStreamError, streamRetryOpts, withStreamRetry } from "./stream-retry.js";
 
 describe("isRetryableStreamError", () => {
   test("matches the empty-stream error (the reported failure)", () => {
     assert.equal(
-      isRetryableStreamError(
-        new Error("request ended without sending any chunks"),
-      ),
+      isRetryableStreamError(new Error("request ended without sending any chunks")),
       true,
     );
   });
@@ -37,10 +35,7 @@ describe("isRetryableStreamError", () => {
   });
 
   test("does not match ordinary API errors (e.g. 400/401)", () => {
-    assert.equal(
-      isRetryableStreamError(new Error("400 invalid_request_error")),
-      false,
-    );
+    assert.equal(isRetryableStreamError(new Error("400 invalid_request_error")), false);
   });
 
   test("matches undici socket failures by cause.code", () => {
@@ -52,10 +47,7 @@ describe("isRetryableStreamError", () => {
   test("'terminated' is matched precisely, not as a substring", () => {
     // A real API message that merely contains the word must NOT trigger a
     // spurious re-send — only undici's exact `TypeError: terminated` counts.
-    assert.equal(
-      isRetryableStreamError(new Error("request terminated by content policy")),
-      false,
-    );
+    assert.equal(isRetryableStreamError(new Error("request terminated by content policy")), false);
   });
 });
 
@@ -124,5 +116,44 @@ describe("withStreamRetry", () => {
       /any chunks/,
     );
     assert.equal(attempts, 1);
+  });
+
+  test("each failed attempt it retries is reported first; a refusal surfaces the error", async () => {
+    const reported: unknown[] = [];
+    let attempts = 0;
+    const out = await withStreamRetry(
+      { baseDelayMs: 0, onAttemptFailed: (err) => (reported.push(err), true) },
+      async () => {
+        attempts++;
+        if (attempts < 3) throw new Error("request ended without sending any chunks");
+        return "ok";
+      },
+    );
+    assert.equal(out, "ok");
+    assert.equal(reported.length, 2, "the two failed attempts, once each");
+
+    attempts = 0;
+    await assert.rejects(
+      withStreamRetry({ baseDelayMs: 0, onAttemptFailed: () => false }, async () => {
+        attempts++;
+        throw new Error("request ended without sending any chunks");
+      }),
+      /any chunks/,
+    );
+    assert.equal(attempts, 1, "no retry once the hook refuses one");
+  });
+
+  test("streamRetryOpts passes the call's model to the hook", async () => {
+    const seen: string[] = [];
+    const opts = streamRetryOpts({
+      model: "m-1",
+      onAttemptFailed: ({ model }) => (seen.push(model), false),
+    });
+    await assert.rejects(
+      withStreamRetry({ ...opts, baseDelayMs: 0 }, async () => {
+        throw new Error("premature close");
+      }),
+    );
+    assert.deepEqual(seen, ["m-1"]);
   });
 });

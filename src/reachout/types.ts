@@ -38,6 +38,12 @@ export interface ReachOutNotice {
   kind: string;
   title: string;
   body: string;
+  /**
+   * What the PUSH says instead of `title` / `body`, when they must not leave
+   * this host: a push goes through a third-party service (ntfy, APNs). The
+   * in-app note and the ledger keep `title` / `body`.
+   */
+  push?: { title: string; body: string };
   priority: ReachOutPriority;
   /** Same key within the dedupe window ⇒ the later notice is dropped. */
   dedupeKey?: string;

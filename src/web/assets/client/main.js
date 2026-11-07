@@ -44,7 +44,7 @@ function lisaBanner(msg, opts) {
   // that grew while the user typed never ends up covering the toast.
   var composer = document.getElementById('form');
   var lift = (composer && composer.offsetParent)
-    ? Math.round(composer.getBoundingClientRect().height) + 14
+    ? Math.round(window.innerHeight - composer.getBoundingClientRect().top) + 14
     : 18;
   el.style.bottom = lift + 'px';
   el.hidden = false;
@@ -1957,13 +1957,128 @@ function showSkillCreate() {
     } catch (error) { if (revision !== modalRevision) return; document.getElementById('skillError').textContent = tr('skills.actionFailed', { error: error.message }); button.disabled = false; }
   });
 }
-async function showMemory() {
+async function showMemoryReadOnly() {
   return loadPanel('MEMORY', '/api/memory', function (data) {
     if (typeof data.user !== 'string' || typeof data.memory !== 'string') throw new Error('Invalid memory response');
-    modalBody.innerHTML = '<h3>USER.md — what Lisa remembers about you</h3><pre>' + escapeHtml(data.user || '(empty)') +
-      '</pre><h3>MEMORY.md — Lisa’s working notes</h3><pre>' + escapeHtml(data.memory || '(empty)') + '</pre>';
+    modalBody.innerHTML =
+      '<h3>USER.md — what Lisa remembers about you</h3>' +
+      '<pre>' + escapeHtml(data.user || '(empty)') + '</pre>' +
+      '<h3>MEMORY.md — Lisa\'s working notes</h3>' +
+      '<pre>' + escapeHtml(data.memory || '(empty)') + '</pre>';
   }, showMemory);
 }
+
+// Memory sovereignty: view / edit / delete entries, forget a topic, export.
+// Falls back to the read-only view when the caller may not edit (403).
+async function memoryApi(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.message || json.error || ('HTTP ' + res.status));
+  return json;
+}
+
+async function showMemory() {
+  openModal('MEMORY', '<div class="empty">' + escapeHtml(tr('panel.loading')) + '</div>');
+  const revision = modalRevision;
+  let data;
+  try { data = await memoryApi('GET', '/api/memory/entries'); }
+  catch (e) { return revision === modalRevision ? showMemoryReadOnly() : undefined; }
+  if (revision !== modalRevision) return;
+  const labels = { user: 'USER.md — what Lisa remembers about you', memory: 'MEMORY.md — Lisa\'s working notes' };
+  let html =
+    '<div class="item"><div class="name">Forget a topic</div>' +
+    '<div class="desc">Erases it from memory, the knowledge base, past conversations and search. Lisa\'s journal gets literal redactions only, and she is told you used Forget.</div>' +
+    '<input id="memForgetQ" type="text" maxlength="200" placeholder="topic, name, project…"> ' +
+    '<button id="memForgetBtn">preview</button><div id="memForgetOut" class="desc"></div></div>' +
+    '<div class="item"><a href="/api/export" download>Export my Lisa (.tar.gz)</a> · ' +
+    '<a href="/api/export?sessions=1" download>with conversations</a>' +
+    '<div class="desc">Never includes secrets, keys, account or device records.</div></div>';
+  for (const store of ['user', 'memory']) {
+    const s = (data.stores || []).find(x => x.store === store);
+    if (!s) continue;
+    html += '<h3>' + escapeHtml(labels[store]) + ' <span class="desc">' + s.bytes + ' / ' + s.maxBytes + ' bytes</span></h3>';
+    if (s.corrupt) html += '<div class="empty">This file is not clean text — repair it by hand before editing here.</div>';
+    if (!s.entries.length) html += '<div class="empty">(empty)</div>';
+    for (const e of s.entries) {
+      html += '<div class="item" data-mem-id="' + escapeHtml(e.id) + '"><div class="desc mem-text">' + escapeHtml(e.text) + '</div>' +
+        (s.corrupt ? '' : '<button class="mem-edit">edit</button> <button class="mem-del">delete</button>') + '</div>';
+    }
+    if (!s.corrupt) {
+      html += '<div class="item"><input class="mem-new" data-store="' + store + '" type="text" placeholder="add an entry…"> <button class="mem-add" data-store="' + store + '">add</button></div>';
+    }
+  }
+  modalBody.innerHTML = html;
+  const fail = (e) => window.alert('Could not save: ' + (e && e.message ? e.message : e));
+  modalBody.querySelectorAll('.mem-del').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.parentElement.getAttribute('data-mem-id');
+    if (!window.confirm('Delete this memory entry?')) return;
+    try { await memoryApi('DELETE', '/api/memory/entries/' + encodeURIComponent(id)); showMemory(); } catch (e) { fail(e); }
+  }));
+  modalBody.querySelectorAll('.mem-edit').forEach(btn => btn.addEventListener('click', () => {
+    const row = btn.parentElement;
+    const id = row.getAttribute('data-mem-id');
+    const textEl = row.querySelector('.mem-text');
+    const ta = document.createElement('textarea');
+    ta.value = textEl.textContent;
+    ta.rows = 3;
+    ta.style.width = '100%';
+    const save = document.createElement('button');
+    save.textContent = 'save';
+    save.addEventListener('click', async () => {
+      try { await memoryApi('PUT', '/api/memory/entries/' + encodeURIComponent(id), { text: ta.value }); showMemory(); } catch (e) { fail(e); }
+    });
+    row.replaceChildren(ta, save);
+    ta.focus();
+  }));
+  modalBody.querySelectorAll('.mem-add').forEach(btn => btn.addEventListener('click', async () => {
+    const store = btn.getAttribute('data-store');
+    const input = btn.parentElement.querySelector('.mem-new');
+    if (!input.value.trim()) return;
+    try { await memoryApi('POST', '/api/memory/entries', { store, text: input.value }); showMemory(); } catch (e) { fail(e); }
+  }));
+  const fq = document.getElementById('memForgetQ');
+  const fout = document.getElementById('memForgetOut');
+  document.getElementById('memForgetBtn').addEventListener('click', async () => {
+    const query = fq.value.trim();
+    if (!query) return;
+    try {
+      const { report } = await memoryApi('POST', '/api/memory/forget', { query, dryRun: true });
+      const parts = Object.keys(report.counts).filter(k => report.counts[k] > 0).map(k => k + ' ' + report.counts[k]);
+      if (!parts.length) { fout.textContent = 'Nothing mentions that.'; return; }
+      // Every item that will change, with the text around the match.
+      const items = (report.locations || []).filter(l => l.layer !== 'search_index').map(l =>
+        '<li><b>' + escapeHtml(l.action) + '</b> ' + escapeHtml(l.location) + (l.why ? ' (' + escapeHtml(l.why) + ')' : '') +
+        (l.snippet ? '<br><span class="desc">“' + escapeHtml(l.snippet) + '”</span>' : '') + '</li>').join('');
+      const untouched = (report.untouched || []).map(u => '<li>' + escapeHtml(u.location) + (u.why ? ' (' + escapeHtml(u.why) + ')' : '') + '</li>').join('');
+      fout.innerHTML = '<div>' + escapeHtml(report.match ? report.match.note : '') + '</div>' +
+        '<div>' + escapeHtml('Found: ' + parts.join(' · ')) + '</div>' +
+        '<ul style="max-height:16em;overflow:auto">' + items + '</ul>' +
+        (untouched ? '<div>Mentioned but not edited:</div><ul>' + untouched + '</ul>' : '') +
+        '<button id="memForgetGo">forget these</button>';
+      document.getElementById('memForgetGo').addEventListener('click', async () => {
+        if (!window.confirm('Forget the items listed? This cannot be undone here.\n\nNot reachable: ' + report.residuals.join(' '))) return;
+        try {
+          const done = await memoryApi('POST', '/api/memory/forget', { query, digest: report.digest });
+          const left = Object.keys(done.report.remaining || {}).filter(k => done.report.remaining[k] > 0);
+          showMemory().then(() => {
+            const out = document.getElementById('memForgetOut');
+            if (!out) return;
+            const scanned = (done.report.scanned || []).map(a => a.split(' — ')[0]).join(', ');
+            const notScanned = done.report.notScanned || [];
+            out.textContent = (left.length ? 'Forgotten, but a re-scan still finds it in: ' + left.join(', ') + '.'
+              : 'Forgotten. A re-scan of ' + scanned + ' finds nothing left.') +
+              (notScanned.length ? ' Not scanned, so it may still be mentioned in: ' + notScanned.join('; ') + '.' : '');
+          });
+        } catch (e) { fail(e); }
+      });
+    } catch (e) { fail(e); }
+  });
+}
+
 async function showTools() {
   return loadPanel('TOOLS', '/api/tools', function (data) {
     if (!Array.isArray(data.tools)) throw new Error('Invalid tools response');
@@ -2142,9 +2257,7 @@ function filterLog(q) {
 }
 if (fnSearchBtn && fnFind) {
   fnSearchBtn.addEventListener('click', () => {
-    const show = fnFind.style.display === 'none';
-    fnFind.style.display = show ? '' : 'none';
-    if (show) { fnFind.focus(); } else { fnFind.value = ''; filterLog(''); }
+    if (findIsOpen()) closeFind(); else openFind();
   });
   fnFind.addEventListener('input', () => filterLog(fnFind.value.trim().toLowerCase()));
   fnFind.addEventListener('keydown', (e) => {
@@ -2154,6 +2267,7 @@ if (fnSearchBtn && fnFind) {
 function openFind() {
   if (!fnFind) return;
   fnFind.style.display = '';
+  document.getElementById('fnbar').classList.add('searching');
   fnFind.focus();
   fnFind.select();
 }
@@ -2163,6 +2277,7 @@ function closeFind() {
   fnFind.value = '';
   filterLog('');
   fnFind.style.display = 'none';
+  document.getElementById('fnbar').classList.remove('searching');
 }
 
 // ── Keyboard shortcuts (UX-11) ───────────────────────────────────
@@ -2739,7 +2854,8 @@ async function runChat(message, filesToSend) {
     clearTimeout(waitTimer);
     sendBtn.disabled = false;
     void githubRefresh();
-    input.focus();
+    // A completed reply must not reopen a dismissed phone keyboard.
+    if (!window.matchMedia('(max-width: 720px)').matches) input.focus();
     // F6 — a reply that finished after its session was switched away:
     // refresh if the user is back on that session, else mark it unread.
     if (gen !== chatGeneration && sid) {
@@ -4878,7 +4994,9 @@ if ('serviceWorker' in navigator) {
       items[i].classList.toggle('active', items[i].getAttribute('data-view') === name);
     }
     if (name !== 'chat') loadView(name);
-    else { try { document.getElementById('input').focus(); } catch (e) {} }
+    else if (!window.matchMedia('(max-width: 720px)').matches) { try { document.getElementById('input').focus(); } catch (e) {} }
+    document.body.dataset.view = name;
+    window.dispatchEvent(new CustomEvent('lisa-view-change', { detail: { view: name } }));
     try { history.replaceState(null, '', name === 'chat' ? location.pathname + location.search : '#' + name); } catch (e) {}
   }
   navList.addEventListener('click', function (e) {
@@ -6051,4 +6169,173 @@ if ('serviceWorker' in navigator) {
   }
   loadPending();
   setInterval(loadPending, 30000);
+})();
+
+// Phone shell: reuse the real navigation and tools so their state and handlers
+// stay identical across rotation. Native dialogs supply focus trapping, Escape
+// dismissal, and an inert background without a second navigation implementation.
+(function setupMobileShell() {
+  const narrow = window.matchMedia('(max-width: 720px)');
+  const sidebar = document.querySelector('.sidebar');
+  const menu = document.getElementById('mobileMenu');
+  const tools = document.getElementById('mobileTools');
+  const tabs = document.getElementById('mobileTabs');
+  const more = document.getElementById('mobileMore');
+  const menuButton = document.getElementById('mobileMenuBtn');
+  const toolsButton = document.getElementById('mobileToolsBtn');
+  const actions = document.getElementById('mobileActions');
+  if (!sidebar || !menu || !tools || !tabs || !more || !menuButton || !toolsButton || !actions) return;
+  const sidebarHome = document.createComment('desktop sidebar');
+  sidebar.before(sidebarHome);
+  const actionHomes = ['fnKbSelect', 'fnMail', 'fnTheme'].map(id => {
+    const button = document.getElementById(id);
+    const home = document.createComment(id);
+    button.before(home);
+    return { button, home };
+  });
+
+  const primaryViews = ['chat', 'control', 'room'];
+  primaryViews.forEach(view => {
+    const source = document.querySelector('#navList [data-view="' + view + '"]');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mobile-tab';
+    button.dataset.mobileView = view;
+    button.appendChild(source.querySelector('svg').cloneNode(true));
+    const label = document.createElement('span');
+    label.textContent = source.querySelector('.nav-label').textContent;
+    button.appendChild(label);
+    button.addEventListener('click', () => window.lisaShowView(view));
+    tabs.insertBefore(button, more);
+  });
+  function syncTabs() {
+    const view = document.body.dataset.view || 'chat';
+    tabs.querySelectorAll('[data-mobile-view]').forEach(button => {
+      const selected = button.dataset.mobileView === view;
+      button.classList.toggle('active', selected);
+      if (selected) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
+    const secondary = !primaryViews.includes(view);
+    more.classList.toggle('active', secondary);
+    if (secondary) more.setAttribute('aria-current', 'page');
+    else more.removeAttribute('aria-current');
+  }
+  window.addEventListener('lisa-view-change', syncTabs);
+  syncTabs();
+
+  function openSheet(dialog, trigger) {
+    if (!narrow.matches || dialog.open) return;
+    // Give native dialog restoration an explicit non-input target. Touch
+    // browsers do not consistently focus a tapped button on their own.
+    trigger.focus({ preventScroll: true });
+    dialog.showModal();
+    if (dialog === menu) {
+      menuButton.setAttribute('aria-expanded', 'true');
+      more.setAttribute('aria-expanded', 'true');
+    } else toolsButton.setAttribute('aria-expanded', 'true');
+  }
+  menuButton.addEventListener('click', () => openSheet(menu, menuButton));
+  more.addEventListener('click', () => openSheet(menu, more));
+  toolsButton.addEventListener('click', () => openSheet(tools, toolsButton));
+  // Native modal sheets make the rest of the document inert. Hand focus back
+  // before the existing global shortcuts open a non-dialog overlay or field.
+  // Capture runs before those document-level bubbling handlers.
+  document.addEventListener('keydown', event => {
+    if (!menu.open && !tools.open) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const globalShortcut = mod && !event.altKey && ['k', 'f', '/'].includes(event.key.toLowerCase());
+    const helpShortcut = event.key === '?' && !mod && !isTypingTarget(event.target);
+    if (globalShortcut || helpShortcut) {
+      menu.close();
+      tools.close();
+    }
+  }, true);
+  [menu, tools].forEach(dialog => {
+    dialog.querySelector('[data-close-sheet]').addEventListener('click', () => dialog.close());
+    // Check coordinates: empty space inside the sheet must not dismiss it.
+    let backdropDown = false;
+    function outside(event) {
+      const box = dialog.getBoundingClientRect();
+      return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+    }
+    dialog.addEventListener('pointerdown', event => { backdropDown = event.target === dialog && outside(event); });
+    dialog.addEventListener('click', event => {
+      if (backdropDown && event.target === dialog && outside(event)) dialog.close();
+      backdropDown = false;
+    });
+    dialog.addEventListener('close', () => {
+      if (dialog === menu) {
+        menuButton.setAttribute('aria-expanded', 'false');
+        more.setAttribute('aria-expanded', 'false');
+        const contextMenu = dialog.querySelector('.session-context-menu');
+        if (contextMenu) contextMenu.remove();
+      } else toolsButton.setAttribute('aria-expanded', 'false');
+    });
+  });
+  // Close before the existing handler runs, including actions which open a
+  // separate panel. Returning to Chat never summons the keyboard by itself.
+  sidebar.addEventListener('click', event => {
+    if (!narrow.matches || !menu.open) return;
+    if (event.target.closest('.nav-item, .tleaf, #sbNewSession')) {
+      menu.close();
+      if (event.target.closest('.tleaf, #sbNewSession')) window.lisaShowView('chat');
+    }
+  }, true);
+  actions.addEventListener('click', event => {
+    if (event.target.closest('.fbtn')) tools.close();
+  }, true);
+  document.getElementById('mobileNewChat').addEventListener('click', () => {
+    window.lisaShowView('chat');
+    document.getElementById('sbNewSession').click();
+  });
+
+  // Mirror the actual identity; no second mood/name state to drift over time.
+  const portrait = document.getElementById('mascot');
+  const name = document.querySelector('.identity h1');
+  function syncIdentity() {
+    document.getElementById('mobileAvatar').src = portrait.src;
+    document.getElementById('mobileName').textContent = name.textContent;
+  }
+  new MutationObserver(syncIdentity).observe(portrait, { attributes: true, attributeFilter: ['src'] });
+  new MutationObserver(syncIdentity).observe(name, { childList: true, subtree: true, characterData: true });
+  syncIdentity();
+
+  function syncLayout() {
+    if (narrow.matches) {
+      menu.appendChild(sidebar);
+      actionHomes.forEach(({ button }) => actions.appendChild(button));
+    } else {
+      menu.close(); tools.close();
+      sidebarHome.after(sidebar);
+      actionHomes.forEach(({ button, home }) => home.after(button));
+    }
+    syncViewport();
+  }
+  // Safari's visual viewport shrinks for the software keyboard while the
+  // layout viewport can stay tall. Keep the composer above it, preserve pinch
+  // zoom, and give the conversation the tab bar's space while typing.
+  function syncViewport() {
+    const viewport = window.visualViewport;
+    if (!narrow.matches || (viewport && viewport.scale !== 1)) {
+      document.documentElement.style.removeProperty('--mobile-height');
+      document.documentElement.style.removeProperty('--mobile-top');
+      document.body.classList.remove('mobile-keyboard');
+      return;
+    }
+    const height = viewport ? viewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--mobile-height', height + 'px');
+    document.documentElement.style.setProperty('--mobile-top', (viewport ? viewport.offsetTop : 0) + 'px');
+    const typing = isTypingTarget(document.activeElement);
+    document.body.classList.toggle('mobile-keyboard', typing && window.innerHeight - height > 120);
+  }
+  narrow.addEventListener('change', syncLayout);
+  window.addEventListener('resize', syncViewport);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewport);
+    window.visualViewport.addEventListener('scroll', syncViewport);
+  }
+  document.addEventListener('focusin', syncViewport);
+  document.addEventListener('focusout', () => requestAnimationFrame(syncViewport));
+  syncLayout();
 })();

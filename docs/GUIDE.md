@@ -211,7 +211,7 @@ The current session shell — three columns, Nebula and Calm themes — is pictu
 - **Heartbeat** — `lisa heartbeat run` (manual) or `lisa heartbeat install` (launchd / cron)
 - **Autostart** — `lisa autostart install` keeps `lisa serve --web` running from login onward (launchd on macOS; prints a `systemd --user` unit on Linux), so the apps, island, and channels are always up. `lisa autostart status` / `uninstall` to inspect / remove.
 - **Mac menu bar** — Lisa.app lives in the menu bar with a mood glyph + live agent status, an About window with changelog + update discovery, and a ⌘, preferences pane (island toggle, screen-advisor interval, backend controls).
-- **iOS — Lisa Pocket** — a thin, private companion app for iPhone & iPad: chat with Lisa and watch / approve her agents while you're away from your Mac. Connects only to your own backend (or a LISA Cloud instance you choose). *Coming to the App Store.*
+- **iOS — Lisa Pocket** — [available on the US App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058), version 1.2, for iPhone and iPad running iOS/iPadOS 17 or later. Sign in to LISA Cloud to chat, or pair your reachable Mac to chat with that instance and manage its agents. Cloud and Mac keep separate data. Availability varies by region; see the [current verification record](REVIEW_POCKET_LIVE_2026-10-24.md).
 
 ### Watching — and steering — your other agents (orchestrator)
 

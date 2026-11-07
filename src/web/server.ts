@@ -216,6 +216,7 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { handleMemoryApi } from "./memory-api.js";
 import { createWebWarden, handleWardenApi, wardenTrust, crossSiteProblem } from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
@@ -230,6 +231,8 @@ import {
   scheduleServerCatchUp,
 } from "./reachout-wiring.js";
 import { createTaskHost } from "./tasks-host.js";
+import { createTaskApprovalFactory } from "../warden/task-approval.js";
+import { createReachOutTransports } from "../reachout/deliver.js";
 import { cloudTasksEnabled } from "./tasks-api.js";
 import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
 import {
@@ -741,6 +744,50 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     return adoptCtxForStore(await SessionStore.open(id));
   };
   const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
+  /**
+   * Re-read a chat's history and latest reflection from its transcript,
+   * THROUGH its turn chain (the same in-place swap the cloud session switch
+   * uses): an idle chat reloads at once, a chat mid-turn right after that
+   * turn has persisted its reply.
+   */
+  const reloadChatFromDisk = (c: ChatCtx): Promise<void> => {
+    const job = c.chain.then(async () => {
+      const [{ messages }, reflectionSummary] = await Promise.all([
+        c.session.readMessagePage(0, 9999),
+        c.session.readLatestReflection(),
+      ]);
+      c.history.length = 0;
+      c.history.push(...messages);
+      c.reflectionSummary = reflectionSummary;
+      c.prompt = undefined;
+    });
+    c.chain = job.then(
+      () => {},
+      () => {},
+    );
+    return job;
+  };
+  /**
+   * After an applied forget (memory-api onForgetApplied): the transcripts were
+   * redacted on disk, but every chat this process holds still has the old
+   * messages in memory and would send them to the model on its next turn.
+   * Reload them — on the Mac every cached session, in the hosted edition only
+   * the calling account's runtime. Idle chats are awaited; a chat with a turn
+   * in flight reloads after it, without holding the forget's response.
+   */
+  const reloadChatsAfterForget = async (): Promise<void> => {
+    const scoped = homeScope.getStore();
+    const ctxs = scoped
+      ? [tenantRuntimes.peek(scoped)].filter((c): c is ChatCtx => c !== undefined)
+      : [...new Set([globalChat, ...sessionCtxs.values()])];
+    const idle: Promise<void>[] = [];
+    for (const c of ctxs) {
+      const job = reloadChatFromDisk(c);
+      if (ctxTurns.has(c)) void job.catch(() => {});
+      else idle.push(job);
+    }
+    await Promise.all(idle);
+  };
   const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
     const scoped = homeScope.getStore();
     if (!scoped) return { value: globalChat, release: () => {} };
@@ -1036,6 +1083,29 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // proactive message; the gate decides whether the push channel fires.
     reachOut: reachOutVia,
     pushSink: pushBridge,
+    // Unattended runs get more than verified read-only calls ONLY in Warden
+    // mode: each run then gets its own Warden session on this server's inbox.
+    // Otherwise nothing is installed and the engine's read-only allow-list
+    // applies (src/tasks/policy.ts).
+    ...(warden.enabled
+      ? {
+          approvalFactory: createTaskApprovalFactory({
+            inbox: warden.inbox,
+            surface: policy.surface,
+            // "An approval is waiting" reaches the user through the gate
+            // (source `approval`), on its generic in-app note and push.
+            reachOut: (notice) =>
+              reachOutVia(
+                notice,
+                createReachOutTransports({
+                  inapp: { emit: (event, uid) => broadcast(event, uid) },
+                  push: pushBridge,
+                }),
+              ),
+            log: logWarn,
+          }),
+        }
+      : {}),
     rememberNote: async (note) => {
       const lease = await ctxForRequest();
       try {
@@ -1063,6 +1133,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             await ctx.session.appendMessage(message);
             ctx.history.push(message);
           },
+          // A card that carries outside text taints the conversation it
+          // lands in, so the next chat turn that reads it is tainted (N3).
+          markTainted: () => warden.markTainted(ctx.session.id, scopedUid()),
         }),
       );
       ctx.chain = job.then(
@@ -2789,8 +2862,30 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     ) {
       return;
     }
+    // Memory sovereignty (W8): entries edit/delete, forget, export. Tenant-
+    // scoped in cloud (account session required); owner-only writes on Mac.
+    if (
+      await handleMemoryApi(req, res, url, {
+        cloud,
+        accountUid,
+        loopback: isLoopbackAddress(remoteAddr),
+        onForgetApplied: reloadChatsAfterForget,
+      })
+    ) {
+      return;
+    }
     if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
-    if (await taskHost.handle(req, res, url, accountUid)) return;
+    if (
+      await taskHost.handle(
+        req,
+        res,
+        url,
+        accountUid,
+        wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+      )
+    ) {
+      return;
+    }
 
     if (
       await handleWardenApi(req, res, url, {
