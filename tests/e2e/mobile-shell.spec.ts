@@ -127,6 +127,7 @@ test.describe("mobile app shell", () => {
   test("action sheet, search and theme work without hiding conversation controls", async ({
     page,
   }, info) => {
+    await page.emulateMedia({ colorScheme: "dark" });
     await page.goto(lisa.baseURL);
     await page.locator("#mobileToolsBtn").click();
     await page.locator("#fnTheme").click();

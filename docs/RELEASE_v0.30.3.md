@@ -1,4 +1,4 @@
-# Lisa 0.30.2 — A clearer account and Pocket experience
+# Lisa 0.30.3 — A clearer account and Pocket experience
 
 The Mac account window now guides you through email and verification-code sign-in,
 then switches to a dedicated account page with live connection status and a clear
@@ -10,6 +10,9 @@ next step for connecting Lisa Pocket.
 - Sign-in attempts survive closing the window to check your inbox. Account validation and failed setup can recover without losing the next step.
 - Cloud model account changes explicitly confirm interruptions; signing out closes phone access before applying the cleared account.
 - Pairing v2 support and compatibility guidance for older Pocket versions, alongside the local-network/cloud relay connection flow.
+
+The release also brings the latest light-mode improvements across the Mac and web
+interfaces, with clearer surfaces, contrast and consistent appearance.
 
 This release also includes the reviewed main-branch updates since 0.30.0: cloud
 account and billing hardening, hosted-account setup fixes, local retention fixes,

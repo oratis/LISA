@@ -37,8 +37,8 @@ struct RootView: View {
         // transcript, account sheet or session must never cross that boundary.
         .id(app.config)
         .tint(Theme.accent)                                  // cyan active tab + links + controls
-        // Appearance follows the Settings picker: Nebula (dark, default) ·
-        // Calm (light) · Auto (system). Theme.* colors are trait-aware.
+        // New installs follow the system; an explicit Settings choice persists.
+        // Theme.* colors are trait-aware.
         .preferredColorScheme(app.preferredScheme)
         .toolbarBackground(Theme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
