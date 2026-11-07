@@ -21,6 +21,11 @@
  * can neither put soul text into a revert sidecar nor make a soul file look
  * like user data.
  *
+ * Reads are bounded: a file's size is checked (fstat on the opened handle)
+ * before anything is held, and a file over the per-file cap, or over what is
+ * left of the per-pass budget, is hashed from a stream in fixed-size chunks
+ * without keeping its content. Memory per file is one chunk, whatever its size.
+ *
  * Caps never hide a file silently. A part whose tracked set would take the
  * pass past MAX_SNAPSHOT_FILES is left out WHOLE and named in `uncaptured`,
  * so within a captured part a path missing from the snapshot really did not
@@ -32,6 +37,7 @@ import crypto from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { lisaHome } from "../paths.js";
 import type { DesireChanges, DreamPart, EmotionDelta, FileChange } from "./types.js";
 
@@ -45,6 +51,8 @@ export const MAX_SNAPSHOT_FILES = 5000;
 export const MAX_DIFF_CHARS = 8 * 1024;
 /** Journal files older than this many days are not snapshotted. */
 const JOURNAL_DAYS = 3;
+/** Read size when streaming a file (the most held at once for a file not kept). */
+const READ_CHUNK_BYTES = 64 * 1024;
 
 export interface SnapFile {
   part: DreamPart;
@@ -197,11 +205,52 @@ export async function trackedFiles(part: DreamPart, now: Date = new Date()): Pro
   return t;
 }
 
-/** Read a file without following a link at its last component (ELOOP if it is one). */
-async function readNoFollow(abs: string): Promise<string> {
-  const fh = await fs.open(abs, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+interface ReadState {
+  hash: string;
+  /** UTF-8 bytes of the text (what `sha256(content)` hashes). */
+  bytes: number;
+  /** The text, when it fit `keepLimit`. */
+  content?: string;
+}
+
+/**
+ * Read a tracked file without following a link at its last component (ELOOP
+ * if it is one) and without blocking on a FIFO swapped in after the listing.
+ * The size is checked on the open handle first: a file bigger than
+ * `keepLimit` is only hashed, chunk by chunk; a file that grows past it while
+ * being read drops what was buffered. The hash is over the decoded text, so
+ * it equals `sha256(content)` for a file that is kept.
+ */
+async function readTracked(abs: string, keepLimit: number): Promise<ReadState> {
+  const flags =
+    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
+  const fh = await fs.open(abs, flags);
   try {
-    return await fh.readFile("utf8");
+    const st = await fh.stat();
+    if (!st.isFile()) {
+      throw Object.assign(new Error("not a regular file"), { code: "EINVAL" });
+    }
+    const hash = crypto.createHash("sha256");
+    const decoder = new StringDecoder("utf8");
+    let bytes = 0;
+    let kept: string[] | null = st.size <= keepLimit ? [] : null;
+    const take = (text: string) => {
+      if (!text) return;
+      hash.update(text, "utf8");
+      bytes += Buffer.byteLength(text, "utf8");
+      if (kept) {
+        kept.push(text);
+        if (bytes > keepLimit) kept = null;
+      }
+    };
+    const buf = Buffer.allocUnsafe(READ_CHUNK_BYTES);
+    for (;;) {
+      const { bytesRead } = await fh.read(buf, 0, buf.length, null);
+      if (bytesRead === 0) break;
+      take(decoder.write(buf.subarray(0, bytesRead)));
+    }
+    take(decoder.end());
+    return { hash: hash.digest("hex"), bytes, ...(kept ? { content: kept.join("") } : {}) };
   } finally {
     await fh.close();
   }
@@ -242,9 +291,9 @@ export async function takeSnapshot(
     }
     count += list.length;
     for (const abs of list) {
-      let content: string;
+      let read: ReadState;
       try {
-        content = await readNoFollow(abs);
+        read = await readTracked(abs, Math.min(MAX_SNAPSHOT_FILE_BYTES, budget));
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         // Vanished between readdir and read: it is simply not there now.
@@ -257,15 +306,15 @@ export async function takeSnapshot(
         }
         continue;
       }
-      const bytes = Buffer.byteLength(content, "utf8");
-      const keep = bytes <= MAX_SNAPSHOT_FILE_BYTES && bytes <= budget;
-      if (keep) budget -= bytes;
+      // Only content that is held counts against the per-pass budget; a file
+      // past either cap is still listed, with its hash and size.
+      if (read.content !== undefined) budget -= read.bytes;
       else snap.capped = true;
       snap.files.set(toRel(abs), {
         part,
-        hash: sha256(content),
-        bytes,
-        content: keep ? content : undefined,
+        hash: read.hash,
+        bytes: read.bytes,
+        content: read.content,
       });
     }
     snap.captured.push(part);
