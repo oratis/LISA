@@ -71,6 +71,12 @@ AAD is `lisa-link-v1|direction|seq`; receivers require the next exact counter. P
 keys and salt also use standard base64. The comparison code is the first six bytes of
 SHA-256(host raw key || client raw key), uppercase hex grouped into fours.
 This version uses persistent agreement keys and does not claim forward secrecy.
+The comparison code is derived from both keys without a prior commitment, so it
+defends first pairing against a passive relay only. An actively malicious relay (or an
+interceptor of the account origin's TLS) that substitutes *both* keys can search for a
+matching pair: about 2^24 key generations per side, minutes on one CPU core. Approved
+devices and later connections are unaffected. A future protocol version should commit
+to keys before revealing them, or compare a longer code.
 
 The encrypted welcome proves possession of the pinned Mac key, reports authorization,
 and gives a fresh server challenge. Authorized welcomes also carry LAN endpoints.
@@ -82,6 +88,10 @@ Each encrypted request binds a UUID, a short expiry and the fresh server challen
 One request is permitted per channel. Recent UUIDs reject duplicate dispatch across
 routes. Responses contain encrypted headers, data chunks and an explicit end marker,
 supporting both ordinary REST and incremental SSE. Cancellation closes the local request.
+Responses are flow-controlled per channel: when the LAN socket or the shared relay uplink
+backs up past 1 MiB, the Mac pauses the local response instead of buffering it. The Mac
+caps LAN and relay channels separately (64 each). Request expiry tolerates five minutes
+of phone/Mac clock skew; replay is bound to the per-channel challenge.
 **After a user request is sent, it is never automatically retried on another route**:
 the operation might already have run. Existing event subscribers can open a fresh stream.
 
@@ -90,7 +100,10 @@ classifies it as a **remote device**, validates its current Mac-owned grant, and
 the existing remote-control and local-owner restrictions. An arbitrary marker can only
 downgrade a caller; it cannot grant localhost privileges. Client-supplied headers and
 arbitrary outbound URLs are never forwarded. Connection management itself cannot be
-invoked through the encrypted tunnel.
+invoked through the encrypted tunnel. On the Mac, `/api/remote/*` additionally requires a
+loopback `Host` and refuses cross-site or foreign `Origin` requests, so a DNS-rebinding
+page cannot select a relay or approve a device. A dismissed pairing request stays
+dismissed for its 10-minute lifetime even while Pocket keeps polling.
 
 ## API additions
 
