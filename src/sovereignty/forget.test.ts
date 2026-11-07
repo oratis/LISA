@@ -661,6 +661,63 @@ describe("forget", () => {
     assert.equal(notice!.state, "pending");
   });
 
+  test("tasks: state the runner sealed stays sealed after a forget; unsealed state stays unsealed (#422)", async () => {
+    const { createTask, createRun, checkpointRun, getTask, loadRun, rewriteTaskJson } =
+      await import("../tasks/store.js");
+    const { loadDigestKey } = await import("../warden/store.js");
+    const { sealRunTaint, sealTaskState, runTaintSealed, taskStateSealed } =
+      await import("../tasks/seal.js");
+    const key = await loadDigestKey();
+    const sealed = await createTask({
+      id: "task_seal01",
+      kind: "routine",
+      title: "Weekly plan",
+      instruction: "plan the week",
+      origin: { kind: "chat" },
+    });
+    const plain = await createTask({
+      id: "task_seal02",
+      kind: "routine",
+      title: "Other plan",
+      instruction: "plan the month",
+      origin: { kind: "chat" },
+    });
+    for (const [t, seal] of [
+      [sealed, true],
+      [plain, false],
+    ] as const) {
+      await rewriteTaskJson(t.id, (v) => {
+        const task = v as Parameters<typeof sealTaskState>[0];
+        task.lastSummary = "Booked dinner with Ann";
+        if (seal) sealTaskState(task, key);
+        return task;
+      });
+    }
+    const run = await createRun(sealed.id, { input: "Ann replied" }, Date.now(), {
+      seal: (r) => sealRunTaint(r, key),
+    });
+    await checkpointRun({ ...run, summary: "Told Ann" });
+    // The run as the runner left it: sealed over its current taint.
+    const before = await loadRun(sealed.id, run.id);
+    assert.ok(before);
+    sealRunTaint(before.run, key);
+    await checkpointRun(before.run);
+    assert.ok(runTaintSealed((await loadRun(sealed.id, run.id))!.run, key));
+
+    const preview = await forget("Ann", { dryRun: true });
+    await forget("Ann", { digest: preview.digest });
+
+    const a = await getTask(sealed.id);
+    assert.equal(a!.lastSummary, FORGOTTEN);
+    assert.equal(taskStateSealed(a!, key), true, "a sealed task is re-sealed");
+    const b = await getTask(plain.id);
+    assert.equal(b!.lastSummary, FORGOTTEN);
+    assert.equal(taskStateSealed(b!, key), false, "forget never seals what was not sealed");
+    const r = await loadRun(sealed.id, run.id);
+    assert.equal(r!.run.input, FORGOTTEN);
+    assert.equal(runTaintSealed(r!.run, key), true, "a sealed run is re-sealed");
+  });
+
   test("names what it did not scan, and never claims more than it verified", async () => {
     write("memory/MEMORY.md", "- Ann is my cousin\n");
     write("skills/party/SKILL.md", "---\nname: party\n---\nInvite Ann.\n");
