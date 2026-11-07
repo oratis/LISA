@@ -11,7 +11,9 @@
  * line starting with these words is a one-shot prompt, as it always was.
  * Forget always shows its preview first and asks before it writes unless
  * `--yes`; it refuses to run destructively without a TTY or `--yes`. Export
- * without `--out` asks first and refuses without a TTY.
+ * without `--out` asks first and refuses without a TTY. `import --replace`
+ * into this machine's home refuses while a Lisa answers on its local port: a
+ * running Lisa keeps writing into the areas being swapped.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -26,6 +28,33 @@ export interface CliIo {
   err: (line: string) => void;
   /** Ask a yes/no question; resolve true for yes. Null when not interactive. */
   confirm: ((question: string) => Promise<boolean>) | null;
+  /**
+   * Where a running Lisa answers on this machine ("127.0.0.1:5757"), or null.
+   * Defaults to a /healthz probe of the local serve port.
+   */
+  lisaRunning?: () => Promise<string | null>;
+}
+
+/** The port `lisa serve` listens on unless told otherwise. */
+const DEFAULT_SERVE_PORT = 5757;
+
+/** Does a Lisa answer /healthz on this machine's serve port? */
+export async function probeLocalLisa(
+  port = Number(process.env.LISA_WEB_PORT) || DEFAULT_SERVE_PORT,
+): Promise<string | null> {
+  const where = `127.0.0.1:${port}`;
+  try {
+    const res = await fetch(`http://${where}/healthz`, { signal: AbortSignal.timeout(800) });
+    const body = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+    return res.ok && body?.ok === true ? where : null;
+  } catch {
+    return null;
+  }
+}
+
+function within(base: string, p: string): boolean {
+  const rel = path.relative(base, p);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
 function defaultIo(): CliIo {
@@ -242,14 +271,26 @@ export async function runImportCommand(args: string[], io: CliIo = defaultIo()):
     return file ? 0 : 2;
   }
   const into = path.resolve(p.values.get("--into") ?? lisaGlobalHome());
+  const replace = p.flags.has("--replace");
+  if (replace && within(path.resolve(lisaGlobalHome()), into)) {
+    const running = await (io.lisaRunning ?? (() => probeLocalLisa()))();
+    if (running) {
+      io.err(
+        `Lisa is running (${running}) and would keep writing into the areas --replace swaps out. ` +
+          "Quit the Lisa app or stop `lisa serve` first, then run the import again.",
+      );
+      return 2;
+    }
+  }
   try {
-    const r = await importLisa(path.resolve(file), { into, replace: p.flags.has("--replace") });
+    const r = await importLisa(path.resolve(file), { into, replace });
     io.out(
       `Imported ${r.files} file(s), ${humanBytes(r.bytes)} into ${r.into} (${r.roots.join(", ")}).`,
     );
     if (r.backup) io.out(`Previous data backed up to ${r.backup}`);
     if (r.tasksDisabled)
       io.out(`${r.tasksDisabled} task(s) imported disabled — review and re-enable them.`);
+    for (const w of r.warnings) io.err(`warning: ${w}`);
     io.out("Restart Lisa (lisa serve) so she picks up the imported soul.");
     return 0;
   } catch (e) {

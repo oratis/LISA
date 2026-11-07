@@ -29,16 +29,25 @@ function write(rel: string, content: string, base = home): void {
   fs.writeFileSync(abs, content);
 }
 
-function io(answer: boolean | null = null): CliIo & { lines: string[]; errors: string[] } {
+function io(
+  answer: boolean | null = null,
+  running: string | null = null,
+): CliIo & { lines: string[]; errors: string[]; probes: number } {
   const lines: string[] = [];
   const errors: string[] = [];
-  return {
+  const t = {
     lines,
     errors,
-    out: (l) => lines.push(l),
-    err: (l) => errors.push(l),
+    probes: 0,
+    out: (l: string) => lines.push(l),
+    err: (l: string) => errors.push(l),
     confirm: answer === null ? null : async () => answer,
+    lisaRunning: async () => {
+      t.probes++;
+      return running;
+    },
   };
+  return t;
 }
 
 describe("cli args", () => {
@@ -196,6 +205,31 @@ describe("lisa export / import", () => {
     const replace = io();
     assert.equal(await runImportCommand([out, "--into", dest, "--replace"], replace), 0);
     assert.ok(replace.lines.some((l) => /backed up to/.test(l)));
+  });
+
+  test("import --replace into this machine's home refuses while Lisa is running", async () => {
+    write("soul/identity.md", "I am Lisa.\n");
+    write("memory/USER.md", `- ${"x".repeat(2998)}\n`);
+    const out = path.join(root, "lisa.tar.gz");
+    assert.equal(await runExportCommand(["--out", out], io()), 0);
+
+    const busy = io(null, "127.0.0.1:5757");
+    assert.equal(await runImportCommand([out, "--replace"], busy), 2);
+    assert.match(busy.errors.join("\n"), /Lisa is running \(127\.0\.0\.1:5757\)/);
+    assert.equal(fs.readFileSync(path.join(home, "soul/identity.md"), "utf8"), "I am Lisa.\n");
+    assert.ok(!fs.existsSync(path.join(home, "import-backups")), "nothing was swapped");
+
+    // Stopped: the same import goes through, and says the store is over its cap.
+    const idle = io(null, null);
+    assert.equal(await runImportCommand([out, "--replace"], idle), 0);
+    assert.equal(idle.probes, 1);
+    assert.match(idle.errors.join("\n"), /warning: memory\/USER\.md is 3001 bytes/);
+
+    // Another home (an operator's --into) is not this machine's running Lisa.
+    const elsewhere = io(null, "127.0.0.1:5757");
+    const dest = path.join(root, "elsewhere");
+    assert.equal(await runImportCommand([out, "--into", dest, "--replace"], elsewhere), 0);
+    assert.equal(elsewhere.probes, 0);
   });
 
   test("import refuses a non-archive", async () => {

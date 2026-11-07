@@ -19,7 +19,9 @@
  *  4. an existing soul (or any other non-empty area the archive carries) is
  *     never overwritten unless `replace` — and then the current areas are
  *     moved into `<home>/import-backups/<stamp>/` first, with rollback if the
- *     swap fails half-way;
+ *     swap fails half-way. `memory/` is one area: when the archive carries
+ *     it, MEMORY.md and USER.md are both replaced (a store the archive lacks
+ *     goes to the backup rather than staying behind from the old Lisa);
  *  5. imported tasks arrive disabled (paused, "imported"), re-owned for the
  *     target home, so nothing starts acting on a new host by itself.
  *
@@ -32,6 +34,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
 import { lisaGlobalHome } from "../paths.js";
+import { memoryMaxBytes, type MemoryStore } from "../memory/store.js";
 import { appendSovereigntyAudit } from "./audit.js";
 import { EXPORT_FORMAT, EXPORT_FORMAT_VERSION } from "./export.js";
 import {
@@ -99,6 +102,8 @@ export interface ImportResult {
   tasksDisabled: number;
   lisaVersion: string;
   created: string;
+  /** Things the person should know about what was imported (not errors). */
+  warnings: string[];
 }
 
 interface Written {
@@ -431,6 +436,35 @@ async function disableImportedTasks(stagedTasks: string, owner: string | null): 
   return disabled;
 }
 
+const MEMORY_STORE_FILES: readonly { file: string; store: MemoryStore }[] = [
+  { file: "MEMORY.md", store: "memory" },
+  { file: "USER.md", store: "user" },
+];
+
+/**
+ * An imported store over its byte cap still works (reads, deletes and
+ * forget always may shrink it), but Lisa's own memory tool cannot add to it
+ * until it is trimmed — say so instead of letting that surprise later.
+ */
+async function overCapWarnings(staging: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const { file, store } of MEMORY_STORE_FILES) {
+    let size: number;
+    try {
+      size = (await fsp.stat(path.join(staging, "memory", file))).size;
+    } catch {
+      continue;
+    }
+    const cap = memoryMaxBytes(store);
+    if (size > cap) {
+      out.push(
+        `memory/${file} is ${size} bytes, over its ${cap}-byte cap: Lisa can't add to it until it is trimmed (deleting entries or forget still work)`,
+      );
+    }
+  }
+  return out;
+}
+
 function stampOf(now: Date): string {
   return now.toISOString().replace(/[:.]/g, "-");
 }
@@ -494,6 +528,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
       }
     }
 
+    const warnings = await overCapWarnings(staging);
     const tasksDisabled = roots.includes("tasks")
       ? await disableImportedTasks(path.join(staging, "tasks"), ownerFor(into))
       : 0;
@@ -511,15 +546,17 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
     try {
       for (const root of roots) {
         if (root === "memory") {
-          for (const f of ["MEMORY.md", "USER.md"]) {
+          // One area: both stores are replaced together, so a store the
+          // archive lacks is not left behind from the old Lisa. The rest of
+          // memory/ (caches, the write lock) is infrastructure and stays.
+          for (const { file: f } of MEMORY_STORE_FILES) {
             const staged = path.join(staging, "memory", f);
-            if (!(await exists(staged))) continue;
             const target = path.join(into, "memory", f);
             if (await exists(target)) {
               await move(target, path.join(backupRoot ?? trash, "memory", f));
               backedUp ||= Boolean(backupRoot);
             }
-            await move(staged, target);
+            if (await exists(staged)) await move(staged, target);
           }
           continue;
         }
@@ -562,6 +599,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
       tasksDisabled,
       lisaVersion: typeof manifest.lisaVersion === "string" ? manifest.lisaVersion : "unknown",
       created: typeof manifest.created === "string" ? manifest.created : "",
+      warnings,
     };
   } finally {
     await fsp.rm(staging, { recursive: true, force: true }).catch(() => {});

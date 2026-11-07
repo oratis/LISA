@@ -104,6 +104,51 @@ function listTree(dir: string): string[] {
 }
 
 describe("import", () => {
+  test("a file name over 100 bytes in a multibyte script exports and imports", async () => {
+    const src = path.join(root, "src-home");
+    const name = `${"关于我们家庭旅行计划的详细笔记和行程安排".repeat(2)}.md`;
+    assert.ok(Buffer.byteLength(name) > 100);
+    write(src, "soul/identity.md", "me\n");
+    write(src, `skills/notes/${name}`, "旅行\n");
+    const archive = path.join(root, "long.tar.gz");
+    await exportLisaToFile({ home: src }, archive);
+    const dest = path.join(root, "dest-home");
+    await importLisa(archive, { into: dest });
+    assert.equal(read(dest, `skills/notes/${name}`), "旅行\n");
+  });
+
+  test("warns about an imported memory store over its byte cap", async () => {
+    const src = path.join(root, "src-home");
+    write(src, "memory/USER.md", `- ${"x".repeat(2998)}\n`);
+    write(src, "memory/MEMORY.md", "- fine\n");
+    const archive = path.join(root, "cap.tar.gz");
+    await exportLisaToFile({ home: src }, archive);
+    const result = await importLisa(archive, { into: path.join(root, "dest-home") });
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0]!, /memory\/USER\.md is 3001 bytes, over its 2048-byte cap/);
+  });
+
+  test("--replace treats memory/ as one area: a store the archive lacks goes to the backup", async () => {
+    const src = path.join(root, "src-home");
+    write(src, "memory/MEMORY.md", "- new notes\n");
+    const archive = path.join(root, "mem.tar.gz");
+    await exportLisaToFile({ home: src }, archive);
+    const dest = path.join(root, "dest-home");
+    write(dest, "memory/MEMORY.md", "- old notes\n");
+    write(dest, "memory/USER.md", "- old profile\n");
+    write(dest, "memory/embedding-cache.json", "{}");
+    const result = await importLisa(archive, { into: dest, replace: true });
+    assert.equal(read(dest, "memory/MEMORY.md"), "- new notes\n");
+    assert.ok(
+      !fs.existsSync(path.join(dest, "memory/USER.md")),
+      "no USER.md left from the old Lisa",
+    );
+    assert.ok(result.backup);
+    assert.equal(read(result.backup, "memory/USER.md"), "- old profile\n");
+    assert.equal(read(result.backup, "memory/MEMORY.md"), "- old notes\n");
+    assert.equal(read(dest, "memory/embedding-cache.json"), "{}", "memory infrastructure stays");
+  });
+
   test("export → import round-trip reproduces the soul, memory, kb, skills and sessions", async () => {
     const src = path.join(root, "src-home");
     const files: Record<string, string> = {
