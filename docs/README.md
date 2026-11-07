@@ -112,6 +112,10 @@ several are cited by name from source comments.
 
 ## Releases
 
+- [v0.30.0 — Yours to see, keep and undo](./RELEASE_v0.30.0.md)
+- [v0.29.1 — Mac connection security and reliability](./RELEASE_v0.29.1.md)
+- [v0.29.0 — Pocket connects to your Mac anywhere](./RELEASE_v0.29.0.md)
+- [v0.28.2 — a little more room](./RELEASE_v0.28.2.md)
 - [v0.28.1 — Soft Ink, Tasks & Trust](./RELEASE_v0.28.1.md)
 
 [RELEASING.md](./RELEASING.md) is the how. [CHANGELOG.md](../CHANGELOG.md) is

