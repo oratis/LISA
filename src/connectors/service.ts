@@ -679,3 +679,9 @@ export class ReadonlyConnector<A, R> {
       }).catch(() => {});
   }
 }
+
+/** Public lifecycle surface, independent of a provider's account/resource shape. */
+export type ConnectorService = Pick<
+  ReadonlyConnector<unknown, unknown>,
+  keyof ReadonlyConnector<unknown, unknown>
+>;

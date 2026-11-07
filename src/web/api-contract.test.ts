@@ -168,6 +168,34 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     assert.ok(schemaErrors(schema, { ...card, credentialRef: "private" }).length > 0);
     assert.ok(schemaErrors(schema, { ...card, accessToken: "private" }).length > 0);
   });
+  test("Linear cards and events expose only account and selected teams", () => {
+    const card = {
+      id: "request-1",
+      sessionId: "session-1",
+      status: "selecting",
+      createdAt: 1,
+      expiresAt: 2,
+      connected: false,
+      account: {
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "Fixture",
+        email: "fixture@example.com",
+      },
+      resources: [{ id: "00000000-0000-4000-8000-000000000002", name: "Team", access: "team" }],
+    };
+    assertContract("ConnectorRequestsResponse", { requests: [card] });
+    assertContract("ConnectorConnectionChangedEvent", {
+      type: "connector_connection_changed",
+      sessionId: "session-1",
+      provider: "linear",
+    });
+    assert.ok(
+      schemaErrors(contract.components.schemas.ConnectorRequest!, {
+        ...card,
+        refreshToken: "private",
+      }).length > 0,
+    );
+  });
   test("GitHub cards exclude credentials and retain stable lifecycle fields", () => {
     const request = {
       id: "request-1",
