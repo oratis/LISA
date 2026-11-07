@@ -22,6 +22,15 @@ struct SettingsView: View {
     @State private var showUnpairConfirm = false
     @State private var connectBusy = false
 
+    /// Which sends the current permission covers, in the sheet's own words.
+    private var aiConsentScope: String {
+        switch (app.aiConsent.isGranted(for: .chat), app.aiConsent.isGranted(for: .delegation)) {
+        case (true, true): return "chat and agent tasks"
+        case (false, true): return "agent tasks"
+        default: return "chat"
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -118,18 +127,18 @@ struct SettingsView: View {
 
                 Section {
                     Text(app.aiConsent.isGranted
-                         ? "Allowed for this connection: " + app.aiConsent.recipients.joined(separator: ", ")
-                         : "Permission is required before sending your next message to AI services.")
+                         ? "Allowed for \(aiConsentScope) on this connection: " + app.aiConsent.recipients.joined(separator: ", ")
+                         : "Permission is required before sending your next message or agent task to AI services.")
                         .font(.footnote)
                     Button("Withdraw AI consent") {
                         app.withdrawAIConsent()
-                        app.notify("AI permission withdrawn. Your next message will ask again.")
+                        app.notify("AI permission withdrawn. Your next message or task will ask again.")
                     }
                     Link("Privacy policy", destination: URL(string: "https://meetlisa.ai/privacy")!)
                 } header: {
                     Text("AI data sharing")
                 } footer: {
-                    Text("Stops an active chat request and asks again before future messages from this app. Data already sent cannot be recalled. This does not delete your history or change automations you configured on your Mac.")
+                    Text("Stops an active chat or agent request and asks again before future messages and agent tasks from this app. Data already sent cannot be recalled. Agents already running on your Mac keep running; cancel them from Agents. This does not delete your history or change automations you configured on your Mac.")
                 }
 
                 if app.connectionMode == .mac {

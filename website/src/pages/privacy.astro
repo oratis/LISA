@@ -69,6 +69,14 @@ import Base from "../layouts/Base.astro";
         keep inference on your Mac; connecting a Mac alone does not keep remote inference
         on your device.
       </p>
+      <p>
+        If you turn on coding-agent sessions on your Mac (<code>LISA_PTY_AGENTS=1</code>), a
+        task you delegate to <strong>Claude Code</strong> or <strong>Codex</strong>, and its
+        follow-ups, are sent by that tool under its own sign-in on your Mac, to the provider
+        that account uses (Anthropic or OpenAI unless you configured it otherwise), together
+        with files and command output it reads in the project. Lisa Pocket lists these tools
+        as separate recipients while they are on. Review their terms and settings too.
+      </p>
     </section>
 
     <section class="pol">
@@ -90,11 +98,15 @@ import Base from "../layouts/Base.astro";
         Before sending a chat message, the iOS app identifies the configured AI recipients,
         explains the data involved, and asks for your explicit permission. Cancel leaves
         the draft unsent. Consent is limited to the current app session and connection;
-        a changed recipient requires permission again. In <strong>Settings → AI data
-        sharing → Withdraw AI consent</strong>, you can stop an active chat request and
-        require fresh permission before future messages from this app. Withdrawal cannot
-        recall information already processed and does not erase your history. It does not
-        disable independent automations on your Mac; stop those on your own server.
+        a changed recipient requires permission again. Versions of the app after 1.3 also
+        ask before sending a task, a follow-up or a session adoption to an agent on your Mac,
+        as a separate permission, because an agent also reads files and command output there;
+        Cancel keeps the task unsent. In <strong>Settings → AI data sharing → Withdraw AI
+        consent</strong>, you can stop an active request and require fresh permission before
+        future messages and tasks from this app. Withdrawal cannot recall information already
+        processed and does not erase your history. It does not stop an agent already running
+        on your Mac (cancel it from the Agents tab) or disable independent automations there;
+        stop those on your own server.
         Use account deletion below, or contact us privately, to request deletion.
       </p>
     </section>

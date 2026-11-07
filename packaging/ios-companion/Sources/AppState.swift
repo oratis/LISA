@@ -39,6 +39,45 @@ final class AppState: ObservableObject {
         cancelActiveChat?()
         cancelActiveChat = nil
     }
+
+    /// Where the recipient list comes from. Tests substitute a fixed list.
+    var loadAIDisclosure: (LisaClient) async throws -> LisaClient.AuthConfig.DataProcessing? = {
+        try await $0.aiDisclosure()
+    }
+
+    /// The check in front of every send of user text to AI — Chat and the Agents
+    /// tab alike (App Review 5.1.2(i)). Reads the connected server's recipients
+    /// and compares them with the session consent for `purpose`. Nothing is sent
+    /// here; `AISharingGate` runs the send only on `.allowed`, or after the user
+    /// allows an `.ask`.
+    func checkAISharing(_ text: String, purpose: AISharingPurpose) async -> AISharingCheck {
+        let expected = config
+        let generation = aiConsent.generation
+        let disclosure = try? await loadAIDisclosure(client)
+        guard config == expected, aiConsent.generation == generation, !Task.isCancelled else { return .stale }
+        guard let disclosure, disclosure.version == 1, !disclosure.recipients.isEmpty else {
+            notify("Couldn't load AI provider information. Retry, or update your LISA server before sending.", ok: false)
+            return .unavailable
+        }
+        let request = AISharingRequest(server: expected, recipients: disclosure.recipients,
+                                       purpose: purpose, generation: generation, text: text)
+        return allowsAISharing(request) ? .allowed(request) : .ask(request)
+    }
+
+    /// True while the session consent still covers exactly this request.
+    func allowsAISharing(_ request: AISharingRequest) -> Bool {
+        request.server == config
+            && aiConsent.allows(server: request.server, recipients: request.recipients, purpose: request.purpose)
+    }
+
+    /// The consent sheet's Allow. The sheet enables it only after both the
+    /// sharing and the 18-or-older toggles are on. Fails if the connection
+    /// changed or consent was withdrawn since the sheet opened.
+    func grantAISharing(_ request: AISharingRequest) -> Bool {
+        guard request.server == config else { return false }
+        return aiConsent.grant(server: request.server, recipients: request.recipients,
+                               purpose: request.purpose, isAdult: true, generation: request.generation)
+    }
     @Published var config: ServerConfig
     @Published private(set) var client: LisaClient
     /// User's chosen data plane (My Mac vs LISA Cloud). Persisted; UX-only for now —

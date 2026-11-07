@@ -186,9 +186,7 @@ struct ChatView: View {
     @StateObject private var model = ChatModel()
     @State private var input = ""
     @State private var showPaywall = false
-    @State private var consentRecipients: [String] = []
-    @State private var consentRequest: AISharingRequest?
-    @State private var checkingConsent = false
+    @StateObject private var aiGate = AISharingGate()
     @State private var loadedConfig: ServerConfig?
     private static let bottomID = "chat-bottom"
 
@@ -198,7 +196,7 @@ struct ChatView: View {
                 transcript
                 Divider()
                 quickChips
-                Text(app.aiConsent.isGranted
+                Text(app.aiConsent.isGranted(for: .chat)
                      ? "AI data sharing allowed: " + app.aiConsent.recipients.joined(separator: ", ")
                      : "Before your first message, review and allow sharing with third-party AI.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -228,21 +226,10 @@ struct ChatView: View {
             }
             .onAppear { consumeDraft() }
             .onChange(of: app.chatDraft) { _, _ in consumeDraft() }
-            .onChange(of: app.aiConsent.generation) { _, _ in
-                consentRequest = nil
-                model.cancel()
-            }
+            // The gate drops its own sheet and pending check; the stream is the model's.
+            .onChange(of: app.aiConsent.generation) { _, _ in model.cancel() }
             .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
-            .sheet(item: $consentRequest) { request in
-                AISharingConsentSheet(request: request) {
-                    guard request.server == app.config,
-                          app.aiConsent.grant(server: request.server, recipients: request.recipients,
-                                              isAdult: true, generation: request.generation) else { return }
-                    consentRecipients = request.recipients
-                    consentRequest = nil
-                    deliver(request.text)
-                }
-            }
+            .aiSharingConsent(aiGate, app: app)
         }
     }
 
@@ -393,7 +380,7 @@ struct ChatView: View {
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("Send message")
                 .accessibilityHint("Sends what you typed to Lisa")
-                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || checkingConsent || !app.config.isConfigured)
+                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || aiGate.busy || !app.config.isConfigured)
             }
         }
         .padding()
@@ -404,29 +391,12 @@ struct ChatView: View {
     }
 
     private func requestSend(_ text: String) {
-        guard !checkingConsent, !model.sending, !text.trimmed.isEmpty else { return }
-        checkingConsent = true
-        let expected = app.config
-        let generation = app.aiConsent.generation
-        Task { @MainActor in
-            defer { checkingConsent = false }
-            let disclosure = try? await LisaClient.authConfig(base: expected).dataProcessing
-            guard app.config == expected, app.aiConsent.generation == generation else { return }
-            guard let disclosure, disclosure.version == 1, !disclosure.recipients.isEmpty else {
-                app.notify("Couldn't load AI provider information. Retry, or update your LISA server before sending.", ok: false)
-                return
-            }
-            consentRecipients = disclosure.recipients
-            if app.aiConsent.allows(server: expected, recipients: consentRecipients) { deliver(text) }
-            else {
-                consentRequest = AISharingRequest(server: expected, recipients: disclosure.recipients,
-                                                  generation: generation, text: text)
-            }
-        }
+        guard !model.sending, !text.trimmed.isEmpty else { return }
+        aiGate.submit(text, purpose: .chat, app: app) { text in deliver(text) }
     }
 
+    /// Runs only from the gate, after it rechecked the consent for this send.
     private func deliver(_ text: String) {
-        guard app.aiConsent.allows(server: app.config, recipients: consentRecipients) else { return }
         app.cancelActiveChat = { [weak model = model] in model?.cancel() }
         input = ""
         model.send(text, client: app.client)
