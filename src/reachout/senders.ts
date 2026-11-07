@@ -111,3 +111,41 @@ export function idleNoteNotice(text: string): ReachOutNotice {
     priority: "normal",
   };
 }
+
+/**
+ * An unattended run (a task, routine or watcher) is waiting on an approval.
+ * Source `approval`: the gate always delivers it (in-app, plus push where the
+ * user has one), silently in quiet hours.
+ *
+ * The in-app body says which task and which tool, and until when — never the
+ * payload, which only the approval card shows, to a caller who may approve.
+ * The PUSH says none of it: it goes through a third-party service (ntfy), and
+ * the task title is model-written text. It only says an approval is waiting.
+ */
+export function taskApprovalNotice(input: {
+  uid: string | null;
+  /** Inbox item id: one notice per approval. */
+  approvalId: string;
+  kind: "task" | "routine" | "watcher";
+  title: string;
+  tool: string;
+  /** ISO instant the approval expires (and is then a deny). */
+  expiresAt: string;
+  now: number;
+}): ReachOutNotice {
+  const minutes = Math.max(1, Math.round((Date.parse(input.expiresAt) - input.now) / 60_000));
+  const title = input.title.replace(/\s+/g, " ").trim().slice(0, 80) || "Untitled";
+  return {
+    uid: input.uid,
+    source: "approval",
+    kind: input.kind,
+    title: "Approval needed",
+    body:
+      `Your ${input.kind} "${title}" wants to use ${input.tool}. Review it in Lisa's approvals ` +
+      `within ${minutes} minute${minutes === 1 ? "" : "s"}; if nobody answers, it is not run.`,
+    push: { title: "Approval needed", body: "Lisa needs your approval for a task." },
+    priority: "high",
+    actionable: true,
+    dedupeKey: `approval:${input.approvalId}`,
+  };
+}
