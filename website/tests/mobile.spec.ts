@@ -109,7 +109,7 @@ for (const prefix of ["", "/zh-CN"]) {
   }) => {
     await page.setViewportSize({ width: 320, height: 700 });
     await page.goto(`${prefix}/cloud`);
-    const table = page.getByRole("table");
+    const table = page.getByRole("table").first();
     await expect(table.getByRole("rowheader")).toHaveCount(7);
     await expect(table.getByRole("cell")).toHaveCount(14);
     await expect(table.locator(".cell-label")).toHaveCount(14);
@@ -125,18 +125,56 @@ for (const prefix of ["", "/zh-CN"]) {
     for (const label of await table.locator(".cell-label").all()) await expect(label).toBeVisible();
   });
 
-  test(`${prefix || "en"} installation anchors clear the header and code stays scrollable`, async ({
+  test(`${prefix || "en"} credit packs retain their labels and values on phones`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`${prefix}/cloud`);
+    const packs = page.getByRole("table", { name: prefix ? "充值包" : "Credit pack", exact: true });
+    await expect(packs.getByRole("columnheader")).toHaveCount(3);
+    await expect(packs.getByRole("rowheader")).toHaveCount(3);
+    await expect(packs.getByRole("cell")).toHaveCount(6);
+    for (const row of await packs.locator("tbody tr").all()) {
+      await expect(row.locator(".cell-label")).toHaveCount(3);
+      for (const label of await row.locator(".cell-label").all()) await expect(label).toBeVisible();
+      expect(
+        await row.evaluate(
+          (el) =>
+            el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= innerWidth,
+        ),
+      ).toBe(true);
+    }
+    for (const price of ["$4.99", "$9.99", "$19.99"])
+      await expect(packs.getByRole("rowheader", { name: price, exact: true })).toHaveCount(1);
+    await expect(packs.getByRole("cell", { name: "$5.00", exact: true })).toHaveCount(1);
+    await expect(
+      packs.getByRole("cell", { name: prefix ? "$1.20 / 天" : "$1.20 / day", exact: true }),
+    ).toHaveCount(1);
+  });
+
+  test(`${prefix || "en"} installation anchors clear the header and code stays scrollable`, async ({
+    page,
+    browserName,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
     await page.goto(`${prefix}/install`);
-    await page.locator('.toc a[href="#cli"]').tap();
-    const headerBottom = await page
-      .locator(".topbar")
-      .evaluate((el) => el.getBoundingClientRect().bottom);
-    const sectionTop = await page.locator("#cli").evaluate((el) => el.getBoundingClientRect().top);
-    expect(sectionTop).toBeGreaterThanOrEqual(headerBottom);
-    expect(sectionTop).toBeLessThan(180);
+    const cdp = browserName === "chromium" ? await page.context().newCDPSession(page) : null;
+    for (const top of cdp ? [0, 59] : [0]) {
+      if (cdp)
+        await cdp.send("Emulation.setSafeAreaInsetsOverride", {
+          insets: { top, bottom: 34, left: 0, right: 0 },
+        });
+      await page.locator('.toc a[href="#cli"]').tap();
+      const headerBottom = await page
+        .locator(".topbar")
+        .evaluate((el) => el.getBoundingClientRect().bottom);
+      const sectionTop = await page
+        .locator("#cli")
+        .evaluate((el) => el.getBoundingClientRect().top);
+      expect(headerBottom).toBeGreaterThanOrEqual(top + 44);
+      expect(sectionTop).toBeGreaterThanOrEqual(headerBottom);
+      expect(sectionTop).toBeLessThan(180);
+    }
     const scrollable = page.locator("pre").filter({ hasText: "npm install" }).first();
     expect(await scrollable.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
     await scrollable.evaluate((el) => {

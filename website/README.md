@@ -27,7 +27,7 @@ npx playwright install chromium webkit
 npm test
 ```
 
-The suite builds all 14 pages and checks both languages at 320, 375, 430, 768 and 1440px in Chromium and WebKit. It covers page/button overflow, touch targets, modal navigation, focus restoration, rotation, language switching, installation anchors, scrollable code and the navigation fallback without JavaScript. The website CI job runs the same checks. Desktop keeps the full navigation; at 1200px and below, an accessible dialog replaces the wrapping header once JavaScript is ready.
+The suite builds all 14 pages and checks both languages at 320, 375, 430, 768 and 1440px in Chromium and WebKit. It covers page/button overflow, touch targets, modal navigation, focus restoration, rotation, language switching, installation anchors (including a simulated 59px top safe area), scrollable code and the navigation fallback without JavaScript. The website CI job runs the same checks. Desktop keeps the full navigation; at 1200px and below, an accessible dialog replaces the wrapping header once JavaScript is ready.
 
 ## Pages
 
