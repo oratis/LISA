@@ -855,6 +855,39 @@ describe("forget — matching on parsed text, nested entries, caps and caches", 
     }
   });
 
+  test("a conversation expression on a forgotten line no longer renders its sticker", async () => {
+    const id = "2026-10-02-expression";
+    const expression = (assetId: string) => ({
+      version: 1,
+      id: "e-" + assetId,
+      assetId,
+      format: "animated",
+    });
+    session(id, [
+      message("user", "time for a tea break?"),
+      {
+        ...message("assistant", "🍵 [LISA: Tea break · 喝杯茶]"),
+        expression: expression("sticker-tea-break"),
+      },
+      {
+        ...message("assistant", "👋 [LISA: Hello · 你好]"),
+        expression: expression("sticker-hello"),
+      },
+    ]);
+    const preview = await forget("tea break", { dryRun: true });
+    const report = await forget("tea break", { digest: preview.digest });
+    assert.equal(report.remaining!.sessions, 0);
+    const lines = sessionLines(id) as { message: { content: unknown }; expression?: unknown }[];
+    assert.equal(lines[1]!.message.content, FORGOTTEN);
+    assert.equal(lines[1]!.expression, undefined, "the sticker record goes with its text");
+    const { SessionStore } = await import("../sessions/store.js");
+    const page = await (await SessionStore.open(id)).readMessagePage(0, 20, true);
+    assert.equal(page.messages[1]!.expression, undefined);
+    assert.ok(!JSON.stringify(page.messages).toLowerCase().includes("tea break"));
+    // An unrelated expression keeps rendering.
+    assert.equal(page.messages[2]!.expression?.assetId, "sticker-hello");
+  });
+
   test("connector traces and connection requests lose the topic, nothing else", async () => {
     const id = "2026-10-02-connector";
     session(id, [

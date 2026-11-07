@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { atomicWrite } from "../fs-utils.js";
+import { childEnv } from "../child-env.js";
 import type {
   Capabilities,
   ExecOptions,
@@ -63,16 +64,12 @@ export const localFs: FsCapability = {
  * (rather than rejects) on a non-zero exit — a failing command is a result the
  * model should see, not an exception.
  */
-function runChild(
-  file: string,
-  args: string[],
-  opts: ExecOptions,
-): Promise<ExecResult> {
+function runChild(file: string, args: string[], opts: ExecOptions): Promise<ExecResult> {
   const maxOutput = opts.maxOutputBytes ?? 64 * 1024;
   return new Promise<ExecResult>((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: opts.cwd,
-      env: process.env,
+      env: childEnv(),
       signal: opts.signal,
     });
     let stdout = "";

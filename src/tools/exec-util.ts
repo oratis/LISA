@@ -6,6 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
+import { childEnv } from "../child-env.js";
 
 export interface ExecResult {
   code: number | null;
@@ -26,7 +27,7 @@ export function runIn(
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(cmd, args, { cwd, signal: opts.signal });
+      child = spawn(cmd, args, { cwd, env: childEnv(), signal: opts.signal });
     } catch (e) {
       resolve({
         code: null,

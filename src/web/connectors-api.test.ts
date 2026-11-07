@@ -24,6 +24,8 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     ["gmail", fake],
     ["google-calendar", fake],
     ["linear", fake],
+    ["google-drive", fake],
+    ["notion", fake],
   ]);
   const server = http.createServer((req, res) => {
     void handleConnectorApi(req, res, req.url!, services, owner).then((handled) => {
@@ -47,7 +49,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     });
   const catalog = await fetch(base + "/api/connectors");
   assert.equal(catalog.status, 200);
-  assert.equal(((await catalog.json()) as { connectors: unknown[] }).connectors.length, 4);
+  assert.equal(((await catalog.json()) as { connectors: unknown[] }).connectors.length, 6);
   for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }])
     assert.equal((await post("{}", headers)).status, 403, JSON.stringify(headers));
   const rebound = await new Promise<number | undefined>((resolve, reject) => {
@@ -68,6 +70,10 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal((await post("{}", { origin: "https://evil.example" }, "linear")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 200);
   assert.equal(actions, 2);
+  for (const provider of ["google-drive", "notion"]) {
+    assert.equal((await post("{}", { origin: "https://evil.example" }, provider)).status, 403);
+    assert.equal((await post("{}", {}, provider)).status, 200);
+  }
   owner = false;
   for (const route of [
     "/api/connectors",
@@ -75,9 +81,11 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     "/api/connectors/gmail/requests/test/resources",
     "/api/connectors/linear/requests?sessionId=test",
     "/api/connectors/linear/requests/test/resources",
+    "/api/connectors/google-drive/requests?sessionId=test",
+    "/api/connectors/notion/requests/test/resources",
   ])
     assert.equal((await fetch(base + route)).status, 403);
   assert.equal((await post("{}")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 403);
-  assert.equal(actions, 2);
+  assert.equal(actions, 4);
 });

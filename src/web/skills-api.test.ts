@@ -17,7 +17,7 @@ process.env.LISA_MAIL_POLL_MINUTES = "0";
 const { startWebServer } = await import("./server.js");
 after(() => fs.rm(home, { recursive: true, force: true }));
 
-test("cloud hides the host import catalog, refuses skill writes and token-only session names", async () => {
+test("cloud hides the host import catalog, refuses skill writes and token-only session names or expression writes", async () => {
   const external = path.join(home, "codex/skills/host-only");
   await fs.mkdir(external, { recursive: true });
   await fs.writeFile(
@@ -72,6 +72,21 @@ test("cloud hides the host import catalog, refuses skill writes and token-only s
       assert.equal(response.status, 403);
       assert.match(await response.text(), /account_session_required/);
     }
+    // Nor may it change the operator's conversation-expression preferences.
+    const expressionWrite = await fetch(base + "/api/expressions/preferences", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ display: "off", frequency: "lively" }),
+    });
+    assert.equal(expressionWrite.status, 403);
+    assert.deepEqual(await expressionWrite.json(), { error: "account_session_required" });
+    assert.equal(
+      await fs.stat(path.join(home, "expression-preferences.json")).then(
+        () => true,
+        () => false,
+      ),
+      false,
+    );
     assert.equal(
       await fs.stat(path.join(home, "sessions/names")).then(
         () => true,

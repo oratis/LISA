@@ -77,7 +77,7 @@ describe("the client sources are real files, not template literals", () => {
     );
     assert.equal(
       MAIN_CLIENT_JS,
-      ["main.js", "connectors.js"]
+      ["expressions.js", "main.js", "connectors.js"]
         .map((name) => readFileSync(new URL(name, clientDir), "utf8"))
         .join("\n"),
     );
