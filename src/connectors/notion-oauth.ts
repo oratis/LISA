@@ -14,7 +14,8 @@ export interface NotionClient {
 }
 export interface NotionCredential extends NotionClient {
   accessToken: string;
-  refreshToken: string;
+  /** Notion documents `refresh_token` as nullable; without one, expiry means reconnecting. */
+  refreshToken?: string;
   workspaceId: string;
   workspaceName: string;
   botId: string;
@@ -61,7 +62,8 @@ function token(
 ): NotionCredential {
   if (
     !text(r.access_token) ||
-    !text(r.refresh_token) ||
+    // Documented as `string | null`: null (or an omitted key) means "no new refresh token".
+    (r.refresh_token !== null && r.refresh_token !== undefined && !text(r.refresh_token)) ||
     !notionId(r.workspace_id) ||
     !notionId(r.bot_id) ||
     typeof r.token_type !== "string" ||
@@ -70,15 +72,18 @@ function token(
     throw new ConnectorError("notion_invalid_response");
   if (previous && (r.workspace_id !== previous.workspaceId || r.bot_id !== previous.botId))
     throw new ConnectorError("connector_account_changed");
-  return {
+  // A refresh that returns no new refresh token keeps the one that is still valid.
+  const refreshToken = text(r.refresh_token) ? r.refresh_token : previous?.refreshToken;
+  const credential: NotionCredential = {
     ...client,
     accessToken: r.access_token,
-    refreshToken: r.refresh_token,
     workspaceId: r.workspace_id,
     workspaceName: typeof r.workspace_name === "string" ? r.workspace_name.slice(0, 400) : "Notion",
     botId: r.bot_id,
     ...(previous?.identityId ? { identityId: previous.identityId } : {}),
   };
+  delete credential.refreshToken;
+  return refreshToken ? { ...credential, refreshToken } : credential;
 }
 export function parseNotionCredential(raw: string): NotionCredential {
   try {
@@ -88,7 +93,7 @@ export function parseNotionCredential(raw: string): NotionCredential {
       !notionId(c.clientId) ||
       !text(c.clientSecret) ||
       !text(c.accessToken) ||
-      !text(c.refreshToken) ||
+      (c.refreshToken !== undefined && !text(c.refreshToken)) ||
       !notionId(c.workspaceId) ||
       !notionId(c.botId) ||
       !notionId(c.identityId) ||
@@ -152,10 +157,17 @@ export async function authorizeNotion(
       port: Number(redirect.port),
       hostname: redirect.hostname as "localhost" | "127.0.0.1",
       pathname: "/oauth/notion",
+      portInUseCode: "notion_callback_port_in_use",
     },
   );
 }
+/** Ends this connection's access token at Notion (confidential Basic client auth). */
+export async function revokeNotion(c: NotionCredential, http: NotionHttp, signal: AbortSignal) {
+  await http("/v1/oauth/revoke", signal, { basic: c, json: { token: c.accessToken } });
+}
 export async function refreshNotion(c: NotionCredential, http: NotionHttp, signal: AbortSignal) {
+  // No refresh token at all: the reconnect code lets the connector drop the connection.
+  if (!c.refreshToken) throw new ConnectorError("notion_reauthorization_required");
   return token(
     await http("/v1/oauth/token", signal, {
       basic: c,

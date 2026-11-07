@@ -4,6 +4,7 @@ import {
   authorizeNotion,
   assertNotionReadScope,
   refreshNotion,
+  revokeNotion,
   parseNotionCredential,
   notionClient,
   notionId,
@@ -179,12 +180,20 @@ export class NotionReadonlyDriver implements ReadonlyDriver<NotionAccount, Notio
       }
       signal.throwIfAborted();
       return JSON.parse(
-        redactKnownSecrets(JSON.stringify(result), [c.accessToken, c.refreshToken, c.clientSecret]),
+        redactKnownSecrets(JSON.stringify(result), [
+          c.accessToken,
+          c.refreshToken ?? "",
+          c.clientSecret,
+        ]),
       ) as T;
     });
   }
   account(credentials: CredentialAccess, signal: AbortSignal) {
     return this.use(credentials, signal, (c) => this.identity(c, signal));
+  }
+  /** Disconnect: revoke this connection's token at Notion. Per-token, so nothing else is affected. */
+  async revoke(token: string, signal: AbortSignal) {
+    await revokeNotion(parseNotionCredential(token), this.http, signal);
   }
   private resourceFrom(p: Record<string, unknown>): NotionResource {
     if (p.object !== "page" || !notionId(p.id) || p.archived === true || p.in_trash === true)

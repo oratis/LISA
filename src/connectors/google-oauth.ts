@@ -191,9 +191,14 @@ export async function authorizeGoogle(
     }
     if (options.drivePicker) {
       const ids = (url.searchParams.get("picked_file_ids") ?? "").split(",");
+      if (ids.length > 30) {
+        res.writeHead(400);
+        res.end("More than 30 files were selected. Return to LISA and choose up to 30 files.");
+        rejectCode(new ConnectorError("drive_selection_limit_exceeded"));
+        return;
+      }
       if (
         !ids.length ||
-        ids.length > 30 ||
         ids.some((id) => !/^[A-Za-z0-9_-]{10,200}$/.test(id)) ||
         new Set(ids).size !== ids.length
       ) {

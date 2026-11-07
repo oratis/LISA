@@ -38,6 +38,18 @@ const TEXT_TYPES = [
   "text/tab-separated-values",
   "application/json",
 ];
+/** Per-file states that leave the rest of a Picker selection usable. */
+const SKIPPABLE_PICK = new Set(["drive_file_unavailable", "drive_file_type_unsupported"]);
+/** remoteFetch reports Linear's `mcp_*` codes; a Drive card needs Drive wording. */
+const DRIVE_CONTENT_ERRORS: Readonly<Record<string, string>> = {
+  mcp_invalid_endpoint: "drive_request_failed",
+  mcp_redirect_refused: "drive_request_failed",
+  mcp_request_failed: "drive_request_failed",
+  mcp_access_denied: "drive_access_denied",
+  mcp_rate_limited: "drive_rate_limited",
+  mcp_response_too_large: "drive_content_too_large",
+  mcp_unavailable: "drive_unavailable",
+};
 const supported = (type: unknown): type is string =>
   typeof type === "string" && (Object.hasOwn(EXPORTS, type) || TEXT_TYPES.includes(type));
 const text = (v: unknown, max = 400) => (typeof v === "string" ? v.slice(0, max) : "");
@@ -194,7 +206,12 @@ export class DriveReadonlyDriver implements ReadonlyDriver<DriveAccount, DriveRe
         "?fields=id,name,mimeType,trashed,size,modifiedTime,capabilities(canDownload)",
       signal,
       { token: c.accessToken },
-    );
+    ).catch((error: unknown) => {
+      // Deleted, or no longer covered by the drive.file grant.
+      if (error instanceof ConnectorError && error.httpStatus === 404)
+        throw new ConnectorError("drive_file_unavailable", 404);
+      throw error;
+    });
     if (r.id !== id || r.trashed === true) throw new ConnectorError("drive_file_unavailable");
     if (!supported(r.mimeType)) throw new ConnectorError("drive_file_type_unsupported");
     return r;
@@ -215,13 +232,22 @@ export class DriveReadonlyDriver implements ReadonlyDriver<DriveAccount, DriveRe
       const ids = c.pickedFileIds.slice((page - 1) * 30, page * 30),
         result: DriveResource[] = [];
       for (let i = 0; i < ids.length; i += 5)
-        result.push(
-          ...(await Promise.all(
-            ids
-              .slice(i, i + 5)
-              .map(async (id) => this.resourceFrom(await this.file(c, id, signal))),
-          )),
-        );
+        for (const resource of await Promise.all(
+          ids.slice(i, i + 5).map(async (id) => {
+            try {
+              return this.resourceFrom(await this.file(c, id, signal));
+            } catch (error) {
+              // One trashed, deleted or unsupported pick must not hide the others; it is
+              // simply not offered. Account, token and network failures still fail the list.
+              if (error instanceof ConnectorError && SKIPPABLE_PICK.has(error.code))
+                return undefined;
+              throw error;
+            }
+          }),
+        ))
+          if (resource) result.push(resource);
+      // Nothing left to offer: ask for a new Picker selection instead of an empty list.
+      if (ids.length && !result.length) throw new ConnectorError("drive_selection_required");
       return result;
     });
   }
@@ -288,8 +314,15 @@ export class DriveReadonlyDriver implements ReadonlyDriver<DriveAccount, DriveRe
       const response = await fetcher(url, {
         headers: { Authorization: "Bearer " + c.accessToken },
         signal,
+      }).catch((error: unknown) => {
+        if (error instanceof ConnectorError) {
+          if (error.httpStatus === 404) throw new ConnectorError("drive_file_unavailable", 404);
+          const own = DRIVE_CONTENT_ERRORS[error.code];
+          if (own) throw new ConnectorError(own, error.httpStatus);
+        }
+        throw error;
       });
-      if (!response.ok) throw new ConnectorError("google_request_failed");
+      if (!response.ok) throw new ConnectorError("drive_request_failed", response.status);
       const mime = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
       if (mime && !TEXT_TYPES.includes(mime))
         throw new ConnectorError("drive_file_type_unsupported");

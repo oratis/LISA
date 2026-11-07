@@ -7,7 +7,9 @@ export const notionEndpointAllowed = (url: URL, method: string) =>
   url.origin === NOTION_ORIGIN &&
   ((method === "POST" &&
     !url.search &&
-    ["/v1/oauth/token", "/v1/oauth/introspect", "/v1/search"].includes(url.pathname)) ||
+    ["/v1/oauth/token", "/v1/oauth/introspect", "/v1/oauth/revoke", "/v1/search"].includes(
+      url.pathname,
+    )) ||
     (method === "GET" &&
       (url.pathname === "/v1/users/me" ||
         new RegExp("^/v1/(?:pages/" + ID + "|blocks/" + ID + "(?:/children)?)$").test(
@@ -59,8 +61,21 @@ export function notionHttp(fetcher?: (signal: AbortSignal) => McpFetch): NotionH
         if (error.httpStatus === 404) throw new ConnectorError("notion_page_unavailable");
         if (error.httpStatus === 403) throw new ConnectorError("notion_access_denied");
         if (error.httpStatus === 429) throw new ConnectorError("notion_rate_limited");
+        const own = NOTION_ERRORS[error.code];
+        if (own) throw new ConnectorError(own, error.httpStatus);
       }
       throw error;
     }
   };
 }
+/** remoteFetch reports Linear's `mcp_*` codes; a Notion card needs Notion wording. */
+const NOTION_ERRORS: Readonly<Record<string, string>> = {
+  mcp_invalid_endpoint: "notion_invalid_endpoint",
+  mcp_redirect_refused: "notion_request_failed",
+  mcp_request_failed: "notion_request_failed",
+  mcp_access_denied: "notion_access_denied",
+  mcp_rate_limited: "notion_rate_limited",
+  mcp_response_too_large: "notion_response_too_large",
+  mcp_invalid_response: "notion_invalid_response",
+  mcp_unavailable: "notion_unavailable",
+};

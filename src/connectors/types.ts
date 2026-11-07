@@ -42,4 +42,11 @@ export interface ReadonlyDriver<A, R> {
     input: unknown,
     signal: AbortSignal,
   ): Promise<unknown>;
+  /**
+   * Best-effort upstream revocation of a credential the user disconnected. It runs after the
+   * local secret is already deleted, and its failure never undoes or blocks that delete. Omit
+   * it where revoking one token would take other connections with it (Google revokes every
+   * scope granted to the whole project, including other LISA Google connectors).
+   */
+  revoke?(token: string, signal: AbortSignal): Promise<void>;
 }
