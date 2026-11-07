@@ -78,7 +78,9 @@ test.describe("main shell", () => {
       .toBe("nebula");
   });
 
-  test("new profiles follow the system; explicit appearance survives system changes", async ({ page }) => {
+  test("new profiles follow the system; explicit appearance survives system changes", async ({
+    page,
+  }) => {
     await page.emulateMedia({ colorScheme: "light" });
     await expect(page.locator("body")).toHaveAttribute("data-theme", "calm");
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f5f6fa");
