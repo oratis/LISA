@@ -158,11 +158,12 @@ test.describe("conversation expressions", () => {
     await expect(bubble).toHaveAttribute("data-playback", "playing");
     await page.evaluate(() => {
       const spacer = document.createElement("div");
-      spacer.style.height = "3000px";
+      spacer.style.cssText = "height: 3000px; flex: none";
       document.getElementById("log")!.appendChild(spacer);
       document.getElementById("log")!.scrollTop = 99999;
     });
-    await expect(bubble).toHaveAttribute("data-playback", "static");
+    await expect(bubble).not.toBeInViewport();
+    await expect(bubble).toHaveAttribute("data-playback", "static", { timeout: 1000 });
   });
 
   test("failed animation falls back to poster, then readable emoji", async ({ page }) => {
