@@ -13,6 +13,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isCloud } from "../edition.js";
 import { atomicWrite } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 import {
@@ -21,6 +22,7 @@ import {
   dreamsDir,
   isValidDreamId,
   reveAuditFile,
+  reveDir,
   reveLockPath,
 } from "./paths.js";
 import {
@@ -87,8 +89,49 @@ export interface DreamSnapshotSidecar {
   memory?: Record<string, MemoryEntryDelta>;
 }
 
-export function lockReve<T>(fn: () => Promise<T>): Promise<T> {
-  return withFileLock(reveLockPath(), fn, { timeoutMs: 10_000, staleMs: 60_000 });
+/**
+ * Whether a reve lock or reconsider claim holder's pid says anything about
+ * it. Not on the hosted edition, where instances share a volume but not a
+ * pid namespace (same rule as tasks/lease.ts pidLivenessDefault): there a
+ * holder is freed by age only.
+ */
+export function revePidLiveness(): boolean {
+  return !isCloud();
+}
+
+export class UnsafeReveDirError extends Error {
+  constructor(dir: string) {
+    super(`${dir} is a link or not a directory; dream records are never written through it`);
+    this.name = "UnsafeReveDirError";
+  }
+}
+
+/**
+ * `<home>/reve` and `<home>/reve/dreams` must be real directories (or not
+ * exist yet): a link such as `reve -> soul` would otherwise put the records,
+ * the reconsider queue and the audit log inside Lisa's soul.
+ */
+async function assertRealReveDirs(): Promise<void> {
+  for (const dir of [reveDir(), dreamsDir()]) {
+    let st;
+    try {
+      st = await fs.lstat(dir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+    if (st.isSymbolicLink() || !st.isDirectory()) throw new UnsafeReveDirError(dir);
+  }
+}
+
+/** The reve write lock. Every write under reve/ happens inside it. */
+export async function lockReve<T>(fn: () => Promise<T>): Promise<T> {
+  await assertRealReveDirs();
+  return await withFileLock(reveLockPath(), fn, {
+    timeoutMs: 10_000,
+    staleMs: 60_000,
+    pidLiveness: revePidLiveness(),
+  });
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {

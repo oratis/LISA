@@ -17,7 +17,9 @@
  *    never landed) is RECOVERED by the next claim: delivered if that dream's
  *    record shows it finished with the note, pending otherwise. A claim is
  *    gone when it is this process's and its dream is no longer running, when
- *    the claiming process is not alive, or after CLAIM_LEASE_MS.
+ *    the claiming process is not alive, or after CLAIM_LEASE_MS. On the
+ *    hosted edition a pid says nothing about another instance, so a claim
+ *    from elsewhere is freed by the lease alone.
  * The guarantee: a note is never lost and is acknowledged by exactly one pass
  * that finished; it may be SHOWN more than once, when a pass that saw it
  * failed or died (that pass may already have acted on it).
@@ -35,7 +37,7 @@ import { newReconsiderId } from "./ids.js";
 import { reconsiderFile, reveAuditFile } from "./paths.js";
 import { currentDream, dreamIsActive, dreamsEnabled } from "./scope.js";
 import { isValidDreamId } from "./paths.js";
-import { lockReve, readDream } from "./store.js";
+import { lockReve, readDream, revePidLiveness } from "./store.js";
 import type { DreamRecord, ReconsiderRequest } from "./types.js";
 
 export const MAX_NOTE_CHARS = 2000;
@@ -64,7 +66,12 @@ export class ReconsiderError extends Error {
 /** On disk: the public request plus the claim bookkeeping. */
 interface StoredRequest extends ReconsiderRequest {
   claimPid?: number;
+  /** This process's random token, so a reused pid is never mistaken for it. */
+  claimProc?: string;
 }
+
+/** Identifies claims made by THIS process (pids are reused, and shared across instances). */
+const PROCESS_TOKEN = randomBytes(8).toString("hex");
 
 async function loadRequests(): Promise<StoredRequest[]> {
   const raw = await readTextOrEmpty(reconsiderFile());
@@ -185,7 +192,7 @@ export async function requestReconsider(
 
 /** The public view of a stored request (claim bookkeeping left out). */
 function publicView(r: StoredRequest): ReconsiderRequest {
-  const { claimPid: _pid, ...rest } = r;
+  const { claimPid: _pid, claimProc: _proc, ...rest } = r;
   return rest;
 }
 
@@ -253,9 +260,17 @@ async function recordShowsDelivered(r: StoredRequest): Promise<DreamRecord | nul
 }
 
 function claimIsLive(r: StoredRequest, now: number): boolean {
-  if (r.claimPid === process.pid) return !!r.claimedIn && dreamIsActive(r.claimedIn);
+  // This process's claim (or one written before claims carried a token): live
+  // exactly while its dream is still running here.
+  if (r.claimProc === PROCESS_TOKEN || (r.claimProc === undefined && r.claimPid === process.pid)) {
+    return !!r.claimedIn && dreamIsActive(r.claimedIn);
+  }
   const age = now - (Date.parse(r.claimedAt ?? "") || 0);
-  return pidAlive(r.claimPid) && age < CLAIM_LEASE_MS;
+  if (!(age < CLAIM_LEASE_MS)) return false;
+  // Hosted edition: another instance's pid looks dead (or like ours) here.
+  if (!revePidLiveness()) return true;
+  // Our pid under another token is a reused pid: that process is gone.
+  return r.claimPid !== process.pid && pidAlive(r.claimPid);
 }
 
 /** Recover claims whose pass is gone. Caller holds the reve lock. Returns true if any changed. */
@@ -274,6 +289,7 @@ async function recoverClaims(list: StoredRequest[], now: number): Promise<boolea
     delete r.claimedIn;
     delete r.claimedAt;
     delete r.claimPid;
+    delete r.claimProc;
     changed = true;
   }
   return changed;
@@ -303,6 +319,7 @@ export async function takeReconsiderBlock(): Promise<string> {
         r.claimedAt = at;
         r.claimedIn = scope.id;
         r.claimPid = process.pid;
+        r.claimProc = PROCESS_TOKEN;
       }
       await saveRequests(list);
       return pending.map(publicView);
@@ -343,6 +360,7 @@ export async function settleReconsider(
       delete r.claimedIn;
       delete r.claimedAt;
       delete r.claimPid;
+      delete r.claimProc;
     }
     await saveRequests(list);
   });

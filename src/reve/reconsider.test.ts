@@ -16,6 +16,7 @@ const {
   listReconsiderRequests,
   ReconsiderError,
   MAX_WAITING_NOTES,
+  CLAIM_LEASE_MS,
 } = await import("./reconsider.js");
 const { appendMemory } = await import("../memory/store.js");
 const soulStore = await import("../soul/store.js");
@@ -240,14 +241,59 @@ describe("reconsider framing and delivery (#423 F3)", () => {
     await crashed.run(async () => {
       await takeReconsiderBlock();
     });
-    // The process dies mid-pass: its claim stays behind, owned by a pid that is gone.
+    // The process dies mid-pass: its claim stays behind, owned by a process that is gone.
     const dead = exitedPid();
-    rewriteQueue((r) => ({ ...r, claimPid: dead }));
+    rewriteQueue((r) => ({ ...r, claimPid: dead, claimProc: "a-process-that-is-gone" }));
     let block = "";
     await withDream({ trigger: "reflect" }, async () => {
       block = await takeReconsiderBlock();
     });
     assert.match(block, /please look again/);
+  });
+
+  test("a reused pid (ours, under another process's token) is taken back", async () => {
+    const id = await soulDream();
+    await requestReconsider(id, "reused pid note");
+    const crashed = await beginDream({ trigger: "idle" });
+    await crashed.run(async () => {
+      await takeReconsiderBlock();
+    });
+    // An earlier process with the same pid claimed it, then died.
+    rewriteQueue((r) => ({ ...r, claimPid: process.pid, claimProc: "an-earlier-process" }));
+    let block = "";
+    await withDream({ trigger: "reflect" }, async () => {
+      block = await takeReconsiderBlock();
+    });
+    assert.match(block, /reused pid note/);
+    await crashed.end();
+  });
+
+  test("hosted edition: another instance's claim is freed by its lease, never by its pid", async () => {
+    const id = await soulDream();
+    await requestReconsider(id, "hosted note");
+    const elsewhere = await beginDream({ trigger: "idle" });
+    await elsewhere.run(async () => {
+      await takeReconsiderBlock();
+    });
+    // Another instance's live claim: its pid means nothing on this host.
+    rewriteQueue((r) => ({ ...r, claimPid: exitedPid(), claimProc: "another-instance" }));
+    process.env.LISA_EDITION = "cloud";
+    try {
+      let block = "x";
+      await withDream({ trigger: "reflect" }, async () => {
+        block = await takeReconsiderBlock();
+      });
+      assert.equal(block, "", "a fresh claim is not taken for its pid");
+      const expired = new Date(Date.now() - CLAIM_LEASE_MS - 1000).toISOString();
+      rewriteQueue((r) => ({ ...r, claimedAt: expired }));
+      await withDream({ trigger: "reflect" }, async () => {
+        block = await takeReconsiderBlock();
+      });
+      assert.match(block, /hosted note/, "taken back once the lease ran out");
+    } finally {
+      delete process.env.LISA_EDITION;
+      await elsewhere.end();
+    }
   });
 
   test("a finished pass whose acknowledgement was lost is marked delivered from its record", async () => {

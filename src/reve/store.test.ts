@@ -9,6 +9,7 @@ const { applyRetention, listDreams, dreamIdTime, RETENTION_MAX_COUNT, RETENTION_
 const { withDream } = await import("./record.js");
 const { readDream, readDreamView, MAX_RECORD_BYTES, AUDIT_MAX_LINES } = await import("./store.js");
 const { appendMemory } = await import("../memory/store.js");
+const { lockReve, UnsafeReveDirError } = await import("./store.js");
 
 let home: string;
 const savedHome = process.env.LISA_HOME;
@@ -224,6 +225,36 @@ describe("retention of the rest of reve/, and capped reads (#423 F7)", () => {
       (await readDream(id)).changes[0]!.diff.length,
       200_002,
       "internal reads are whole",
+    );
+  });
+});
+
+describe("reve/ itself is never a link (#423 review P3)", () => {
+  const write = (rel: string, text: string) => {
+    fs.mkdirSync(path.dirname(path.join(home, rel)), { recursive: true });
+    fs.writeFileSync(path.join(home, rel), text);
+  };
+
+  test("a reve -> soul link is refused before anything is written through it", async () => {
+    write("soul/identity.md", "I am Lisa.\n");
+    write("memory/MEMORY.md", "- tea\n");
+    fs.symlinkSync(path.join(home, "soul"), path.join(home, "reve"));
+    await assert.rejects(
+      lockReve(async () => undefined),
+      UnsafeReveDirError,
+    );
+    // A pass still runs; its record is simply not written (capture never breaks a pass).
+    await withDream({ trigger: "idle" }, () => appendMemory("memory", "coffee"));
+    assert.deepEqual(fs.readdirSync(path.join(home, "soul")).sort(), ["identity.md"]);
+  });
+
+  test("reve/dreams as a link is refused too", async () => {
+    write("soul/values/honesty.md", "be honest\n");
+    fs.mkdirSync(path.join(home, "reve"), { recursive: true });
+    fs.symlinkSync(path.join(home, "soul", "values"), path.join(home, "reve", "dreams"));
+    await assert.rejects(
+      lockReve(async () => undefined),
+      UnsafeReveDirError,
     );
   });
 });
