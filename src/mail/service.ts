@@ -30,8 +30,12 @@ export type ConnectorFactory = (account: MailAccount, secret: MailSecret) => Mai
 function defaultConnector(account: MailAccount, secret: MailSecret): MailConnector {
   if (account.provider === "imap") return new ImapConnector(account, secret);
   if (account.provider === "gmail") {
-    // Persist refreshed access tokens back to the 0600 secrets file.
-    return new GmailConnector(account, secret, { onTokenRefresh: (t) => setSecret(account.id, t) });
+    // Persist refreshed access tokens into the shared SecretStore.
+    return new GmailConnector(
+      account,
+      secret,
+      account.id === "probe" ? {} : { onTokenRefresh: (t) => setSecret(account.id, t) },
+    );
   }
   throw new Error(`unknown mail provider: ${account.provider}`);
 }
@@ -154,7 +158,7 @@ export async function sweepAll(opts: SweepOpts = {}): Promise<SweepResult> {
   let unread = 0;
 
   for (const account of accounts) {
-    const secret = getSecret(account.id);
+    const secret = await getSecret(account.id);
     if (!secret) continue;
     let connector: MailConnector | null = null;
     try {
@@ -219,7 +223,7 @@ export async function pollNewMail(opts: SweepOpts = {}): Promise<MailItem[]> {
 
   const out: MailItem[] = [];
   for (const account of loadAccounts().filter((a) => a.enabled)) {
-    const secret = getSecret(account.id);
+    const secret = await getSecret(account.id);
     if (!secret) continue;
     let connector: MailConnector | null = null;
     try {
