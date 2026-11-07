@@ -11,6 +11,16 @@ const githubStatus = {
   cancelled: tr('github.status.cancelled'), failed: tr('github.status.failed'), expired: tr('github.status.expired')
 };
 const githubErrors = {
+  linear_reauthorization_required: tr('connector.error.linear_reauthorization_required'),
+  linear_read_scope_required: tr('connector.error.linear_read_scope_required'),
+  linear_resource_mismatch: tr('connector.error.linear_resource_mismatch'),
+  mcp_tools_changed: tr('connector.error.mcp_tools_changed'),
+  mcp_metadata_mismatch: tr('connector.error.mcp_metadata_mismatch'),
+  mcp_access_denied: tr('connector.error.mcp_access_denied'),
+  mcp_unavailable: tr('connector.error.mcp_unavailable'),
+  mcp_tool_failed: tr('connector.error.mcp_tool_failed'),
+  mcp_rate_limited: tr('connector.error.mcp_rate_limited'),
+
   google_client_not_configured: tr('connector.error.google_client_not_configured'),
   google_desktop_client_required: tr('connector.error.google_desktop_client_required'),
   google_reauthorization_required: tr('connector.error.google_reauthorization_required'),
@@ -62,7 +72,8 @@ function githubButton(card, label, action, kind) {
 }
 function githubRender(request, provider) {
   const isGitHub = provider === "github";
-  const name = provider === "google-calendar" ? "Google Calendar" : provider === "gmail" ? "Gmail" : "GitHub";
+  const isLinear = provider === "linear";
+  const name = isLinear ? "Linear" : provider === "google-calendar" ? "Google Calendar" : provider === "gmail" ? "Gmail" : "GitHub";
   const resources = isGitHub ? request.repositories : request.resources;
   const action = (operation, body) => githubAction(request.id, operation, body, provider);
   const key = provider + ":" + request.id;
@@ -77,30 +88,30 @@ function githubRender(request, provider) {
   const status = githubNode('p', !isGitHub && request.status === 'selecting' ? tr('connector.selectStatus') : githubStatus[request.status] || request.status, 'github-status');
   status.setAttribute('role', 'status');
   card.appendChild(status);
-  if (request.account) card.appendChild(githubNode('p', isGitHub ? '@' + request.account.login : request.account.email, 'github-account'));
+  if (request.account) card.appendChild(githubNode('p', isGitHub ? '@' + request.account.login : (isLinear ? request.account.name + (request.account.email ? " · " + request.account.email : "") : request.account.email), 'github-account'));
   if (resources.length) card.appendChild(githubNode('p', resources.map(r => isGitHub ? r.fullName : r.name).join(' · '), 'github-repositories'));
   if (request.error) card.appendChild(githubNode('p', githubErrorText(request.error), 'github-error'));
   if (['waiting', 'failed'].includes(request.status)) {
-    card.appendChild(githubNode('p', isGitHub ? tr('github.detail') : tr(provider === 'gmail' ? 'connector.gmailDetail' : 'connector.calendarDetail'), 'github-detail'));
+    card.appendChild(githubNode('p', isGitHub ? tr('github.detail') : tr(isLinear ? 'connector.linearDetail' : provider === 'gmail' ? 'connector.gmailDetail' : 'connector.calendarDetail'), 'github-detail'));
     if (isGitHub) card.appendChild(githubNode('p', tr('github.preview'), 'github-detail'));
     if (request.connected) githubButton(card, tr('github.retry'), () => action('retry'));
     addLoginActions();
   }
   function addLoginActions() {
-    const modes = isGitHub ? ['existing', 'login'] : provider === 'gmail' ? ['login'] : ['freebusy', 'events'];
+    const modes = isGitHub ? ['existing', 'login'] : (isLinear || provider === 'gmail') ? ['login'] : ['freebusy', 'events'];
     for (const mode of modes) {
       const label = isGitHub ? tr(mode === 'existing' ? 'github.existing' : 'github.login')
-        : tr('connector.auth.' + (provider === 'gmail' ? 'gmail' : mode));
+        : tr('connector.auth.' + (isLinear ? 'linear' : provider === 'gmail' ? 'gmail' : mode));
       githubButton(card, label, async () => { githubSelections.delete(key); await action('authorize', { mode }); });
     }
   }
   if (request.status === 'authorizing') {
-    card.appendChild(githubNode('p', isGitHub ? tr('github.authorizeDetail') : tr('connector.authorizeDetail'), 'github-detail'));
+    card.appendChild(githubNode('p', isGitHub ? tr('github.authorizeDetail') : tr(isLinear ? 'connector.linearAuthorize' : 'connector.authorizeDetail'), 'github-detail'));
     if (!isGitHub && request.authorizationUrl) {
       try {
         const url = new URL(request.authorizationUrl);
-        if (url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth' && !url.username && !url.password) {
-          const link = githubNode('a', tr('connector.openGoogle'), 'github-login-link');
+        if ((isLinear ? url.origin === 'https://mcp.linear.app' && url.pathname === '/authorize' && url.searchParams.get('scope') === 'read' && url.searchParams.get('resource') === 'https://mcp.linear.app/mcp/readonly' : url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth') && !url.username && !url.password) {
+          const link = githubNode('a', tr(isLinear ? 'connector.openLinear' : 'connector.openGoogle'), 'github-login-link');
           link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; card.appendChild(link);
         }
       } catch { /* Never render an untrusted authorization URL. */ }
@@ -115,7 +126,7 @@ function githubRender(request, provider) {
   if (request.status === 'selecting') {
     let selected = githubSelections.get(key);
     if (!selected) { selected = new Set(); githubSelections.set(key, selected); }
-    card.appendChild(githubNode('p', isGitHub ? tr('github.selectDetail') : tr('connector.selectDetail'), 'github-detail'));
+    card.appendChild(githubNode('p', isGitHub ? tr('github.selectDetail') : tr(isLinear ? 'connector.linearSelect' : 'connector.selectDetail'), 'github-detail'));
     addLoginActions();
     const list = githubNode('div', '', 'github-repo-list');
     const count = githubNode('p', tr(isGitHub ? 'github.selected' : 'connector.selected', { n: selected.size }), 'github-detail');
@@ -169,7 +180,7 @@ async function githubRefresh() {
   if (!sid || githubRefreshing) return;
   githubRefreshing = true;
   try {
-    const batches = await Promise.all(['github', 'google-calendar', 'gmail'].map(async provider => {
+    const batches = await Promise.all(['github', 'google-calendar', 'gmail', 'linear'].map(async provider => {
       const response = await fetch('/api/connectors/' + provider + '/requests?sessionId=' + encodeURIComponent(sid));
       if (!response.ok) return [];
       const data = await response.json();
