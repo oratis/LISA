@@ -197,14 +197,14 @@ export function verificationEmail(link: string): Mail {
     text:
       `Confirm this email address for your LISA account by opening the link below:\n\n` +
       `${link}\n\n` +
-      `Verifying raises your free session allowance to the full amount. The link ` +
+      `Verifying raises your free daily allowance to the full amount. The link ` +
       `expires in 24 hours. If you didn't create a LISA account, ignore this mail.`,
     html: baseTemplate(
       heading("Confirm your email") +
         para("Confirm this address for your LISA account:") +
         cta("Verify this address", link) +
         para(
-          "Verifying raises your free session allowance to the full amount. The link expires in 24 hours.",
+          "Verifying raises your free daily allowance to the full amount. The link expires in 24 hours.",
         ) +
         muted("If you didn't create a LISA account, ignore this mail."),
       { preheader: "Confirm your address to unlock the full free allowance" },

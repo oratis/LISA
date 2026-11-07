@@ -183,7 +183,7 @@ final class ChatModel: ObservableObject {
             // the "go to Settings" pointer — the button below opens the packs.
             messages[idx].status = .error
             messages[idx].needsCredits = true
-            messages[idx].text = "Your free allowance for this session is used up — it refreshes every 12 hours. Add credits to keep going now."
+            messages[idx].text = "Your free allowance for today is used up — it refreshes every 24 hours. Add credits to keep going now."
         } else {
             messages[idx].status = .error
             let msg = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."

@@ -7,17 +7,31 @@ const c = zh ? {
   title: "LISA Cloud", description: "登录 LISA Cloud，使用个人 AI 助手规划、写作和整理知识。无需 Mac 或模型 API key。",
   heading: "你的个人 AI 助手，", accent: "从登录开始。",
   lede: "无需安装后端或准备模型 API key。用 LISA 账号开始对话，规划事务、起草内容，并建立自己的记忆与知识库。",
-  start: "打开 LISA Cloud", install: "在 Mac 上运行", note: "登录页提供可用的 Apple、Google 和邮箱选项。使用额度以账号页面为准。",
+  start: "打开 LISA Cloud", install: "在 Mac 上运行", note: "登录页提供可用的 Apple、Google 和邮箱选项。已验证邮箱的账号每天可免费使用 $0.30，价格详见下文。",
   compare: "Cloud 与 Mac，各有自己的工作空间。", cols: ["", "你的 Mac", "LISA Cloud"],
   rows: [
     ["开始方式", "安装本地 app，配置自己的模型或托管登录", "登录 LISA 账号"],
     ["聊天、记忆与知识库", "保存在本地 Lisa 实例", "保存在账号对应的云端实例"],
     ["编程 agent、终端与本地集成", "按配置与权限使用", "不提供你 Mac 的本地能力"],
-    ["模型", "可选择供应商或本地模型", "使用服务配置的托管模型"],
+    ["模型", "可选择供应商或本地模型", "标准模型（目前为 Gemini 2.5 Flash）可用免费额度；LISA Cloud 提供的高级模型只使用购买的额度"],
     ["手机访问", "Mac 必须开机并网络可达", "无需连接 Mac"],
     ["跨实例同步", "聊天、记忆与凭据分别保存", "不会自动复制到 Mac"],
-    ["费用", "软件开源；模型和外部服务可能收费", "账号使用额度及可选额外充值"],
+    ["费用", "使用自己的模型密钥永久免费，无需账号；模型供应商可能另行收费", "标准模型每天 $0.30 免费额度；可选充值包 $4.99 起"],
   ],
+  pricing: "免费开始，按用量付费。",
+  pricingItems: [
+    "在本地运行 LISA（Mac app、CLI 或自托管 Web）永久免费：使用你自己的模型密钥，无需账号。",
+    "LISA Cloud 免费版：每天 $0.30 用量（自首次使用起滚动计算 24 小时），仅限标准模型，目前为 Gemini 2.5 Flash。邮箱未验证的账号每天 $0.10。",
+    "已验证邮箱的账号另获一次性 $2.00 欢迎额度（每人一次），同样仅限标准模型。",
+    "按 token 计量，价格为模型供应商公开标价的 2 倍。扣费顺序：先用每日免费额度，再用欢迎额度，最后用购买的额度。",
+  ],
+  packCols: ["充值包", "到账额度", "30 天内每日免费额度"],
+  packs: [
+    ["$4.99", "$5.00", "$0.60 / 天"],
+    ["$9.99", "$10.50", "$0.60 / 天"],
+    ["$19.99", "$22.00", "$1.20 / 天"],
+  ],
+  packNote: "购买的额度永不过期、跟随账号，可用于 LISA Cloud 提供的所有模型，包括高级模型。任意一次购买都会在 30 天内提高每日免费额度。可在 iPhone 上的 Lisa Pocket 中购买，或在网页账号页面购买。",
   control: "账号、额度和数据，由你管理。",
   items: [
     "Cloud 为每个账号隔离助手数据。云端不会获得你 Mac 的文件、终端或邮件权限。",
@@ -30,17 +44,31 @@ const c = zh ? {
   title: "LISA Cloud", description: "Sign in to your AI Personal Assistant for planning, writing and personal knowledge. LISA Cloud needs no Mac or model API key.",
   heading: "Your personal AI assistant,", accent: "one sign-in away.",
   lede: "Start a conversation with your LISA account, without installing a backend or bringing a model API key. Plan your work, draft content, and build your own memory and knowledge base.",
-  start: "Open LISA Cloud", install: "Run on your Mac", note: "The sign-in page shows available Apple, Google and email options. Check your account for the current usage allowance.",
+  start: "Open LISA Cloud", install: "Run on your Mac", note: "The sign-in page shows available Apple, Google and email options. Verified accounts get $0.30 of free usage every day; pricing is below.",
   compare: "Cloud and Mac, each with its own workspace.", cols: ["", "Your Mac", "LISA Cloud"],
   rows: [
     ["Getting started", "Install locally; configure a model or managed sign-in", "Sign in with a LISA account"],
     ["Chat, memory & knowledge", "Saved within your local Lisa instance", "Saved within your account's cloud instance"],
     ["Coding agents, terminal & integrations", "Available with setup and permissions", "Does not provide your Mac's local capabilities"],
-    ["Models", "Choose a provider or local model", "Use the service's configured hosted model"],
+    ["Models", "Choose a provider or local model", "Standard models (today Gemini 2.5 Flash) on the free allowance; any premium model LISA Cloud offers uses purchased credit only"],
     ["Mobile access", "Mac must be running and reachable", "No connection to a Mac required"],
     ["Cross-instance sync", "Conversations, memories and credentials stay separate", "No automatic copying to your Mac"],
-    ["Cost", "Open-source software; model and service charges may apply", "Account allowance and optional additional credits"],
+    ["Cost", "Free forever with your own model key, no account needed; your provider's charges may apply", "$0.30 a day free on standard models; optional credit packs from $4.99"],
   ],
+  pricing: "Start free. Pay only for what you use.",
+  pricingItems: [
+    "Running LISA locally — the Mac app, CLI or self-hosted web — stays free forever with your own model key. No account needed.",
+    "LISA Cloud Free: $0.30 of usage per day (a rolling 24 hours from your first use) on standard models, today Gemini 2.5 Flash. Accounts with an unverified email get $0.10 per day.",
+    "Verified accounts also get a one-time $2.00 welcome credit (one per person), for standard models.",
+    "Usage is metered per token at 2× the model provider's published list price. Your free daily allowance is used first, then the welcome credit, then purchased credit.",
+  ],
+  packCols: ["Credit pack", "Credit you get", "Free daily allowance for 30 days"],
+  packs: [
+    ["$4.99", "$5.00", "$0.60 / day"],
+    ["$9.99", "$10.50", "$0.60 / day"],
+    ["$19.99", "$22.00", "$1.20 / day"],
+  ],
+  packNote: "Purchased credit never expires, follows your account, and works on every model LISA Cloud offers, including premium models. Any purchase also raises your free daily allowance for 30 days. Buy credits in Lisa Pocket on iPhone, or from the account page on the web.",
   control: "Manage your account, credit and data.",
   items: [
     "Each Cloud account has isolated assistant data. Cloud does not gain access to your Mac's files, terminal or mail.",
@@ -68,6 +96,17 @@ const c = zh ? {
       </table>
     </div>
   </section>
+  <section class="section" id="pricing">
+    <h2>{c.pricing}</h2>
+    <ul>{c.pricingItems.map((text) => <li>{text}</li>)}</ul>
+    <div class="comparison">
+      <table class="packs" role="table" aria-label={c.packCols[0]}>
+        <thead role="rowgroup"><tr role="row">{c.packCols.map((col) => <th role="columnheader" scope="col">{col}</th>)}</tr></thead>
+        <tbody role="rowgroup">{c.packs.map(([price, credit, daily]) => <tr role="row"><th role="rowheader" scope="row"><span class="cell-label" aria-hidden="true">{c.packCols[0]}</span>{price}</th><td role="cell"><span class="cell-label" aria-hidden="true">{c.packCols[1]}</span>{credit}</td><td role="cell"><span class="cell-label" aria-hidden="true">{c.packCols[2]}</span>{daily}</td></tr>)}</tbody>
+      </table>
+    </div>
+    <p class="note">{c.packNote}</p>
+  </section>
   <section class="section">
     <h2>{c.control}</h2>
     <ul>{c.items.map((text) => <li>{text}</li>)}</ul>
@@ -82,6 +121,7 @@ const c = zh ? {
   .section { margin-top:3.5rem; }
   .comparison { overflow-x:auto; margin-top:1.3rem; }
   table { width:100%; border-collapse:collapse; }
+  table.packs { max-width:640px; }
   th,td { border:1px solid var(--border); padding:1rem; text-align:left; vertical-align:top; line-height:1.55; }
   thead { background:var(--panel); }
   td,li { color:var(--muted); }

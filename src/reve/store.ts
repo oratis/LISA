@@ -471,6 +471,14 @@ export async function maybeApplyRetention(now: number = Date.now()): Promise<str
   const key = dreamsDir();
   const last = lastRetention.get(key);
   if (last !== undefined && now - last < RETENTION_INTERVAL_MS && now >= last) return null;
+  // No dream log yet: nothing to prune, and taking the reve lock would create
+  // <home>/reve in a home that never dreamed (racing whoever removes a
+  // throwaway home right after the server starts).
+  try {
+    await fs.lstat(key);
+  } catch {
+    return null;
+  }
   lastRetention.set(key, now);
   try {
     return await lockReve(() => applyRetention(now));

@@ -283,15 +283,24 @@ function modelList(models: CapModels): readonly string[] {
   return typeof models === "string" ? [models] : models;
 }
 
-/** Each rate at its maximum over `models`: a reservation no serving model can exceed. */
+/**
+ * Each rate at its maximum over `models`: a reservation no serving model can
+ * exceed. A model's prompt-size (long-context) rates count as its own rates,
+ * since the reservation is made before the prompt size is known, and so does
+ * its 1-hour cache-write rate.
+ */
 function dearestRates(models: CapModels): ModelPrice {
-  const prices = modelList(models).map((m) => priceForModel(m));
-  if (prices.length === 0) return priceForModel("");
+  const listed = modelList(models).map((m) => priceForModel(m));
+  if (listed.length === 0) return priceForModel("");
+  const prices = listed.flatMap((p) =>
+    p.longContext ? [p, { ...p.longContext.rates, tier: p.tier }] : [p],
+  );
   const top = (rate: (p: ModelPrice) => number): number => Math.max(...prices.map(rate));
   return {
     inPerM: top((p) => p.inPerM),
     outPerM: top((p) => p.outPerM),
-    cacheWritePerM: top((p) => p.cacheWritePerM),
+    // A cache write may be a 1-hour one, which some providers price higher.
+    cacheWritePerM: top((p) => Math.max(p.cacheWritePerM, p.cacheWrite1hPerM ?? 0)),
     cacheReadPerM: top((p) => p.cacheReadPerM),
     tier: prices.some((p) => p.tier === "premium") ? "premium" : "standard",
   };

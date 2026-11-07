@@ -12,10 +12,13 @@ process.env.CODEX_HOME = path.join(home, "codex");
 process.env.LISA_EDITION = "cloud";
 process.env.LISA_PUBLIC_ORIGIN = "https://lisa.example";
 process.env.LISA_WEB_TOKEN = "fixture-skills-cloud";
+// The hosted gate refuses the shared token outright (see github-server.test);
+// opt in so this test reaches the per-route guards a token caller would meet.
+process.env.LISA_CLOUD_SHARED_TOKEN_OK = "1";
 process.env.LISA_SOUL_GIT = "0";
 process.env.LISA_MAIL_POLL_MINUTES = "0";
 const { startWebServer } = await import("./server.js");
-after(() => fs.rm(home, { recursive: true, force: true }));
+after(() => fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 
 test("cloud hides the host import catalog, refuses skill writes and token-only session names or expression writes", async () => {
   const external = path.join(home, "codex/skills/host-only");

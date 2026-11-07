@@ -198,7 +198,7 @@ struct PaywallSheet: View {
                 } header: {
                     Text("Credit packs")
                 } footer: {
-                    Text("Credits never expire and roam with your account. Any purchase also raises your free 12-hour session allowance for 30 days ($4.99+ → $10, $19.99+ → $20). Premium models draw on credits only.")
+                    Text("Credits never expire and roam with your account. Any purchase also raises your free daily allowance for 30 days ($4.99+ → $0.60, $19.99+ → $1.20). Premium models draw on credits only.")
                 }
 
                 Section {

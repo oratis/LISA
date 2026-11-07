@@ -1579,7 +1579,7 @@ function spender(model: string) {
 
 test("the spend ceiling stops a run before the call that would cross it, with a clear reason", async () => {
   await withHome(async () => {
-    // gemini-2.5-flash: one full turn costs ~11k micro-USD; the ceiling is $0.03.
+    // gemini-2.5-flash: one full turn costs ~16k micro-USD; the ceiling is $0.03.
     const task = await dueRoutine({
       budget: { tokens: 1e9, usdMicros: 30_000, wallclockMs: 60_000, maxToolCalls: 40 },
     });
@@ -1610,8 +1610,11 @@ test("the spend ceiling stops a run before the call that would cross it, with a 
 test("the spend ceiling holds across a resume: what earlier segments counted is off the top", async () => {
   await withHome(async () => {
     const task = await dueRoutine({
-      budget: { tokens: 1e9, usdMicros: 30_000, wallclockMs: 60_000, maxToolCalls: 40 },
+      budget: { tokens: 1e9, usdMicros: 42_857, wallclockMs: 60_000, maxToolCalls: 40 },
     });
+    // gemini-2.5-flash: a full turn costs 16k; the fixture's provider reports
+    // 10k input tokens the cap cannot see in advance, so the ceiling leaves the
+    // same slack it did at the old 1.4x margin (30_000 x 10/7).
     const model = "gemini-2.5-flash";
     // Process 1: two calls, then it dies inside the third.
     const reached = deferred();
@@ -1652,7 +1655,7 @@ test("the spend ceiling holds across a resume: what earlier segments counted is 
     await b.drain();
     const run = (await loadRun(task.id, runId))!.run;
     assert.equal(run.stopReason, "budget_usd");
-    assert.ok(truth + s.truth() <= 30_000, `spent ${truth + s.truth()} across both segments`);
+    assert.ok(truth + s.truth() <= 42_857, `spent ${truth + s.truth()} across both segments`);
   });
 });
 

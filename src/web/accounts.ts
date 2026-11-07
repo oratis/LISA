@@ -29,6 +29,7 @@
  * until the Firestore move (B2), which takes this table with it.
  */
 import fs from "node:fs";
+import { recordFunnel } from "../billing/funnel.js";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -323,13 +324,15 @@ export async function createEmailAccount(
     verified: false,
     sessionVersion: 0,
   };
-  return mutateAccounts((list) => {
+  const created = await mutateAccounts((list) => {
     // Spans Google too: the address is already spoken for, and a second record
     // would split the person's balance across two uids.
     if (list.some((a) => ownsEmail(a, email))) throw new AccountError("email_taken");
     list.push(rec);
     return rec;
   });
+  recordFunnel("account_created", { uid: created.uid, props: { method: "register" } });
+  return created;
 }
 
 /**
@@ -378,7 +381,7 @@ export async function ensureOtpAccount(
   const email = normalizeEmail(emailRaw);
   if (!validEmail(email)) throw new AccountError("invalid_email");
   const uid = `em-${crypto.randomBytes(9).toString("hex")}`;
-  return mutateAccounts((list) => {
+  const out = await mutateAccounts((list) => {
     // A Google-owned address counts: proving the inbox signs you into that same
     // account rather than forking a second one.
     const existing = list.find((a) => ownsEmail(a, email));
@@ -400,6 +403,8 @@ export async function ensureOtpAccount(
     list.push(rec);
     return { acct: rec, created: true };
   });
+  if (out.created) recordFunnel("account_created", { uid: out.acct.uid, props: { method: "otp" } });
+  return out;
 }
 
 /**
@@ -447,7 +452,7 @@ export async function upsertAppleAccount(
 ): Promise<AccountRecord> {
   const legacyUid = appleUid(sub);
   const uid = `apple-${crypto.randomBytes(18).toString("hex")}`;
-  return mutateAccounts((list) => {
+  const acct = await mutateAccounts((list) => {
     const existing = list.find(
       (a) => a.kind === "apple" && (a.appleSub === sub || (!a.appleSub && a.uid === legacyUid)),
     );
@@ -470,6 +475,9 @@ export async function upsertAppleAccount(
     list.push(rec);
     return rec;
   });
+  // A new record carries the uid minted above, even if the CAS loop retried.
+  if (acct.uid === uid) recordFunnel("account_created", { uid, props: { method: "apple" } });
+  return acct;
 }
 
 /** Stable uid for a Google `sub` (filesystem-safe; Google subs are digits). */
@@ -497,7 +505,7 @@ export async function upsertGoogleAccount(
   const email = normalizeEmail(emailRaw);
   if (!validEmail(email)) throw new AccountError("invalid_email");
   const uid = `g-${crypto.randomBytes(18).toString("hex")}`;
-  return mutateAccounts((list) => {
+  const acct = await mutateAccounts((list) => {
     const bySub = list.find((a) => a.googleSub === sub);
     if (bySub) {
       bySub.lastLoginAt = now;
@@ -525,6 +533,8 @@ export async function upsertGoogleAccount(
     list.push(rec);
     return rec;
   });
+  if (acct.uid === uid) recordFunnel("account_created", { uid, props: { method: "google" } });
+  return acct;
 }
 
 /** Store a revocable authorization without ever returning it from auth/me. */

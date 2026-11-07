@@ -94,9 +94,18 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   reachout: { forget: "no_user_text", what: "reach-out settings and a ledger of hashes" },
   sovereignty: { forget: "no_user_text", what: "content-free audit of export/import/forget" },
   billing: { forget: "no_user_text", what: "usage and cost counters" },
+  analytics: {
+    forget: "no_user_text",
+    what: "hosted-edition funnel events (hashed account keys, event names, status codes)",
+  },
   "billing-global.json": { forget: "no_user_text", what: "global spend counters" },
   "iap-transactions.json": { forget: "no_user_text", what: "in-app purchase transaction ids" },
   "iap-transactions.lock": { forget: "no_user_text", what: "lock" },
+  "welcome-grants.json": {
+    forget: "no_user_text",
+    what: "one-way hashes of sign-in identities that have had the welcome credit",
+  },
+  "welcome-grants.lock": { forget: "no_user_text", what: "lock" },
   "apple-root-g3.cer": { forget: "no_user_text", what: "certificate" },
   "advisor-state.json": { forget: "no_user_text", what: "advisor counters" },
   "advisor-state.json.lock": { forget: "no_user_text", what: "lock" },

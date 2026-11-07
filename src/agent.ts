@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
-import { failedWithoutSpend, type Provider } from "./providers/types.js";
+import { failedWithoutSpend, type Provider, type ProviderUsage } from "./providers/types.js";
+import { estimateUsageFromBytes } from "./billing/usage-floor.js";
 import { RunCostCap, sizeMessagesForCap } from "./model/cost.js";
 import { moodBus, withMoodOrigin } from "./mood-bus.js";
 import { validateToolInput } from "./tools/validate.js";
@@ -121,6 +122,16 @@ export interface RunAgentOptions {
    * against its own cap.
    */
   onCostCharged?: (microUSD: number) => void;
+  /**
+   * Hears each provider call of this run that may have cost something, once:
+   * with the usage the provider reported when the call returns, or with a
+   * byte estimate (the prompt sent plus what streamed back) when it failed
+   * after it may have been billed — a cut stream, an abort, a 5xx. A metered
+   * caller settles from these, call by call, so prompt-size pricing applies
+   * per request and a turn that ends in an error is still billed for what it
+   * used.
+   */
+  onCallUsage?: (usage: ProviderUsage) => void;
   /** When set, the system prompt is rebuilt between turns if its source state changed. */
   hotReload?: PromptHotReload;
 }
@@ -345,6 +356,10 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     }
 
     let result;
+    // Bytes streamed back by this call, for the usage estimate if it fails.
+    let streamedBytes = 0;
+    // A call started on an already-aborted signal is refused before it is sent.
+    const abortedBeforeCall = toolCtx.signal?.aborted === true;
     try {
       result = await provider.runTurn({
         model,
@@ -357,8 +372,14 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         effort,
         signal: toolCtx.signal,
         handlers: {
-          onTextDelta: (text) => onEvent?.({ type: "text_delta", text }),
-          onThinkingDelta: (text) => onEvent?.({ type: "thinking_delta", text }),
+          onTextDelta: (text) => {
+            streamedBytes += Buffer.byteLength(text, "utf8");
+            onEvent?.({ type: "text_delta", text });
+          },
+          onThinkingDelta: (text) => {
+            streamedBytes += Buffer.byteLength(text, "utf8");
+            onEvent?.({ type: "thinking_delta", text });
+          },
         },
         // A stream retry or the next fallback link re-sends the prompt: each
         // failed attempt is counted at the call's worst case, and one more is
@@ -377,7 +398,34 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       // One that certainly cost nothing (refused before it was sent, or by
       // the provider with a 4xx / 503) is not.
       if (failedWithoutSpend(err)) costCap?.release();
-      else costCap?.chargeFailed();
+      else {
+        costCap?.chargeFailed();
+        // An HTTP error from the provider before anything streamed is the
+        // provider's failure, not the user's spend (the gateway bills a non-2xx
+        // nothing too); a cut stream or an abort is billed.
+        const status = (err as { status?: unknown } | null)?.status;
+        const providerError = typeof status === "number" && streamedBytes === 0;
+        if (opts.onCallUsage && !abortedBeforeCall && !providerError) {
+          // No usage block came back: bill no less than the bytes it was sent
+          // and the bytes it streamed (#264's floor), so cutting a turn short
+          // never makes it free.
+          const promptBytes =
+            Buffer.byteLength(currentSystemPrompt, "utf8") +
+            Buffer.byteLength(
+              toolsJson ||
+                JSON.stringify(
+                  tools.map((t) => ({
+                    name: t.name,
+                    description: t.description,
+                    input_schema: t.inputSchema,
+                  })),
+                ),
+              "utf8",
+            ) +
+            Buffer.byteLength(sizeMessagesForCap(messages).text, "utf8");
+          opts.onCallUsage(estimateUsageFromBytes(promptBytes, streamedBytes));
+        }
+      }
       const message = err instanceof Error ? err.message : String(err);
       onEvent?.({ type: "error", message });
       throw err;
@@ -396,6 +444,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     cacheWriteTokens += result.usage.cacheWriteTokens;
     inputTokens += result.usage.inputTokens;
     outputTokens += result.usage.outputTokens;
+    opts.onCallUsage?.(result.usage);
     costCap?.charge({ usage: result.usage, output: result.content, model: result.model });
     stopReason = result.stopReason;
 

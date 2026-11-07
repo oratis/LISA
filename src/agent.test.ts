@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import { runAgent, type RunAgentOptions } from "./agent.js";
+import { priceForModel } from "./billing/prices.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./providers/types.js";
 import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
 
@@ -387,9 +388,10 @@ describe("runAgent — token budget circuit-breaker (stopReason=budget_exceeded)
 });
 
 describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
-  // gemini-2.5-flash at face value: input $0.42/M, output $3.50/M.
+  // gemini-2.5-flash at face value (2.0× margin): input $0.60/M, output $5.00/M.
   const MODEL = "gemini-2.5-flash";
-  // One tool_use turn that costs 10k × 0.42 + 2k × 3.5 = 4_200 + 7_000 = 11_200 micro-USD.
+  const FLASH = priceForModel(MODEL);
+  // One tool_use turn that costs 10k × 0.60 + 2k × 5.00 = 6_000 + 10_000 = 16_000 micro-USD.
   const TURN = {
     inputTokens: 10_000,
     outputTokens: 2_000,
@@ -424,7 +426,7 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
   }
 
   const faceCost = (r: { inputTokens: number; outputTokens: number }): number =>
-    Math.ceil((r.inputTokens * 420_000 + r.outputTokens * 3_500_000) / 1_000_000);
+    Math.ceil((r.inputTokens * FLASH.inPerM + r.outputTokens * FLASH.outPerM) / 1_000_000);
 
   function run(costCapMicroUSD: number | undefined, extra: Partial<RunAgentOptions> = {}) {
     const { provider, calls } = loopingProvider();
@@ -446,12 +448,12 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
   }
 
   test("stops a looping run deterministically, and the run ends under its cap", async () => {
-    // $0.03 cap, 11_200 per full turn. Turns 1 and 2 spend 22_400. Before turn
+    // ~$0.043 cap, 16_000 per full turn. Turns 1 and 2 spend 32_000. Before turn
     // 3 the loop reserves the 10k-token prompt the provider reported plus the
-    // estimate for the tool round added since (4_200 + a few), and has under
-    // 3_400 left for output, so it admits the call with the output ceiling cut
+    // estimate for the tool round added since (6_000 + a few), and has under
+    // 4_857 left for output, so it admits the call with the output ceiling cut
     // to 964 tokens. Before turn 4 not even the prompt fits: stop.
-    const { result, calls, events } = run(30_000);
+    const { result, calls, events } = run(42_857);
     const r = await result;
     assert.equal(r.stopReason, "budget_exceeded");
     assert.equal(calls.length, 3);
@@ -463,8 +465,9 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
       calls.slice(1).map((c) => c.maxTokens),
       [4_164, 964],
     );
-    assert.equal(faceCost(r), 29_974);
-    assert.ok(faceCost(r) <= 30_000, "the run must end under its cap");
+    // 2 × 16_000 + (6_000 + 964 × 5.00) = 42_820.
+    assert.equal(faceCost(r), 42_820);
+    assert.ok(faceCost(r) <= 42_857, "the run must end under its cap");
     const info = events.filter((e) => e.type === "info" && e.message?.includes("cost cap"));
     assert.equal(info.length, 1);
     assert.match(info[0]!.type === "info" ? info[0]!.message : "", /stopReason=budget_exceeded/);
@@ -473,7 +476,7 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
   test("is deterministic: the same run stops at the same place every time", async () => {
     const counts = [];
     for (let i = 0; i < 3; i++) {
-      const { result, calls } = run(30_000);
+      const { result, calls } = run(42_857);
       await result;
       counts.push(calls.length);
     }
@@ -535,7 +538,7 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.ok(ceiling !== undefined && ceiling < 16_000, `ceiling ${ceiling} was not clamped`);
     // The admitted call's worst case (its real prompt is far below the
     // reservation) fits under the cap.
-    assert.ok((ceiling * 3_500_000) / 1_000_000 <= 12_000);
+    assert.ok((ceiling * FLASH.outPerM) / 1_000_000 <= 12_000);
   });
 
   test("a generous cap leaves the caller's own output ceiling alone", async () => {
@@ -594,6 +597,7 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     // whole output ceiling every time stays under the cap.
     const calls: ProviderRunOpts[] = [];
     let trueSpend = 0;
+    const GPT4O = priceForModel("gpt-4o");
     const provider: Provider = {
       name: "fake",
       async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
@@ -601,7 +605,8 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
         const bytes =
           Buffer.byteLength(opts.systemPrompt) + Buffer.byteLength(JSON.stringify(opts.messages));
         trueSpend += Math.ceil(
-          (Math.ceil(bytes / 4) * 3_500_000 + (opts.maxTokens ?? 16_000) * 14_000_000) / 1_000_000,
+          (Math.ceil(bytes / 4) * GPT4O.inPerM + (opts.maxTokens ?? 16_000) * GPT4O.outPerM) /
+            1_000_000,
         );
         return {
           content: [toolUseBlock(`tu_${calls.length}`)],
@@ -713,8 +718,8 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
       });
     }
     assert.equal(seen.length, 2);
-    // After one 11_200 call: 1_000_000 − 11_200 left.
-    assert.equal(seen[0], 988_800);
+    // After one 16_000 call: 1_000_000 − 16_000 left.
+    assert.equal(seen[0], 984_000);
     assert.equal(seen[1], undefined, "a stale handle must not leak into the uncapped run");
   });
 
@@ -730,8 +735,11 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
         calls.push(opts);
         const bytes =
           Buffer.byteLength(opts.systemPrompt) + Buffer.byteLength(JSON.stringify(opts.messages));
-        // claude-sonnet-4-6 at face value: input $4.20/M, output $21/M.
-        trueSpend += Math.ceil((Math.ceil(bytes / 4) * 4_200_000 + 100 * 21_000_000) / 1_000_000);
+        // claude-sonnet-4-6 at face value.
+        const sonnet = priceForModel("claude-sonnet-4-6");
+        trueSpend += Math.ceil(
+          (Math.ceil(bytes / 4) * sonnet.inPerM + 100 * sonnet.outPerM) / 1_000_000,
+        );
         return {
           content: [toolUseBlock(`tu_${calls.length}`)],
           stopReason: "tool_use",
@@ -782,9 +790,10 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
           cacheReadTokens: 0,
           cacheWriteTokens: 0,
         };
-        // claude-sonnet-4-6 at face value: input $4.20/M, output $21/M.
+        // claude-sonnet-4-6 at face value.
+        const sonnet = priceForModel("claude-sonnet-4-6");
         trueSpend += Math.ceil(
-          (usage.inputTokens * 4_200_000 + usage.outputTokens * 21_000_000) / 1e6,
+          (usage.inputTokens * sonnet.inPerM + usage.outputTokens * sonnet.outPerM) / 1e6,
         );
         return { content: [toolUseBlock(`tu_${calls.length}`)], stopReason: "tool_use", usage };
       },
@@ -826,7 +835,7 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
           cacheWriteTokens: 0,
         };
         trueSpend += Math.ceil(
-          (usage.inputTokens * 420_000 + usage.outputTokens * 3_500_000) / 1e6,
+          (usage.inputTokens * FLASH.inPerM + usage.outputTokens * FLASH.outPerM) / 1e6,
         );
         return {
           content: [toolUseBlock(`tu_${promptBytes.length}`)],
@@ -835,7 +844,7 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
         };
       },
     };
-    const cap = 100_000;
+    const cap = 142_857;
     const r = await runAgent({
       provider,
       systemPrompt: "sys",
@@ -850,13 +859,13 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.equal(r.stopReason, "budget_exceeded");
     const n = promptBytes.length;
     const added = n > 1 ? promptBytes[n - 1]! - promptBytes[n - 2]! : promptBytes[0]!;
-    const bound = Math.ceil(((2 / 3) * added * 420_000) / 1e6);
+    const bound = Math.ceil(((2 / 3) * added * FLASH.inPerM) / 1e6);
     assert.ok(trueSpend > cap, "this provider is meant to overshoot");
     assert.ok(trueSpend - cap <= bound, `over by ${trueSpend - cap}, bound ${bound}`);
   });
 
   test("a large transcript is counted before it is sent", async () => {
-    // ~300 KB of history reserves ~100k prompt tokens = 42_000 micro-USD,
+    // ~300 KB of history reserves ~100k prompt tokens = 60_000 micro-USD,
     // which a $0.03 cap cannot cover: no call is made.
     const history: StoredMessage[] = [
       { role: "user", content: "x".repeat(300_000) },
@@ -932,5 +941,110 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.equal(r.stopReason, "end_turn");
     assert.equal(r.finalText, "done");
     assert.equal(calls.length, 1);
+  });
+});
+
+describe("runAgent — per-call usage for metering (#447 review)", () => {
+  const usage = (inputTokens: number, outputTokens: number) => ({
+    ...ZERO_USAGE,
+    inputTokens,
+    outputTokens,
+  });
+
+  test("reports every committed call's own usage, in order", async () => {
+    const { provider } = makeFakeProvider([
+      { content: [toolUseBlock("tu_0")], stopReason: "tool_use", usage: usage(60_000, 10) },
+      { content: [textBlock("done")], stopReason: "end_turn", usage: usage(61_000, 20) },
+    ]);
+    const seen: ReturnType<typeof usage>[] = [];
+    const result = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [echoTool],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "hi",
+      model: "claude-haiku-5-5",
+      onCallUsage: (u) => seen.push(u),
+    });
+    assert.deepEqual(seen, [usage(60_000, 10), usage(61_000, 20)]);
+    assert.equal(result.inputTokens, 121_000);
+  });
+
+  test("a call that fails after it may have spent is reported as a byte estimate", async () => {
+    let call = 0;
+    const provider: Provider = {
+      name: "cut",
+      async runTurn(opts) {
+        call++;
+        if (call === 1) {
+          return { content: [toolUseBlock("tu_1")], stopReason: "tool_use", usage: usage(500, 5) };
+        }
+        opts.handlers?.onTextDelta?.("x".repeat(400));
+        throw new Error("stream cut mid-answer");
+      },
+    };
+    const seen: ReturnType<typeof usage>[] = [];
+    await assert.rejects(
+      runAgent({
+        provider,
+        systemPrompt: "s".repeat(4_000),
+        tools: [echoTool],
+        toolCtx: makeToolCtx(),
+        history: [],
+        userMessage: "hi",
+        model: "claude-haiku-5-5",
+        onCallUsage: (u) => seen.push(u),
+      }),
+      /stream cut/,
+    );
+    assert.equal(seen.length, 2);
+    assert.deepEqual(seen[0], usage(500, 5));
+    // The cut call: at least the system prompt's bytes / 4 in, and what streamed out.
+    assert.ok(seen[1]!.inputTokens >= 1_000, String(seen[1]!.inputTokens));
+    assert.equal(seen[1]!.outputTokens, 100);
+  });
+
+  test("a call refused before it was sent, failed by the provider, or on an aborted signal, reports nothing", async () => {
+    const seen: unknown[] = [];
+    for (const status of [400, 500]) {
+      const refused: Provider = {
+        name: "refused",
+        async runTurn() {
+          throw Object.assign(new Error("provider error"), { status });
+        },
+      };
+      await assert.rejects(
+        runAgent({
+          provider: refused,
+          systemPrompt: "sys",
+          tools: [],
+          toolCtx: makeToolCtx(),
+          history: [],
+          userMessage: "hi",
+          onCallUsage: (u) => seen.push(u),
+        }),
+      );
+    }
+    const aborted = new AbortController();
+    aborted.abort();
+    const abortedProvider: Provider = {
+      name: "aborted",
+      async runTurn() {
+        throw new Error("Request was aborted.");
+      },
+    };
+    await assert.rejects(
+      runAgent({
+        provider: abortedProvider,
+        systemPrompt: "sys",
+        tools: [],
+        toolCtx: makeToolCtx(aborted.signal),
+        history: [],
+        userMessage: "hi",
+        onCallUsage: (u) => seen.push(u),
+      }),
+    );
+    assert.deepEqual(seen, []);
   });
 });

@@ -6,6 +6,11 @@ export interface ProviderUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /**
+   * Of `cacheWriteTokens`, how many were written with a 1-hour TTL (Anthropic
+   * bills those at 2× input instead of 1.25×). Absent ⇒ all 5-minute writes.
+   */
+  cacheWrite1hTokens?: number;
 }
 
 export interface ProviderResult {

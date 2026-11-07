@@ -21,6 +21,18 @@ export function isCloud(env: NodeJS.ProcessEnv = process.env): boolean {
   return edition(env) === "cloud";
 }
 
+/**
+ * May an accountless credential — the shared LISA_WEB_TOKEN or a legacy
+ * per-device token — authorize requests in the hosted edition? Such a caller
+ * has no balance, so its chat is operator-funded and unmetered. Off unless the
+ * operator opts back in for a reviewer demo with LISA_CLOUD_SHARED_TOKEN_OK=1.
+ * The Mac edition is unaffected.
+ */
+export function cloudLegacyTokenAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.LISA_CLOUD_SHARED_TOKEN_OK ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 /** Mac-only capabilities the cloud edition hides/disables (advertised to the client). */
 export const MAC_ONLY_CAPABILITIES = [
   "pty", // spawn/adopt real claude·codex CLIs under a PTY
