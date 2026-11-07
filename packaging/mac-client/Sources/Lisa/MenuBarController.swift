@@ -195,14 +195,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // 18pt is the conventional menu bar icon height; AppKit picks the
         // underlying 36px pixels for retina.
         img.size = NSSize(width: 18, height: 18)
-        // Important: must NOT be a template image — we want the colored
-        // mascot to come through, not get tinted black/white by AppKit.
-        img.isTemplate = false
-        if offline {
-            button.image = Self.desaturate(img) ?? img
-        } else {
-            button.image = img
+        let source = offline ? (Self.desaturate(img) ?? img) : img
+        // Clip the image itself, not the status button: the session count
+        // beside the avatar must remain visible. AppKit renders this drawing
+        // at the display's scale so the circular edge stays smooth on Retina.
+        let icon = NSImage(size: img.size, flipped: false) { bounds in
+            NSGraphicsContext.saveGraphicsState()
+            defer { NSGraphicsContext.restoreGraphicsState() }
+            NSBezierPath(ovalIn: bounds).addClip()
+            source.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1)
+            return true
         }
+        // Keep the mascot's colors instead of AppKit's template tint.
+        icon.isTemplate = false
+        button.image = icon
     }
 
     /// Convert a colored NSImage to grayscale using CoreImage. Falls back

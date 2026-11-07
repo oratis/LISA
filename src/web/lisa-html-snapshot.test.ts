@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { MAIN_HTML } from "./lisa-html.js";
 import { MAIN_CSS } from "./lisa-css.js";
 import { MAIN_CLIENT_JS } from "./lisa-client.js";
+import { ROOM_HTML } from "./room.js";
 
 /**
  * Composition guard for the single-file HTML shell.
@@ -26,18 +27,36 @@ import { MAIN_CLIENT_JS } from "./lisa-client.js";
  * html-syntax.test.ts, which compiles every inline <script> with vm.Script.
  */
 
-/** The client sources that must be inlined into the shell, in load order. */
-const CLIENT_FILES = ["main.css", "soft-ink.js", "main.js"] as const;
-
+// Discover the shared client directory instead of maintaining a second asset
+// manifest. Some sources (such as room effects) belong only to /room; every
+// source must be embedded intact in at least one actual served document.
 const clientDir = new URL("./assets/client/", import.meta.url);
+const CLIENT_FILES = readdirSync(clientDir).sort();
+const servedPages = { main: MAIN_HTML, room: ROOM_HTML };
+
+function assertEmbeddedSource(name: string, source: string, pages: Record<string, string>): void {
+  assert.match(name, /\.(css|js)$/, `${name} is not a client stylesheet or script`);
+  const consumers = Object.entries(pages).filter(([, html]) => html.includes(source));
+  assert.ok(consumers.length, `${name} is not embedded in any served page`);
+  const tag = name.endsWith(".css") ? "style" : "script";
+  for (const [page, html] of consumers) {
+    assert.equal(html.split(source).length - 1, 1, `${name} is duplicated in ${page}`);
+    const at = html.indexOf(source);
+    const open = html.lastIndexOf(`<${tag}`, at);
+    const openEnd = html.indexOf(">", open);
+    const close = html.indexOf(`</${tag}>`, openEnd);
+    assert.ok(
+      open >= 0 && openEnd < at && close >= at + source.length,
+      `${name} is outside a ${tag} element in ${page}`,
+    );
+  }
+}
 
 describe("the client sources are real files, not template literals", () => {
-  test("assets/client holds exactly the expected files", () => {
-    const found = readdirSync(clientDir).sort();
-    assert.deepEqual(found, [...CLIENT_FILES].sort());
-  });
-
   for (const name of CLIENT_FILES) {
+    test(`${name} is embedded intact in its consuming pages`, () => {
+      assertEmbeddedSource(name, readFileSync(new URL(name, clientDir), "utf8"), servedPages);
+    });
     test(`${name} is non-trivial and free of the sequences that would break inlining`, () => {
       const body = readFileSync(new URL(name, clientDir), "utf8");
       assert.ok(body.length > 1000, `${name} is only ${body.length} bytes`);
@@ -50,8 +69,10 @@ describe("the client sources are real files, not template literals", () => {
   }
 
   test("the exported constants are exactly the file contents", () => {
-    assert.equal(MAIN_CSS, readFileSync(new URL("main.css", clientDir), "utf8"));
-    assert.equal(MAIN_CLIENT_JS, readFileSync(new URL("main.js", clientDir), "utf8"));
+    const contents = (names: string[]) =>
+      names.map((name) => readFileSync(new URL(name, clientDir), "utf8")).join("\n");
+    assert.equal(MAIN_CSS, contents(["main.css", "connectors.css"]));
+    assert.equal(MAIN_CLIENT_JS, contents(["main.js", "connectors.js"]));
   });
 });
 
@@ -99,6 +120,37 @@ describe("the served page inlines every client source verbatim", () => {
     assert.equal(
       (MAIN_HTML.match(/<script>/g) || []).length,
       (MAIN_HTML.match(/<\/script>/g) || []).length,
+    );
+  });
+});
+
+// Exercise the guard itself: adding a page-specific asset is valid, while an
+// orphan, duplicate or misplaced source must still fail the composition gate.
+describe("client asset ownership guard", () => {
+  const source = "window.roomEffect = true;";
+  test("allows a source used only by the room document", () => {
+    assertEmbeddedSource("room-effects.js", source, {
+      main: "<html></html>",
+      room: `<script>${source}</script>`,
+    });
+  });
+  test("rejects an unreferenced client asset", () => {
+    assert.throws(
+      () => assertEmbeddedSource("orphan.js", source, { main: "<html></html>" }),
+      /not embedded/,
+    );
+  });
+  test("rejects duplicate or misplaced sources", () => {
+    assert.throws(
+      () =>
+        assertEmbeddedSource("room-effects.js", source, {
+          room: `<script>${source}${source}</script>`,
+        }),
+      /duplicated/,
+    );
+    assert.throws(
+      () => assertEmbeddedSource("room-effects.js", source, { room: `<div>${source}</div>` }),
+      /outside a script/,
     );
   });
 });

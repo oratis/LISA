@@ -45,7 +45,11 @@ describe("SessionStore — create / open round-trip", () => {
       const s = await SessionStore.create({ cwd: "/w", model: "m" });
       const dir = path.join(home, "sessions");
       const file = path.join(dir, `${s.id}.jsonl`);
-      assert.equal(fs.statSync(file).mode & 0o777, 0o600, "session log must be private (soul/USER.md/MEMORY.md/KB)");
+      assert.equal(
+        fs.statSync(file).mode & 0o777,
+        0o600,
+        "session log must be private (soul/USER.md/MEMORY.md/KB)",
+      );
       assert.equal(fs.statSync(dir).mode & 0o777, 0o700, "sessions dir must be private");
     },
   );
@@ -91,6 +95,33 @@ describe("SessionStore — create / open round-trip", () => {
 });
 
 describe("SessionStore — message persistence + resume", () => {
+  test("connector result marker deduplicates after reopen and survives a torn previous line", async () => {
+    const store = await SessionStore.create({ cwd: "/work/proj", model: "test-model" });
+    await store.appendConnectorTrace("request-1", {
+      role: "user",
+      content: "[connector system event]",
+    });
+    fs.appendFileSync(store.path, '{"type":"message","torn":');
+    assert.equal(
+      await store.appendConnectorResult("request-1", {
+        role: "assistant",
+        content: "final summary",
+      }),
+      true,
+    );
+    const reopened = await SessionStore.open(store.id);
+    assert.equal(await reopened.hasConnectorResult("request-1"), true);
+    assert.equal(
+      await reopened.appendConnectorResult("request-1", {
+        role: "assistant",
+        content: "duplicate",
+      }),
+      false,
+    );
+    assert.deepEqual((await reopened.readMessagePage(0)).messages, [
+      { role: "assistant", content: "final summary" },
+    ]);
+  });
   test("appended messages come back in chronological order", async () => {
     const s = await SessionStore.create({ cwd: "/w", model: "m" });
     for (let i = 0; i < 3; i++) await s.appendMessage(msg(i));
@@ -98,7 +129,10 @@ describe("SessionStore — message persistence + resume", () => {
     // Resume from disk (the real path: a fresh process re-opens by id).
     const resumed = await SessionStore.open(s.id);
     const page = await resumed.readMessagePage(0);
-    assert.deepEqual(page.messages.map((m) => m.content), ["m0", "m1", "m2"]);
+    assert.deepEqual(
+      page.messages.map((m) => m.content),
+      ["m0", "m1", "m2"],
+    );
     assert.equal(page.hasMore, false);
   });
 
@@ -109,7 +143,10 @@ describe("SessionStore — message persistence + resume", () => {
     await s.appendReflection("the latest reflection");
     await s.appendMessage(msg(1));
     const page = await s.readMessagePage(0);
-    assert.deepEqual(page.messages.map((m) => m.content), ["m0", "m1"]);
+    assert.deepEqual(
+      page.messages.map((m) => m.content),
+      ["m0", "m1"],
+    );
     assert.equal(await s.readLatestReflection(), "the latest reflection");
   });
 
@@ -124,7 +161,10 @@ describe("SessionStore — message persistence + resume", () => {
     assert.equal(p0.hasMore, true);
 
     const p1 = await s.readMessagePage(1, 20);
-    assert.deepEqual(p1.messages.map((m) => m.content), ["m0", "m1", "m2", "m3", "m4"]);
+    assert.deepEqual(
+      p1.messages.map((m) => m.content),
+      ["m0", "m1", "m2", "m3", "m4"],
+    );
     assert.equal(p1.hasMore, false);
   });
 
@@ -208,7 +248,10 @@ describe("SessionStore — system prompt persistence", () => {
     await s.appendMessage(msg(1));
 
     const page = await s.readMessagePage(0);
-    assert.deepEqual(page.messages.map((m) => m.content), ["m0", "m1"]);
+    assert.deepEqual(
+      page.messages.map((m) => m.content),
+      ["m0", "m1"],
+    );
     assert.equal(await s.readLatestReflection(), undefined);
   });
 });
