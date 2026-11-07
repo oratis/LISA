@@ -139,7 +139,10 @@ export function findPreset(model: string): OpenAICompatPreset | null {
   return null;
 }
 
-export function detectProvider(model: string): ProviderName {
+export function detectProvider(
+  model: string,
+  env: Record<string, string | undefined> = process.env,
+): ProviderName {
   const m = model.toLowerCase();
   if (m.startsWith("claude-")) return "anthropic";
   if (m.startsWith("gemini-")) return "gemini";
@@ -156,9 +159,9 @@ export function detectProvider(model: string): ProviderName {
   if (findPreset(model)) return "openai";
   // Generic LISA_BASE_URL override (Ollama, self-hosted, custom proxy) routes
   // through OpenAI provider regardless of model name.
-  if (process.env.LISA_BASE_URL) return "openai";
-  if (process.env.LISA_PROVIDER === "openai") return "openai";
-  if (process.env.LISA_PROVIDER === "gemini") return "gemini";
+  if (env.LISA_BASE_URL) return "openai";
+  if (env.LISA_PROVIDER === "openai") return "openai";
+  if (env.LISA_PROVIDER === "gemini") return "gemini";
   return "anthropic";
 }
 
@@ -209,7 +212,7 @@ export function hasCredentialsForModel(
   // openai faces take any model id; the gemini face serves only what it can
   // price (see managedGeminiServed).
   if (managedConfig(env)) {
-    if (detectProvider(model) !== "gemini" || managedGeminiServed(model)) return true;
+    if (detectProvider(model, env) !== "gemini" || managedGeminiServed(model)) return true;
   }
   return hasOwnCredentialsForModel(model, env);
 }
@@ -231,7 +234,7 @@ export function hasOwnCredentialsForModel(
   model: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  const provider = detectProvider(model);
+  const provider = detectProvider(model, env);
   if (provider === "anthropic") {
     return !!(env.ANTHROPIC_AUTH_TOKEN?.trim() || env.ANTHROPIC_API_KEY);
   }
