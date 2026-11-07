@@ -162,7 +162,9 @@ describe("reflective entry points produce dream records", () => {
   test("heartbeat: the examen is a dream, other task kinds are not", async () => {
     const examen = await beginDreamForKind("examen", "builtin:weekly_examen");
     assert.ok(examen.id);
-    await examen.run(() => soulStore.appendJournal("2026-10-09", "weekly examen entry"));
+    // Today's UTC date: the snapshot tracks only the last few days of journal.
+    const today = new Date().toISOString().slice(0, 10);
+    await examen.run(() => soulStore.appendJournal(today, "weekly examen entry"));
     const rec = await examen.end({ outcome: "done" });
     assert.ok(rec);
     assert.equal(rec.trigger, "examen");
