@@ -55,6 +55,7 @@ If a file is not clean UTF-8 (it contains NUL bytes or invalid sequences), it is
 | reflections | Replace matching content strings; `kind`, `store`, `slug`, `emotion` and numeric fields are kept. |
 | tasks | Content fields only. Task specs: title, instruction, last summary, queued input and the watcher's match text (`contains`, `keywords`, `from`, `subject`), rewritten under the task lock; ids, kind, state, schedule, watcher URL/selector/regex, envelope and budget are kept. Run logs: message text, run input/summary/errors/artifacts/effect results and event summaries. Pending outbox notices: title, summary and artifacts, under the entry's lock. |
 | connectors | Each connection request in `connectors/<provider>/state.json` keeps the chat message that asked for it (`requests[].prompt`) for a week after it ends — a verbatim copy of transcript text — so that field is redacted, under the connector service's own lock and in the shape it writes (also in the GitHub connector's one-time `state.json.v1.bak`). Ids, states, accounts, connections and selected resources are kept; credentials are in the secret store, not here. A request still waiting resumes with the placeholder as its original request. |
+| reve | The dream log ([DESIGN_REVE_DREAMS.md](./DESIGN_REVE_DREAMS.md)), through `forgetInReve`, first of all layers, under the reve lock and outside the memory lock. In dream records, matching diff lines, listed memory entries, soul-commit subjects and summaries become `[forgotten by user]`, and so do matching lines of `<id>.md`, reconsider notes and reve audit values. A revert sidecar (`<id>.before.json`, the pre-dream copy a revert restores) that holds the topic is deleted (`why: "revert copy"`), and that dream's memory, KB and skill changes become not revertible, so no later revert can bring the topic back. Ids, hashes and timestamps are kept; record paths and names that match are listed as `untouched` (`why: "path or name"`). |
 | search_index | Only when another layer matched: delete the persisted embedding cache and drop the in-memory session and KB indexes. A topic found nowhere previews as nothing, evicts nothing and leaves Lisa no Notice. |
 | relationships, journal | Lisa's soul, so literal matches only, line by line under the soul lock. Each file change is a soul-git commit `user-forget: <path> via user_forget`. |
 
@@ -76,7 +77,7 @@ The response always lists what forget cannot reach (`residuals`):
 - backups and earlier exports;
 - the soul and KB git history (kept on purpose, so the change can be audited);
 - notifications and IM messages already delivered;
-- a reply being written while you forget (and, after `lisa forget`, a running Lisa's open chats until it restarts);
+- a reply being written while you forget (and, after `lisa forget`, a running Lisa's open chats until it restarts), and likewise a reflective pass still running: its dream record is written when it ends;
 - images inside past messages;
 - KB file names (pages are not renamed);
 - each not-scanned entry present in this home, as `Not scanned: <path> — <what>`.
@@ -132,7 +133,7 @@ Only the export areas are touched: the target's `config.env`, accounts and `ward
 
 ## Deviations / notes
 
-- The `memory` tool had no lock before this change; it now shares one with the API. This is the "same locks the memory tool uses" requirement, met by adding the lock.
+- The `memory` tool had no lock before this change; it now shares one with the API. This is the "same locks the memory tool uses" requirement, met by adding the lock. A dream revert of memory takes the same lock, innermost: reve, then kb, then memory.
 - `lisa forget|export|import` are new subcommands, but only in their exact forms (see Surfaces). Unlike `search` / `status`, a one-shot prompt that merely starts with one of these words stays a prompt.
 - Forget's preview shows snippets of the matched text to the person who asked; earlier drafts returned locations only. The applied report and the audit log still carry no content.
 - Export drops `.git/`, so soul history does not travel. Moving that history (a git bundle) is a follow-up, together with W8 sync.
