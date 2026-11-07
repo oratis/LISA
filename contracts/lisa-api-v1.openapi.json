@@ -1122,6 +1122,889 @@
           }
         }
       }
+    },
+    "/api/connectors/github/requests": {
+      "get": {
+        "operationId": "listGitHubConnectionRequests",
+        "description": "Local loopback owner only. Restores cards for the specified local chat; cloud and paired remote clients are denied.",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubRequestsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/connectors/github/requests/{id}/authorize": {
+      "post": {
+        "operationId": "authorizeGitHubConnectionRequest",
+        "description": "Local loopback owner and same-origin JSON only. Confirm selects repository read access; it never grants write operations. Replays do not widen a grant.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "existing",
+                      "login"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/github/requests/{id}/confirm": {
+      "post": {
+        "operationId": "confirmGitHubConnectionRequest",
+        "description": "Local loopback owner and same-origin JSON only. Confirm selects repository read access; it never grants write operations. Replays do not widen a grant.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repositories": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "repositories"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/github/requests/{id}/cancel": {
+      "post": {
+        "operationId": "cancelGitHubConnectionRequest",
+        "description": "Local loopback owner and same-origin JSON only. Confirm selects repository read access; it never grants write operations. Replays do not widen a grant.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/github/requests/{id}/retry": {
+      "post": {
+        "operationId": "retryGitHubConnectionRequest",
+        "description": "Local loopback owner and same-origin JSON only. Confirm selects repository read access; it never grants write operations. Replays do not widen a grant.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/github/requests/{id}/repositories": {
+      "get": {
+        "operationId": "listGitHubSelectableRepositories",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubRepositoriesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request is not awaiting repository selection."
+          }
+        }
+      }
+    },
+    "/api/connectors/github/disconnect": {
+      "post": {
+        "operationId": "disconnectLocalGitHub",
+        "description": "Cancels pending work and removes LISA credentials. Does not sign out gh or revoke its provider-wide authorization.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/connectors/{provider}/requests": {
+      "get": {
+        "operationId": "listConnectorConnectionRequests",
+        "description": "Local loopback owner only; Google read-only connections, account and resource selection, and durable original-chat continuation. Cloud and remote devices are denied.",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google-calendar",
+                "gmail",
+                "linear"
+              ]
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorRequestsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/connectors/{provider}/requests/{id}/authorize": {
+      "post": {
+        "operationId": "authorizeConnectorConnectionRequest",
+        "description": "Local loopback owner only; Google read-only connections, account and resource selection, and durable original-chat continuation. Cloud and remote devices are denied.",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google-calendar",
+                "gmail",
+                "linear"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "login",
+                      "freebusy",
+                      "events"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/{provider}/requests/{id}/confirm": {
+      "post": {
+        "operationId": "confirmConnectorConnectionRequest",
+        "description": "Local loopback owner only; Google read-only connections, account and resource selection, and durable original-chat continuation. Cloud and remote devices are denied.",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google-calendar",
+                "gmail",
+                "linear"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "resources"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/{provider}/requests/{id}/cancel": {
+      "post": {
+        "operationId": "cancelConnectorConnectionRequest",
+        "description": "Local loopback owner only; Google read-only connections, account and resource selection, and durable original-chat continuation. Cloud and remote devices are denied.",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google-calendar",
+                "gmail",
+                "linear"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/{provider}/requests/{id}/retry": {
+      "post": {
+        "operationId": "retryConnectorConnectionRequest",
+        "description": "Local loopback owner only; Google read-only connections, account and resource selection, and durable original-chat continuation. Cloud and remote devices are denied.",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google-calendar",
+                "gmail",
+                "linear"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request state, scope or provider validation failed."
+          },
+          "413": {
+            "description": "Body exceeds 16 KiB."
+          },
+          "415": {
+            "description": "JSON content type required."
+          }
+        }
+      }
+    },
+    "/api/connectors/{provider}/requests/{id}/resources": {
+      "get": {
+        "operationId": "listConnectorSelectableResources",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google-calendar",
+                "gmail",
+                "linear"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorResourcesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request is not awaiting repository selection."
+          }
+        },
+        "description": "Local loopback owner only; Google read-only connections, account and resource selection, and durable original-chat continuation. Cloud and remote devices are denied."
+      }
+    },
+    "/api/connectors/{provider}/disconnect": {
+      "post": {
+        "operationId": "disconnectLocalConnector",
+        "description": "Local loopback owner only; Google read-only connections, account and resource selection, and durable original-chat continuation. Cloud and remote devices are denied.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubMutation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google-calendar",
+                "gmail",
+                "linear"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/connectors": {
+      "get": {
+        "operationId": "listConnectorCatalog",
+        "description": "Local loopback owner only. Restores cards for the specified local chat; cloud and paired remote clients are denied.",
+        "responses": {
+          "200": {
+            "description": "Local owner response. Credentials are never included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorCatalogResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner, same-origin or capability requirement not satisfied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1524,7 +2407,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, approval_requested, approval_resolved, task_updated, task_deleted, task_run_started, task_run_finished, task_result and error."
+        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, approval_requested, approval_resolved, task_updated, task_deleted, task_run_started, task_run_finished, task_result and error. GitHub local preview adds github_connection_changed (sessionId only)."
       },
       "LisaSession": {
         "type": "object",
@@ -3342,6 +4225,378 @@
           }
         },
         "additionalProperties": true
+      },
+      "GitHubAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "login"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "login": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitHubRepository": {
+        "type": "object",
+        "required": [
+          "id",
+          "fullName",
+          "private"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "private": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitHubConnectionRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "status",
+          "createdAt",
+          "expiresAt",
+          "repositories",
+          "connected"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "authorizing",
+              "selecting",
+              "ready",
+              "resuming",
+              "completed",
+              "cancelled",
+              "failed",
+              "expired"
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds."
+          },
+          "account": {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitHubRepository"
+            }
+          },
+          "userCode": {
+            "type": "string",
+            "description": "Short-lived GitHub device user code. No access token."
+          },
+          "error": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitHubRequestsResponse": {
+        "type": "object",
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitHubConnectionRequest"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitHubRepositoriesResponse": {
+        "type": "object",
+        "required": [
+          "repositories"
+        ],
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitHubRepository"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitHubMutation": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitHubConnectionChangedEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "sessionId"
+        ],
+        "properties": {
+          "type": {
+            "const": "github_connection_changed"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Invalidation only; fetch the local-owner card endpoint. Clients ignore unknown events."
+      },
+      "ConnectorAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Linear account display name; stable id remains the identity key."
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectorResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "access": {
+            "enum": [
+              "events",
+              "freebusy",
+              "metadata",
+              "team"
+            ]
+          },
+          "timeZone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "access"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectorRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "status",
+          "createdAt",
+          "expiresAt",
+          "resources",
+          "connected"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "authorizing",
+              "selecting",
+              "ready",
+              "resuming",
+              "completed",
+              "cancelled",
+              "failed",
+              "expired"
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix epoch milliseconds."
+          },
+          "account": {
+            "$ref": "#/components/schemas/ConnectorAccount"
+          },
+          "error": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "resources": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "$ref": "#/components/schemas/ConnectorResource"
+            }
+          },
+          "authorizationUrl": {
+            "type": "string",
+            "description": "Short-lived trusted Google or Linear authorization URL; no access token or PKCE verifier."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConnectorRequestsResponse": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorRequest"
+            }
+          }
+        },
+        "required": [
+          "requests"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectorResourcesResponse": {
+        "type": "object",
+        "properties": {
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorResource"
+            }
+          }
+        },
+        "required": [
+          "resources"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectorConnectionChangedEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "connector_connection_changed"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "google-calendar",
+              "gmail",
+              "linear"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "sessionId",
+          "provider"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectorCatalogResponse": {
+        "type": "object",
+        "properties": {
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "enum": [
+                    "github",
+                    "google-calendar",
+                    "gmail",
+                    "linear"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "access": {
+                  "const": "read"
+                },
+                "authModes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "access",
+                "authModes"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "connectors"
+        ],
+        "additionalProperties": false
       }
     }
   }

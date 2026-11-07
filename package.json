@@ -1,6 +1,6 @@
 {
   "name": "@oratis/lisa",
-  "version": "0.28.1",
+  "version": "0.28.2",
   "description": "An open-source AI Personal Assistant for planning, writing and personal knowledge, with Cloud and local Mac modes.",
   "keywords": [
     "ai",
@@ -81,7 +81,7 @@
     "@google/genai": "^2.27.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "imapflow": "^2.0.2",
-    "music-metadata": "^11.14.0",
+    "music-metadata": "^12.3.4",
     "openai": "^7.27.0",
     "qrcode-terminal": "^0.12.0",
     "undici": "^8.11.2"

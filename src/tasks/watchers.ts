@@ -567,7 +567,7 @@ async function defaultListMail(sinceMs: number): Promise<WatchMail[]> {
   const out: WatchMail[] = [];
   let reached = 0;
   for (const account of accounts) {
-    const secret = getSecret(account.id);
+    const secret = await getSecret(account.id);
     if (!secret) continue;
     let connector: MailConnector | null = null;
     try {

@@ -374,6 +374,10 @@ describe("interface language table (UX-8)", () => {
   test("interpolation and fallback both work", () => {
     assert.equal(en.__tr("rail.needs.many", { n: 3 }), "3 agents need you");
     assert.equal(zh.__tr("rail.needs.many", { n: 3 }), "3 个 agent 在等你");
+    assert.equal(en.__tr("github.selected", { n: 2 }), "Selected repositories: 2");
+    assert.equal(zh.__tr("github.selected", { n: 2 }), "已选 2 个仓库");
+    assert.equal(en.__tr("github.confirm"), "Connect read-only and continue");
+    assert.equal(zh.__tr("github.confirm"), "只读连接并继续");
     // An unknown key returns the key rather than "undefined" on screen.
     assert.equal(en.__tr("nope.nope"), "nope.nope");
   });

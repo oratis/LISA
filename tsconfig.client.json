@@ -20,5 +20,9 @@
     // top-level binding is intentionally global and shared.
     "types": []
   },
-  "include": ["src/web/assets/client/main.js", "types/web-client.d.ts"]
+  "include": [
+    "src/web/assets/client/main.js",
+    "src/web/assets/client/connectors.js",
+    "types/web-client.d.ts"
+  ]
 }

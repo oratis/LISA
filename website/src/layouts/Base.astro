@@ -1,4 +1,5 @@
 ---
+import { appIcon, favicon, appleTouchIcon } from "../data/brand.json";
 /**
  * Base layout — "Hakko family" modern flat-dark system.
  *
@@ -68,8 +69,8 @@ const foot = lang === "zh-CN"
     <meta name="theme-color" content="#0a0b0d" />
     <link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="icon" href="/assets/lisa-app-icon.png" />
-    <link rel="apple-touch-icon" href="/assets/lisa-app-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href={favicon} />
+    <link rel="apple-touch-icon" sizes="180x180" href={appleTouchIcon} />
     <link rel="canonical" href={canonical} />
     <!-- Open Graph / Twitter -->
     <meta property="og:type" content="website" />
@@ -89,7 +90,7 @@ const foot = lang === "zh-CN"
   <body>
     <header class="topbar">
       <a class="brand" href={homeHref}>
-        <img src="/assets/lisa-app-icon.png" alt="" />
+        <img src={appIcon} alt="" />
         <span class="brand-name">LISA</span>
         <span class="brand-badge">AI ASSISTANT</span>
       </a>
@@ -120,7 +121,7 @@ const foot = lang === "zh-CN"
       <div class="footer-inner">
         <div class="foot-lead">
           <a class="foot-brand" href={homeHref}>
-            <img src="/assets/lisa-app-icon.png" alt="" width="26" height="26" />
+            <img src={appIcon} alt="" width="26" height="26" />
             <span>LISA</span>
           </a>
           <p class="foot-tag">{foot.tagline}</p>

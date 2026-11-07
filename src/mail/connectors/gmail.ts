@@ -47,7 +47,7 @@ export function gmailMessageToRaw(msg: GmailMessage, accountId: string): RawMail
 export interface GmailDeps {
   fetchImpl?: HttpFetch;
   /** Persist refreshed tokens (the service wires this to setSecret). */
-  onTokenRefresh?: (t: GoogleTokens) => void;
+  onTokenRefresh?: (t: GoogleTokens) => void | Promise<void>;
   now?: () => number;
 }
 
@@ -55,7 +55,7 @@ export class GmailConnector implements MailConnector {
   private readonly account: MailAccount;
   private secret: MailSecret;
   private readonly http: HttpFetch;
-  private readonly onTokenRefresh?: (t: GoogleTokens) => void;
+  private readonly onTokenRefresh?: (t: GoogleTokens) => void | Promise<void>;
   private readonly now: () => number;
 
   constructor(account: MailAccount, secret: MailSecret, deps: GmailDeps = {}) {
@@ -83,7 +83,7 @@ export class GmailConnector implements MailConnector {
       expiry: t.expiry,
       refreshToken: t.refreshToken,
     };
-    this.onTokenRefresh?.(t);
+    await this.onTokenRefresh?.(t);
     return t.accessToken;
   }
 
