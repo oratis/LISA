@@ -5,6 +5,8 @@ import path from "node:path";
 import { startLisa, type LisaInstance } from "./helpers/lisa-server.js";
 
 test.describe("skills and coding plans", () => {
+  // Fault injection must reach page.route even after the app claims the page.
+  test.use({ serviceWorkers: "block" });
   let lisa: LisaInstance, root: string;
   test.beforeAll(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-skills-browser-"));
@@ -60,13 +62,15 @@ test.describe("skills and coding plans", () => {
       page,
     }) => {
       const endpoint = "/api/" + panel.toLowerCase();
-      await page.route("**" + endpoint, (route) =>
-        route.fulfill({
+      let injectedFailures = 0;
+      await page.route("**" + endpoint, (route) => {
+        injectedFailures++;
+        return route.fulfill({
           status: 503,
           contentType: "application/json",
           body: '{"error":"offline fixture"}',
-        }),
-      );
+        });
+      });
       if (panel === "Memory") {
         await fs.mkdir(path.join(lisa.home, "memory"), { recursive: true });
         await fs.writeFile(path.join(lisa.home, "memory/USER.md"), "Preserved audit memory");
@@ -74,6 +78,7 @@ test.describe("skills and coding plans", () => {
         await page.getByRole("button", { name: /Memory USER.md/ }).click();
       } else await page.getByRole("button", { name: panel, exact: true }).click();
       await expect(page.locator("#modalBody [role=alert]")).toContainText("Could not load");
+      expect(injectedFailures).toBeGreaterThan(0);
       await expect(page.locator("#modalBody")).not.toContainText("(empty)");
       await page.unroute("**" + endpoint);
       await page.getByRole("button", { name: "Retry", exact: true }).click();
