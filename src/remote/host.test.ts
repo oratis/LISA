@@ -118,12 +118,18 @@ async function harness(backend: http.RequestListener) {
   };
 }
 
-function request(cipher: LinkCipher, challenge: unknown, route: string, method = "GET") {
+function request(
+  cipher: LinkCipher,
+  challenge: unknown,
+  route: string,
+  method = "GET",
+  expiresAt = Date.now() + 60_000,
+) {
   return cipher.seal({
     type: "request",
     id: crypto.randomUUID(),
     challenge,
-    expiresAt: Date.now() + 60_000,
+    expiresAt,
     path: route,
     method,
     body: "",
@@ -224,6 +230,30 @@ test("a dismissed pairing request stays dismissed while the phone keeps polling"
     // A different phone is unaffected.
     await h.hello("p3", identity());
     assert.equal(h.host.status().pending.length, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test("phone clock skew within five minutes is tolerated; far-off expiries are refused", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const { welcome } = await h.hello("s0");
+    h.host.approve(keyId(h.phone.publicKey), welcome.code as string);
+    // Pocket stamps its own clock + 60 s: 3 min behind, 4 min ahead, then 30 min ahead.
+    for (const [channel, skew, ok] of [
+      ["s1", -3 * 60_000, true],
+      ["s2", 4 * 60_000, true],
+      ["s3", 30 * 60_000, false],
+    ] as const) {
+      const c = await h.hello(channel);
+      h.send(
+        channel,
+        request(c.cipher, c.welcome.challenge, "/api/x", "GET", Date.now() + skew + 60_000),
+      );
+      if (ok) assert.equal((await readBody(h, channel, c.cipher)).body.toString(), "ok");
+      else assert.equal(await h.nextFrame(channel), "closed");
+    }
   } finally {
     await h.close();
   }

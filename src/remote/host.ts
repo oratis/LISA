@@ -52,6 +52,11 @@ const MAX_CHANNELS = 64;
 /** Response bytes stop flowing into a socket above this queue and resume once it drains. */
 const HIGH_WATER = 1024 * 1024;
 const PAIRING_TTL = 10 * 60_000;
+/** Pocket stamps expiresAt with its own clock (now + 60 s). Replay is already bound to
+ * the channel's single-use challenge and 10 s request deadline, so tolerate phone/Mac
+ * clock skew instead of failing every request as "interrupted". */
+const CLOCK_SKEW = 5 * 60_000;
+const REQUEST_TTL = 120_000;
 
 export function cloudBase(raw: string): string {
   const url = new URL(raw);
@@ -476,13 +481,14 @@ export class RemoteHost {
         typeof message.id !== "string" ||
         !/^[a-f0-9-]{36}$/i.test(message.id) ||
         typeof message.expiresAt !== "number" ||
-        message.expiresAt < Date.now() ||
-        message.expiresAt > Date.now() + 120_000
+        !Number.isFinite(message.expiresAt) ||
+        message.expiresAt < Date.now() - CLOCK_SKEW ||
+        message.expiresAt > Date.now() + REQUEST_TTL + CLOCK_SKEW
       )
         throw new Error();
       for (const [key, expiry] of this.requests) if (expiry < Date.now()) this.requests.delete(key);
       if (this.requests.has(message.id) || this.requests.size >= 10_000) throw new Error();
-      this.requests.set(message.id, message.expiresAt);
+      this.requests.set(message.id, Date.now() + REQUEST_TTL + 2 * CLOCK_SKEW);
       c.used = true;
       clearTimeout(c.deadline);
       c.deadline = setTimeout(() => this.closeChannel(id), 55 * 60_000);
