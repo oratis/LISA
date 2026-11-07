@@ -10,6 +10,7 @@ struct MacConnectionsView: View {
     @State private var status = ""
     @State private var code = ""
     @State private var secure = true
+    @State private var comparable = true
     @State private var authorized = false
     /// The user compared the codes on this phone. Pocket pins a Mac's key only after this:
     /// otherwise a relay could pose as the Mac and simply claim the phone was approved.
@@ -49,18 +50,22 @@ struct MacConnectionsView: View {
                 Section("Authorize on \(selected.name)") {
                     if !code.isEmpty {
                         Text(code).font(.title2.monospaced()).textSelection(.enabled)
-                        if !secure {
-                            Label("This Mac uses an older pairing method. A compromised network or relay could fake this code. Update LISA on your Mac to pair securely.",
+                        // Each device describes only its own side of the pairing.
+                        if secure {
+                            Text("This iPhone is using secure pairing. If your Mac warns about an older pairing method, tap Cancel.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            Label("Older pairing method: the Mac answered as LISA 0.30 or earlier, so a compromised relay could fake this code. Update LISA on your Mac to pair securely.",
                                   systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
                         }
                         if !secure && requireSecurePairing {
-                            Text("Secure pairing is required, so this Mac can't be added. Update LISA on your Mac, or turn off Require Secure Pairing below.")
+                            Text("Require Secure Pairing is on, so Pocket won't add this Mac. Update LISA on your Mac, then select it again.")
+                        } else if !comparable {
+                            // No button: without a code on the Mac there is nothing to verify.
+                            Text("Your Mac already allows this iPhone, but its older LISA shows no code to compare, so Pocket can't verify it. On your Mac, open Connect iPhone and disconnect this iPhone, then select your Mac here again.")
                         } else if confirmed {
                             Text(authorized ? "Connecting…" : "Now choose Allow on your Mac. Keep this screen open until connected.")
-                        } else if !secure && authorized {
-                            Text("Your Mac already allows this iPhone, but its older LISA can't show a code to compare.")
-                            Button("Connect Anyway") { confirmed = true }
                         } else {
                             Text("Check that your Mac shows exactly this code. If it does, tap Codes Match and choose Allow on your Mac. If it doesn't, tap Cancel.")
                             Button("Codes Match") { confirmed = true }
@@ -79,7 +84,7 @@ struct MacConnectionsView: View {
             Section {
                 Toggle("Require Secure Pairing", isOn: $requireSecurePairing)
             } footer: {
-                Text("Refuse Macs that only support the older pairing method (LISA 0.30 and earlier), whose code a compromised relay could fake.")
+                Text("Refuse the older pairing method (LISA 0.30 and earlier on the Mac), whose code a compromised relay could fake. Full protection also needs Require secure pairing on the Mac.")
             }
             if !status.isEmpty { Section { Text(status).font(.footnote).foregroundStyle(.secondary) } }
         }
@@ -96,13 +101,14 @@ struct MacConnectionsView: View {
                 // A confirmation only ever covers the code the user actually saw.
                 if pairing.code != code { confirmed = false }
                 code = pairing.code; secure = pairing.secure; authorized = pairing.authorized
+                comparable = pairing.comparable
                 if !pairing.open {
                     status = "Your Mac has no open request from this iPhone (it was dismissed or expired). Select your Mac to try again."
                     cancelPairing()
                     return
                 }
-                if !pairing.secure && requireSecurePairing { status = ""; return }
-                if pairing.authorized && confirmed {
+                if (!pairing.secure && requireSecurePairing) || !pairing.comparable { status = ""; return }
+                if pairing.mayConnect(confirmed: confirmed, requireSecure: requireSecurePairing) {
                     app.connectRemoteMac(target)
                     self.selected = nil; self.transport = nil
                     await transport.invalidate()
@@ -112,6 +118,10 @@ struct MacConnectionsView: View {
             } catch RemoteLinkError.pairingRestarted {
                 code = ""; confirmed = false
                 status = RemoteLinkError.pairingRestarted.localizedDescription
+            } catch RemoteLinkError.pairingAborted {
+                status = RemoteLinkError.pairingAborted.localizedDescription
+                cancelPairing()
+                return
             } catch {
                 if Task.isCancelled { return }
                 status = error.localizedDescription
@@ -122,6 +132,7 @@ struct MacConnectionsView: View {
     private func cancelPairing() {
         if let transport { Task { await transport.invalidate() } }
         selected = nil; transport = nil; code = ""; confirmed = false; authorized = false; secure = true
+        comparable = true
     }
     private func select(_ host: LisaClient.RelayHost) {
         guard let origin = app.savedCloudConfig.baseURL?.absoluteString, !accountUID.isEmpty else { return }
@@ -130,6 +141,7 @@ struct MacConnectionsView: View {
                                      cloudOrigin: origin, accountUID: accountUID)
         transport = RemoteMacTransport(target: target, pairing: true)
         selected = target; code = ""; status = ""; confirmed = false; authorized = false; secure = true
+        comparable = true
     }
     private func refresh() async {
         guard app.savedCloudConfig.token != nil else { return }

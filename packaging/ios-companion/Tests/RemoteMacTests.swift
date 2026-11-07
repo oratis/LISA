@@ -174,6 +174,81 @@ final class RemoteMacTests: XCTestCase {
         XCTAssertEqual(closed, RemotePairingStatus(authorized: false, code: "", secure: true, open: false))
         await transport.invalidate()
     }
+    /// Review finding: a relay that lists its own "Mac" key and answers as an older Mac
+    /// that already allows this iPhone needs no grinding, since H(M'||P) is its to compute.
+    func testAnOlderMacThatAlreadyAllowsThisIPhoneCanNeverBeConfirmed() async throws {
+        let keys = PairingKeys() // `mac` plays the relay's substitute key M'
+        var calls = 0
+        let transport = RemoteMacTransport(target: keys.target, pairing: true, credentialProvider: { "account-secret" },
+                                           deviceKey: keys.phone) { _, _, _, _ in
+            calls += 1
+            return ScriptedConnection(welcome: ["type": "welcome", "authorized": true, "challenge": "fresh",
+                                                "code": RemoteLinkCipher.code(host: keys.host, client: keys.client)])
+        }
+        for _ in 0..<2 {
+            let status = try await transport.pairingStatus()
+            XCTAssertEqual(status.comparable, false)
+            XCTAssertEqual(status.secure, false)
+            XCTAssertFalse(status.mayConnect(confirmed: true, requireSecure: false),
+                           "no code is shown on such a Mac, so no tap may pin it")
+        }
+        XCTAssertEqual(calls, 2)
+        await transport.invalidate()
+    }
+    func testAnOlderMacThatShowsTheCodeCanBeConfirmedUnlessSecurePairingIsRequired() async throws {
+        let keys = PairingKeys()
+        var approved = false
+        let transport = RemoteMacTransport(target: keys.target, pairing: true, credentialProvider: { "account-secret" },
+                                           deviceKey: keys.phone) { _, _, _, _ in
+            ScriptedConnection(welcome: ["type": "welcome", "authorized": approved, "challenge": "fresh",
+                                         "code": RemoteLinkCipher.code(host: keys.host, client: keys.client)])
+        }
+        let shown = try await transport.pairingStatus()
+        XCTAssertEqual(shown.comparable, true)
+        XCTAssertFalse(shown.mayConnect(confirmed: true, requireSecure: false), "not approved on the Mac yet")
+        approved = true
+        let allowed = try await transport.pairingStatus()
+        XCTAssertEqual(allowed.comparable, true, "the code was shown before the Mac allowed it")
+        XCTAssertFalse(allowed.mayConnect(confirmed: false, requireSecure: false))
+        XCTAssertTrue(allowed.mayConnect(confirmed: true, requireSecure: false))
+        XCTAssertFalse(allowed.mayConnect(confirmed: true, requireSecure: true))
+        await transport.invalidate()
+    }
+    func testPairingStopsAfterTwoRestarts() async throws {
+        let keys = PairingKeys()
+        var macNonces = [1, 2, 2, 3, 3, 4].map { Data(repeating: UInt8($0), count: 32) }
+        var calls = 0
+        let transport = RemoteMacTransport(target: keys.target, pairing: true, credentialProvider: { "account-secret" },
+                                           deviceKey: keys.phone) { _, _, _, _ in
+            calls += 1
+            // Every reveal's reply is lost, and the "Mac" keeps changing its nonce.
+            return ScriptedConnection(welcome: self.v2Welcome(authorized: false, nonce: macNonces.removeFirst()))
+        }
+        var outcomes: [String] = []
+        for _ in 0..<7 {
+            do { _ = try await transport.pairingStatus(); outcomes.append("ok") }
+            catch RemoteLinkError.pairingRestarted { outcomes.append("restart") }
+            catch RemoteLinkError.pairingAborted { outcomes.append("abort") }
+            catch { outcomes.append("lost") }
+        }
+        XCTAssertEqual(outcomes, ["lost", "restart", "lost", "restart", "lost", "abort", "abort"])
+        XCTAssertEqual(calls, 6, "an aborted pairing never connects again")
+        await transport.invalidate()
+    }
+    /// The welcome check open() runs on every real connection.
+    func testWelcomeVerificationSkipsTheV1CodeOnlyForV2Macs() throws {
+        let keys = PairingKeys()
+        let v1Code = RemoteLinkCipher.code(host: keys.host, client: keys.client)
+        XCTAssertNoThrow(try RemoteMacTransport.verifyWelcome(["type": "welcome", "code": v1Code],
+                                                              host: keys.host, client: keys.client))
+        XCTAssertNoThrow(try RemoteMacTransport.verifyWelcome(["type": "welcome", "v": 2],
+                                                              host: keys.host, client: keys.client))
+        for welcome: [String: Any] in [["type": "welcome"], ["type": "welcome", "code": "0000 0000 0000"],
+                                        ["type": "welcome", "v": 1, "code": "0000 0000 0000"],
+                                        ["type": "headers", "v": 2]] {
+            XCTAssertThrowsError(try RemoteMacTransport.verifyWelcome(welcome, host: keys.host, client: keys.client))
+        }
+    }
     func testPairingNeverUsesCachedLANHints() async throws {
         let keys = PairingKeys()
         let cacheKey = "lisa.link.\(keys.target.id).lanURLs"
