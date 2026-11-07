@@ -252,3 +252,33 @@ async function githubRefresh() {
 setInterval(() => {
   if (!document.hidden && [...githubCards.values()].some(r => !['completed', 'cancelled', 'expired'].includes(r.status))) void githubRefresh();
 }, 3000);
+
+// Browsing the catalog does not start authorization or change the active task.
+const browseConnectors = document.getElementById('pmConnectors');
+if (browseConnectors) {
+  browseConnectors.textContent = tr('connector.browse');
+  browseConnectors.addEventListener('click', () => {
+    closePlusMenu();
+    void showConnectorCatalog();
+  });
+}
+
+function showConnectorCatalog() {
+  return loadPanel(tr('connector.browse'), '/api/connectors', data => {
+    modalBody.replaceChildren(githubNode('p', tr('connector.readExamples')));
+    for (const app of data.connectors) {
+      const example = app.example[LISA_LOCALE];
+      const row = githubNode('div', '', 'item');
+      row.append(githubNode('strong', app.name), githubNode('p', example, 'desc'));
+      const pick = githubNode('button', tr('connector.pick'), 'github-button');
+      pick.type = 'button';
+      pick.setAttribute('aria-label', app.name + ' · ' + tr('connector.pick'));
+      pick.addEventListener('click', () => {
+        closeModal();
+        window.lisaPrefillComposer(input.value.trim() ? input.value + '\n' + example : example);
+      });
+      row.appendChild(pick);
+      modalBody.appendChild(row);
+    }
+  }, showConnectorCatalog);
+}

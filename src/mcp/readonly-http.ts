@@ -1,5 +1,5 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { mcpHttpTransport } from "./transport.js";
 import { ConnectorError } from "../connectors/types.js";
 import type { McpFetch } from "./http.js";
 export interface ReadonlyMcp {
@@ -15,22 +15,7 @@ export async function withReadonlyMcp<T>(
   work: (mcp: ReadonlyMcp) => Promise<T>,
 ): Promise<T> {
   const client = new Client({ name: "lisa-readonly", version: "0.1.0" }, { capabilities: {} });
-  const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` }, redirect: "manual" },
-    fetch: async (url, init) => {
-      const raw = url instanceof Request ? url.url : String(url);
-      if (raw !== endpoint) throw new ConnectorError("mcp_invalid_endpoint");
-      // Background notifications are unnecessary for bounded task reads.
-      if (init?.method === "GET") return new Response(null, { status: 405 });
-      return fetcher(raw, init);
-    },
-    reconnectionOptions: {
-      maxRetries: 0,
-      initialReconnectionDelay: 1000,
-      maxReconnectionDelay: 1000,
-      reconnectionDelayGrowFactor: 1,
-    },
-  });
+  const transport = mcpHttpTransport(endpoint, fetcher, token);
   const abort = () => {
     void client.close().catch(() => {});
   };

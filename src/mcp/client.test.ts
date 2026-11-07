@@ -118,7 +118,7 @@ describe("mcpToolToLisaTool — execute() result flattening", () => {
     assert.equal(await t.execute({}, {} as never), "(empty)");
   });
 
-  test("isError is logged but the text is still returned", async () => {
+  test("isError reaches the agent as a failed tool call with its diagnostic", async () => {
     const logs: string[] = [];
     const t = mcpToolToLisaTool(
       "s",
@@ -126,8 +126,37 @@ describe("mcpToolToLisaTool — execute() result flattening", () => {
       { name: "go" },
       (m) => logs.push(m),
     );
-    const out = await t.execute({}, {} as never);
-    assert.equal(out, "boom");
+    await assert.rejects(t.execute({}, {} as never), /boom/);
     assert.ok(logs.some((l) => /isError/.test(l)));
   });
+});
+
+test("a command-only stdio config can discover and call a tool through the shared client", async () => {
+  const { connectMcpServers } = await import("./client.js");
+  const serverScript = `
+    const readline = require("node:readline").createInterface({ input: process.stdin });
+    readline.on("line", line => {
+      const msg = JSON.parse(line);
+      if (msg.id === undefined) return;
+      const results = {
+        initialize: { protocolVersion: "2025-11-25", capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1" } },
+        "tools/list": { tools: [{ name: "read", inputSchema: { type: "object" } }] },
+        "tools/call": { content: [{ type: "text", text: "legacy read" }] }
+      };
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: results[msg.method] }) + "\\n");
+    });
+  `;
+  const [server] = await connectMcpServers([
+    { name: "legacy", command: process.execPath, args: ["-e", serverScript] },
+  ]);
+  assert.ok(server);
+  try {
+    assert.equal(server.tools[0]?.name, "mcp__legacy__read");
+    assert.equal(
+      await server.tools[0].execute({}, { cwd: ".", signal: AbortSignal.timeout(3000), log() {} }),
+      "legacy read",
+    );
+  } finally {
+    await server.close();
+  }
 });

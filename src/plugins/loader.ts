@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { logWarn } from "../log.js";
+import { parseMcpServers, type McpServerSpec } from "../mcp/spec.js";
 import { lisaGlobalHome } from "../paths.js";
 import { ensureDir, pathExists } from "../fs-utils.js";
 import { parseFrontmatter } from "../skills/frontmatter.js";
@@ -69,10 +71,7 @@ async function loadCommands(dir: string): Promise<SlashCommand[]> {
     ];
     out.push({
       name: path.basename(entry, ".md"),
-      description:
-        typeof description === "string"
-          ? description
-          : "(no description)",
+      description: typeof description === "string" ? description : "(no description)",
       argumentHint: typeof argumentHint === "string" ? argumentHint : undefined,
       body: parsed?.body ?? raw,
       source: file,
@@ -94,14 +93,10 @@ async function loadAgents(dir: string): Promise<SubagentDefinition[]> {
     const fm = parsed.frontmatter as unknown as Record<string, unknown>;
     out.push({
       name: typeof fm.name === "string" ? fm.name : path.basename(entry, ".md"),
-      description:
-        typeof fm.description === "string" ? fm.description : "(no description)",
+      description: typeof fm.description === "string" ? fm.description : "(no description)",
       body: parsed.body,
       source: file,
-      tools:
-        typeof fm.tools === "string"
-          ? fm.tools.split(",").map((s) => s.trim())
-          : undefined,
+      tools: typeof fm.tools === "string" ? fm.tools.split(",").map((s) => s.trim()) : undefined,
       model: typeof fm.model === "string" ? fm.model : undefined,
     });
   }
@@ -154,24 +149,11 @@ async function loadHooks(dir: string): Promise<HookSpec[]> {
   return out;
 }
 
-async function loadMcp(
-  root: string,
-): Promise<{ name: string; command: string; args?: string[]; env?: Record<string, string> }[]> {
+async function loadMcp(root: string): Promise<McpServerSpec[]> {
   const file = path.join(root, ".mcp.json");
   if (!(await pathExists(file))) return [];
-  const raw = await fs.readFile(file, "utf8");
-  const parsed = JSON.parse(raw) as {
-    mcpServers?: Record<
-      string,
-      { command: string; args?: string[]; env?: Record<string, string> }
-    >;
-  };
-  return Object.entries(parsed.mcpServers ?? {}).map(([name, spec]) => ({
-    name,
-    command: spec.command,
-    args: spec.args,
-    env: spec.env,
-  }));
+  const parsed = JSON.parse(await fs.readFile(file, "utf8")) as { mcpServers?: unknown };
+  return parseMcpServers(parsed.mcpServers, logWarn);
 }
 
 export const PLUGINS_ROOT = PLUGINS_DIR;

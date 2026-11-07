@@ -51,7 +51,11 @@ import {
   type SlackAccount,
   type SlackResource,
 } from "../connectors/slack-driver.js";
-import { CONNECTOR_CATALOG, type ConnectorProvider } from "../connectors/catalog.js";
+import {
+  CONNECTOR_CATALOG,
+  connectorCatalogReply,
+  type ConnectorProvider,
+} from "../connectors/catalog.js";
 import type { ReadonlyDriver } from "../connectors/types.js";
 import { handleConnectorApi } from "./connectors-api.js";
 import { GitHubConnector, isGitHubReadRequest } from "../connectors/github.js";
@@ -3140,7 +3144,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "cache-control": "no-store",
         "content-security-policy": mainHtmlCsp(cspNonce),
       });
-      res.end(renderMainHtml({ nonce: cspNonce }));
+      res.end(
+        renderMainHtml({
+          nonce: cspNonce,
+          connectorCatalog:
+            !!githubConnector &&
+            !accountUid &&
+            isLoopbackAddress(remoteAddr) &&
+            !crossSiteProblem(req, true, null),
+        }),
+      );
       return;
     }
 
@@ -5410,12 +5423,17 @@ self.addEventListener('fetch', (event) => {
         !accountUid &&
         isLoopbackAddress(remoteAddr) &&
         !crossSiteProblem(req, true, null);
-      const connectorRevision = connectorOwner
-        ? (chat.connectorRevision = (chat.connectorRevision ?? 0) + 1)
-        : 0;
+      const catalogReply =
+        connectorOwner && !files?.length
+          ? connectorCatalogReply(message, req.headers["accept-language"])
+          : undefined;
+      const connectorRevision =
+        connectorOwner && !catalogReply
+          ? (chat.connectorRevision = (chat.connectorRevision ?? 0) + 1)
+          : 0;
       // A new explicit user instruction takes precedence over a queued continuation.
       let connectorFailure: string | undefined;
-      if (connectorOwner) {
+      if (connectorOwner && !catalogReply) {
         try {
           await githubConnector.cancelSession(chat.session.id);
           for (const service of taskConnectors.values())
@@ -5484,6 +5502,18 @@ self.addEventListener('fetch', (event) => {
         let anyText = false;
         let anyTool = false;
         try {
+          if (catalogReply) {
+            for (const entry of [
+              { role: "user", content: message },
+              { role: "assistant", content: catalogReply },
+            ] as const) {
+              await chat.session.appendMessage(entry);
+              chat.history.push(entry);
+            }
+            send({ type: "text", text: catalogReply });
+            send({ type: "done" });
+            return;
+          }
           const requestedProviders: ConnectorProvider[] = [
             ...googleReadIntents(message),
             ...(isLinearReadRequest(message) ? ["linear" as const] : []),
