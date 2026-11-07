@@ -104,11 +104,11 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/push/",
   "/api/screen-advisor/",
   "/api/sense/",
-  "/api/connectors/github/",
+  "/api/connectors/",
   "/api/vision/",
 ] as const;
 
-const CLOUD_DENIED_EXACT_ROUTES = new Set(["/api/kb/ingest", "/api/plans"]);
+const CLOUD_DENIED_EXACT_ROUTES = new Set(["/api/kb/ingest", "/api/plans", "/api/connectors"]);
 
 export function isCloudDeniedRoute(rawUrl: string): boolean {
   let pathname: string;

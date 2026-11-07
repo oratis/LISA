@@ -213,7 +213,7 @@ test("corrupt/unknown schema fails closed without overwriting state", async (t) 
   const file = path.join(f.home, "connectors/github/state.json");
   for (const raw of [
     "{broken",
-    '{"version":2,"requests":[]}',
+    '{"version":999,"requests":[]}',
     '{"version":1,"requests":[{"id":"../escape"}]}',
   ]) {
     await fs.writeFile(file, raw);
@@ -310,4 +310,50 @@ test("revoked token stops the grant and requires an explicit reconnect", async (
   await until(async () => (await f.status(r.id)) === "failed");
   assert.equal((await f.service.list("session_a"))[0]!.connected, false);
   assert.equal((await f.secrets.list()).length, 0);
+});
+
+test("v1 migration preserves completed markers and waiting tasks, with an unchanged backup", async (t) => {
+  const f = await fixture(t);
+  await f.service.stop();
+  const file = path.join(f.home, "connectors/github/state.json");
+  const base = {
+    sessionId: "session_a",
+    prompt: "Read GitHub",
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 3600_000,
+    attempts: 0,
+    repositories: [],
+  };
+  const legacy = JSON.stringify({
+    version: 1,
+    requests: [
+      { ...base, id: "finished", status: "completed" },
+      { ...base, id: "waiting", status: "waiting" },
+    ],
+  });
+  await fs.writeFile(file, legacy);
+  let resumed = 0;
+  const migrated = new GitHubConnector({
+    ...f.options,
+    resume: async (run) => {
+      resumed++;
+      await run.commit(async () => {});
+    },
+  });
+  t.after(() => migrated.stop());
+  await migrated.start();
+  const cards = await migrated.list("session_a");
+  assert.deepEqual(
+    cards.map((r) => [r.id, r.status]),
+    [
+      ["finished", "completed"],
+      ["waiting", "waiting"],
+    ],
+  );
+  assert.equal(resumed, 0);
+  assert.equal(await fs.readFile(file + ".v1.bak", "utf8"), legacy);
+  const state = JSON.parse(await fs.readFile(file, "utf8"));
+  assert.equal(state.version, 2);
+  assert.deepEqual(state.requests[1].resources, []);
+  assert.ok(!("repositories" in state.requests[1]));
 });

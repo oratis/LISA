@@ -29,10 +29,10 @@ import { MAIN_CLIENT_JS } from "./lisa-client.js";
 /** The client sources that must be inlined into the shell, in load order. */
 const CLIENT_FILES = [
   "main.css",
-  "github-connectors.css",
+  "connectors.css",
   "soft-ink.js",
   "main.js",
-  "github-connectors.js",
+  "connectors.js",
 ] as const;
 
 const clientDir = new URL("./assets/client/", import.meta.url);
@@ -58,8 +58,8 @@ describe("the client sources are real files, not template literals", () => {
   test("the exported constants are exactly the file contents", () => {
     const contents = (names: string[]) =>
       names.map((name) => readFileSync(new URL(name, clientDir), "utf8")).join("\n");
-    assert.equal(MAIN_CSS, contents(["main.css", "github-connectors.css"]));
-    assert.equal(MAIN_CLIENT_JS, contents(["main.js", "github-connectors.js"]));
+    assert.equal(MAIN_CSS, contents(["main.css", "connectors.css"]));
+    assert.equal(MAIN_CLIENT_JS, contents(["main.js", "connectors.js"]));
   });
 });
 

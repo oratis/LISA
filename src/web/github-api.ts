@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { GitHubConnector } from "../connectors/github.js";
-import { GitHubError } from "../connectors/github-driver.js";
+import { ConnectorError as GitHubError } from "../connectors/types.js";
 import { crossSiteProblem } from "./warden-api.js";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
 

@@ -33,11 +33,11 @@ flowchart LR
 
 ## Agent 循环
 
-2026-11 GitHub 连接预览：`src/connectors/github.ts` 持久化本机连接请求、仓库授权和恢复租约；`github-driver.ts` 使用固定 GitHub 主机、DNS 固定和 GET 白名单读取，交互登录由 `gh` 提供，Token 经 SecretStore 保存。仅 `local-owner` Web 表面开放 `/api/connectors/github/*`，Cloud/远程设备拒绝。
+2026-11 本机只读连接：`src/connectors/service.ts` 为 GitHub、Google Calendar、Gmail 共享持久请求、授权尝试隔离、资源确认、取消、恢复租约和结果提交；`types.ts` 定义经过审查的只读适配器契约。`github.ts` 保留旧 API 的兼容包装。Google 驱动将日历忙闲、日程详情和 Gmail 标签读取限制为固定操作、固定 Google 主机、DNS 固定、无重定向和有界响应。仅 `local-owner` Web 开放 `/api/connectors` 及其子路径，Cloud/远程设备拒绝。
 
-明确的 GitHub 只读聊天会先保存原文和附件、展示连接卡，再在同一 session 队列自动恢复。恢复重新构造工具集合：仅 `github_read`，原请求明确涉及本机文件时加 `read/ls/grep`；不带 Shell、旧版 GitHub 写工具、插件 Hook 或子代理。正常通用聊天仍沿用原注册表，本预览不代表全局 Shell 只读保证。新用户消息取消未完成的连接任务。
+明确的只读聊天会先保存原文和附件、展示统一连接卡，再在同一 session 队列自动恢复。恢复重新构造工具集合：对应 provider 的单一读取工具；仅 GitHub 原请求明确涉及本机文件时加 `read/ls/grep`。不带 Shell、旧版写工具、插件 Hook 或子代理。新用户消息取消未完成的连接任务。本切片每 provider 一个账号，每个任务一个来源；混合来源请求提示拆分，不静默完成一部分。正常通用聊天仍沿用原注册表。
 
-连接状态落在本机 Home 的 `connectors/github/state.json`，文件锁保护变更，每个请求有独立恢复租约。Session 的 `connectorRequestId` 消息标记防止恢复后重复发布结果；`connector_trace` 记录模型/工具诊断过程，历史消息 API 不把系统续跑事件当用户消息。凭据撤销、取消、过期都会在执行边界复核。
+状态落在本机 Home 的 `connectors/{provider}/state.json`（v2），GitHub v1 校验后备份并迁移，保留 request ID；文件锁和每请求恢复租约防止并发重复执行。Session 的 `connectorRequestId` 标记防止重复结果；`connector_trace` 留诊断过程，历史 API 不把系统续跑事件当用户消息。Google 桌面授权使用 PKCE、state 和临时 loopback callback；凭据存 SecretStore，刷新串行且先保存再读取。旧邮件 `mail/secrets.json` 在访问时写入同一 SecretStore、回读验证后原子替换为引用，损坏源文件拒绝迁移。Google OAuth 只读 scope 与 LISA 选择的资源范围分开校验；日历忙闲档不会因 Google 令牌已有更宽权限而升级为详情档。邮件头与最多 400 字短摘要经既有敏感内容过滤后才交给模型，不读取正文或附件。凭据撤销、取消、过期均在执行和结果提交边界复核。
 
 `src/agent.ts` 的核心职责：
 

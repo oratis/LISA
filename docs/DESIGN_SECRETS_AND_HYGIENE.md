@@ -175,6 +175,7 @@ text is handed to a model or shown:
 
 | Path | Where |
 | --- | --- |
+| Read-only Gmail connection continuations | `sanitizeMailFields()` in `src/connectors/google-driver.ts` |
 | Daily sweep and intraday poll (everything downstream: prompt, items, digest, alerts) | `cleanInbound()` in `src/mail/service.ts` |
 | Classification prompt and the `MailItem`s kept from it | `buildClassifyPrompt`, `parseClassification` in `src/mail/classify.ts` |
 | Push alert + proactive chat message | `formatAlert` in `src/mail/alerts.ts` |
@@ -191,8 +192,10 @@ still in their mail client; Lisa simply never holds it.
 
 - No tool executor calls `resolveSecretRefs` yet; the policy that decides which
   handle a call may use belongs to Warden core. Existing credentials (mail
-  passwords and OAuth tokens in `~/.lisa/mail/secrets.json`, provider keys in
-  `config.env`) have not been migrated into the store.
+  provider keys in `config.env` have not been migrated into the store. Mail
+  passwords and OAuth tokens now migrate on access: write to SecretStore,
+  verify by reading back, then atomically replace `mail/secrets.json` values
+  with references. Corrupt source records remain untouched.
 - Hygiene is not applied to web pages (`web_fetch`) or to channel messages —
   the plan asks for both.
 - The Keychain backend has only been exercised through its injected command

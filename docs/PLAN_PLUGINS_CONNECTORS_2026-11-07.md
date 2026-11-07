@@ -334,7 +334,7 @@ P1 是本机预览里程碑；P2–P3 完成后才算可复制到其他应用的
 | GitHub 执行 | `src/connectors/github-driver.ts`；固定 github.com / api.github.com，验证账号 ID 和仓库 ID，GET 操作白名单，拒绝重定向与私有地址 |
 | HTTP | `src/web/github-api.ts`；本机 owner、Origin/Host 校验、JSON 16 KiB 上限，Cloud/远端拒绝；契约已加入 OpenAPI v1 |
 | 聊天 | `src/web/server.ts`；同一 session 队列、5 分钟 / 12 轮 / 50k 累计 Token 上限、24k 历史窗口、授权后新工具快照 |
-| 卡片 | `src/web/assets/client/github-connectors.js/css`；账号、设备码、仓库选择、取消、重试、断开；刷新由服务端重建 |
+| 卡片 | `src/web/assets/client/connectors.js/css`；账号、设备码、仓库选择、取消、重试、断开；刷新由服务端重建 |
 | 幂等输出 | `src/sessions/store.ts`；结果与 requestId 同条 JSONL 记录并刷盘；崩溃后可重读，结果不重复 |
 
 认证预览依赖已安装的 GitHub CLI。已有登录仅在点击后导入；新登录使用独立临时配置目录、在 GitHub 固定页面输入设备码。gh 若回退为明文存储，则拒绝导入并删除临时文件；LISA 使用既有 SecretStore 保存凭据。每次重新授权有独立的暂存凭据，仓库确认前不会替换当前连接。断开只删除 LISA 的凭据和授权，不退出用户的 gh 登录、不撤销 gh 整体 OAuth 权限。
