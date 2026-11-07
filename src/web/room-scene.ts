@@ -52,6 +52,8 @@ export function roomPose(state: {
   if (/reading/.test(state.mood)) return "read";
   if (/working|studying|research|typing|writing|gaming|watching/.test(state.mood)) return "work";
   if (/drinking|tea|coffee/.test(state.mood)) return "tea";
+  if (state.mood === "stretching") return "stretch";
+  if (state.mood === "listening-music") return "listen";
   if (state.activity && ["read", "tea", "listen", "stretch", "window"].includes(state.activity)) {
     return state.activity as RoomPose;
   }

@@ -4297,8 +4297,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v10-soft-ink';
-const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
+const CACHE = 'lisa-v11-motion';
+const ASSET_PATHS = ['/assets/lisa-mascot.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png',
   '/assets/icon-192.png', '/assets/icon-512.png', '/assets/icon-512-maskable.png',
@@ -4328,14 +4328,15 @@ self.addEventListener('fetch', (event) => {
       url.pathname === '/reflect') {
     return; // default network behavior
   }
-  // Cache-first for /assets/* (mood portraits 50MB will fill cache lazily).
-  if (url.pathname.startsWith('/assets/')) {
+  // Versioned motion files are loaded only on demand. Ignore query variants
+  // so one asset cannot occupy multiple entries in the offline cache.
+  if (url.origin === self.location.origin && event.request.method === 'GET' && url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.open(CACHE).then((cache) =>
-        cache.match(event.request).then((hit) => {
+        cache.match(url.pathname).then((hit) => {
           if (hit) return hit;
           return fetch(event.request).then((res) => {
-            if (res.ok) cache.put(event.request, res.clone());
+            if (res.ok) event.waitUntil(cache.put(url.pathname, res.clone()).catch(() => {}));
             return res;
           });
         })
@@ -5145,6 +5146,7 @@ self.addEventListener('fetch', (event) => {
           ".jpg": "image/jpeg",
           ".jpeg": "image/jpeg",
           ".webp": "image/webp",
+          ".gif": "image/gif",
           ".js": "application/javascript; charset=utf-8",
           ".json": "application/json; charset=utf-8",
           ".txt": "text/plain; charset=utf-8",

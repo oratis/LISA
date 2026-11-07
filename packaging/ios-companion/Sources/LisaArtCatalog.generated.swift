@@ -5,6 +5,32 @@ enum LisaArtCatalog {
     static let atlasPath = "/assets/visuals/soft-ink-v1/portraits.png"
     static let columns = 6
     static let rows = 4
+    static let motion: [Int: String] = [
+        0: "/assets/visuals/soft-ink-motion-v1/blink.gif",
+        1: "/assets/visuals/soft-ink-motion-v1/happy.gif",
+        2: "/assets/visuals/soft-ink-motion-v1/laughing.gif",
+        3: "/assets/visuals/soft-ink-motion-v1/giggling.gif",
+        4: "/assets/visuals/soft-ink-motion-v1/thinking.gif",
+        5: "/assets/visuals/soft-ink-motion-v1/confused.gif",
+        6: "/assets/visuals/soft-ink-motion-v1/surprised.gif",
+        7: "/assets/visuals/soft-ink-motion-v1/worried.gif",
+        8: "/assets/visuals/soft-ink-motion-v1/sad.gif",
+        9: "/assets/visuals/soft-ink-motion-v1/apologetic.gif",
+        10: "/assets/visuals/soft-ink-motion-v1/grateful.gif",
+        11: "/assets/visuals/soft-ink-motion-v1/proud.gif",
+        12: "/assets/visuals/soft-ink-motion-v1/determined.gif",
+        13: "/assets/visuals/soft-ink-motion-v1/excited.gif",
+        14: "/assets/visuals/soft-ink-motion-v1/cheering.gif",
+        15: "/assets/visuals/soft-ink-motion-v1/sleepy.gif",
+        16: "/assets/visuals/soft-ink-motion-v1/working.gif",
+        17: "/assets/visuals/soft-ink-motion-v1/debugging.gif",
+        18: "/assets/visuals/soft-ink-motion-v1/research.gif",
+        19: "/assets/visuals/soft-ink-motion-v1/writing.gif",
+        20: "/assets/visuals/soft-ink-motion-v1/portrait-reading.gif",
+        21: "/assets/visuals/soft-ink-motion-v1/portrait-tea.gif",
+        22: "/assets/visuals/soft-ink-motion-v1/portrait-stretching.gif",
+        23: "/assets/visuals/soft-ink-motion-v1/portrait-napping.gif",
+    ]
     static let moods: [String: Int] = [
         "neutral": 0,
         "happy": 1,

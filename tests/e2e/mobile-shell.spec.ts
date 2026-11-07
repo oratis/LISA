@@ -19,7 +19,13 @@ const messages = [
 ];
 
 test.describe("mobile app shell", () => {
-  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+  // Keep request fixtures authoritative in WebKit, including repeat navigations.
+  test.use({
+    serviceWorkers: "block",
+    viewport: { width: 375, height: 812 },
+    isMobile: true,
+    hasTouch: true,
+  });
   let lisa: LisaInstance;
 
   test.beforeAll(async () => {

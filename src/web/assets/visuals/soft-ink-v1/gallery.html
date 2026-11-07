@@ -14,12 +14,12 @@ body.dark{color-scheme:dark;--bg:#0b1024;--panel:#141d35;--text:#e8eeff;--muted:
 <body><main>
 <header><div class="brand">LISA <span class="muted">/ SOFT INK</span></div><button id="theme" type="button" aria-pressed="false">深色预览 / Dark</button></header>
 <section class="hero"><div><p class="eyebrow">B / APPROVED DIRECTION</p><h1>更柔和的 Lisa。<br>更清楚的每个表情。</h1><p class="muted">青色短发、蓝眼睛、深蓝连帽衫。统一角色身份，把情绪、贴纸和房间连接起来。</p><div class="tags"><span class="tag">24 个核心表情</span><span class="tag">114 个状态兼容</span><span class="tag">8 张可下载贴纸</span></div></div><img class="hero-art" id="hero-art" src="/assets/icon-192.png" alt="Lisa 柔和插画角色"></section>
-<section class="section"><p class="eyebrow">01 / EXPRESSIONS</p><h2>从聊天头像，到一次微笑。</h2><p class="muted">选择表情可查看跨尺寸表现。114 个状态共享 24 张核心画稿，状态文字保留原含义。</p>
+<section class="section"><p class="eyebrow">01 / EXPRESSIONS</p><h2>从聊天头像，到一次微笑。</h2><p class="muted">选择表情可查看跨尺寸表现。114 个状态共享 24 组动画，状态文字保留原含义；离开页面或开启减少动态效果时显示静态帧。</p>
 <div class="toolbar"><label for="mood-select">全部状态 / All states</label><select id="mood-select"></select><span class="status" id="selection-status" aria-live="polite"></span></div>
 <div class="live"><div class="identity"><img id="portrait" src="/assets/icon-192.png" alt="Lisa"><b>Lisa</b><span id="mood-name">neutral</span></div><div class="conversation"><div class="bubble">帮我把今天的想法整理成计划。</div><div class="answer"><img id="chat-portrait" src="/assets/icon-192.png" alt=""><div><b>Lisa</b><p>可以。先挑出今天最重要的三件事，<br>再给它们留出合适的时间。</p><small>示例对话 · 任务进度独立于表情</small></div></div><div class="sizes" id="sizes"></div></div></div>
 <div class="grid" id="expressions" aria-label="核心表情"></div>
 </section>
-<section class="section"><p class="eyebrow">02 / STICKERS</p><h2>把表情带走。</h2><p class="muted">点击下载单张透明 PNG。图片中的文字保持为空，方便在不同语言中使用。</p><div class="grid stickers" id="stickers"></div><p class="status" id="download-status" aria-live="polite"></p></section>
+<section class="section"><p class="eyebrow">02 / STICKERS</p><h2>把表情带走。</h2><p class="muted">点击下载单张透明动图 GIF，也可保留原静态 PNG。图片中的文字保持为空，方便在不同语言中使用。</p><div class="grid stickers" id="stickers"></div><p class="status" id="download-status" aria-live="polite"></p></section>
 <section class="section"><p class="eyebrow">03 / ROOM</p><h2>同一个角色，同一个家。</h2><p class="muted">两套插画房间。昼夜由同一背景与光照变化呈现，家具位置保持固定。</p><div class="toolbar" id="time"><button type="button" data-time="day" aria-pressed="true">白天</button><button type="button" data-time="dusk" aria-pressed="false">黄昏</button><button type="button" data-time="night" aria-pressed="false">夜晚</button></div>
 <div class="rooms"><div class="room"><img class="room-bg" src="room.webp" alt="书房插画"><img class="room-actor" alt="站在房间中的 Lisa"><span class="room-label">Studio</span></div><div class="room"><img class="room-bg" src="sunroom.webp" alt="阳光房插画"><img class="room-actor" alt="站在房间中的 Lisa"><span class="room-label">Sunroom</span></div></div>
 <p class="note">此处为视觉预览。实际 Room 延续已有活动和情绪信号，光照时段不代表任务状态。复杂姿态仍需持续做场景位置与动作打磨。</p></section>
@@ -27,7 +27,7 @@ body.dark{color-scheme:dark;--bg:#0b1024;--panel:#141d35;--text:#e8eeff;--muted:
 <section class="section"><img class="icon" src="/assets/icon-192.png" alt="新版 Lisa App 图标"><b>统一的 App Icon 与品牌形象</b><p class="note" style="margin-top:22px">内置 ImageGen 生成；画稿、版本清单和提示词保存在同一资源目录。旧版单张像素 PNG 保留，供旧客户端使用。</p></section>
 <div class="footer"><a href="prompts.txt">查看生成提示词 / Prompts</a> · B / Soft Ink · 2026-10-08</div>
 </main>
-<script src="manifest.js"></script><script src="../../client/soft-ink.js"></script><script>
+<script src="manifest.js"></script><script src="../soft-ink-motion-v1/manifest.js"></script><script src="../../client/motion.js"></script><script src="../../client/soft-ink.js"></script><script>
 const labels=['平静','开心','大笑','偷笑','思考','疑惑','惊讶','担心','难过','抱歉','感谢','自豪','坚定','兴奋','庆祝','困倦','专注','排查','研究','写作','阅读','喝茶','伸展','小憩'];
 const portraits=[document.getElementById('portrait'),document.getElementById('chat-portrait')];
 const selector=document.getElementById('mood-select');
@@ -48,8 +48,8 @@ selector.addEventListener('change',()=>selectMood(selector.value));selectMood('n
 LisaArt.portrait(document.getElementById('hero-art'),'happy',256);
 document.getElementById('theme').addEventListener('click',e=>{const dark=document.body.classList.toggle('dark');e.currentTarget.setAttribute('aria-pressed',String(dark));e.currentTarget.textContent=dark?'浅色预览 / Light':'深色预览 / Dark'});
 const stickerLabels=['你好','做得好','让我想想','谢谢','庆祝一下','我在这里','写下计划','喝杯茶'];
-LISA_ART.stickers.labels.forEach((label,i)=>{const tile=document.createElement('div');tile.className='tile sticker';const img=document.createElement('img');img.alt=stickerLabels[i];const slug='lisa-'+label.toLowerCase().replace(/ /g,'-')+'.png';img.src='stickers/'+slug;const link=document.createElement('a');link.className='download';link.href='stickers/'+slug;link.download=slug;link.textContent=stickerLabels[i]+' · 下载 PNG';tile.append(img,link);document.getElementById('stickers').append(tile)});
-document.querySelectorAll('.room-actor').forEach(img=>LisaArt.paint(img,'poses',0,512));
+LISA_ART.stickers.labels.forEach((label,i)=>{const tile=document.createElement('div');tile.className='tile sticker';const img=document.createElement('img');img.alt=stickerLabels[i];const slug='lisa-'+label.toLowerCase().replace(/ /g,'-')+'.png';LisaArt.sticker(img,i,'stickers/'+slug);const link=document.createElement('a');link.className='download';const clip=LISA_MOTION_ART.clips[LISA_MOTION_ART.stickers[i]];link.href=clip.native;link.download=clip.native.split('/').pop();link.textContent=stickerLabels[i]+' · 下载 GIF';const png=document.createElement('a');png.href='stickers/'+slug;png.download=slug;png.textContent='静态 PNG';tile.append(png);tile.append(img,link);document.getElementById('stickers').append(tile)});
+document.querySelectorAll('.room-actor').forEach(img=>LisaArt.pose(img,0,384));
 document.querySelectorAll('[data-time]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-time]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));document.querySelectorAll('.room').forEach(room=>{room.className='room '+b.dataset.time})}));
 const sceneLabels=['欢迎','规划','写作','知识库','回来后的回顾','连接中断'];
 sceneLabels.forEach((label,i)=>{const tile=document.createElement('div');tile.className='tile';const img=document.createElement('img');img.alt=label;const text=document.createElement('span');text.textContent=label;tile.append(img,text);document.getElementById('scenes').append(tile);LisaArt.paint(img,'scenes',i,384)});

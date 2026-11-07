@@ -69,16 +69,27 @@ describe("the client sources are real files, not template literals", () => {
   }
 
   test("the exported constants are exactly the file contents", () => {
-    const contents = (names: string[]) =>
-      names.map((name) => readFileSync(new URL(name, clientDir), "utf8")).join("\n");
-    assert.equal(MAIN_CSS, contents(["main.css", "connectors.css"]));
-    assert.equal(MAIN_CLIENT_JS, contents(["main.js", "connectors.js"]));
+    assert.equal(
+      MAIN_CSS,
+      ["main.css", "connectors.css"]
+        .map((name) => readFileSync(new URL(name, clientDir), "utf8"))
+        .join("\n"),
+    );
+    assert.equal(
+      MAIN_CLIENT_JS,
+      ["main.js", "connectors.js"]
+        .map((name) => readFileSync(new URL(name, clientDir), "utf8"))
+        .join("\n"),
+    );
   });
 });
 
 describe("the served page inlines every client source verbatim", () => {
   test("the shared artwork renderer is inlined before its consumers", () => {
+    const motion = readFileSync(new URL("motion.js", clientDir), "utf8");
     const renderer = readFileSync(new URL("soft-ink.js", clientDir), "utf8");
+    assert.equal(MAIN_HTML.split(motion).length - 1, 1);
+    assert.ok(MAIN_HTML.indexOf(motion) < MAIN_HTML.indexOf(renderer));
     assert.equal(MAIN_HTML.split(renderer).length - 1, 1);
     assert.ok(MAIN_HTML.indexOf(renderer) < MAIN_HTML.indexOf(MAIN_CLIENT_JS));
   });

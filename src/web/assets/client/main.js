@@ -5015,6 +5015,16 @@ if ('serviceWorker' in navigator) {
   }
 
   // ── view switching ──────────────────────────────────────────────
+  function syncRoomVisibility() {
+    var room = document.getElementById('roomFrame');
+    if (room && room.contentWindow) room.contentWindow.postMessage({ type: 'lisa-room-visibility', visible: active === 'room' && !document.hidden && (!window.LisaMotion || window.LisaMotion.active()) }, location.origin);
+  }
+  var motionRoom = document.getElementById('roomFrame');
+  if (motionRoom) motionRoom.addEventListener('load', syncRoomVisibility);
+  window.addEventListener('lisa-motion-change', syncRoomVisibility);
+  window.addEventListener('message', function (event) {
+    if (motionRoom && event.source === motionRoom.contentWindow && event.origin === location.origin && event.data && event.data.type === 'lisa-room-ready') syncRoomVisibility();
+  });
   function loadView(name) {
     // KB builds once, then refreshes its list on every re-show (it changes).
     if (name === 'kb') { if (!loaded.kb) { loaded.kb = true; loadKb(); } else { loadKbList(); } return; }
@@ -5041,6 +5051,7 @@ if ('serviceWorker' in navigator) {
     else if (!window.matchMedia('(max-width: 720px)').matches) { try { document.getElementById('input').focus(); } catch (e) {} }
     document.body.dataset.view = name;
     window.dispatchEvent(new CustomEvent('lisa-view-change', { detail: { view: name } }));
+    syncRoomVisibility();
     try { history.replaceState(null, '', name === 'chat' ? location.pathname + location.search : '#' + name); } catch (e) {}
   }
   navList.addEventListener('click', function (e) {
