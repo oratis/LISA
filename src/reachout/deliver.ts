@@ -36,12 +36,13 @@ export function attributedTitle(title: string): string {
   return /\blisa\b/i.test(t) ? t : `Lisa — ${t}`;
 }
 
-/** The push a generic notice becomes. Pure. */
+/** The push a generic notice becomes — its `push` text when it has one. Pure. */
 export function pushEventFor(notice: StampedNotice, opts: { silent: boolean }): PushEvent {
+  const text = notice.push ?? notice;
   return {
     pref: PUSH_PREF_FOR[notice.source],
-    title: attributedTitle(notice.title),
-    body: notice.body.slice(0, 240),
+    title: attributedTitle(text.title),
+    body: text.body.slice(0, 240),
     priority: notice.priority === "high" || notice.priority === "critical" ? "high" : "default",
     tag: `${notice.source}:${notice.kind}`,
     ...(opts.silent ? { silent: true } : {}),

@@ -97,11 +97,18 @@ function createSandboxedFs(opts: SandboxedOptions): FsCapability {
 
   const assertWritable = async (abs: string): Promise<void> => {
     if (!modeAllowsWrites(mode)) {
-      throw new Error(
-        `sandbox mode "${mode}" forbids writes — refusing to modify ${abs}`,
-      );
+      throw new Error(`sandbox mode "${mode}" forbids writes — refusing to modify ${abs}`);
     }
     if (!modeIsBounded(mode)) return;
+    // The same denials the OS profile applies (SandboxSpec.denyWrites).
+    const deny = opts.spec.denyWrites;
+    for (const dir of deny?.paths ?? []) {
+      if (!(await isInside(abs, dir))) continue;
+      if (deny?.except && (await isInside(abs, deny.except))) continue;
+      throw new Error(
+        `sandbox mode "${mode}" confines writes to ${deny?.except ?? opts.root} — refusing to write ${abs}`,
+      );
+    }
     for (const root of writableRoots(opts)) {
       if (await isInside(abs, root)) return;
     }
@@ -137,10 +144,7 @@ export function createSandboxedCapabilities(opts: SandboxedOptions): Capabilitie
       async run(command: string, execOpts: ExecOptions): Promise<ExecResult> {
         // Throws SANDBOX_UNAVAILABLE when the host cannot enforce the mode —
         // the command does not run unconfined behind the user's back.
-        const wrapped = await wrapForSandbox(
-          { ...opts.spec, cwd: execOpts.cwd },
-          command,
-        );
+        const wrapped = await wrapForSandbox({ ...opts.spec, cwd: execOpts.cwd }, command);
         try {
           return await localShell.exec(wrapped.command, wrapped.args, execOpts);
         } finally {
