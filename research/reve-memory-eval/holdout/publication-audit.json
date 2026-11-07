@@ -7,10 +7,10 @@
   "summary": {
     "left": {
       "total": 8,
-      "passed": 4,
-      "corrections": 1,
+      "passed": 5,
+      "corrections": 2,
       "grounding": 3,
-      "unsupportedWriteTrials": 3,
+      "unsupportedWriteTrials": 2,
       "calls": 9,
       "returnedUsageCalls": 9,
       "tokens": {
@@ -42,11 +42,9 @@
     {
       "id": "observatory-plate-rinse",
       "arm": "left",
-      "pass": false,
-      "unsupported": [
-        "The rule was issued on 2026-11-08. The owner said “today” in a session for which the blind record supplies no absolute date."
-      ],
-      "reason": "The 25-second and 40-second durations are both correct. The edit also introduces a specific issuance date that cannot be determined from the supplied record."
+      "pass": true,
+      "unsupported": [],
+      "reason": "The glass and metal rinse times are correct at 25 and 40 seconds. In the issuing owner session, “today” refers to November 8, 2026: the session was recorded at 00:13 on November 8 in Shanghai (16:13 UTC on November 7). The saved issuance date is grounded."
     },
     {
       "id": "potluck-serving-spoon",
@@ -157,5 +155,6 @@
       "unsupported": [],
       "reason": "Tuesday and the upstairs studio are correct. Recording that Friday was declined violates the explicit instruction to keep the rejected idea out. Its rejection and the absence of an agreed cap were both stated by the owner, so there is no new unsupported claim."
     }
-  ]
+  ],
+  "adjudication": "Both anonymous arms were regraded with their synthetic session timestamps, in UTC and the recorded local timezone Asia/Shanghai. The first packet omitted them. Only the baseline observatory case changed: 2026-11-08 is supported by the session's local date and 'today'."
 }
