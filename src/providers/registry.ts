@@ -34,6 +34,8 @@ interface OpenAICompatPreset {
   baseURL: string;
   /** Environment variable that holds this provider's API key. */
   apiKeyEnv: string;
+  /** Extra headers sent on every request to this preset's baseURL. */
+  defaultHeaders?: Record<string, string>;
 }
 
 export const OPENAI_COMPAT_PRESETS: OpenAICompatPreset[] = [
@@ -56,6 +58,7 @@ export const OPENAI_COMPAT_PRESETS: OpenAICompatPreset[] = [
     modelPrefixes: ["sonar-", "sonar"],
     baseURL: "https://api.perplexity.ai",
     apiKeyEnv: "PERPLEXITY_API_KEY",
+    defaultHeaders: { "X-Pplx-Integration": "lisa" },
   },
   {
     name: "xAI Grok",
@@ -318,6 +321,7 @@ function resolveProvider(model: string): Provider {
     return new OpenAIProvider({
       baseURL: preset.baseURL,
       apiKey: process.env[preset.apiKeyEnv],
+      defaultHeaders: preset.defaultHeaders,
     });
   }
   if (process.env.LISA_BASE_URL) {

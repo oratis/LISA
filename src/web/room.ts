@@ -3,8 +3,9 @@
  *
  * A Soft Ink illustrated room driven by Lisa's current activity, mood,
  * dreaming state, local time and weather. A geometry-locked background per
- * room preserves furniture positions across day, dusk and night; a shared
- * transparent pose atlas supplies the character and gramophone.
+ * room preserves furniture positions across day, dusk and night; seated
+ * character cutouts are registered to cushions, with foreground furniture
+ * masks and common lighting. Standing poses and the gramophone use an atlas.
  *
  * Original interaction design: docs/PLAN_ROOM_v1.0.md.
  * Artwork: /assets/visuals/soft-ink-v1/manifest.json and prompts.txt.
@@ -17,6 +18,7 @@
  */
 
 import { renderMarkdown, MD_RENDER_CSS } from "./md-render.js";
+import { ROOM_SCENE_JS } from "./room-scene.js";
 
 export const ROOM_HTML = `<!doctype html>
 <html lang="en">
@@ -66,12 +68,18 @@ ${MD_RENDER_CSS}
     will-change: transform;
   }
 
-  /* Background time-of-day layers — two stacked so we can crossfade. A slight
-     scale hides the art's dark vignette border (cover over-scan). */
+  /* The room, figure, shadows and foreground furniture share one lighting
+     layer and one coordinate system. No background-only overscan or filter. */
+  #scene {
+    position: absolute; inset: 0; isolation: isolate;
+    filter: var(--scene-light, none); transition: filter 1600ms ease;
+  }
+  body[data-time="day"] { --scene-light: brightness(.98) saturate(.94); }
+  body[data-time="dusk"] { --scene-light: brightness(.80) sepia(.16) saturate(.86); }
+  body[data-time="night"] { --scene-light: brightness(.57) saturate(.72); }
   .bg {
     position: absolute; inset: 0;
-    background-size: cover; background-position: center;
-    transform: scale(1.06);
+    background-size: 100% 100%; background-position: center;
     opacity: 0; transition: opacity 1400ms ease;
     image-rendering: auto;
   }
@@ -90,38 +98,54 @@ ${MD_RENDER_CSS}
     box-shadow: inset 0 0 min(18vmin,180px) min(6vmin,60px) rgba(4,6,14,0.55);
   }
 
-  /* Soft Ink pose atlas. Every frame uses the same square registration. */
+  /* Contact-registered character: the wrapper's origin is the supporting
+     cushion or floor. Breathing never lifts that contact point. */
   #lisa-wrap {
-    position: absolute; left: 49.7%; bottom: 7.5%; transform: translateX(-50%);
-    transition: left 1000ms var(--spring), bottom 1000ms var(--spring); pointer-events: none;
+    position: absolute; left: var(--actor-x); top: var(--actor-y);
+    width: var(--actor-width); aspect-ratio: var(--actor-aspect, 1);
+    transform: translate(calc(-1 * var(--contact-x)), calc(-1 * var(--contact-y)));
+    pointer-events: none; opacity: 0;
+    transition: opacity 220ms ease;
   }
-  #shadow { position: absolute; left: 50%; bottom: -1%; transform: translateX(-50%);
-    width: 18vmin; height: 3vmin; background: radial-gradient(50% 50% at 50% 50%, rgba(0,0,0,.4), transparent 72%); filter: blur(3px); }
+  #lisa-wrap.ready { opacity: 1; }
+  #shadow {
+    position: absolute; left: var(--actor-x); top: var(--actor-y);
+    width: var(--shadow-width, 13%); height: var(--shadow-height, 2.6%);
+    transform: translate(-50%, -38%); pointer-events: none;
+    background: radial-gradient(ellipse, rgba(18,17,23,.48), rgba(18,17,23,.18) 42%, transparent 72%);
+    filter: blur(2px); opacity: 0; transition: opacity 220ms ease;
+  }
+  #shadow.ready { opacity: 1; }
+  #foot-shadow {
+    position: absolute; left: var(--feet-x); top: var(--feet-y);
+    width: var(--feet-width, 9%); height: var(--feet-height, 2.4%); transform: translate(-50%, -35%);
+    background: radial-gradient(ellipse, rgba(18,17,23,.40), transparent 70%);
+    filter: blur(2px); opacity: 0; transition: opacity 220ms ease; pointer-events: none;
+  }
+  #foot-shadow.ready { opacity: var(--feet-opacity, 0); }
+  body[data-room="room2"] #foot-shadow { filter: blur(5px); }
   #lisa {
-    width: 46vmin; height: 46vmin;
+    width: 100%; height: 100%;
     background: url('/assets/visuals/soft-ink-v1/poses.webp') no-repeat 0% 0% / 400% 300%;
-    transform-origin: 50% 100%; animation: breathe 4.4s ease-in-out infinite;
-    filter: drop-shadow(0 6px 5px rgba(0,0,0,.22)); cursor: pointer; pointer-events: auto;
-    -webkit-user-drag: none; user-select: none; transition: width 400ms ease, height 400ms ease;
+    transform-origin: var(--contact-x) var(--contact-y);
+    animation: breathe 5.6s ease-in-out infinite;
+    cursor: pointer; pointer-events: auto;
+    -webkit-user-drag: none; user-select: none;
   }
-  #lisa.blink { background-position: 33.333333% 0%; }
-  @keyframes breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.008); } }
-  #lisa-wrap.sit #lisa, #lisa-wrap.sit #lisa.blink { width: 35vmin; height: 35vmin; background-position: 66.666667% 0%; }
-  #lisa-wrap.sit { left: 73%; bottom: 23%; }
-  #lisa-wrap.sit #shadow { opacity: 0; }
-  #lisa-wrap.sleep { left: 73%; bottom: 26%; }
-  #lisa-wrap.sleep #lisa, #lisa-wrap.sleep #lisa.blink { width: 27vmin; height: 27vmin; background-position: 100% 0%; animation-duration: 6.6s; }
-  #lisa-wrap.sleep #shadow { opacity: 0; }
-  #lisa.lookup { background-position: 0% 50%; }
-  #lisa-wrap.act-read #lisa { background-position: 33.333333% 50%; }
-  #lisa-wrap.act-tea #lisa { background-position: 66.666667% 50%; }
-  #lisa-wrap.act-stretch #lisa { background-position: 100% 50%; }
-  #lisa-wrap.act-listen #lisa { background-position: 0% 100%; }
-  #lisa-wrap.act-window #lisa { background-position: 33.333333% 100%; }
-  #lisa-wrap.pjs #lisa, #lisa-wrap.pjs #lisa.blink { background-position: 66.666667% 100%; }
+  #lisa-wrap[data-pose="stand"] #lisa.blink { background-position: 33.333333% 0% !important; }
+  #lisa-wrap[data-pose="stand"] #lisa.lookup { background-position: 0% 50% !important; }
+  @keyframes breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.006); } }
+  #lisa-wrap[data-support="seat"] #lisa { animation-duration: 6.8s; }
+  #lisa-wrap[data-pose="sleep"] #lisa { animation-duration: 7.6s; }
+  /* Exact background pixels, clipped along the near armrest/rim and plant.
+     These live in FRONT of Lisa, so she occupies the cushion, not the air. */
+  .furniture-front {
+    position: absolute; inset: 0; pointer-events: none;
+    background: var(--room-art) center / 100% 100% no-repeat;
+  }
+  #chair-front { clip-path: var(--chair-front); }
+  #plant-front { clip-path: var(--plant-front); }
   body.art-paused * { animation-play-state: paused !important; }
-  body[data-room="room2"] #lisa-wrap.sit { left: 79%; bottom: 17%; }
-  body[data-room="room2"] #lisa-wrap.sleep { left: 79%; bottom: 20%; }
   body[data-room="room2"] #glow-monitor { left: 10%; top: 64%; width: 11%; height: 8%; }
   body[data-room="room2"] #shelf { left: 15%; top: 46%; width: 15%; height: 27%; }
   body[data-room="room2"] #letter { left: 16%; top: 73%; }
@@ -139,7 +163,7 @@ ${MD_RENDER_CSS}
 
   /* Dreaming — dim the room and float Z's above Lisa. */
   body.dreaming #lighting { opacity: 0.9; background: radial-gradient(120% 90% at 50% 35%, rgba(40,20,80,0.25) 20%, rgba(2,3,10,0.78) 100%); }
-  #zzz { position: absolute; left: 73%; bottom: 60%; pointer-events: none; opacity: 0; transition: opacity 600ms; }
+  #zzz { position: absolute; left: 65%; top: 0; pointer-events: none; opacity: 0; transition: opacity 600ms; }
   body.dreaming #zzz { opacity: 1; }
   #zzz span {
     position: absolute; color: var(--accent-dream); font-weight: 700;
@@ -421,24 +445,27 @@ ${MD_RENDER_CSS}
   #offline .z { font-size: 40px; opacity: 0.7; }
 
   @media (prefers-reduced-motion: reduce) {
-    #lisa, #zzz span, #glow-monitor, .drop, .flake, .fly, #letter .halo { animation: none !important; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 </style>
 </head>
 <body>
   <div id="backdrop"></div>
   <div id="stage">
+   <div id="scene">
     <div class="bg" id="bg-day"></div>
     <div class="bg" id="bg-dusk"></div>
     <div class="bg" id="bg-night"></div>
     <div id="glow-monitor"></div>
     <div id="weather"></div>
-    <div id="lighting"></div>
+    <div id="shadow"></div>
+    <div id="foot-shadow"></div>
     <div id="lisa-wrap">
-      <div id="shadow"></div>
       <div id="lisa" role="img" aria-label="Lisa"></div>
       <div id="zzz"><span>Z</span><span>Z</span><span>Z</span></div>
     </div>
+    <div id="chair-front" class="furniture-front" aria-hidden="true"></div>
+    <div id="plant-front" class="furniture-front" aria-hidden="true"></div>
     <div id="letter" role="button" aria-label="Read Lisa's notes">
       <div class="halo"></div><div class="env"></div>
       <div class="count" id="letter-count"></div>
@@ -446,6 +473,8 @@ ${MD_RENDER_CSS}
     <div id="shelf" role="button" aria-label="What Lisa has been thinking about" title="what she's been thinking about"></div>
     <div id="gramophone" role="button" tabindex="0" aria-label="Put on some music" title="Put on some music"></div>
     <div id="notes" aria-hidden="true"><span>&#9834;</span><span>&#9835;</span><span>&#9833;</span></div>
+   </div>
+    <div id="lighting"></div>
     <div id="vignette"></div>
   </div>
 
@@ -515,6 +544,8 @@ ${renderMarkdown}
   var body = document.body;
   var lisa = $('lisa'), doing = $('doing'), dot = $('dot');
   var stage = $('stage');
+  ${ROOM_SCENE_JS}
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   var state = {
     mood: 'neutral', online: false, thinking: false, dreaming: false,
@@ -532,6 +563,7 @@ ${renderMarkdown}
     'working-typing': 'writing', 'working-writing': 'writing',
     'working-research': 'reading up', 'studying': 'studying',
     'reading-book': 'reading', 'thinking-pose': 'thinking', 'thoughtful': 'thinking',
+    'drinking-tea': 'having some tea', 'drinking-coffee': 'having some coffee',
     'gaming': 'gaming', 'watching-movie': 'watching a movie', 'watching-anime': 'watching anime',
     'phone-call': 'on a call', 'video-call': 'on a call', 'livestreaming': 'streaming',
     'napping': 'napping', 'sleeping': 'asleep', 'cooking': 'cooking', 'dancing': 'dancing',
@@ -561,11 +593,14 @@ ${renderMarkdown}
   }
   function renderBg() {
     body.dataset.room = state.theme;
+    body.dataset.time = state.tod;
+    var geometry = ROOM_GEOMETRY[state.theme];
+    stage.style.setProperty('--room-art', bgUrl());
+    stage.style.setProperty('--chair-front', geometry.chairFront);
+    stage.style.setProperty('--plant-front', geometry.plantFront);
     ['day', 'dusk', 'night'].forEach(function (t) {
       var el = $('bg-' + t);
       el.style.backgroundImage = bgUrl();
-      // One geometry-locked drawing; light changes never move furniture.
-      el.style.filter = t === 'night' ? 'brightness(.40) saturate(.65)' : t === 'dusk' ? 'brightness(.77) sepia(.22) saturate(.85)' : 'none';
       el.classList.toggle('show', t === state.tod);
     });
     $('backdrop').style.backgroundImage = bgUrl();
@@ -591,15 +626,13 @@ ${renderMarkdown}
   var lisaWrap = $('lisa-wrap');
   function poseFor() {
     if (state.dreaming) return 'sleep';
+    if (state.thinking) return 'sit';
     var m = state.mood || '';
     if (/sleep|nap/.test(m)) return 'sleep';
-    if (/working|studying|research|typing|writing|reading|gaming|watching/.test(m)) return 'sit';
+    if (/working|studying|research|typing|writing|reading|gaming|watching|drinking/.test(m)) return 'sit';
     return 'stand';
   }
   function applyPose() {
-    var p = poseFor();
-    lisaWrap.classList.toggle('sit', p === 'sit');
-    lisaWrap.classList.toggle('sleep', p === 'sleep');
     clearActivityIfBusy();
     applyActivity();
   }
@@ -614,12 +647,86 @@ ${renderMarkdown}
     return state.online && !state.thinking && !state.dreaming && poseFor() === 'stand';
   }
   function applyActivity() {
-    ACT.forEach(function (a) { lisaWrap.classList.toggle('act-' + a, state.activity === a); });
     applyOutfit();
   }
   function applyOutfit() {
-    // Evening pajamas — plain standing idle at night only (activities keep the hoodie).
-    lisaWrap.classList.toggle('pjs', state.tod === 'night' && poseFor() === 'stand' && !state.activity);
+    renderCharacter();
+  }
+  // Room-space placement is independent of viewport aspect ratio. Each new
+  // seated drawing declares its hip contact and tightly cropped aspect ratio.
+  // A short fade hides the location change; nobody slides across the floor in
+  // a seated pose. Loading and transition callbacks use latest-request wins.
+  var characterRevision = 0, characterKey = '', characterTimer = null;
+  var poseImages = {};
+  function characterVisible(visible) {
+    [lisaWrap, $('shadow'), $('foot-shadow')].forEach(function (el) { el.classList.toggle('ready', visible); });
+  }
+  function loadPose(src) {
+    if (!poseImages[src]) {
+      poseImages[src] = new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { delete poseImages[src]; reject(new Error('Room pose unavailable')); };
+        img.src = src;
+      });
+    }
+    return poseImages[src];
+  }
+  function renderCharacter() {
+    var pose = roomPose(state), geometry = ROOM_GEOMETRY[state.theme];
+    var seated = ROOM_SEATED.poses[pose];
+    var support = seated ? 'seat' : (pose === 'window' ? 'window' : 'floor');
+    var point = geometry[support];
+    var key = state.theme + ':' + pose;
+    if (key === characterKey) return;
+    characterKey = key;
+    var request = ++characterRevision;
+    clearTimeout(characterTimer);
+    // A newer request may arrive during the previous fade-out. Keep the last
+    // placed figure visible while loading, including when the new art fails.
+    if (lisaWrap.dataset.pose) {
+      characterVisible(true);
+    }
+    var atlas = '/assets/visuals/soft-ink-v1/poses.webp';
+    var src = seated ? seated.src : atlas;
+    loadPose(src).then(function () {
+      if (request !== characterRevision) return;
+      clearTimeout(characterTimer);
+      var visible = lisaWrap.classList.contains('ready');
+      characterVisible(false);
+      function place() {
+        if (request !== characterRevision) return;
+        var atlasPositions = { stand: '0% 0%', pjs: '66.666667% 100%', listen: '0% 100%', stretch: '100% 50%', window: '33.333333% 100%' };
+        var width = (seated ? seated.width : (pose === 'window' ? 37 : 45)) * ROOM_CHARACTER_SCALE;
+        stage.style.setProperty('--actor-x', point[0] + '%');
+        stage.style.setProperty('--actor-y', point[1] + '%');
+        stage.style.setProperty('--actor-width', width + '%');
+        stage.style.setProperty('--actor-aspect', seated ? seated.aspect : '1');
+        stage.style.setProperty('--contact-x', (seated ? seated.contact[0] : 50) + '%');
+        stage.style.setProperty('--contact-y', (seated ? seated.contact[1] : 98) + '%');
+        stage.style.setProperty('--shadow-width', (seated ? 15 : 11) * ROOM_CHARACTER_SCALE + '%');
+        stage.style.setProperty('--shadow-height', (seated ? 3.8 : 2.6) * ROOM_CHARACTER_SCALE + '%');
+        stage.style.setProperty('--feet-width', 9 * ROOM_CHARACTER_SCALE + '%');
+        stage.style.setProperty('--feet-height', 2.4 * ROOM_CHARACTER_SCALE + '%');
+        stage.style.setProperty('--feet-x', (seated ? point[0] + width * (0.4 - seated.contact[0] / 100) : point[0]) + '%');
+        stage.style.setProperty('--feet-y', geometry.feetFloor + '%');
+        stage.style.setProperty('--feet-opacity', seated && pose !== 'sleep' ? (state.theme === 'room2' ? '.35' : '.75') : '0');
+        lisaWrap.dataset.pose = pose;
+        lisaWrap.dataset.support = seated ? 'seat' : 'floor';
+        lisa.classList.remove('blink', 'lookup');
+        lisa.style.backgroundImage = 'url("' + src + '")';
+        lisa.style.backgroundSize = seated ? '100% 100%' : '400% 300%';
+        lisa.style.backgroundPosition = seated ? 'center' : atlasPositions[pose];
+        var descriptions = { work: 'working in her chair', sleep: 'resting in her chair', read: 'reading in her chair', tea: 'having tea in her chair', window: 'by the window', stand: 'standing on the rug', pjs: 'relaxing at home', listen: 'listening to music', stretch: 'stretching on the rug' };
+        lisa.setAttribute('aria-label', 'Lisa ' + descriptions[pose]);
+        requestAnimationFrame(function () {
+          if (request !== characterRevision) return;
+          characterVisible(true);
+        });
+      }
+      if (!visible || reduceMotion.matches) place();
+      else characterTimer = setTimeout(place, 220);
+    }).catch(function () { if (request === characterRevision) characterKey = ''; });
   }
   function clearActivityIfBusy() {
     if (state.activity && !idleEligible()) { state.activity = null; applyActivity(); }
@@ -667,7 +774,7 @@ ${renderMarkdown}
     setTimeout(function () {
       // Only the standing idle sheet has a blink frame — never during an
       // activity pose, the look-up beat, or a sit/sleep single-frame image.
-      if (poseFor() === 'stand' && !state.activity && !lisa.classList.contains('lookup') && !lisaWrap.classList.contains('pjs') && !document.hidden) {
+      if (roomPose(state) === 'stand' && !lisa.classList.contains('lookup') && !document.hidden) {
         lisa.classList.add('blink');
         setTimeout(function () { lisa.classList.remove('blink'); }, 130);
       }
@@ -809,7 +916,8 @@ ${renderMarkdown}
     state.theme = THEMES[(THEMES.indexOf(state.theme) + 1) % THEMES.length];
     try { localStorage.setItem('lisa-room-theme', state.theme); } catch (e) {}
     renderBg();
-    document.body.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 500 });
+    renderCharacter();
+    if (!reduceMotion.matches) document.body.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 500 });
   }
   $('chip-theme').addEventListener('click', cycleTheme);
 
@@ -965,7 +1073,7 @@ ${renderMarkdown}
   $('player-close').addEventListener('click', closePlayer);
   $('player').addEventListener('click', function (e) { if (e.target === $('player')) closePlayer(); });
 
-  // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less. ────
+  // Camera motion moves the entire scene, including the contact and furniture.
   var px = 0, py = 0, tx = 0, ty = 0;
   window.addEventListener('mousemove', function (e) {
     tx = (e.clientX / window.innerWidth - 0.5);
@@ -975,7 +1083,7 @@ ${renderMarkdown}
     requestAnimationFrame(raf);
     // Don't burn frames or touch layout while the room isn't visible (it runs
     // as a hidden iframe when you're on another GUI view, or when backgrounded).
-    if (document.hidden) return;
+    if (document.hidden || reduceMotion.matches) return;
     px += (tx - px) * 0.06; py += (ty - py) * 0.06;
     stage.style.transform = 'translateX(-50%) translate(' + (-px * 14) + 'px,' + (-py * 8) + 'px)';
   }
@@ -1011,8 +1119,8 @@ ${renderMarkdown}
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       switch (m.type) {
         case 'mood': setMood(m.slug); break;
-        case 'chat_start': state.thinking = true; body.classList.add('thinking'); clearActivityIfBusy(); refreshDot(); refreshCaption(); break;
-        case 'chat_end':   state.thinking = false; body.classList.remove('thinking'); refreshDot(); refreshCaption(); break;
+        case 'chat_start': state.thinking = true; body.classList.add('thinking'); applyPose(); refreshDot(); refreshCaption(); break;
+        case 'chat_end':   state.thinking = false; body.classList.remove('thinking'); applyPose(); refreshDot(); refreshCaption(); break;
         case 'idle_start': state.dreaming = true; body.classList.add('dreaming'); applyTOD(); applyPose(); refreshDot(); refreshCaption(); refreshDesire(); break;
         case 'idle_done':
         case 'idle_error': state.dreaming = false; body.classList.remove('dreaming'); applyTOD(); applyPose(); refreshDot(); refreshCaption(); refreshDesire(); break;
@@ -1023,7 +1131,7 @@ ${renderMarkdown}
           if (state.letters.length > 12) state.letters = state.letters.slice(-12);  // cap the desk pile
           state.idleText = _txt;
           refreshDot(); refreshCaption(); refreshLetter();
-          document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
+          if (!reduceMotion.matches) document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
           break;
       }
     });
