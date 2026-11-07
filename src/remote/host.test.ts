@@ -10,7 +10,16 @@ import type { AddressInfo } from "node:net";
 import { once } from "node:events";
 import { WebSocket, WebSocketServer } from "ws";
 import { RemoteHost } from "./host.js";
-import { identity, keyId, LinkCipher, type LinkIdentity } from "./protocol.js";
+import {
+  identity,
+  keyId,
+  LinkCipher,
+  pairingCode,
+  pairingCommitment,
+  pairingNonce,
+  verificationCode,
+  type LinkIdentity,
+} from "./protocol.js";
 
 type Frame = Record<string, unknown>;
 
@@ -97,10 +106,22 @@ async function harness(backend: http.RequestListener) {
     send(channel: string, payload: unknown, socket = ws) {
       socket.send(JSON.stringify({ type: "frame", channel, payload }));
     },
-    async hello(channel: string, key: LinkIdentity = phone, pair = true) {
+    async hello(
+      channel: string,
+      key: LinkIdentity = phone,
+      pair = true,
+      extra: Record<string, unknown> = {},
+    ) {
       const salt = crypto.randomBytes(32).toString("base64");
       const cipher = new LinkCipher(key, hostKey, salt, "client");
-      this.send(channel, { type: "hello", publicKey: key.publicKey, salt, name: "Test", pair });
+      this.send(channel, {
+        type: "hello",
+        publicKey: key.publicKey,
+        salt,
+        name: "Test",
+        pair,
+        ...extra,
+      });
       const first = await this.nextFrame(channel);
       assert.notEqual(first, "closed");
       return { cipher, welcome: cipher.open(first as never) };
@@ -254,6 +275,252 @@ test("phone clock skew within five minutes is tolerated; far-off expiries are re
       if (ok) assert.equal((await readBody(h, channel, c.cipher)).body.toString(), "ok");
       else assert.equal(await h.nextFrame(channel), "closed");
     }
+  } finally {
+    await h.close();
+  }
+});
+
+type Harness = Awaited<ReturnType<typeof harness>>;
+
+/** RemoteMacTransport's v2 pairing round: commit in the hello, receive Nm, then reveal. */
+async function pairV2(
+  h: Harness,
+  channel: string,
+  key: LinkIdentity = h.phone,
+  nonce = pairingNonce(),
+  reveal = nonce,
+) {
+  const commit = pairingCommitment(h.hostKey, key.publicKey, nonce);
+  const { cipher, welcome } = await h.hello(channel, key, true, { v: 2, commit });
+  if (typeof welcome.nonce !== "string") return { welcome, code: null };
+  h.send(channel, cipher.seal({ type: "pair", nonce: reveal }));
+  const frame = await h.nextFrame(channel);
+  if (frame === "closed") return { welcome, code: null };
+  const paired = cipher.open(frame as never);
+  assert.equal(paired.type, "paired");
+  assert.equal(paired.code, pairingCode(h.hostKey, key.publicKey, nonce, welcome.nonce));
+  return { welcome, code: paired.code };
+}
+
+test("negotiation on a v2 Mac: v2 phones get a committed code, Pocket 1.3 the flagged v1 code", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const id = keyId(h.phone.publicKey);
+    const nonce = pairingNonce();
+    const commit = pairingCommitment(h.hostKey, h.phone.publicKey, nonce);
+    const first = await h.hello("n1", h.phone, true, { v: 2, commit });
+    assert.equal(first.welcome.v, 2);
+    assert.equal(first.welcome.code, undefined, "a v2 phone never gets the uncommitted code");
+    assert.equal(first.welcome.authorized, false);
+    assert.equal(first.welcome.pending, true);
+    assert.match(first.welcome.nonce as string, /^[A-Za-z0-9+/]{43}=$/);
+    // Nothing to compare (or approve) until the phone opens its commitment.
+    assert.deepEqual(h.host.status().pending, []);
+    // Retrying the same commitment returns the same Mac nonce: no free re-roll.
+    const retry = await h.hello("n2", h.phone, true, { v: 2, commit });
+    assert.equal(retry.welcome.nonce, first.welcome.nonce);
+    h.send("n2", retry.cipher.seal({ type: "pair", nonce }));
+    const code = pairingCode(h.hostKey, h.phone.publicKey, nonce, first.welcome.nonce as string);
+    assert.deepEqual(retry.cipher.open((await h.nextFrame("n2")) as never), {
+      type: "paired",
+      code,
+    });
+    assert.notEqual(code, verificationCode(h.hostKey, h.phone.publicKey));
+    // A reveal channel cannot also carry a request.
+    h.send("n2", request(retry.cipher, retry.welcome.challenge, "/api/x"));
+    assert.equal(await h.nextFrame("n2"), "closed");
+    assert.deepEqual(
+      h.host.status().pending.map((p) => [p.id, p.code, p.secure, p.known]),
+      [[id, code, true, false]],
+    );
+    // Pocket then polls without a commitment; the open request is reported, not replaced.
+    const poll = await h.hello("n3", h.phone, false, { v: 2 });
+    assert.deepEqual(
+      [poll.welcome.authorized, poll.welcome.pending, poll.welcome.nonce],
+      [false, true, undefined],
+    );
+    assert.throws(() => h.host.approve(id, verificationCode(h.hostKey, h.phone.publicKey)));
+    h.host.approve(id, code);
+    assert.deepEqual(
+      h.host.status().devices.map((d) => [d.id, d.secure]),
+      [[id, true]],
+    );
+    const approved = await h.hello("n4", h.phone, false, { v: 2 });
+    assert.equal(approved.welcome.authorized, true);
+    h.send("n4", request(approved.cipher, approved.welcome.challenge, "/api/x"));
+    assert.equal((await readBody(h, "n4", approved.cipher)).body.toString(), "ok");
+
+    // Pocket 1.3 (no `v`) on the same Mac: the unchanged v1 flow, flagged as weaker.
+    const old = identity();
+    const legacy = await h.hello("o1", old);
+    assert.equal(legacy.welcome.v, undefined);
+    assert.equal(legacy.welcome.code, verificationCode(h.hostKey, old.publicKey));
+    const listed = h.host.status().pending.find((p) => p.id === keyId(old.publicKey))!;
+    assert.deepEqual([listed.code, listed.secure], [legacy.welcome.code, false]);
+    h.host.approve(listed.id, listed.code);
+    assert.equal(h.host.status().devices.find((d) => d.id === listed.id)?.secure, false);
+    const again = await h.hello("o2", old);
+    assert.equal(again.welcome.authorized, true);
+    assert.equal(again.welcome.code, legacy.welcome.code, "Pocket 1.3 checks it on every link");
+    h.send("o2", request(again.cipher, again.welcome.challenge, "/api/x"));
+    assert.equal((await readBody(h, "o2", again.cipher)).body.toString(), "ok");
+    // The grant record is unchanged for older Macs reading the same file.
+    const saved = JSON.parse(fs.readFileSync(path.join(h.home, "remote-link.json"), "utf8"));
+    assert.equal(saved.version, 1);
+    assert.deepEqual(
+      saved.grants.map((g: { pairing?: number }) => g.pairing),
+      [2, undefined],
+    );
+  } finally {
+    await h.close();
+  }
+});
+
+test(
+  "probe: a relay substituting both keys in v2 pairing is detected and cannot re-roll a match",
+  { timeout: 20_000 },
+  async () => {
+    const h = await harness((_req, res) => res.end("ok"));
+    try {
+      // The relay controls discovery and every frame. It shows the phone its own "Mac"
+      // key and introduces itself to the real Mac as a phone with another key of its own.
+      const fakeMac = identity();
+      const fakePhone = identity();
+      const fakeId = keyId(fakePhone.publicKey);
+      // 1. The real phone commits to (fake Mac key, its key, Np) before learning anything.
+      const np = pairingNonce();
+      // 2. Toward the real Mac the relay must commit too, and only then learns Nm.
+      const atMac = await pairV2(h, "m1", fakePhone);
+      assert.ok(atMac.code);
+      assert.deepEqual(
+        h.host.status().pending.map((p) => [p.id, p.code]),
+        [[fakeId, atMac.code]],
+      );
+      // 3. Toward the phone it now picks Nm' knowing the Mac's code but not Np (only the
+      //    commitment). Whatever it picks, the phone's code is a hash of the unseen Np.
+      const phoneCode = pairingCode(fakeMac.publicKey, h.phone.publicKey, np, pairingNonce());
+      assert.notEqual(phoneCode, atMac.code, "the owner sees two different codes");
+      assert.throws(() => h.host.approve(fakeId, phoneCode), /pairing_expired/);
+      // 4. Having seen Np, the relay re-rolls the Mac side. Every new commitment gets a
+      //    never-before-offered Mac nonce, and a request accepts at most five.
+      const offered = new Set([atMac.welcome.nonce]);
+      let rounds = 1;
+      for (let i = 2; i < 12; i++) {
+        const next = await pairV2(h, `m${i}`, fakePhone);
+        if (!next.code) {
+          assert.equal(next.welcome.nonce, undefined);
+          break;
+        }
+        rounds++;
+        assert.ok(!offered.has(next.welcome.nonce), "a Mac nonce is never reused");
+        offered.add(next.welcome.nonce);
+        assert.notEqual(next.code, phoneCode);
+      }
+      assert.equal(rounds, 5, "five blind 2^-48 guesses per pairing request, then refused");
+      // 5. It cannot open a commitment to a different nonce than the one it committed to.
+      const cheat = identity();
+      const opened = await pairV2(h, "x1", cheat, pairingNonce(), pairingNonce());
+      assert.equal(opened.code, null);
+      assert.equal(
+        h.host.status().pending.some((p) => p.id === keyId(cheat.publicKey)),
+        false,
+      );
+      // 6. Nor answer a nonce issued to a superseded commitment (a mid-flight re-roll).
+      const racer = identity();
+      const np1 = pairingNonce();
+      const c1 = await h.hello("r1", racer, true, {
+        v: 2,
+        commit: pairingCommitment(h.hostKey, racer.publicKey, np1),
+      });
+      await pairV2(h, "r2", racer);
+      h.send("r1", c1.cipher.seal({ type: "pair", nonce: np1 }));
+      assert.equal(await h.nextFrame("r1"), "closed");
+      assert.deepEqual(h.host.status().devices, [], "nothing was approved");
+    } finally {
+      await h.close();
+    }
+  },
+);
+
+test("an already-allowed phone that pairs again must still verify this Mac's code", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const id = keyId(h.phone.publicKey);
+    const first = await pairV2(h, "k1");
+    h.host.approve(id, first.code!);
+    // E.g. after signing out of Pocket: the phone re-selects a Mac from the relay's list.
+    const again = await pairV2(h, "k2");
+    assert.equal(again.welcome.authorized, true);
+    assert.ok(again.code && again.code !== first.code);
+    assert.deepEqual(
+      h.host.status().pending.map((p) => [p.id, p.code, p.known, p.secure]),
+      [[id, again.code, true, true]],
+    );
+    // Pairing never runs over LAN: an allowed device's LAN hello gets no nonce.
+    const port = ((h.host as unknown as { lan: http.Server }).lan.address() as AddressInfo).port;
+    const lan = new WebSocket(`ws://127.0.0.1:${port}/link`);
+    lan.on("error", () => {});
+    await once(lan, "open");
+    const salt = crypto.randomBytes(32).toString("base64");
+    const lanCipher = new LinkCipher(h.phone, h.hostKey, salt, "client");
+    const lanWelcome = once(lan, "message");
+    lan.send(
+      JSON.stringify({
+        type: "hello",
+        publicKey: h.phone.publicKey,
+        salt,
+        pair: true,
+        v: 2,
+        commit: pairingCommitment(h.hostKey, h.phone.publicKey, pairingNonce()),
+      }),
+    );
+    const viaLan = lanCipher.open(JSON.parse(String((await lanWelcome)[0])));
+    assert.deepEqual([viaLan.authorized, viaLan.nonce], [true, undefined]);
+    lan.terminate();
+    // Once the user confirms on the phone, its first real request closes the prompt.
+    const use = await h.hello("k3", h.phone, false, { v: 2 });
+    h.send("k3", request(use.cipher, use.welcome.challenge, "/api/x"));
+    assert.equal((await readBody(h, "k3", use.cipher)).body.toString(), "ok");
+    assert.deepEqual(h.host.status().pending, []);
+  } finally {
+    await h.close();
+  }
+});
+
+test("requireSecurePairing refuses new v1 pairings and keeps existing devices working", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const old = identity();
+    const a = await h.hello("a1", old);
+    h.host.approve(keyId(old.publicKey), a.welcome.code as string);
+    const newer = identity();
+    const b = await h.hello("b1", newer);
+    assert.equal(h.host.status().pending.length, 1);
+    h.host.setPolicy({ requireSecurePairing: true });
+    assert.deepEqual(h.host.status().pending, [], "open v1 requests are withdrawn");
+    assert.throws(() => h.host.approve(keyId(newer.publicKey), b.welcome.code as string));
+    const retried = await h.hello("b2", newer);
+    assert.equal(retried.welcome.authorized, false);
+    assert.deepEqual(h.host.status().pending, []);
+    assert.equal(h.host.status().legacyRefused?.name, "Test");
+    // An existing v1 device is unaffected.
+    const existing = await h.hello("a2", old, false);
+    assert.equal(existing.welcome.authorized, true);
+    h.send("a2", request(existing.cipher, existing.welcome.challenge, "/api/x"));
+    assert.equal((await readBody(h, "a2", existing.cipher)).body.toString(), "ok");
+    // v2 phones still pair.
+    assert.ok((await pairV2(h, "c1", identity())).code);
+    assert.equal(h.host.status().requireSecurePairing, true);
+    const saved = JSON.parse(fs.readFileSync(path.join(h.home, "remote-link.json"), "utf8"));
+    assert.equal(saved.requireSecurePairing, true);
+    assert.throws(() => h.host.setPolicy({ requireSecurePairing: "yes" }), /invalid_policy/);
+    h.host.setPolicy({ requireSecurePairing: false });
+    assert.equal(h.host.status().legacyRefused, null);
+    await h.hello("b3", newer);
+    assert.equal(
+      h.host.status().pending.find((p) => p.id === keyId(newer.publicKey))?.secure,
+      false,
+    );
   } finally {
     await h.close();
   }

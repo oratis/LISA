@@ -10,7 +10,16 @@ import type { AddressInfo } from "node:net";
 import { once } from "node:events";
 import { WebSocket } from "ws";
 import { RelayBroker } from "./broker.js";
-import { identity, keyId, LinkCipher, type LinkIdentity, type HostInfo } from "./protocol.js";
+import {
+  identity,
+  keyId,
+  LinkCipher,
+  pairingCode,
+  pairingCommitment,
+  pairingNonce,
+  type LinkIdentity,
+  type HostInfo,
+} from "./protocol.js";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-remote-"));
 process.env.LISA_HOME = home;
@@ -108,7 +117,8 @@ test(
       return {
         status: res.status,
         body: (await res.json()) as {
-          pending: unknown[];
+          pending: Array<{ id: string; code: string; secure: boolean }>;
+          devices: Array<{ id: string; secure: boolean }>;
           activeConnections: number;
           enabled: boolean;
         },
@@ -123,6 +133,7 @@ test(
         lan?: string;
         salt?: string;
         pair?: boolean;
+        extra?: Record<string, unknown>;
       } = {},
     ) {
       const key = options.key ?? phone;
@@ -145,6 +156,7 @@ test(
           salt,
           name: "Test iPhone",
           pair: options.pair ?? true,
+          ...options.extra,
         }),
       );
       const welcome = cipher.open(JSON.parse(await receive()));
@@ -206,6 +218,39 @@ test(
       const edition = await request(connected, "/api/edition");
       assert.equal(edition.status, 200);
       assert.equal(JSON.parse(edition.body).edition, "mac");
+
+      // Pairing v2 through the real broker and Mac routes: the code exists only after the
+      // phone opens its commitment, and the owner approves exactly that code.
+      const secure = identity();
+      const nonce = pairingNonce();
+      const committed = await connect({
+        key: secure,
+        extra: { v: 2, commit: pairingCommitment(host.publicKey, secure.publicKey, nonce) },
+      });
+      assert.equal(committed.welcome.code, undefined);
+      assert.equal((await local("status")).body.pending.length, 0);
+      committed.ws.send(JSON.stringify(committed.cipher.seal({ type: "pair", nonce })));
+      const paired = committed.cipher.open(JSON.parse(await committed.receive()));
+      const code = pairingCode(
+        host.publicKey,
+        secure.publicKey,
+        nonce,
+        committed.welcome.nonce as string,
+      );
+      assert.equal(paired.code, code);
+      const listed = (await local("status")).body.pending;
+      assert.deepEqual(
+        listed.map((p) => [p.id, p.code, p.secure]),
+        [[keyId(secure.publicKey), code, true]],
+      );
+      assert.equal((await local("approve", { id: listed[0]!.id, code })).status, 200);
+      const v2Link = await connect({ key: secure, pair: false, extra: { v: 2 } });
+      assert.equal(v2Link.welcome.authorized, true);
+      assert.deepEqual(await request(v2Link, "/api/edition"), edition);
+      assert.deepEqual(
+        (await local("status")).body.devices.map((d) => d.secure),
+        [false, true],
+      );
 
       // The reverse hop is REMOTE despite its loopback socket: owner actions stay forbidden.
       assert.equal((await request(await connect(), "/api/pair/start", "POST", {})).status, 403);

@@ -9,6 +9,11 @@ import {
   keyId,
   LinkCipher,
   MAX_FRAME,
+  nonceBytes,
+  PAIRING_VERSION,
+  pairingCode,
+  pairingCommitment,
+  pairingNonce,
   verificationCode,
   type LinkIdentity,
   type SealedFrame,
@@ -20,6 +25,8 @@ interface Grant {
   publicKey: string;
   name: string;
   createdAt: number;
+  /** 2: approved after a committed (v2) code comparison. Absent: v1, the weaker method. */
+  pairing?: 2;
 }
 interface Stored {
   version: 1;
@@ -29,10 +36,25 @@ interface Stored {
   identity: LinkIdentity;
   grants: Grant[];
   lanPort?: number;
+  /** Refuse NEW v1 pairings (Pocket 1.3 and earlier). Existing grants keep working. */
+  requireSecurePairing?: boolean;
 }
-interface Pending extends Grant {
-  code: string;
+interface Pending {
+  id: string;
+  publicKey: string;
+  name: string;
+  createdAt: number;
   expiresAt: number;
+  /** v2: empty until the phone opens its commitment; never listed or approvable before. */
+  code: string;
+  protocol: 1 | 2;
+  /** The device is already allowed: its phone is (re)verifying this Mac's key. */
+  known: boolean;
+  /** v2: the phone's commitment and the single Mac nonce ever offered against it. */
+  commit?: string;
+  nonce?: string;
+  /** v2: commitments this request has accepted; bounds blind online guesses. */
+  rounds: number;
 }
 interface Channel {
   send: (frame: unknown) => void;
@@ -42,6 +64,9 @@ interface Channel {
   cipher?: LinkCipher;
   deviceId?: string;
   challenge?: string;
+  /** v2 pairing: the commitment and Mac nonce this channel's welcome answered. */
+  commit?: string;
+  nonce?: string;
   used?: boolean;
   request?: http.ClientRequest;
   deadline: NodeJS.Timeout;
@@ -52,6 +77,9 @@ const MAX_CHANNELS = 64;
 /** Response bytes stop flowing into a socket above this queue and resume once it drains. */
 const HIGH_WATER = 1024 * 1024;
 const PAIRING_TTL = 10 * 60_000;
+/** Each new commitment for one request gets a fresh Mac nonce, i.e. one more 2^-48 guess
+ * for a key-substituting relay. A legitimate phone needs one (two if it is restarted). */
+const MAX_PAIRING_ROUNDS = 5;
 /** Pocket stamps expiresAt with its own clock (now + 60 s). Replay is already bound to
  * the channel's single-use challenge and 10 s request deadline, so tolerate phone/Mac
  * clock skew instead of failing every request as "interrupted". */
@@ -100,6 +128,8 @@ export class RemoteHost {
   private readonly requests = new Map<string, number>();
   private online = false;
   private error = "";
+  /** Last v1 pairing refused by requireSecurePairing, so the Mac can explain it. */
+  private legacyRefused?: { name: string; at: number };
   private readonly file: string;
   constructor(
     private readonly home: string,
@@ -161,6 +191,8 @@ export class RemoteHost {
         base,
         identity: identity(),
         grants: [],
+        // A security preference, not account state: keep it across a reset.
+        ...(this.stored?.requireSecurePairing ? { requireSecurePairing: true } : {}),
       };
     }
     this.stored.enabled = true;
@@ -179,29 +211,68 @@ export class RemoteHost {
       error: this.error,
       hostId: this.stored ? keyId(this.stored.identity.publicKey) : null,
       activeConnections: this.channels.size,
-      pending: [...this.pending.values()].map(({ publicKey: _key, ...p }) => p),
-      devices: this.stored?.grants.map(({ publicKey: _key, ...d }) => d) ?? [],
+      pairingVersion: PAIRING_VERSION,
+      requireSecurePairing: this.stored?.requireSecurePairing ?? false,
+      legacyRefused:
+        this.legacyRefused && this.legacyRefused.at + PAIRING_TTL > Date.now()
+          ? this.legacyRefused
+          : null,
+      // `secure: false` marks the v1 code, which a key-substituting relay can forge.
+      pending: [...this.pending.values()]
+        .filter((p) => p.code)
+        .map(({ id, name, code, createdAt, expiresAt, protocol, known }) => ({
+          id,
+          name,
+          code,
+          createdAt,
+          expiresAt,
+          secure: protocol === 2,
+          known,
+        })),
+      devices:
+        this.stored?.grants.map(({ id, name, createdAt, pairing }) => ({
+          id,
+          name,
+          createdAt,
+          secure: pairing === 2,
+        })) ?? [],
     };
   }
   approve(id: string, code: string): void {
     this.expirePending();
     const pending = this.pending.get(id);
+    const others = this.stored?.grants.filter((g) => g.id !== id) ?? [];
     if (
       !this.stored?.enabled ||
       !pending ||
+      !pending.code ||
       pending.code !== code ||
-      this.stored.grants.length >= 20
+      others.length >= 20 ||
+      (pending.protocol === 1 && this.stored.requireSecurePairing)
     )
       throw new Error("pairing_expired");
-    this.stored.grants = this.stored.grants.filter((g) => g.id !== id);
-    this.stored.grants.push({
-      id,
-      publicKey: pending.publicKey,
-      name: pending.name,
-      createdAt: Date.now(),
-    });
+    this.stored.grants = [
+      ...others,
+      {
+        id,
+        publicKey: pending.publicKey,
+        name: pending.name,
+        createdAt: Date.now(),
+        ...(pending.protocol === 2 ? { pairing: 2 as const } : {}),
+      },
+    ];
     this.save();
     this.pending.delete(id);
+  }
+  /** Owner policy. requireSecurePairing refuses new v1 pairings; existing grants stay. */
+  setPolicy(policy: Record<string, unknown>): void {
+    if (!this.stored || typeof policy.requireSecurePairing !== "boolean")
+      throw new Error("invalid_policy");
+    this.stored.requireSecurePairing = policy.requireSecurePairing;
+    if (policy.requireSecurePairing) {
+      for (const [id, p] of this.pending) if (p.protocol === 1) this.pending.delete(id);
+    } else this.legacyRefused = undefined;
+    this.save();
   }
   revoke(id: string): void {
     const pending = this.pending.get(id);
@@ -433,48 +504,16 @@ export class RemoteHost {
     if (!c || !this.stored?.enabled) return;
     try {
       if (!c.cipher) {
-        if (
-          frame.type !== "hello" ||
-          typeof frame.publicKey !== "string" ||
-          typeof frame.salt !== "string"
-        )
-          throw new Error();
-        c.deviceId = keyId(frame.publicKey);
-        const grant = this.stored.grants.find((g) => g.id === c.deviceId);
-        if (!grant && !fromCloud) throw new Error(); // LAN cannot create pairing prompts.
-        c.cipher = new LinkCipher(this.stored.identity, frame.publicKey, frame.salt, "host");
-        const code = verificationCode(this.stored.identity.publicKey, frame.publicKey);
-        this.expirePending();
-        if (
-          !grant &&
-          frame.pair === true &&
-          !this.pending.has(c.deviceId) &&
-          !this.dismissed.has(c.deviceId)
-        ) {
-          if (this.pending.size >= 10) throw new Error();
-          this.pending.set(c.deviceId, {
-            id: c.deviceId,
-            publicKey: frame.publicKey,
-            name: typeof frame.name === "string" ? frame.name.slice(0, 80) : "Lisa Pocket",
-            code,
-            createdAt: Date.now(),
-            expiresAt: Date.now() + PAIRING_TTL,
-          });
-        }
-        c.challenge = crypto.randomBytes(32).toString("base64");
-        c.send(
-          c.cipher.seal({
-            type: "welcome",
-            authorized: !!grant,
-            code,
-            challenge: c.challenge,
-            lanURLs: grant ? this.lanURLs() : [],
-          }),
-        );
+        this.hello(c, frame, fromCloud);
         return;
       }
-      if (!this.stored.grants.some((g) => g.id === c.deviceId) || c.used) throw new Error();
+      if (c.used) throw new Error();
       const message = c.cipher.open(frame as unknown as SealedFrame);
+      if (message.type === "pair") {
+        this.reveal(c, message);
+        return;
+      }
+      if (!this.stored.grants.some((g) => g.id === c.deviceId)) throw new Error();
       if (
         message.type !== "request" ||
         message.challenge !== c.challenge ||
@@ -489,6 +528,8 @@ export class RemoteHost {
       for (const [key, expiry] of this.requests) if (expiry < Date.now()) this.requests.delete(key);
       if (this.requests.has(message.id) || this.requests.size >= 10_000) throw new Error();
       this.requests.set(message.id, Date.now() + REQUEST_TTL + 2 * CLOCK_SKEW);
+      // An authenticated request means the phone finished (re)verifying this Mac.
+      this.pending.delete(c.deviceId!);
       c.used = true;
       clearTimeout(c.deadline);
       c.deadline = setTimeout(() => this.closeChannel(id), 55 * 60_000);
@@ -496,6 +537,116 @@ export class RemoteHost {
     } catch {
       this.closeChannel(id);
     }
+  }
+  private hello(c: Channel, frame: Record<string, unknown>, fromCloud: boolean): void {
+    const stored = this.stored!;
+    if (
+      frame.type !== "hello" ||
+      typeof frame.publicKey !== "string" ||
+      typeof frame.salt !== "string"
+    )
+      throw new Error();
+    const deviceId = keyId(frame.publicKey);
+    c.deviceId = deviceId;
+    const grant = stored.grants.find((g) => g.id === deviceId);
+    if (!grant && !fromCloud) throw new Error(); // LAN cannot create pairing prompts.
+    c.cipher = new LinkCipher(stored.identity, frame.publicKey, frame.salt, "host");
+    const name = typeof frame.name === "string" ? frame.name.slice(0, 80) : "Lisa Pocket";
+    this.expirePending();
+    c.challenge = crypto.randomBytes(32).toString("base64");
+    const welcome: Record<string, unknown> = {
+      type: "welcome",
+      authorized: !!grant,
+      challenge: c.challenge,
+      lanURLs: grant ? this.lanURLs() : [],
+    };
+    if (frame.v === PAIRING_VERSION) {
+      // A v2 phone never relies on the uncommitted v1 code, so it is not sent.
+      welcome.v = PAIRING_VERSION;
+      // Pairing runs over the cloud route only. Already-allowed devices go through it
+      // too: their phone must still verify THIS Mac's key against the Mac's screen.
+      if (frame.pair === true && fromCloud && frame.commit !== undefined) {
+        const commit = nonceBytes(frame.commit).toString("base64");
+        const pending = this.openPairing(deviceId, frame.publicKey, name, commit, !!grant);
+        if (pending) {
+          c.commit = commit;
+          c.nonce = pending.nonce;
+          welcome.nonce = pending.nonce;
+        }
+      }
+      welcome.pending = this.pending.has(deviceId);
+    } else {
+      // v1 peers (Pocket 1.3 and earlier) verify this code on every connection.
+      welcome.code = verificationCode(stored.identity.publicKey, frame.publicKey);
+      if (
+        !grant &&
+        frame.pair === true &&
+        !this.pending.has(deviceId) &&
+        !this.dismissed.has(deviceId)
+      ) {
+        if (stored.requireSecurePairing) this.legacyRefused = { name, at: Date.now() };
+        else {
+          if (this.pending.size >= 10) throw new Error();
+          this.pending.set(deviceId, {
+            id: deviceId,
+            publicKey: frame.publicKey,
+            name,
+            code: welcome.code as string,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + PAIRING_TTL,
+            protocol: 1,
+            known: false,
+            rounds: 0,
+          });
+        }
+      }
+    }
+    c.send(c.cipher.seal(welcome));
+  }
+  /** One fresh Mac nonce per phone commitment; a revealed nonce is never offered again. */
+  private openPairing(
+    id: string,
+    publicKey: string,
+    name: string,
+    commit: string,
+    known: boolean,
+  ): Pending | undefined {
+    if (this.dismissed.has(id)) return undefined;
+    const existing = this.pending.get(id);
+    if (existing?.protocol === 2 && existing.commit === commit) return existing;
+    // A new commitment: the phone restarted (or upgraded from v1). Bounded per request.
+    if (existing ? existing.rounds >= MAX_PAIRING_ROUNDS : this.pending.size >= 10)
+      return undefined;
+    const now = Date.now();
+    const pending: Pending = {
+      id,
+      publicKey,
+      name,
+      code: "",
+      protocol: 2,
+      known,
+      commit,
+      nonce: pairingNonce(),
+      rounds: (existing?.rounds ?? 0) + 1,
+      createdAt: now,
+      expiresAt: now + PAIRING_TTL,
+    };
+    this.pending.set(id, pending);
+    return pending;
+  }
+  /** The phone opens its commitment; only now can either side compute the code. */
+  private reveal(c: Channel, message: Record<string, unknown>): void {
+    const pending = c.deviceId ? this.pending.get(c.deviceId) : undefined;
+    // Bound to the exact commitment and Mac nonce this channel's welcome answered.
+    if (!pending?.nonce || !c.commit || pending.commit !== c.commit || pending.nonce !== c.nonce)
+      throw new Error();
+    const hostKey = this.stored!.identity.publicKey;
+    const nonce = nonceBytes(message.nonce).toString("base64");
+    const opened = Buffer.from(pairingCommitment(hostKey, pending.publicKey, nonce), "base64");
+    if (!crypto.timingSafeEqual(opened, Buffer.from(pending.commit, "base64"))) throw new Error();
+    pending.code = pairingCode(hostKey, pending.publicKey, nonce, pending.nonce);
+    c.used = true;
+    c.send(c.cipher!.seal({ type: "paired", code: pending.code }));
   }
   private forward(id: string, c: Channel, msg: Record<string, unknown>): void {
     const route = typeof msg.path === "string" ? msg.path : "";
