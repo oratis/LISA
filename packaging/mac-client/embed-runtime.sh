@@ -77,10 +77,11 @@ PINNED_SHA256_arm64="61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed
 PINNED_SHA256_x64="58e99022c2ff89395576cc7fd4d98cea24bb68081475d5f88b801ee8729fb026"
 
 # ── 1. backend: dist/ + production node_modules ─────────────────────
-if [ ! -f "$REPO_ROOT/dist/cli.js" ]; then
-    echo "✗ $REPO_ROOT/dist/cli.js missing — run 'npm run build' first" >&2
-    exit 1
-fi
+# dist/ can outlive a checkout or merge. Checking cli.js exists lets a new
+# app version silently ship an older backend (including missing features).
+# Build before touching the bundle, and stop if compilation fails.
+echo "▸ building the backend from the current source…"
+( cd "$REPO_ROOT" && npm run build )
 
 # Install the runtime deps in a staging dir rather than in the repo: a dev
 # running build.sh must not have their devDependencies pruned out from under
