@@ -54,6 +54,10 @@
     element.dataset.motionClip = id || '';
     render(binding);
   }
+  // Hosts repeat themselves (macOS reports every window's occlusion change,
+  // the shell re-posts Room visibility on each view switch). Listeners reset
+  // timers and the camera, so they only hear about real transitions.
+  let announced = '';
   function refresh() {
     for (const [element, binding] of bindings) {
       if (!element.isConnected) {
@@ -63,10 +67,18 @@
         element.removeAttribute('src');
       } else render(binding);
     }
-    document.documentElement.dataset.motion = active() ? 'playing' : 'paused';
-    window.dispatchEvent(new CustomEvent('lisa-motion-change', { detail: { active: active(), reduced: media.matches } }));
+    const playing = active();
+    document.documentElement.dataset.motion = playing ? 'playing' : 'paused';
+    const state = playing + ':' + media.matches;
+    if (state === announced) return;
+    announced = state;
+    window.dispatchEvent(new CustomEvent('lisa-motion-change', { detail: { active: playing, reduced: media.matches } }));
   }
-  function setHostVisible(value) { hostVisible = !!value; refresh(); }
+  function setHostVisible(value) {
+    if (hostVisible === !!value) return;
+    hostVisible = !!value;
+    refresh();
+  }
   document.addEventListener('visibilitychange', refresh);
   media.addEventListener('change', refresh);
   window.addEventListener('pagehide', () => { pageVisible = false; refresh(); });

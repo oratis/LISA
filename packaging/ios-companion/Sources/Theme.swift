@@ -190,7 +190,6 @@ struct ServerPortrait: View {
         }
         .task(id: request) {
             guard request != nil else { return }
-            animation = nil
             do {
                 let next = try await LisaArtwork.load(client: client, path: path)
                 try Task.checkCancellation()
@@ -200,7 +199,10 @@ struct ServerPortrait: View {
         .onAppear { visible = true }
         .onDisappear { visible = false; animation = nil }
         .task(id: "\(request?.url?.absoluteString ?? "")|\(canAnimate)") {
-            guard canAnimate else { animation = nil; return }
+            // Only this task owns `animation`. Clearing it from the still-image
+            // task could land after a cached animation and leave a still.
+            animation = nil
+            guard canAnimate else { return }
             do {
                 let next = try await LisaArtwork.motion(client: client, path: path)
                 try Task.checkCancellation()

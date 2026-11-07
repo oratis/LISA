@@ -60,6 +60,37 @@ test.describe("LISA motion lifecycle", () => {
     await expect(image).toHaveAttribute("data-motion-state", "playing");
   });
 
+  test("repeated host visibility reports do not reset the Room", async ({ page }) => {
+    await page.route("**/api/island/ping", (route) =>
+      route.fulfill({ json: { online: true, mood: "neutral" } }),
+    );
+    await page.goto(lisa.baseURL + "/#room");
+    await expect(page.frameLocator("#roomFrame").locator("#lisa-motion")).toHaveAttribute(
+      "data-motion-state",
+      "playing",
+    );
+    const room = page.frame({ url: /\/room$/ })!;
+    type Counted = Window & { motionEvents: number };
+    await room.evaluate(() => {
+      (window as unknown as Counted).motionEvents = 0;
+      window.addEventListener("lisa-motion-change", () => {
+        (window as unknown as Counted).motionEvents++;
+      });
+    });
+    // macOS reports every window's occlusion change and the shell re-posts on
+    // each view switch. Neither is a transition, so nothing may restart.
+    await page.evaluate(() => {
+      const motion = (window as unknown as { LisaMotion: { setHostVisible(v: boolean): void } })
+        .LisaMotion;
+      motion.setHostVisible(true);
+      motion.setHostVisible(true);
+    });
+    await page.locator('.nav-item[data-view="room"]').click();
+    await page.locator('.nav-item[data-view="chat"]').click();
+    await expect(page.frameLocator("#roomFrame").locator("body")).toHaveClass(/art-paused/);
+    expect(await room.evaluate(() => (window as unknown as Counted).motionEvents)).toBe(1);
+  });
+
   test("all six Room actions follow real moods and keep the atlas fallback", async ({ page }) => {
     let mood = "reading-book";
     await page.route("**/api/island/ping", (route) =>
@@ -205,6 +236,25 @@ test.describe("LISA motion lifecycle", () => {
         .toBeGreaterThan(0);
     }
     expect(animated).toEqual([]);
+    // Latest request wins: a pose whose atlas crop resolves later must not
+    // replace a sticker the caller asked for afterwards.
+    expect(
+      await page.evaluate(async () => {
+        const art = (
+          window as unknown as {
+            LisaArt: {
+              pose(el: Element, index: number, size: number): Promise<boolean>;
+              sticker(el: Element, index: number, fallback: string): void;
+            };
+          }
+        ).LisaArt;
+        const img = document.body.appendChild(document.createElement("img"));
+        const pending = art.pose(img, 0, 384);
+        art.sticker(img, 1, "stickers/lisa-well-done.png");
+        await pending;
+        return img.dataset.motionClip;
+      }),
+    ).toBe("sticker-well-done");
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.locator("#stickers").scrollIntoViewIfNeeded();
     await expect(page.locator("#stickers img").first()).toHaveAttribute(
