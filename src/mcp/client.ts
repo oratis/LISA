@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { ToolDefinition } from "../types.js";
 import type { McpServerSpec } from "./config.js";
+import { childEnv } from "../child-env.js";
 
 export interface ConnectedMcpServer {
   spec: McpServerSpec;
@@ -35,7 +36,7 @@ async function connectOne(
   const transport = new StdioClientTransport({
     command: spec.command,
     args: spec.args ?? [],
-    env: { ...process.env, ...(spec.env ?? {}) } as Record<string, string>,
+    env: { ...childEnv(), ...(spec.env ?? {}) } as Record<string, string>,
   });
   const client = new Client({ name: "lisa", version: "0.1.0" }, { capabilities: {} });
   await client.connect(transport);

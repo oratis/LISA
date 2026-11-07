@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { HookSpec } from "../plugins/types.js";
+import { childEnv } from "../child-env.js";
 
 export interface HookEnv {
   TOOL_NAME?: string;
@@ -22,7 +23,7 @@ export async function runHook(hook: HookSpec, env: HookEnv, cwd: string): Promis
   return await new Promise<HookOutput>((resolve, reject) => {
     const child = spawn("/bin/bash", ["-lc", hook.command], {
       cwd,
-      env: { ...process.env, ...env },
+      env: { ...childEnv(), ...env },
     });
     let stdout = "";
     let stderr = "";

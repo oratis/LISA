@@ -24,6 +24,7 @@
 
 import { detectPlan } from "../model/plans.js";
 import { spawn } from "node:child_process";
+import { childEnv } from "../child-env.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -143,6 +144,7 @@ export async function launchAgent(
   try {
     child = spawn(cmd, args, {
       cwd,
+      env: childEnv(),
       detached: true,
       stdio: outFd !== undefined ? ["ignore", outFd, outFd] : "ignore",
     });
