@@ -76,7 +76,7 @@ export class FeishuReadonlyDriver implements ReadonlyDriver<FeishuAccount, Feish
         u.searchParams.get("response_type") === "code" &&
         u.searchParams.get("scope") === FEISHU_SCOPES.join(" ") &&
         u.searchParams.get("code_challenge_method") === "S256" &&
-        u.searchParams.get("prompt") === "consent"
+        u.searchParams.getAll("prompt").every((prompt) => prompt === "consent")
       );
     } catch {
       return false;

@@ -317,7 +317,7 @@ C4 PR [#456](https://github.com/oratis/LISA/pull/456) 已合并。本批复用 `
 
 ### OAuth 与本机配置
 
-采用自建 confidential 应用，仅启用用户权限 `docx:document:readonly` 与 `offline_access`，不启用 tenant scopes。授权端点 `https://accounts.feishu.cn/open-apis/authen/v1/authorize`，S256 PKCE + 随机 state + `prompt=consent`。交换与刷新采用新版 `https://accounts.feishu.cn/oauth/v3/token`，明确传入这两个 scope，避免飞书累积历史授权扩大返回令牌权限。返回 scope 仅额外允许官方示例的隐式 `user_profile`；其他权限或缺少只读/离线权限一律拒绝。旧 v2 接口不作为静默降级路径。
+采用自建 confidential 应用，仅启用用户权限 `docx:document:readonly` 与 `offline_access`，不启用 tenant scopes。授权端点 `https://accounts.feishu.cn/open-apis/authen/v1/authorize`，使用 S256 PKCE 和随机 state。重试时生成新的授权链接，由飞书判断是否需要再次显示同意页。交换与刷新采用新版 `https://accounts.feishu.cn/oauth/v3/token`，明确传入这两个 scope，避免飞书累积历史授权扩大返回令牌权限。返回 scope 仅额外允许官方示例的隐式 `user_profile`；其他权限或缺少只读/离线权限一律拒绝。旧 v2 接口不作为静默降级路径。
 
 预注册 `http://localhost:4863/oauth/feishu`；复用双栈 loopback 监听、Host/路径/state 校验、单次 code 和十分钟超时。飞书尚不开放普通第三方 public client 注册，因此不把客户端密钥打包进桌面应用；本期由本机操作者配置其自建应用，公开分发需另设计凭据托管和审核。
 
@@ -331,4 +331,4 @@ C4 PR [#456](https://github.com/oratis/LISA/pull/456) 已合并。本批复用 `
 
 自动测试覆盖 state/S256 的真实 loopback 回调（供应商为替身）、精确 scope、刷新轮换、固定出站、资源白名单、身份/版本变化、截断脱敏、取消断开和重启单次提交。8 项飞书专项测试通过；17 项连接器浏览器测试通过（含飞书 2 项及既有连接器 15 项）。服务端、客户端、E2E 类型检查、API 契约、格式和构建通过；新增代码 lint 无错误。4,050 项全量测试及关键模块覆盖率门槛通过（本机以 4 并发复核，避免高负载下计时测试抖动）。本批草稿 PR [#460](https://github.com/oratis/LISA/pull/460)，真实账号验收完成前保持草稿。
 
-已建立独立本机自建应用并配置两项用户权限及固定回调；真实授权页已显示「查看新版文档」与「维持已授权访问」，等待用户确认并指定一份验收 docx。应用未公开分发，也未申请 tenant 权限。真实授权与文档读取尚未完成，不把测试替身流程描述为账号级验收。
+已配置本机自建应用、两项用户权限和固定回调。真实授权页显示「查看新版文档」与「维持已授权访问」。用户已在飞书端确认，前次本机回调超时，LISA 未收到可用凭据。验收使用[字节跳动 AgentKit 工作坊第三节](https://github.com/bytedance/agentkit-samples/blob/9fc58da287b9b2d5910047ca8519efea597189cb/python/workshop/session3/README.md)中的示例文档。验收通过条件是原连接卡收到回调、读取所选文档正文，并在原会话中仅提交一次字符数和截断状态。

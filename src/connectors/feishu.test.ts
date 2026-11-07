@@ -132,7 +132,14 @@ test("Feishu PKCE binds callback state and explicitly downscopes the v3 exchange
   );
   await shown;
   assert.equal(url.searchParams.get("scope"), FEISHU_SCOPES.join(" "));
-  assert.equal(url.searchParams.get("prompt"), "consent");
+  assert.equal(url.searchParams.has("prompt"), false);
+  const driver = new FeishuReadonlyDriver();
+  assert.ok(driver.validAuthorizationUrl(url.href));
+  const legacy = new URL(url);
+  legacy.searchParams.set("prompt", "consent");
+  assert.ok(driver.validAuthorizationUrl(legacy.href));
+  legacy.searchParams.set("prompt", "unknown");
+  assert.equal(driver.validAuthorizationUrl(legacy.href), false);
   const cb = new URL(c.redirectUri);
   cb.searchParams.set("code", "fixture");
   cb.searchParams.set("state", "x".repeat(43));

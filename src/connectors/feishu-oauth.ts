@@ -138,7 +138,6 @@ export async function authorizeFeishu(
             state: a.state,
             code_challenge: a.challenge,
             code_challenge_method: "S256",
-            prompt: "consent",
           }),
       });
       const code = await a.code;
