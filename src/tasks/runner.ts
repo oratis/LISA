@@ -45,6 +45,7 @@ import { modeIsBounded, type SandboxMode } from "../sandbox/mode.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
 import { isBuiltinTaintSource } from "../warden/classify.js";
+import { loadDigestKey, readDigestKey } from "../warden/store.js";
 import { stripSensitiveTokens } from "../warden/hygiene.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "../types.js";
 import { confirmationKey, isEnvelopeConfirmed } from "./confirmation.js";
@@ -67,7 +68,16 @@ import { isRecurring, nextRunAfter, pauseTask, restingState } from "./lifecycle.
 import { drainOutbox, enqueueNotice, noticeId } from "./outbox.js";
 import { denySideEffects, digestCall, isSideEffectingCall, taskToolset } from "./policy.js";
 import { defaultTimeZone, isOneShot } from "./schedule.js";
-import { ensureTaskWorkspace } from "./workspace.js";
+import {
+  distrustTaskState,
+  distrustUnsealedRun,
+  resealTaskState,
+  sealRunTaint,
+  sealTaskState,
+  taskStateSealed,
+  trustedTaskState,
+} from "./seal.js";
+import { ensureTaskWorkspace, taskWorkspaceHasContent } from "./workspace.js";
 import {
   appendRunEvent,
   appendRunMessage,
@@ -594,9 +604,49 @@ export class TaskRunner {
     }
   }
 
-  private async saveRun(...args: Parameters<typeof checkpointRun>): Promise<void> {
+  /**
+   * The home's Warden key, which seals what a run leaves behind (seal.ts).
+   * Made on first use, but never for a home that is gone: a run whose home was
+   * deleted under it must not bring the home back.
+   */
+  private async sealKey(): Promise<Buffer> {
+    const home = lisaHome();
+    const existing = await readDigestKey(home);
+    if (existing) return existing;
+    try {
+      await fs.promises.access(home);
+    } catch {
+      throw new TaskGoneError("the task's home");
+    }
+    return await loadDigestKey(home);
+  }
+
+  /**
+   * What earlier runs of the task left, as a run may read it (seal.ts): the
+   * task itself when its seal holds, otherwise a copy that fails closed.
+   */
+  private async carriedState(
+    task: Task,
+  ): Promise<{ view: Task; key: Buffer; folderHasContent: boolean }> {
+    const key = await this.sealKey();
+    const folderHasContent = await taskWorkspaceHasContent(task.id);
+    return { view: trustedTaskState(task, key, { folderHasContent }), key, folderHasContent };
+  }
+
+  /** A run read back from disk: tainted unless its seal says otherwise (seal.ts). */
+  private async loadRunChecked(taskId: string, runId: string): Promise<LoadedRun | null> {
+    const loaded = await loadRun(taskId, runId);
+    if (loaded) {
+      distrustUnsealedRun(loaded.run, await readDigestKey(lisaHome()).catch(() => null));
+    }
+    return loaded;
+  }
+
+  /** Every run record carries the seal over its taint (seal.ts). */
+  private async saveRun(run: TaskRun, now?: number): Promise<void> {
     await this.fence();
-    await checkpointRun(...args);
+    sealRunTaint(run, await this.sealKey());
+    await checkpointRun(run, now);
   }
 
   private async saveTask(...args: Parameters<typeof updateTask>): Promise<Task | null> {
@@ -619,9 +669,14 @@ export class TaskRunner {
     await resetRunMessages(...args);
   }
 
-  private async newRun(...args: Parameters<typeof createRun>): Promise<TaskRun> {
+  private async newRun(
+    taskId: string,
+    init: Parameters<typeof createRun>[1],
+    now?: number,
+  ): Promise<TaskRun> {
     await this.fence();
-    return await createRun(...args);
+    const key = await this.sealKey();
+    return await createRun(taskId, init, now, { seal: (run) => sealRunTaint(run, key) });
   }
 
   private async saveNotice(...args: Parameters<typeof enqueueNotice>): Promise<void> {
@@ -903,7 +958,7 @@ export class TaskRunner {
       const now = this.now();
 
       if (task.activeRunId) {
-        const loaded = await loadRun(task.id, task.activeRunId);
+        const loaded = await this.loadRunChecked(task.id, task.activeRunId);
         // A run left `awaiting_approval` is one whose process stopped while it
         // waited. The approval died with that process (the inbox keeps the
         // payload in memory only), so the resumed run issues the call again
@@ -964,7 +1019,7 @@ export class TaskRunner {
     // Derived id + notice before the state change: a crash anywhere in here is
     // repeated harmlessly (same run, same notice id) at the next tick.
     const runId = `r_${digestCall(task.id, `expired:${task.nextRunAt ?? 0}`).slice(0, 16)}`;
-    const existing = await loadRun(task.id, runId);
+    const existing = await this.loadRunChecked(task.id, runId);
     const run =
       existing?.run ??
       (await this.newRun(task.id, { id: runId, state: "failed", trigger: "scheduled" }, now));
@@ -994,6 +1049,8 @@ export class TaskRunner {
       : input !== undefined
         ? "watcher"
         : "scheduled";
+    // What earlier runs left, read only through its seal: unsealed, it fails closed.
+    const carried = await this.carriedState(task);
     const run = await this.newRun(
       task.id,
       {
@@ -1002,7 +1059,7 @@ export class TaskRunner {
         ...(input !== undefined ? { input } : {}),
         // What an earlier tainted run left (its summary in this frame, or its
         // writes in the folder) taints this run from its first call.
-        ...(frameInheritsTaint(task) ? { inheritedTaint: true } : {}),
+        ...(frameInheritsTaint(carried.view) ? { inheritedTaint: true } : {}),
       },
       now,
     );
@@ -1013,6 +1070,9 @@ export class TaskRunner {
         t.activeRunId = run.id;
         delete t.queued;
         delete t.cancelRequestedAt;
+        // Sealed from here on, fail-closed first if it was not: a crash in
+        // this run must not leave the state unsealed for the resumed one.
+        resealTaskState(t, carried.key, carried);
       },
       now,
     );
@@ -1020,7 +1080,13 @@ export class TaskRunner {
     await this.saveRun(run, now);
     this.emit({ type: "task_run_started", taskId: task.id, runId: run.id, resumed: false });
     this.emit({ type: "task_updated", task: started });
-    const outcome = await this.drive(started, run, [], buildTaskFrame(task, run, now), slot);
+    const outcome = await this.drive(
+      started,
+      run,
+      [],
+      buildTaskFrame(trustedTaskState(started, carried.key, carried), run, now),
+      slot,
+    );
     await this.conclude(started, run, outcome);
   }
 
@@ -1164,6 +1230,7 @@ export class TaskRunner {
 
     const note = buildResumeNote(run, IN_FLIGHT, retry);
     const plan = planResume(loaded.messages, note);
+    const carried = await this.carriedState(task);
     let history: StoredMessage[] = [];
     let userMessage = "";
     if (plan.kind === "finished") {
@@ -1177,7 +1244,7 @@ export class TaskRunner {
     }
     if (plan.kind === "restart") {
       if (loaded.messages.length > 0) await this.saveReset(task.id, run.id, 0, now);
-      userMessage = `${buildTaskFrame(task, run, now)}\n\n${note}`;
+      userMessage = `${buildTaskFrame(carried.view, run, now)}\n\n${note}`;
     } else {
       // Rewrite the log's tail so it matches the history the model is given.
       await this.saveReset(task.id, run.id, plan.keep, now);
@@ -1190,6 +1257,7 @@ export class TaskRunner {
     const resumed = await this.saveTask(task.id, (t) => {
       t.state = "running";
       delete t.resumeAt;
+      resealTaskState(t, carried.key, carried);
     });
     this.emit({ type: "task_run_started", taskId: task.id, runId: run.id, resumed: true });
     if (resumed) this.emit({ type: "task_updated", task: resumed });
@@ -1441,7 +1509,7 @@ export class TaskRunner {
       // The taint an earlier run left is the task's, and it does not change
       // while a run is active: a run continued from before it was recorded
       // takes it now (and keeps it, at its next checkpoint).
-      if (frameInheritsTaint(task)) run.inheritedTaint = true;
+      if (frameInheritsTaint((await this.carriedState(task)).view)) run.inheritedTaint = true;
       /** Recorded on the run; the next checkpoint persists it. */
       const markTainted = (): void => {
         run.tainted = true;
@@ -1893,11 +1961,17 @@ export class TaskRunner {
       uid: this.tenant(),
       home: lisaHome(),
     });
-    // …then the same transition for real. This write ends the finish.
+    // …then the same transition for real. This write ends the finish, and
+    // seals what it leaves for the next run — fail-closed first if what was
+    // there was not sealed (seal.ts).
+    const key = await this.sealKey();
+    const folderHasContent = await taskWorkspaceHasContent(taskId);
     const updated = await this.saveTask(
       taskId,
       (t) => {
+        if (!taskStateSealed(t, key)) distrustTaskState(t, { folderHasContent });
         settleTask(t, run, now, cloud);
+        sealTaskState(t, key);
       },
       this.now(),
     );
@@ -2004,7 +2078,7 @@ export class TaskRunner {
       // The run id is derived from the hit, so a crash before the state write
       // below re-creates the SAME run and the SAME notice id — never a second one.
       const runId = `r_${digestCall(task.id, hit.key).slice(0, 16)}`;
-      const existing = await loadRun(task.id, runId);
+      const existing = await this.loadRunChecked(task.id, runId);
       const run =
         existing?.run ??
         (await this.newRun(
@@ -2065,7 +2139,7 @@ export class TaskRunner {
     // A watcher that keeps failing tells the user once, not every poll.
     if (outcome.error && failures === MAX_BLOCKED && updated) {
       const runId = `r_${digestCall(task.id, `failing:${task.watch?.lastCheckedAt ?? 0}`).slice(0, 16)}`;
-      const existing = await loadRun(task.id, runId);
+      const existing = await this.loadRunChecked(task.id, runId);
       const run =
         existing?.run ??
         (await this.newRun(task.id, { id: runId, state: "failed", trigger: "watcher" }, now));

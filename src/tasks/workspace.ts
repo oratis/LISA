@@ -51,6 +51,19 @@ export async function ensureTaskWorkspace(taskId: string): Promise<string> {
   return await fsp.realpath(dir);
 }
 
+/**
+ * Does the task's folder hold anything? A folder that cannot be read counts as
+ * holding something: the answer decides whether unsealed state is distrusted
+ * (seal.ts), so doubt fails closed.
+ */
+export async function taskWorkspaceHasContent(taskId: string): Promise<boolean> {
+  try {
+    return (await fsp.readdir(taskWorkspaceDir(taskId))).length > 0;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== "ENOENT";
+  }
+}
+
 /** Remove the task's folder (with the task). Missing is fine. */
 export async function removeTaskWorkspace(taskId: string): Promise<void> {
   if (!isSafeId(taskId)) return;

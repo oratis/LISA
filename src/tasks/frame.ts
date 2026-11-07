@@ -39,6 +39,11 @@ export function frameInheritsTaint(
   return task.workspaceTainted === true || (!!task.lastSummary && task.lastSummaryTainted === true);
 }
 
+/**
+ * The prompt a fresh (or restarted) run begins with. `task` must be the task as
+ * the run may read it — `trustedTaskState()` (seal.ts) — so that a last summary
+ * whose seal does not hold is quoted as data, never as Lisa's own note.
+ */
 export function buildTaskFrame(task: Task, run: TaskRun, now: number): string {
   const lines: string[] = [`[task] ${task.title}`, ""];
   const meta = [`kind: ${task.kind}`];

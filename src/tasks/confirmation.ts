@@ -64,8 +64,11 @@ type Confirmable = Pick<
  * of every field that reaches the run's prompt frame (frame.ts) or bounds what
  * a run may do — the title, the instruction, the schedule, the trigger, the
  * host, the envelope, the notify mode and the budget, and the kind, which
- * decides how the schedule is read. Nothing the frame quotes from the task is
- * left out (#422 review N1).
+ * decides how the schedule is read (#422 review N1). Every field of the task
+ * the frame quotes is here except one: the last summary, which changes after
+ * every run and so cannot be part of what the user confirmed. It is sealed by
+ * the runner instead (seal.ts), and read as a tainted run's when that seal
+ * does not hold.
  */
 export function taskDigest(task: Confirmable): string {
   const content = {

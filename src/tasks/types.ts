@@ -247,6 +247,14 @@ export interface Task {
    */
   workspaceTainted?: boolean;
   /**
+   * HMAC, under the home's Warden key, of `{id, lastSummary,
+   * lastSummaryTainted, workspaceTainted}` as the runner last wrote them
+   * (seal.ts). Missing or wrong ⇒ the summary is read as a tainted run's and
+   * a folder that holds anything as tainted: a task file written by anything
+   * but the runner cannot pass its own words off as Lisa's note.
+   */
+  stateSeal?: string;
+  /**
    * The run currently in flight. Set when a run starts and cleared when it
    * finishes; a value here with no live lease means the run was interrupted
    * and must be resumed.
@@ -348,6 +356,12 @@ export interface TaskRun {
    * a folder a tainted run wrote to. Written in the run's first record.
    */
   inheritedTaint?: boolean;
+  /**
+   * HMAC, under the home's Warden key, of the fields that decide this run's
+   * taint (`trigger`, `input`, `tainted`, `inheritedTaint`), written with
+   * every record (seal.ts). Missing or wrong ⇒ the run is read as tainted.
+   */
+  taintSeal?: string;
   summary?: string;
   artifacts?: TaskArtifact[];
   error?: string;

@@ -3325,6 +3325,11 @@
             "type": "boolean",
             "description": "A run that had read outside content made state-changing calls with the task's folder writable to it: every later run starts tainted."
           },
+          "stateSeal": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "HMAC, under the home's Warden key, of the task id, `lastSummary`, `lastSummaryTainted` and `workspaceTainted` as the runner last wrote them. Missing or wrong: the summary is read as a tainted run's, and a folder that holds anything as tainted."
+          },
           "activeRunId": {
             "type": "string"
           },
@@ -3423,6 +3428,11 @@
           "inheritedTaint": {
             "type": "boolean",
             "description": "The run started tainted because of what an earlier run of the task left: a last summary written by a tainted run, or a folder a tainted run wrote to."
+          },
+          "taintSeal": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "HMAC, under the home's Warden key, of the fields that decide the run's taint (`trigger`, `input`, `tainted`, `inheritedTaint`). Missing or wrong: the run is read as tainted."
           },
           "toolCalls": {
             "type": "integer"

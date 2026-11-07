@@ -439,6 +439,7 @@ export async function createRun(
   taskId: string,
   init: Partial<Pick<TaskRun, "id" | "input" | "state" | "trigger" | "inheritedTaint">> = {},
   now = Date.now(),
+  opts: { seal?: (run: TaskRun) => void } = {},
 ): Promise<TaskRun> {
   if (init.id !== undefined && !isSafeId(init.id)) throw new Error(`invalid run id: ${init.id}`);
   const run: TaskRun = {
@@ -456,6 +457,8 @@ export async function createRun(
     // …and so is a taint it inherited: a resumed run can never start clean.
     ...(init.inheritedTaint === true ? { inheritedTaint: true } : {}),
   };
+  // The runner seals the record's taint (seal.ts) from the first record on.
+  opts.seal?.(run);
   // The run's directory is made only for a task that exists, one level at a time.
   if (!(await pathExists(taskFile(taskId)))) throw new TaskGoneError(`task ${taskId}`);
   await mkdirOne(path.join(tasksDir(), "runs"), "the tasks directory");
