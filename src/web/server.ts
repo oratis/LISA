@@ -569,7 +569,7 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
   } catch (err) {
     logWarn(`[web] could not scan sessions: ${(err as Error).message}`);
   }
-  const s = await SessionStore.create({ cwd: process.cwd(), model });
+  const s = await SessionStore.create({ cwd: process.cwd(), model, origin: "owner" });
   logInfo(`[web] starting fresh session ${s.id}`);
   return s;
 }
@@ -4712,7 +4712,7 @@ self.addEventListener('fetch', (event) => {
       const runtime = await ctxForRequest();
       try {
         const id = await swapChatSession(runtime.value, () =>
-          SessionStore.create({ cwd: process.cwd(), model: activeModel }),
+          SessionStore.create({ cwd: process.cwd(), model: activeModel, origin: "owner" }),
         );
         broadcast({ type: "session_switched", session: id });
         res.writeHead(200, { "content-type": "application/json" });

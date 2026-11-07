@@ -99,7 +99,14 @@ for (const currentCitation of [true, false]) {
       ["sample", "2025-07-01T12:00:00Z", earlier],
       ["choice", "2025-07-02T12:00:00Z", decision],
     ] as const) {
-      const header = { type: "session", version: 2, id, cwd: "/workspace", startedAt: ts };
+      const header = {
+        type: "session",
+        version: 2,
+        id,
+        cwd: "/workspace",
+        origin: "owner",
+        startedAt: ts,
+      };
       const utterance = { type: "message", ts, message: { role: "user", content: message } };
       await fs.writeFile(
         path.join(logs, id + ".jsonl"),

@@ -51,6 +51,7 @@ for (const f of all) {
     if (
       !idPattern.test(session.id) ||
       ids.has(session.id) ||
+      (session.origin !== undefined && !["legacy", "owner", "channel"].includes(session.origin)) ||
       session.turns.length < 2 ||
       session.turns.some(
         (t) => !["user", "assistant"].includes(t.role) || typeof t.content !== "string",
@@ -87,6 +88,8 @@ function sourceCommit(root: string) {
 }
 const commits = { left: sourceCommit(roots.left), right: sourceCommit(roots.right) };
 const model = option("model", "claude-sonnet-4-6");
+const sessionFormat = option("sessions", "legacy");
+if (!["legacy", "native"].includes(sessionFormat)) throw new Error("Invalid --sessions format");
 const anchor = Date.now();
 const output = path.resolve(option("output"));
 
@@ -155,6 +158,7 @@ const header = {
   selected: fixtures.map((f) => f.id),
   jobs,
   syntheticData: true,
+  sessionFormat,
 };
 const ledger = {
   ...header,
@@ -181,7 +185,13 @@ async function lane() {
       try {
         if (knownTokens >= 300_000) throw new Error("Known-token budget reached");
         const scenario = { id: f.id, store: f.store, before: f.before, sessions: f.sessions };
-        const result = await measure({ root: roots[arm], scenario, model, anchor });
+        const result = await measure({
+          root: roots[arm],
+          scenario,
+          model,
+          anchor,
+          nativeSessions: sessionFormat === "native",
+        });
         const grading = grade(f, result);
         const tokens = result.calls.reduce(
           (sum, c) => sum + Object.values(c.usage ?? {}).reduce((a, b) => a + b, 0),

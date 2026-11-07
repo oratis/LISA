@@ -25,10 +25,18 @@ async function session(
   messages: StoredMessage[],
   ts: number,
   cwd = "/project",
-  origin?: string,
+  origin: string | null = "owner",
+  startedAt = ts - 1,
 ) {
   const lines = [
-    { type: "session", id, version: 2, startedAt: new Date(ts - 1).toISOString(), cwd, origin },
+    {
+      type: "session",
+      id,
+      version: 2,
+      startedAt: new Date(startedAt).toISOString(),
+      cwd,
+      origin: origin ?? undefined,
+    },
     ...messages.map((message, i) => ({
       type: "message",
       ts: new Date(ts + i).toISOString(),
@@ -75,12 +83,21 @@ test("related history finds the earlier human option and excludes other projects
       "channel",
     );
     await session("later", [user("The microscope tray is yellow.")], anchorTime + 60_000);
+    await session(
+      "legacy-channel",
+      [user("The microscope tray choice is amber.")],
+      anchorTime - 300,
+      "/project",
+      null,
+    );
     const results = await relatedSessionEvidence(evidenceFromHistory([focus], "now"), "now");
     assert.deepEqual(
       results.map((e) => [e.sessionId, e.role, e.text]),
       [["earlier", "user", "The microscope tray choices are one: zinc and two: copper."]],
     );
     assert.equal(Date.parse(results[0]!.at!), anchorTime - 60_000);
+    await session("now", [focus], anchorTime, "/project", null);
+    assert.deepEqual(await relatedSessionEvidence(evidenceFromHistory([focus], "now"), "now"), []);
     await session("now", [focus], anchorTime, "/project", "channel");
     assert.deepEqual(await relatedSessionEvidence(evidenceFromHistory([focus], "now"), "now"), []);
   });
@@ -101,6 +118,32 @@ test("unpersisted, ambiguous and mismatched long-message anchors yield no cross-
     await session("now", [user(prefix + "OLD" + suffix)], anchorTime);
     const nearDuplicate = evidenceFromHistory([user(prefix + "NEW" + suffix)], "now");
     assert.deepEqual(await relatedSessionEvidence(nearDuplicate, "now"), []);
+  });
+});
+
+test("an acknowledgement keeps the prior decision in focus without importing later definitions", async () => {
+  await homeScope.run(home, async () => {
+    const decision = user("Change orchard dispatch to violet.");
+    const thanks = user("Thanks!");
+    await session("current", [decision, thanks], anchorTime, "/project", "owner", anchorTime - 20);
+    await session(
+      "previous",
+      [user("Violet means Pier Three for orchard dispatch.")],
+      anchorTime - 30,
+    );
+    await session(
+      "overlap",
+      [user("Violet now means Pier Nine for orchard dispatch.")],
+      anchorTime - 10,
+    );
+    const related = await relatedSessionEvidence(
+      evidenceFromHistory([decision, thanks], "current"),
+      "current",
+    );
+    assert.deepEqual(
+      related.map((s) => s.sessionId),
+      ["previous"],
+    );
   });
 });
 

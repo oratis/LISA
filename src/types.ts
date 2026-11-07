@@ -87,8 +87,8 @@ export interface Skill {
 }
 
 export interface SessionHeader {
-  /** Remote channel threads can have different authors in the same Lisa home. */
-  origin?: "channel";
+  /** Older logs have no author scope. Only explicit owner sessions share reflection evidence. */
+  origin?: "owner" | "channel";
   type: "session";
   id: string;
   /**

@@ -864,7 +864,7 @@ async function main(): Promise<void> {
     args.prompt = args.subargs.slice(1).join(" ") || null;
     console.error(`Resumed session ${id} (${history.length} messages).`);
   } else {
-    session = await SessionStore.create({ cwd, model: args.model });
+    session = await SessionStore.create({ cwd, model: args.model, origin: "owner" });
     history = [];
   }
 

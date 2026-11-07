@@ -10,13 +10,14 @@ export interface Scenario {
   id: string;
   store: "user" | "memory";
   before: string;
-  sessions: { id: string; turns: StoredMessage[] }[];
+  sessions: { id: string; turns: StoredMessage[]; origin?: "legacy" | "owner" | "channel" }[];
 }
 export interface Request {
   root: string;
   scenario: Scenario;
   model: string;
   anchor: number;
+  nativeSessions: boolean;
 }
 export type Memory = Record<Scenario["store"], string>;
 type Usage = Omit<ProviderResult["usage"], "cacheWrite1hTokens">;
@@ -52,7 +53,13 @@ function safeError(error: unknown) {
   return error instanceof Error ? error.name.replace(/[^A-Za-z0-9_]/g, "").slice(0, 80) : "Error";
 }
 
-async function trial({ root, scenario, model, anchor }: Request): Promise<Observation> {
+async function trial({
+  root,
+  scenario,
+  model,
+  anchor,
+  nativeSessions,
+}: Request): Promise<Observation> {
   const load = (name: string) => import(pathToFileURL(path.join(root, "src", name + ".ts")).href);
   const { configureProxyFromEnv } = await load("proxy-bootstrap");
   configureProxyFromEnv();
@@ -118,28 +125,44 @@ async function trial({ root, scenario, model, anchor }: Request): Promise<Observ
   await writeMemory(scenario.store, scenario.before);
   const before = await readBoth();
   await fs.mkdir(sessionsDir(), { recursive: true, mode: 0o700 });
+  const { SessionStore }: typeof import("../../../src/sessions/store.js") =
+    await load("sessions/store");
+  let lastId = "";
   for (const [index, session] of scenario.sessions.entries()) {
     const start = anchor - (scenario.sessions.length - index) * 3_600_000;
     const at = (offset: number) => new Date(start + offset).toISOString();
+    // Native trials use the measured version's real header, including its origin
+    // policy. Legacy fixtures reproduce the unmarked v2 format before this change.
+    const live =
+      nativeSessions && session.origin !== "legacy"
+        ? await SessionStore.create({ cwd: "/synthetic", model, origin: session.origin ?? "owner" })
+        : undefined;
+    lastId = live?.id ?? session.id;
+    const header = live?.header ?? {
+      type: "session",
+      id: lastId,
+      version: 2,
+      cwd: "/synthetic",
+      model,
+    };
     const records = [
-      { type: "session", id: session.id, version: 2, startedAt: at(0), cwd: "/synthetic", model },
+      { ...header, startedAt: at(0) },
       ...session.turns.map((message, i) => ({ type: "message", ts: at(i + 1), message })),
     ];
-    const file = path.join(sessionsDir(), session.id + ".jsonl");
+    const file = live?.path ?? path.join(sessionsDir(), session.id + ".jsonl");
     await fs.writeFile(file, records.map((entry) => JSON.stringify(entry)).join("\n") + "\n", {
-      flag: "wx",
+      flag: live ? "w" : "wx",
       mode: 0o600,
     });
     await fs.utimes(file, new Date(start), new Date(start + session.turns.length));
   }
-  const last = scenario.sessions.at(-1)!;
-  const { messages } = await loadSessionMessages(last.id);
+  const { messages } = await loadSessionMessages(lastId);
   let reflection: Observation["reflection"];
   let error: string | undefined;
   try {
     // All prior sessions are on disk. Only the last conversation is passed to
     // the normal reflection entry point, exactly as for a resumed installation.
-    const result = await reflectOnSession({ sessionId: last.id, history: messages, model });
+    const result = await reflectOnSession({ sessionId: lastId, history: messages, model });
     const clean = (s: string) => s.replaceAll(process.env.LISA_HOME!, "<synthetic-home>");
     reflection = {
       raw: clean(result.raw),

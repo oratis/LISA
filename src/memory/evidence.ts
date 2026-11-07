@@ -233,7 +233,7 @@ async function sessionUserWindow(id: string, expectedCwd?: string) {
         if (
           header.type !== "session" ||
           header.id !== id ||
-          header.origin !== undefined ||
+          header.origin !== "owner" ||
           typeof header.cwd !== "string" ||
           !path.isAbsolute(header.cwd) ||
           (expectedCwd !== undefined && header.cwd !== expectedCwd)
@@ -251,7 +251,7 @@ async function sessionUserWindow(id: string, expectedCwd?: string) {
   const users = transcriptEvidence(id, lines, expectedCwd === undefined).filter(
     (item) => item.role === "user" && item.at && Date.parse(item.at) >= start,
   );
-  return { cwd, users };
+  return { cwd, start, users };
 }
 
 /** Find nearby source utterances for anaphora or corrections in the focused
@@ -268,9 +268,13 @@ export async function relatedSessionEvidence(
   if (!active) return [];
   const anchors = active.users.filter((u) => u.id === focus.id);
   if (anchors.length !== 1) return [];
-  const cutoff = Date.parse(anchors[0]!.at!);
-  if (cutoff > Date.now()) return [];
-  const words = new Set(tokenize(focus.text, RELATED_STOPWORDS));
+  if (Date.parse(anchors[0]!.at!) > Date.now()) return [];
+  // A definition learned in an overlapping conversation cannot explain an
+  // earlier choice in this one. The header also survives truncation of its tail.
+  const cutoff = active.start;
+  const persisted = new Set(active.users.map((item) => item.id));
+  const turns = current.filter((item) => item.role === "user" && persisted.has(item.id)).slice(-3);
+  const words = new Set(turns.flatMap((item) => tokenize(item.text, RELATED_STOPWORDS)));
   if (!words.size) return [];
 
   const sorted: { item: MemoryEvidence; score: number }[] = [];
