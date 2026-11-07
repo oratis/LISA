@@ -7,8 +7,11 @@ import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { handleMemoryApi } from "./memory-api.js";
 import { readTar } from "../sovereignty/tar.js";
+import { homeScope, lisaHome } from "../paths.js";
 
 let home: string;
+/** The home each onForgetApplied call ran in (the server reloads that home's chats). */
+let forgetApplied: string[];
 let previousHome: string | undefined;
 let server: http.Server;
 let origin: string;
@@ -21,12 +24,16 @@ beforeEach(async () => {
   previousHome = process.env.LISA_HOME;
   home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-memory-api-"));
   process.env.LISA_HOME = home;
+  forgetApplied = [];
   server = http.createServer((req, res) => {
     void (async () => {
       const handled = await handleMemoryApi(req, res, req.url ?? "/", {
         cloud: req.headers["x-test-cloud"] === "1",
         accountUid: (req.headers["x-test-uid"] as string | undefined) ?? null,
         loopback: req.headers["x-test-remote"] !== "1",
+        onForgetApplied: () => {
+          forgetApplied.push(homeScope.getStore() ?? lisaHome());
+        },
       });
       if (!handled) {
         res.writeHead(404);
@@ -322,12 +329,14 @@ describe("memory entries API (Mac edition)", () => {
     assert.equal(read("memory/MEMORY.md"), "- Project Falcon ships in May\n- likes tea\n");
     const bad = await call("POST", "/api/memory/forget", { query: "x", dryRun: true });
     assert.equal(bad.status, 400);
+    assert.deepEqual(forgetApplied, [], "a preview reloads nothing");
     const applied = await call("POST", "/api/memory/forget", {
       query: "project falcon",
       digest: (dry.json.report as { digest: string }).digest,
     });
     assert.equal(applied.status, 200);
     assert.equal(read("memory/MEMORY.md"), "- likes tea\n");
+    assert.deepEqual(forgetApplied, [home], "an applied forget reloads the caller's chats");
   });
 
   test("forget applies only a previewed set: no digest → 400, a changed set → 409", async () => {
@@ -352,6 +361,7 @@ describe("memory entries API (Mac edition)", () => {
     });
     assert.equal(stale.status, 409);
     assert.equal(stale.json.error, "preview_changed");
+    assert.deepEqual(forgetApplied, [], "a refused apply reloads nothing");
     assert.equal(
       read("memory/MEMORY.md"),
       "- Project Falcon ships in May\n- likes tea\n- project falcon budget\n",
@@ -450,6 +460,7 @@ describe("memory sovereignty API — cloud tenant isolation", () => {
       { cloud: true, uid: A, remote: true },
     );
     assert.equal(r.status, 200);
+    assert.deepEqual(forgetApplied, [homeOf(A)], "only A's chats are reloaded");
     assert.equal(read("memory/MEMORY.md", homeOf(A)), "\n");
     assert.equal(read("memory/MEMORY.md", homeOf(B)), "- bob secret plan\n");
     assert.equal(read("soul/journal/2026-10-01.md", homeOf(B)), "bob secret plan\n");

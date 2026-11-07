@@ -51,6 +51,13 @@ export interface MemoryApiOptions {
   accountUid: string | null;
   /** The TCP peer is loopback. */
   loopback: boolean;
+  /**
+   * Called after a forget was APPLIED (inside the caller's home scope), so
+   * the server can reload the chat histories it keeps in memory from the
+   * redacted transcripts — otherwise an open chat would keep sending the
+   * forgotten text to the model. Its failure never fails the forget.
+   */
+  onForgetApplied?: () => Promise<void> | void;
 }
 
 const BODY_LIMIT = 64 * 1024;
@@ -234,7 +241,19 @@ export async function handleMemoryApi(
         return true;
       }
       const digest = dryRun ? undefined : (body.digest as string);
-      const report = await run(() => forget(body.query as string, { dryRun, digest }));
+      const report = await run(async () => {
+        const r = await forget(body.query as string, { dryRun, digest });
+        if (!dryRun && opts.onForgetApplied) {
+          try {
+            await opts.onForgetApplied();
+          } catch (e) {
+            logError(
+              `[memory-api] reloading chat histories failed: ${(e as Error)?.name ?? "error"}`,
+            );
+          }
+        }
+        return r;
+      });
       json(res, 200, { report });
       return true;
     }

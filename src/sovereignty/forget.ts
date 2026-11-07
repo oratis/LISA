@@ -215,7 +215,7 @@ export const FORGET_RESIDUALS: readonly string[] = [
   "Backups: Time Machine or volume snapshots, earlier exports, and import-backups/ folders still hold the old data.",
   "Git history: soul/.git and kb/.git keep earlier versions of changed files (that is what keeps this forget auditable); remove those repositories to purge history.",
   "Delivered messages: push notifications, Live Activities, email digests and IM/channel messages already sent can't be recalled.",
-  "A conversation in progress keeps the topic in its context until it ends.",
+  "Open chats: a reply being written while you forget still has the topic in its context. Forget from Lisa's memory panel reloads her open chats from the redacted transcripts; after `lisa forget` on the command line, restart a running Lisa so she does the same.",
   "Images and attachments inside past messages are not inspected.",
   "Lisa's own soul files (identity, values, opinions, desires) are hers and are never edited; mentions there are listed as untouched.",
   "Knowledge-base file names are not renamed; a page whose file name alone mentions the topic is listed as untouched.",
