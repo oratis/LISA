@@ -167,8 +167,12 @@ describe("task tool — subagents spend inside the parent's USD cap", () => {
       ),
       /upstream reset/,
     );
-    assert.equal(charged.length, 2);
+    // Two answered calls, and the third — which may have spent before it
+    // failed — counted at what it was admitted with before the error left the
+    // subagent (#407 review R2).
+    assert.equal(charged.length, 3);
     assert.ok(charged.every((m) => m > 0));
+    assert.ok(charged[2]! > charged[1]!, "the failed call is counted at its worst case");
   });
 
   test("without a cap the subagent runs as before", async () => {

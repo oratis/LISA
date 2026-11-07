@@ -2,9 +2,10 @@
  * task_update — Lisa edits a task, or pauses it.
  *
  * Changing what runs unattended is the same kind of act as creating it, so an
- * edit made here always leaves the task OFF: if it was on, it is switched off
- * and the user has to turn it back on after seeing the change. The tool can
- * pause (`pause: true`) but has no way to enable.
+ * edit made here always leaves the task OFF and UNCONFIRMED: if it was on, it
+ * is switched off and the user has to turn it back on — and confirm it again
+ * — after seeing the change. The tool can pause (`pause: true`) but has no way
+ * to enable or confirm.
  */
 import { disableTask } from "../tasks/lifecycle.js";
 import { updateTask } from "../tasks/store.js";
@@ -68,8 +69,11 @@ export const taskUpdateTool: ToolDefinition<TaskUpdateInput, string> = {
         if (problem) return false;
       }
       wasEnabled = t.enabled;
-      // Edited or paused, the result is the same: off until the user says otherwise.
+      // Edited or paused, the result is the same: off until the user says
+      // otherwise, and unconfirmed whatever field changed — what the user
+      // confirmed was not a task the model has since touched (#422 review N2).
       disableTask(t);
+      delete t.envelopeConfirmation;
       if (t.enabledAt === undefined && !t.activeRunId) t.state = "draft";
       return;
     });

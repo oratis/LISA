@@ -170,9 +170,11 @@ export interface Grant {
 }
 
 /**
- * A task capability envelope: what the user pre-approved when the task was
- * created. It can only satisfy a "preapproved" default — it never overrides a
- * system invariant, an "ask"/"handoff" rule, or the taint and PII rules.
+ * A task capability envelope as a pre-approval: what the user CONFIRMED the
+ * task may do without asking, after being shown it in plain words. It can only
+ * satisfy a "preapproved" default — it never overrides a system invariant, an
+ * "ask"/"handoff" rule, or the taint and PII rules — and in a tainted run it
+ * covers only reads and writes inside the run's workspace.
  */
 export interface TaskEnvelope {
   categories?: ActionCategory[];

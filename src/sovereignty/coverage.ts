@@ -64,6 +64,10 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   "scheduled-dispatches.json": { forget: "not_scanned", what: "scheduled dispatch prompts" },
   "comparisons.json": { forget: "not_scanned", what: "agent comparison tasks" },
   compare: { forget: "not_scanned", what: "agent comparison worktrees" },
+  "task-workspaces": {
+    forget: "not_scanned",
+    what: "files unattended task runs wrote in their own folders (any format)",
+  },
   history: { forget: "not_scanned", what: "command-line prompt history" },
   "heartbeat.json": { forget: "not_scanned", what: "heartbeat chore prompts" },
   "heartbeat.json.pre-tasks*": { forget: "not_scanned", what: "backup of heartbeat chore prompts" },

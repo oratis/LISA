@@ -84,7 +84,9 @@ import { commitSoulChange, withSoulCaller } from "../soul/git.js";
 import { withFileLock, withSoulLock } from "../soul/lock.js";
 import { soulDir, soulJournalDir, soulRelationshipsDir } from "../soul/paths.js";
 import { rewriteTaskJson, tasksDir } from "../tasks/store.js";
-import { isSafeId } from "../tasks/types.js";
+import { isSafeId, type Task, type TaskRun } from "../tasks/types.js";
+import { runTaintSealed, sealRunTaint, sealTaskState, taskStateSealed } from "../tasks/seal.js";
+import { readDigestKey } from "../warden/store.js";
 import { rewriteOutboxEntry, type OutboxEntry } from "../tasks/outbox.js";
 import { forgetInReve } from "../reve/forget.js";
 import { appendSovereigntyAudit, sovereigntyDir } from "./audit.js";
@@ -824,7 +826,11 @@ function redactAt(
 }
 
 /** One record of a task run log: { t: "run" | "msg" | "event" | "reset", … }. */
-function redactRunLine(line: string, m: Matcher): { line: string; hit: boolean; sample?: string } {
+function redactRunLine(
+  line: string,
+  m: Matcher,
+  sealKey: Buffer | null = null,
+): { line: string; hit: boolean; sample?: string } {
   const none = { line, hit: false };
   if (!m.mayContain(line)) return none;
   let rec: Record<string, unknown>;
@@ -850,6 +856,7 @@ function redactRunLine(line: string, m: Matcher): { line: string; hit: boolean; 
   if (!key) return none;
   const r = redactAt(rec[key], key === "run" ? TASK_RUN_TEXT : [["summary"]], m);
   if (r.matched.length === 0) return none;
+  if (key === "run") resealRedacted(rec.run, r.value, sealKey);
   return { line: JSON.stringify({ ...rec, [key]: r.value }), hit: true, sample: r.matched[0] };
 }
 
@@ -930,19 +937,49 @@ function unlockedRewrite(file: string): (fn: (value: unknown) => unknown) => Pro
   };
 }
 
+/**
+ * Forget replaces text with a fixed placeholder, so state the runner had
+ * sealed (#422: a task's carried-over summary, a run's taint) is re-sealed
+ * after the redaction when — and only when — its seal held before it. A
+ * forget then never turns a trusted task into a tainted one, and never
+ * launders state that was already unsealed. The task's confirmation is NOT
+ * re-signed: a changed title or instruction needs the user's confirmation
+ * again, which is what the confirmation digest is for.
+ */
+function resealRedacted(before: unknown, after: unknown, key: Buffer | null): void {
+  if (!key || !before || !after || typeof before !== "object" || typeof after !== "object") {
+    return;
+  }
+  if ("taintSeal" in before) {
+    if (runTaintSealed(before as TaskRun, key)) sealRunTaint(after as TaskRun, key);
+  } else if ("stateSeal" in before) {
+    if (taskStateSealed(before as Task, key)) sealTaskState(after as Task, key);
+  }
+}
+
 async function forgetInTasks(ctx: Ctx): Promise<void> {
   const dir = tasksDir();
+  // Never create the key here: no key means nothing was ever sealed.
+  const sealKey = ctx.apply ? await readDigestKey().catch(() => null) : null;
+  const resealing =
+    (rewrite: (fn: (value: unknown) => unknown) => Promise<boolean>) =>
+    (fn: (value: unknown) => unknown) =>
+      rewrite((fresh) => {
+        const next = fn(fresh);
+        if (next !== null) resealRedacted(fresh, next, sealKey);
+        return next;
+      });
   for (const file of await listFiles(dir, ".json")) {
     const id = path.basename(file, ".json");
     const rewrite = isSafeId(id)
       ? (fn: (value: unknown) => unknown) => rewriteTaskJson(id, fn)
       : unlockedRewrite(file);
-    await forgetInTaskJson(file, TASK_SPEC_TEXT, rewrite, ctx);
+    await forgetInTaskJson(file, TASK_SPEC_TEXT, resealing(rewrite), ctx);
   }
   for (const taskDir of await listDirs(path.join(dir, "runs"))) {
     for (const file of await listFiles(taskDir, ".jsonl")) {
       try {
-        await forgetInJsonl(file, "tasks", redactRunLine, ctx);
+        await forgetInJsonl(file, "tasks", (line, m) => redactRunLine(line, m, sealKey), ctx);
       } catch {
         ctx.report.errors.push({ layer: "tasks", error: `run_busy:${path.basename(file)}` });
       }
