@@ -491,7 +491,9 @@ function readFileAsBase64(file) {
 function inferMediaType(file) {
   if (file.type) return file.type;
   const ext = file.name.split('.').pop().toLowerCase();
-  const map = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', svg: 'image/svg+xml', pdf: 'application/pdf', txt: 'text/plain', md: 'text/plain', csv: 'text/csv', json: 'application/json' };
+  // Only the image types the model accepts as image blocks; anything else
+  // would turn a send into a provider error.
+  const map = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf', txt: 'text/plain', md: 'text/plain', csv: 'text/csv', json: 'application/json' };
   return map[ext] || 'application/octet-stream';
 }
 
@@ -582,20 +584,50 @@ window.lisaCaptureAndAttach = async function (mode) {
   }
 };
 
+// One object URL per pending image, shared by its thumbnail and the viewer and
+// released once the file leaves the composer: re-rendering the chips never
+// decodes the base64 again, and a removed or sent image is not kept alive.
+const attachmentUrls = new Map();
+// The chat request itself is capped at 20 MiB, so a larger image can never be
+// sent; it gets a plain chip instead of being decoded for a thumbnail.
+const ATTACHMENT_PREVIEW_MAX_BASE64 = 20 * 1024 * 1024;
+function attachmentPreviewUrl(f) {
+  const known = attachmentUrls.get(f);
+  if (known) return known;
+  if (typeof f.data !== 'string' || f.data.length > ATTACHMENT_PREVIEW_MAX_BASE64) return '';
+  let url;
+  try {
+    const binary = atob(f.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    url = URL.createObjectURL(new Blob([bytes], { type: f.mediaType }));
+  } catch (e) { return ''; }
+  attachmentUrls.set(f, url);
+  return url;
+}
+function releaseAttachmentPreviews() {
+  for (const [f, url] of attachmentUrls) {
+    if (pendingFiles.includes(f)) continue;
+    URL.revokeObjectURL(url);
+    attachmentUrls.delete(f);
+  }
+}
 function renderAttachPreview() {
+  releaseAttachmentPreviews();
   attachPreview.innerHTML = '';
   pendingFiles.forEach((f, i) => {
     const chip = document.createElement('span');
     chip.className = 'attach-chip';
     chip.title = f.name;
-    if (/^image\/[a-z0-9.+-]+$/i.test(f.mediaType)) {
+    const previewUrl = /^image\/[a-z0-9.+-]+$/i.test(f.mediaType) ? attachmentPreviewUrl(f) : '';
+    if (previewUrl) {
       chip.classList.add('attach-image');
       const preview = document.createElement('button');
       preview.type = 'button';
       preview.className = 'attach-open';
       preview.setAttribute('aria-label', tr('attachment.preview', { name: f.name }));
       const img = document.createElement('img');
-      img.src = 'data:' + f.mediaType + ';base64,' + f.data;
+      img.src = previewUrl;
       img.alt = f.name;
       img.onerror = () => { chip.classList.add('image-unavailable'); };
       preview.appendChild(img);
@@ -617,7 +649,8 @@ function renderAttachPreview() {
       renderAttachPreview();
       const buttons = attachPreview.querySelectorAll('.attach-rm');
       if (buttons.length) buttons[Math.min(i, buttons.length - 1)].focus();
-      else input.focus();
+      // On a phone, focusing the composer would summon the keyboard.
+      else if (!window.matchMedia('(max-width: 720px)').matches) input.focus();
     };
     chip.appendChild(rm);
     attachPreview.appendChild(chip);
@@ -625,6 +658,8 @@ function renderAttachPreview() {
 }
 
 function showAttachmentImage(file) {
+  const src = attachmentPreviewUrl(file);
+  if (!src) return;
   const viewer = document.createElement('dialog');
   viewer.className = 'attachment-viewer';
   viewer.setAttribute('aria-label', tr('attachment.preview', { name: file.name }));
@@ -639,7 +674,7 @@ function showAttachmentImage(file) {
   close.onclick = () => viewer.close();
   header.append(name, close);
   const img = document.createElement('img');
-  img.src = 'data:' + file.mediaType + ';base64,' + file.data;
+  img.src = src;
   img.alt = file.name;
   viewer.append(header, img);
   viewer.addEventListener('click', (event) => { if (event.target === viewer) viewer.close(); });
@@ -3131,7 +3166,7 @@ if ('serviceWorker' in navigator) {
   // (String ops, not a regex — a /// here would be mangled by the outer
   // template literal that wraps this client script.)
   function agentLabel(s) {
-    const custom = sessionNames.get(JSON.stringify(['agent/' + s.agent, s.sessionId]));
+    const custom = customSessionName('agent/' + s.agent, s.sessionId);
     if (custom) return custom;
     let label = s.project;
     if (s.activity && s.activity.gitBranch) {
@@ -3807,32 +3842,41 @@ if ('serviceWorker' in navigator) {
   // client-side notion (which sessions you keep at hand), persisted in
   // localStorage; the tree is the full on-disk list.
   let cachedSessions = [];
+  // key → { name, updatedAt }. Names are never deleted, so every source (the
+  // POST reply, the session_renamed event, a full refresh) merges by
+  // updatedAt: a reply that arrives late cannot undo a newer rename made in
+  // another window.
   const sessionNames = new Map();
-  let sessionNameRevision = 0;
-  window.lisaSessionRenamed = function (entry) {
-    sessionNames.set(JSON.stringify([entry.kind, entry.id]), entry.name);
-    sessionNameRevision++;
+  function applySessionName(entry) {
+    if (!entry || typeof entry.name !== 'string') return false;
+    const key = JSON.stringify([entry.kind, entry.id]);
+    const stamp = Number(entry.updatedAt) || 0;
+    const known = sessionNames.get(key);
+    if (known && (known.updatedAt > stamp || (known.updatedAt === stamp && known.name === entry.name))) return false;
+    sessionNames.set(key, { name: entry.name, updatedAt: stamp });
+    return true;
+  }
+  function customSessionName(kind, id) {
+    const known = sessionNames.get(JSON.stringify([kind, id]));
+    return known ? known.name : '';
+  }
+  function renderSessionNames() {
     renderSessionUI();
     renderInspector();
     renderNeeds();
     if (currentAgentTab) renderStreamView();
+  }
+  window.lisaSessionRenamed = function (entry) {
+    if (applySessionName(entry)) renderSessionNames();
   };
   async function refreshSessionNames() {
-    const revision = sessionNameRevision;
     try {
       const response = await fetch('/api/session-names');
       if (!response.ok) return;
       const data = await response.json();
-      // A name saved while this request was in flight takes precedence.
-      if (revision !== sessionNameRevision) { void refreshSessionNames(); return; }
-      const names = data.names || [];
-      if (names.length === sessionNames.size && names.every(entry => sessionNames.get(JSON.stringify([entry.kind, entry.id])) === entry.name)) return;
-      sessionNames.clear();
-      names.forEach(entry => sessionNames.set(JSON.stringify([entry.kind, entry.id]), entry.name));
-      renderSessionUI();
-      renderInspector();
-      renderNeeds();
-      if (currentAgentTab) renderStreamView();
+      let changed = false;
+      (Array.isArray(data.names) ? data.names : []).forEach(entry => { if (applySessionName(entry)) changed = true; });
+      if (changed) renderSessionNames();
     } catch (e) { /* Names retry with the next session refresh. */ }
   }
   // (确认轮二) Multi-tab strip removed: creating/switching lives in the
@@ -3840,7 +3884,7 @@ if ('serviceWorker' in navigator) {
   // what the main pane is showing — the active Lisa session, or the
   // observed agent while the stream pane is open.
   function sessionLabel(s) {
-    const custom = s && sessionNames.get(JSON.stringify(['lisa', s.id]));
+    const custom = s && customSessionName('lisa', s.id);
     if (custom) return custom;
     // F2 auto-naming: the FIRST user message is the session's name (the
     // opening request describes the task); fall back to the latest one.
@@ -4684,7 +4728,7 @@ if ('serviceWorker' in navigator) {
       event.preventDefault();
       if (saving) return;
       const name = field.value.trim();
-      if (!name || name.length > 120 || /[\x00-\x1f\x7f]/.test(name)) {
+      if (!name || name.length > 120 || /[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(name)) {
         error.textContent = tr('session.invalidName');
         field.setAttribute('aria-invalid', 'true');
         field.focus();
