@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "../types.js";
-import { memoryTool } from "../memory/tool.js";
+import { memoryTool, restrictAutonomousMemory } from "../memory/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
 import { adviseNowTool } from "./advise_now.js";
 import { listAgentsTool } from "./list_agents.js";
@@ -196,6 +196,7 @@ export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
       // the user's feeds.json watchlist (D3) — an injected prompt can't make an
       // idle run pull an arbitrary URL into the KB.
       .map(restrictKbIngestToWatchlist)
+      .map(restrictAutonomousMemory)
   );
 }
 

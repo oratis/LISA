@@ -81,7 +81,8 @@ import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
 import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
-import { reflectOnSession } from "../reflect.js";
+import { reflectOnSession, ReflectionInterruptedError } from "../reflect.js";
+import { reflectWithUsage } from "./reflect-request.js";
 import {
   DEFAULT_REFLECT_DEBOUNCE_MS,
   REFLECT_CHECK_INTERVAL_MS,
@@ -3071,6 +3072,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // loopback owner or a signed-in account may revert or reconsider.
     if (
       await handleReveApi(req, res, url, {
+        reflectionEnabled: policy.reflection !== "off",
+        agentRecapEnabled: !cloud,
         allowed: !cloud || accountUid !== null,
         ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
         actor: accountUid ? `uid:${accountUid}` : "local",
@@ -5790,6 +5793,15 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/reflect") {
+      const originProblem = crossSiteProblem(
+        req,
+        !cloud && !accountUid && isLoopbackAddress(remoteAddr),
+      );
+      if ((cloud && !accountUid) || originProblem) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: originProblem ?? "account_required" }));
+        return;
+      }
       // "off" means off on every path, not just the timer — otherwise
       // --no-reflect would still let the UI trigger a model call.
       if (policy.reflection === "off") {
@@ -5824,16 +5836,29 @@ self.addEventListener('fetch', (event) => {
         throw err;
       }
       const chat = runtime.value;
+      const disconnect = new AbortController();
+      const abortReflection = () => disconnect.abort();
+      res.once("close", abortReflection);
       try {
-        const r = await reflectOnSession({
-          history: chat.history,
-          sessionId: chat.session.id,
-          model: activeModel,
-        });
-        chat.reflectionSummary = r.summary;
-        if (inferencePermit && r.usage) {
-          await inferencePermit.settle("reflect", r.usage);
+        const sessionId = chat.session.id;
+        const selectedSession = req.headers["x-lisa-session-id"];
+        if (selectedSession !== undefined && selectedSession !== sessionId) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "session_changed" }));
+          return;
         }
+        const permit = inferencePermit;
+        const r = await reflectWithUsage(
+          () =>
+            reflectOnSession({
+              history: [...chat.history],
+              sessionId,
+              model: activeModel,
+              signal: disconnect.signal,
+            }),
+          permit ? (usage) => permit.settle("reflect", usage) : undefined,
+        );
+        if (chat.session.id === sessionId) chat.reflectionSummary = r.summary;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(r));
       } catch (err) {
@@ -5841,13 +5866,22 @@ self.addEventListener('fetch', (event) => {
           logError(`[billing] reflection settlement unavailable: ${err.message}`);
           res.writeHead(503, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else if (err instanceof ReflectionInterruptedError) {
+          res.writeHead(err.code === "reflection_failed" ? 503 : 409, {
+            "content-type": "application/json",
+          });
+          res.end(JSON.stringify({ error: err.code }));
         } else {
-          res.writeHead(500);
-          res.end((err as Error).message);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "reflection_failed" }));
         }
       } finally {
-        await inferencePermit?.release();
-        runtime.release();
+        res.off("close", abortReflection);
+        try {
+          await inferencePermit?.release();
+        } finally {
+          runtime.release();
+        }
       }
       return;
     }

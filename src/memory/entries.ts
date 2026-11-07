@@ -26,7 +26,7 @@ import {
   memoryMaxBytes,
   memoryStoreFile,
   withMemoryLock,
-  writeMemory,
+  writeMemoryUnlocked,
   type MemoryStore,
 } from "./store.js";
 
@@ -271,7 +271,7 @@ function serialize(blocks: Block[]): string {
 
 async function writeStore(store: MemoryStore, content: string): Promise<void> {
   try {
-    await writeMemory(store, content);
+    await writeMemoryUnlocked(store, content);
   } catch (e) {
     if (/exceeds \d+ bytes/.test((e as Error).message)) {
       throw new MemoryEditError(

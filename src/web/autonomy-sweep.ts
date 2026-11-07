@@ -35,7 +35,7 @@ import {
   type LeaseHandle,
 } from "../cloud/firestore.js";
 import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
-import { reflectOnSession } from "../reflect.js";
+import { ReflectionInterruptedError, reflectOnSession } from "../reflect.js";
 import { DEFAULT_MODEL } from "../llm.js";
 import { isBorn } from "../soul/store.js";
 import { runDesireReviewOnce, type DesireReviewRunResult } from "../heartbeat/runner.js";
@@ -293,6 +293,11 @@ async function sweepOne(
           // Ordinary failures retry on the next scheduler tick. A hard crash
           // leaves pending and waits for the lease TTL before recovery.
           await writeCheckpoint(checkpoint);
+          if (
+            err instanceof ReflectionInterruptedError &&
+            Object.values(err.usage).some((n) => n > 0)
+          )
+            await recordUsage("autonomy", opts.model ?? DEFAULT_MODEL, err.usage);
           throw err;
         }
         // Autonomy is free to the user, but its face cost stays audited and

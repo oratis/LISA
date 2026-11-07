@@ -15,6 +15,8 @@ import path from "node:path";
 import { atomicWrite, ensureDir } from "../fs-utils.js";
 import { logWarn, redactId } from "../log.js";
 import { lisaHome } from "../paths.js";
+import { readReviewGeneration } from "../memory/review.js";
+import { withMemoryLock } from "../memory/store.js";
 import { flushSoulCommits, soulCommitPatch, soulCommitsBetween, soulGitHead } from "../soul/git.js";
 import type { AutonomyKind, AutonomyOutcome } from "../autonomy/runs.js";
 import { newDreamId } from "./ids.js";
@@ -143,12 +145,14 @@ export async function beginDream(opts: {
   const id = newDreamId(start);
   const parts = PARTS_BY_TRIGGER[opts.trigger];
   const home = lisaHome();
+  let generation: string;
   let before: Snapshot;
   let headBefore: string | null;
   // Active from before the pre-pass snapshot: a write made outside this
   // dream's scope from here on is noted against it (scope.ts noteHomeWrite).
   markDreamActive(id, true);
   try {
+    generation = await readReviewGeneration();
     // Pending soul commits from before the window belong to someone else.
     await withTimeout(flushSoulCommits(), FLUSH_TIMEOUT_MS);
     [before, headBefore] = await Promise.all([takeSnapshot(parts, start), soulGitHead()]);
@@ -177,6 +181,7 @@ export async function beginDream(opts: {
           // is what claim recovery trusts if the acknowledgement never lands.
           rec = await finishDream({
             scope,
+            generation,
             trigger: opts.trigger,
             task: opts.task,
             home,
@@ -192,7 +197,11 @@ export async function beginDream(opts: {
           logWarn(`[reve] dream capture failed: ${logSafeError(err)}`);
         }
         try {
-          await settleReconsider(scope.reconsiderIds, id, failed ? "release" : "ack");
+          await settleReconsider(
+            scope.reconsiderIds,
+            id,
+            failed || rec === null ? "release" : "ack",
+          );
         } catch (err) {
           // The claim stays; the next pass recovers it (delivered per the record, else pending).
           logWarn(`[reve] reconsider settle failed: ${logSafeError(err)}`);
@@ -405,6 +414,7 @@ function renderMarkdown(rec: DreamRecord): string {
 
 async function finishDream(ctx: {
   scope: DreamScope;
+  generation: string;
   trigger: DreamTrigger;
   task?: string;
   /** The home the pass ran in (the tenant's subtree on the cloud edition). */
@@ -520,15 +530,23 @@ async function finishDream(ctx: {
   };
   const rec = fitRecord({ ...base, summary: renderSummary(base) }, MAX_RECORD_BYTES);
 
-  await lockReve(async () => {
-    await ensureDir(dreamsDir());
-    // Sidecar first: a record must never point at revert data that is missing.
-    if (hasSidecar) {
-      await atomicWrite(dreamSnapshotFile(rec.id), JSON.stringify(sidecar) + "\n");
-    }
-    await writeDreamRecord(rec);
-    await atomicWrite(dreamSummaryFile(rec.id), renderMarkdown(rec));
-  });
+  // Forget/import can invalidate the original snapshot while a model or the
+  // capture runs. Keep the generation check and *all* persisted copies under
+  // the same lock as invalidation. Dream revert uses this lock order as well.
+  const committed = await lockReve(() =>
+    withMemoryLock(async () => {
+      if (ctx.generation !== (await readReviewGeneration())) return false;
+      await ensureDir(dreamsDir());
+      // Sidecar first: a record must never point at revert data that is missing.
+      if (hasSidecar) {
+        await atomicWrite(dreamSnapshotFile(rec.id), JSON.stringify(sidecar) + "\n");
+      }
+      await writeDreamRecord(rec);
+      await atomicWrite(dreamSummaryFile(rec.id), renderMarkdown(rec));
+      return true;
+    }),
+  );
+  if (!committed) return null;
   // Not on every pass, and not inside the record write's critical section.
   await maybeApplyRetention(ctx.end.getTime());
   return rec;
