@@ -12,5 +12,6 @@ export const CONNECTOR_CATALOG = [
   { id: "google-drive", name: "Google Drive", access: "read", authModes: ["login"] },
   { id: "slack", name: "Slack", access: "read", authModes: ["login"] },
   { id: "notion", name: "Notion", access: "read", authModes: ["login"] },
+  { id: "feishu", name: "Feishu", access: "read", authModes: ["login"] },
 ] as const;
 export type ConnectorProvider = (typeof CONNECTOR_CATALOG)[number]["id"];

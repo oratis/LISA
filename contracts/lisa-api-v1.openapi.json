@@ -1530,7 +1530,8 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "feishu"
               ]
             }
           },
@@ -1583,7 +1584,8 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "feishu"
               ]
             }
           },
@@ -1668,7 +1670,8 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "feishu"
               ]
             }
           },
@@ -1754,7 +1757,8 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "feishu"
               ]
             }
           },
@@ -1828,7 +1832,8 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "feishu"
               ]
             }
           },
@@ -1901,7 +1906,8 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "feishu"
               ]
             }
           },
@@ -2000,7 +2006,8 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "feishu"
               ]
             }
           }
@@ -5775,7 +5782,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Display name; stable identity is id plus workspaceId for Notion and Slack."
+            "description": "Display name; stable identity is id plus workspaceId for Notion, Slack and Feishu."
           },
           "workspaceId": {
             "type": "string"
@@ -5938,7 +5945,8 @@
               "linear",
               "google-drive",
               "notion",
-              "slack"
+              "slack",
+              "feishu"
             ]
           }
         },
@@ -5965,7 +5973,8 @@
                     "linear",
                     "google-drive",
                     "notion",
-                    "slack"
+                    "slack",
+                    "feishu"
                   ]
                 },
                 "name": {

@@ -906,13 +906,14 @@ export function classifyToolCall(
     name === "linear_read" ||
     name === "google_drive_read" ||
     name === "notion_read" ||
-    name === "slack_read"
+    name === "slack_read" ||
+    name === "feishu_read"
   ) {
     const operation = str(rec.operation);
     const allowed =
       name === "slack_read"
         ? ["list", "messages", "thread"]
-        : name === "google_drive_read" || name === "notion_read"
+        : name === "google_drive_read" || name === "notion_read" || name === "feishu_read"
           ? ["list", "metadata", "content"]
           : name === "linear_read"
             ? ["list", "issues"]
@@ -923,17 +924,19 @@ export function classifyToolCall(
       ...base,
       category: operation && allowed.includes(operation) ? "read" : "write",
       connector:
-        name === "slack_read"
-          ? "slack"
-          : name === "google_drive_read"
-            ? "google-drive"
-            : name === "notion_read"
-              ? "notion"
-              : name === "linear_read"
-                ? "linear"
-                : name === "gmail_read"
-                  ? "gmail"
-                  : "google-calendar",
+        name === "feishu_read"
+          ? "feishu"
+          : name === "slack_read"
+            ? "slack"
+            : name === "google_drive_read"
+              ? "google-drive"
+              : name === "notion_read"
+                ? "notion"
+                : name === "linear_read"
+                  ? "linear"
+                  : name === "gmail_read"
+                    ? "gmail"
+                    : "google-calendar",
       method: operation,
       targets: [str(rec.resourceId) ?? "selected resources"],
       egress: true,

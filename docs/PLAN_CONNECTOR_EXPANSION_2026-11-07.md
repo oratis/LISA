@@ -1,7 +1,7 @@
 # LISA 其他连接器调研与接入方案
 
-> 状态：C0/C1/C2/C3 已合并；C4 Slack 本机只读切片已实现，详见第 11 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
-> 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。调研阶段未登录账号；后续实现的真实授权范围和验收结果分别记录在第 8、9、10 节。
+> 状态：C0/C1/C2/C3/C4 已合并；C5 飞书本机只读切片实现中，详见第 12 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
+> 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。调研阶段未登录账号；后续实现的真实授权范围和验收结果分别记录在第 8 至 12 节。
 
 ## 1 建议先交付什么
 
@@ -301,3 +301,34 @@ C3 PR [#445](https://github.com/oratis/LISA/pull/445) 已合并。本批继续�
 真实 Slack PKCE 授权已回调，首次实时 scope 检查因隐式 `identify` 被拒绝，修复后用同一已获得的有效授权完成账号检查和频道选择。并修复了 `users.conversations` 成员列表不返回 `is_member` 的兼容问题，确认及读取仍要求 `conversations.info.is_member=true`。在隔离本机预览中选择一个验收频道，原聊天自动返回近七天 **2 条消息、未截断**，未输出正文；刷新后仍仅有一份结果。临时授权诊断数据已移除，正式实现无凭据诊断旁路。
 
 自动测试涵盖真实 loopback state/PKCE 回调（供应商响应为替身）、精确权限和身份、令牌轮换、成员/共享频道、分页、越界参数和响应拒绝、文本截断与附件剥离、读取后权限变化、断开与重启恢复去重。浏览器测试覆盖卡片默认未选、回调后选择频道、同一任务仅完成一次、刷新、后续复用、取消与混合来源提示。此外已用真实刷新令牌验证轮换、持久化与账号保持一致，修复刷新响应同样附带 `identify` 的兼容问题。真实撤权、限流与讨论串正文读取尚未做账号级验收，这些路径由自动测试覆盖；不将此次 2 条频道消息验收扩展为全功能验证。
+
+
+## 12 C5 飞书新版文档只读实现（2026-11-07）
+
+C4 PR [#456](https://github.com/oratis/LISA/pull/456) 已合并。本批复用 `ReadonlyConnector`，新增第八项 `feishu`：同一卡片内授权、明确选择资源、原任务自动恢复、取消、断开、刷新与重启去重；仍仅开放本机 `local-owner`，每来源绑定一个企业和用户，每任务一个来源。
+
+### 资源与读取边界
+
+首批用户在卡片粘贴 **docx 文档链接或 ID**，默认不选择。链接只提取 document ID，不请求用户输入的 URL；拒绝知识库、文件夹、表格和外部站点。确认时逐份检查访问和标题，最多 30 份。OAuth 只读权限本身覆盖用户可读新版文档，指定文档边界由 LISA 服务端执行；连接卡明确披露，不称为飞书文件级 OAuth。
+
+`feishu_read` 仅有 `list`、`metadata`、`content`。固定调用 `user_info`、`docx/v1/documents/:id` 与 `/raw_content`；不搜索或枚举云盘，不跟随文档链接，不读 Wiki、Sheets、Bitable、图片/附件或消息，也不写入。每份最多返回 30,000 字符；响应超过 1 MB 拒绝，截断明确标记。仅投影文本、标题、ID 和版本；身份绑定 `tenant_key + open_id`，不申请通讯录、邮箱或手机号权限。正文读前后复核身份和版本，权限取消或版本变化即丢弃缓冲正文；外部内容一律标为不可信数据。恢复轮次只提供 `feishu_read`。
+
+依据：[文档概述](https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/docx-overview) · [元数据](https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/document/get) · [纯文本读取](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document/raw_content) · [用户身份](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/authen-v1/user_info/get)。纯文本不等于完整富文档，嵌入资源不展开。
+
+### OAuth 与本机配置
+
+采用自建 confidential 应用，仅启用用户权限 `docx:document:readonly` 与 `offline_access`，不启用 tenant scopes。授权端点 `https://accounts.feishu.cn/open-apis/authen/v1/authorize`，S256 PKCE + 随机 state + `prompt=consent`。交换与刷新采用新版 `https://accounts.feishu.cn/oauth/v3/token`，明确传入这两个 scope，避免飞书累积历史授权扩大返回令牌权限。返回 scope 仅额外允许官方示例的隐式 `user_profile`；其他权限或缺少只读/离线权限一律拒绝。旧 v2 接口不作为静默降级路径。
+
+预注册 `http://localhost:4863/oauth/feishu`；复用双栈 loopback 监听、Host/路径/state 校验、单次 code 和十分钟超时。飞书尚不开放普通第三方 public client 注册，因此不把客户端密钥打包进桌面应用；本期由本机操作者配置其自建应用，公开分发需另设计凭据托管和审核。
+
+`LISA_FEISHU_CLIENT_FILE` 指向 0600 私有 JSON，字段 `clientId`、`clientSecret`、`redirectUri`；也支持 `LISA_FEISHU_CLIENT_ID`、`LISA_FEISHU_CLIENT_SECRET`、`LISA_FEISHU_REDIRECT_URI`。密钥和令牌不得进仓库、聊天、模型上下文或日志。
+
+过期前刷新，明确失效后最多重试一次；refresh token 为单次使用，新凭据在统一跨进程锁内先落盘，再继续读取。断开先删本地秘密并阻止在途结果提交，再尽力分别撤销 refresh 与 access token；飞书撤销成功为 HTTP 200 空响应，撤销 refresh 不代表已撤销仍有效 access token。限流仅报可重试提示，不循环请求。
+
+依据：[授权码](https://open.feishu.cn/document/authentication-management/access-token/obtain-oauth-code) · [v3 交换](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/authentication-management/access-token/get-user-access-token-v3) · [v3 刷新](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/authentication-management/access-token/refresh-user-access-token-v3) · [撤销](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/authentication-management/login-state-management/revoke-token)。授权页的 PKCE 兼容说明仍提旧版，v3 token 文档已明确支持；实际可用性须以本次真实验收记录为准。
+
+### 验收进度
+
+自动测试覆盖 state/S256 的真实 loopback 回调（供应商为替身）、精确 scope、刷新轮换、固定出站、资源白名单、身份/版本变化、截断脱敏、取消断开和重启单次提交。8 项飞书专项测试通过；17 项连接器浏览器测试通过（含飞书 2 项及既有连接器 15 项）。服务端、客户端、E2E 类型检查、API 契约、格式和构建通过；新增代码 lint 无错误。全量测试与覆盖率复核进行中。
+
+已建立独立本机自建应用并配置两项用户权限及固定回调；真实授权页已显示「查看新版文档」与「维持已授权访问」，等待用户确认并指定一份验收 docx。应用未公开分发，也未申请 tenant 权限。真实授权与文档读取尚未完成，不把测试替身流程描述为账号级验收。

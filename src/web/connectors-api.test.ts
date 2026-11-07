@@ -27,6 +27,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     ["google-drive", fake],
     ["notion", fake],
     ["slack", fake],
+    ["feishu", fake],
   ]);
   const server = http.createServer((req, res) => {
     void handleConnectorApi(req, res, req.url!, services, owner).then((handled) => {
@@ -50,7 +51,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     });
   const catalog = await fetch(base + "/api/connectors");
   assert.equal(catalog.status, 200);
-  assert.equal(((await catalog.json()) as { connectors: unknown[] }).connectors.length, 7);
+  assert.equal(((await catalog.json()) as { connectors: unknown[] }).connectors.length, 8);
   for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }])
     assert.equal((await post("{}", headers)).status, 403, JSON.stringify(headers));
   const rebound = await new Promise<number | undefined>((resolve, reject) => {
@@ -71,7 +72,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal((await post("{}", { origin: "https://evil.example" }, "linear")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 200);
   assert.equal(actions, 2);
-  for (const provider of ["google-drive", "notion", "slack"]) {
+  for (const provider of ["google-drive", "notion", "slack", "feishu"]) {
     assert.equal((await post("{}", { origin: "https://evil.example" }, provider)).status, 403);
     assert.equal((await post("{}", {}, provider)).status, 200);
   }
@@ -85,9 +86,10 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     "/api/connectors/google-drive/requests?sessionId=test",
     "/api/connectors/notion/requests/test/resources",
     "/api/connectors/slack/requests/test/resources",
+    "/api/connectors/feishu/requests/test/resources",
   ])
     assert.equal((await fetch(base + route)).status, 403);
   assert.equal((await post("{}")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 403);
-  assert.equal(actions, 5);
+  assert.equal(actions, 6);
 });
