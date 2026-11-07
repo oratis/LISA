@@ -520,7 +520,6 @@ export class ReadonlyConnector<A, R> {
           )
             throw new ConnectorError("connection_not_granted");
           const token = await this.options.secrets.get(s.connection.secret);
-          if (!token) throw new ConnectorError(this.options.driver.reauthorizationCode);
           return {
             connection: s.connection,
             token,
@@ -528,6 +527,7 @@ export class ReadonlyConnector<A, R> {
           };
         }, false);
         try {
+          if (!token) throw new ConnectorError(this.options.driver.reauthorizationCode);
           const output = await this.options.driver.read(
             credentials,
             connection.account,

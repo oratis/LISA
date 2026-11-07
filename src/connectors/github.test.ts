@@ -357,3 +357,35 @@ test("v1 migration preserves completed markers and waiting tasks, with an unchan
   assert.deepEqual(state.requests[1].resources, []);
   assert.ok(!("repositories" in state.requests[1]));
 });
+
+test("missing stored credentials clear the shared grant and suppress completion", async (t) => {
+  let entered = false,
+    release!: () => void,
+    commits = 0;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = await fixture(t, async (run) => {
+    entered = true;
+    await gate;
+    await assert.rejects(
+      run.tools[0]!.execute(
+        { operation: "list" },
+        { cwd: "/tmp", signal: run.signal, log: () => {} },
+      ),
+      /github_reauthorization_required/,
+    );
+    await run.commit(async () => {
+      commits++;
+    });
+  });
+  const r = await f.create();
+  await f.authorize(r.id);
+  await f.service.confirm(r.id, [repo.fullName], signal());
+  await until(async () => entered);
+  for (const secret of await f.secrets.list()) await f.secrets.remove(secret.name);
+  release();
+  await until(async () => (await f.status(r.id)) === "failed");
+  assert.equal((await f.service.list("session_a"))[0]?.connected, false);
+  assert.equal(commits, 0);
+});
