@@ -2,9 +2,9 @@ import { normalizeModelId } from "../billing/prices.js";
 import type http from "node:http";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import { logError } from "../log.js";
 import {
   getAccount,
-  getAccountByEmail,
   ensureOtpAccount,
   verifyEmailLogin,
   revokeAccountSessions,
@@ -385,9 +385,9 @@ export async function handleConsole(
       if (!acct || !role) throw new ConsoleError("invalid_credentials", 401);
       await mutateAdminState((s) =>
         appendAudit(s, {
-          actor: actor(acct!),
+          actor: actor(acct),
           action: "login",
-          target: acct!.uid,
+          target: acct.uid,
           reason: "管理员登录",
         }),
       );
@@ -465,7 +465,7 @@ export async function handleConsole(
       json(res, 413, { error: "body_too_large" });
     } else if (e instanceof ConsoleError) json(res, e.status, { error: e.code });
     else {
-      console.error("[console] request failed", e instanceof Error ? e.name : "unknown");
+      logError(`[console] request failed: ${e instanceof Error ? e.name : "unknown"}`);
       json(res, 503, { error: "data_unavailable" });
     }
   }

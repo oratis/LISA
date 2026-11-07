@@ -57,7 +57,7 @@ async function request(
     },
     ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
   });
-  return { response, body: (await response.json()) as Record<string, any> };
+  return { response, body: (await response.json()) as Record<string, unknown> };
 }
 beforeEach(async () => {
   savedEnv = { ...process.env };
@@ -279,7 +279,7 @@ test("suspension affects existing sessions, protected owner cannot be suspended,
   assert.equal((await getAccount(regular.uid))!.sessionVersion, regular.sessionVersion + 1);
 });
 test("role changes take effect for existing sessions and cannot overwrite owner", async () => {
-  let s = await readAdminState();
+  const s = await readAdminState();
   assert.equal(
     (
       await request("/console/api/action", admin, {

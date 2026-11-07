@@ -55,6 +55,10 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   embeddings: { forget: "scanned", what: "search embedding cache (evicted)" },
 
   // ── can hold user text, not scanned ──
+  admin: {
+    forget: "not_scanned",
+    what: "global operator roles, support notes, tickets and administrative audit history",
+  },
   skills: { forget: "not_scanned", what: "skill instructions and notes" },
   autonomy: { forget: "not_scanned", what: "Lisa's autonomy run log (chore and desire notes)" },
   sense: { forget: "not_scanned", what: "activity log, social drafts and uploaded media" },

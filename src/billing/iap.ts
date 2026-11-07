@@ -27,7 +27,14 @@ import crypto, { X509Certificate } from "node:crypto";
 import { lisaGlobalHome, homeScope, homeForUid } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { creditPurchase, clawbackPurchase, readBalance } from "./quota.js";
-import { casUpdate, firestoreEnabled, getDoc, setDoc, FirestoreError, listCollection } from "../cloud/firestore.js";
+import {
+  casUpdate,
+  firestoreEnabled,
+  getDoc,
+  setDoc,
+  FirestoreError,
+  listCollection,
+} from "../cloud/firestore.js";
 
 export class IapError extends Error {
   constructor(
@@ -818,7 +825,10 @@ export async function refundTransaction(
 }
 
 /** Operator-only read of the authoritative transaction index; no state repair. */
-export async function listPaymentTransactions(): Promise<{ rows: TxIndexEntry[]; truncated: boolean }> {
+export async function listPaymentTransactions(): Promise<{
+  rows: TxIndexEntry[];
+  truncated: boolean;
+}> {
   if (!firestoreEnabled()) return { rows: readTxIndex(), truncated: false };
   const rows: TxIndexEntry[] = [];
   let token: string | undefined;

@@ -1845,7 +1845,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // for EVERY request and loopback is not a free pass (the container must never
     // trust its own/proxy loopback). Mac edition: loopback = the local owner.
     const cloud = isCloud();
-    if (await handleConsole(req, res, { secret: cloud ? sessionSecret : null, clientIp: clientIp(req, remoteAddr) })) return;
+    if (
+      await handleConsole(req, res, {
+        secret: cloud ? sessionSecret : null,
+        clientIp: clientIp(req, remoteAddr),
+      })
+    )
+      return;
     if (cloud && !(await featureAllowed(req.method ?? "GET", url))) {
       res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
       res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
@@ -2388,13 +2394,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
         );
         // Cloud tasks ride the same sweep (LISA_CLOUD_TASKS=1 only; default off).
-        const tasks = cloudTasksEnabled() && await featureAllowed("POST", "/api/tasks")
-          ? await sweepUserTasks({
-              runnerFor: (uid) => taskHost.runnerFor(uid),
-              beginAccountWork: (uid) => beginAccountWork(uid, () => {}),
-              ...(maxRuns !== undefined ? { maxRuns } : {}),
-            })
-          : undefined;
+        const tasks =
+          cloudTasksEnabled() && (await featureAllowed("POST", "/api/tasks"))
+            ? await sweepUserTasks({
+                runnerFor: (uid) => taskHost.runnerFor(uid),
+                beginAccountWork: (uid) => beginAccountWork(uid, () => {}),
+                ...(maxRuns !== undefined ? { maxRuns } : {}),
+              })
+            : undefined;
         if (tasks)
           logInfo(`[sweep] tasks: ${tasks.scanned} tenant(s) with tasks, ${tasks.ran} run(s)`);
         res.writeHead(200, { "content-type": "application/json" });
@@ -5320,7 +5327,12 @@ self.addEventListener('fetch', (event) => {
         }
         message = parsed.message;
         files = parsed.files;
-        if (cloud && Array.isArray(files) && files.length && !(await featureAllowed("POST", "/api/uploads"))) {
+        if (
+          cloud &&
+          Array.isArray(files) &&
+          files.length &&
+          !(await featureAllowed("POST", "/api/uploads"))
+        ) {
           res.writeHead(503, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
           return;

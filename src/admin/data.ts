@@ -2,7 +2,7 @@ import * as quota from "../billing/quota.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { loadAccounts } from "../web/accounts.js";
-import { homeForUid, homeScope, lisaGlobalHome } from "../paths.js";
+import { homeForUid, homeScope } from "../paths.js";
 import {
   readBalance,
   tierFor,
