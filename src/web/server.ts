@@ -2420,6 +2420,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "local_owner_required" }));
         return;
       }
+      // These routes pick the relay and approve phones, i.e. grant full remote
+      // access. Same guard as every other owner surface: a DNS-rebinding page is
+      // "loopback" too, and could otherwise point the Mac at its own relay, read
+      // the pending code and approve its own key.
+      const problem = crossSiteProblem(req, true, null);
+      if (problem) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: problem }));
+        return;
+      }
       if (req.method === "GET" && url === "/api/remote/status") {
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(remoteHost.status()));
