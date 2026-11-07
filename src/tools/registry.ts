@@ -279,6 +279,36 @@ export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
 }
 
 /**
+ * Tools a managed agent must not get (`POST /api/agents/managed/start`, which
+ * Lisa Pocket's "Delegate a task" calls). The phone sends the task only after
+ * the user allowed the recipients in `/api/auth/config`. Each tool here hands
+ * that task to an AI the list does not name, most of them without pausing for
+ * approval:
+ *  - coding CLIs under their own sign-in: dispatch_agent, run_on_plan,
+ *    compare_agents, and scheduled_dispatch (unattended, later);
+ *  - a running agent's input: signal_agent;
+ *  - a TakoAPI remote agent: takoapi;
+ *  - task, whose sub-agent closure holds the FULL toolset and so reaches all of
+ *    the above.
+ * A new tool that launches or feeds another agent belongs here too; the
+ * subsets test fails for any builtin that calls launchAgent or addScheduled
+ * without being listed.
+ */
+export const MANAGED_BLOCKED_TOOL_NAMES = new Set([
+  "dispatch_agent",
+  "signal_agent",
+  "run_on_plan",
+  "compare_agents",
+  "scheduled_dispatch",
+  "takoapi",
+  "task",
+]);
+
+export function managedAgentSubset(tools: ToolDefinition[]): ToolDefinition[] {
+  return tools.filter((t) => !MANAGED_BLOCKED_TOOL_NAMES.has(t.name));
+}
+
+/**
  * Tools exposed by the hosted multi-tenant edition.
  *
  * This is deliberately an allow-list rather than another block-list:

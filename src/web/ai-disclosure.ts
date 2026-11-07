@@ -40,8 +40,11 @@ export function webToolRecipients(env: NodeJS.ProcessEnv = process.env): string[
  * existing consent is invalidated. Switching them on re-prompts, the same rule
  * as the web tools above.
  */
-export const CLAUDE_CODE_RECIPIENT = "Claude Code (Anthropic, its own sign-in on your Mac)";
-export const CODEX_RECIPIENT = "Codex CLI (OpenAI, its own sign-in on your Mac)";
+// Vendor only "by default": either CLI can be pointed at Bedrock, Vertex or a
+// custom base URL in its own settings, which this process never sees.
+export const CLAUDE_CODE_RECIPIENT =
+  "Claude Code (its own sign-in on your Mac; Anthropic by default)";
+export const CODEX_RECIPIENT = "Codex CLI (its own sign-in on your Mac; OpenAI by default)";
 
 /** PTY-agent recipients for the server this process runs. */
 export function ptyAgentRecipients(env: NodeJS.ProcessEnv = process.env): string[] {

@@ -282,6 +282,53 @@ describe("T-7 the server honours its RuntimePolicy", () => {
   });
 });
 
+describe("managed agents (Lisa Pocket delegation)", () => {
+  test("the started agent gets no tool that could hand the task to an unlisted AI", async () => {
+    const { buildToolRegistry } = await import("../tools/registry.js");
+    const { managedRegistry } = await import("../agents/managed.js");
+    // `task` is composed outside the registry (src/cli.ts) with the full toolset
+    // in its closure; stand it in so the route has to drop it too.
+    const task = {
+      name: "task",
+      description: "task",
+      inputSchema: { type: "object" as const },
+      execute: async () => "",
+    };
+    const all = [...buildToolRegistry({ includeVoice: false }), task];
+    let started: string[] | null = null;
+    const original = managedRegistry.start.bind(managedRegistry);
+    managedRegistry.start = (opts) => {
+      started = opts.tools.map((t) => t.name);
+      return { id: "m-test" } as ReturnType<typeof managedRegistry.start>;
+    };
+    const srv = await boot({ tools: all });
+    try {
+      const r = await request(srv.port, "POST", "/api/agents/managed/start", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "compare codex and claude on this repo" }),
+      });
+      assert.equal(r.status, 200, r.text);
+      assert.ok(started, "the route must start the agent");
+      const names = new Set<string>(started);
+      for (const blocked of [
+        "dispatch_agent",
+        "signal_agent",
+        "run_on_plan",
+        "compare_agents",
+        "scheduled_dispatch",
+        "takoapi",
+        "task",
+      ]) {
+        assert.equal(names.has(blocked), false, `${blocked} reached the managed agent`);
+      }
+      assert.equal(names.has("read"), true);
+    } finally {
+      managedRegistry.start = original;
+      await srv.close();
+    }
+  });
+});
+
 describe("T-4 /api/sessions ETag revalidation", () => {
   test("etagMatches implements weak comparison over the If-None-Match list", async () => {
     const { etagMatches } = await import("./server.js");

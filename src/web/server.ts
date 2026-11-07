@@ -155,6 +155,7 @@ import {
   SIGNAL_DESCRIPTIONS,
 } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
+import { managedAgentSubset } from "../tools/registry.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, ptyAvailability, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
@@ -3954,10 +3955,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         typeof payload.cwd === "string" && payload.cwd.startsWith("/")
           ? payload.cwd
           : process.cwd();
-      // A managed agent doesn't control other agents — drop dispatch/signal.
-      const tools = runtimeTools.filter(
-        (t) => t.name !== "dispatch_agent" && t.name !== "signal_agent",
-      );
+      // A managed agent neither controls nor launches other agents: the task
+      // must not reach an AI outside the consented disclosure.
+      const tools = managedAgentSubset(runtimeTools);
       const systemPrompt =
         `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
         `Complete the user's task using the available tools, then report what you did concisely. ` +
