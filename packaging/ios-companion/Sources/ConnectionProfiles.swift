@@ -56,9 +56,13 @@ final class ConnectionProfiles {
         let prefix = "lisa.profile.\(mode.rawValue)."
         let scheme = defaults.string(forKey: prefix + "scheme") ?? (mode == .cloud ? "https" : "http")
         let port = defaults.integer(forKey: prefix + "port")
-        return ServerConfig(host: defaults.string(forKey: prefix + "host") ?? "",
+        var config = ServerConfig(host: defaults.string(forKey: prefix + "host") ?? "",
                             port: port == 0 ? (scheme == "https" ? 443 : 5757) : port,
                             token: readToken(mode.rawValue), scheme: scheme)
+        if mode == .mac, let data = defaults.data(forKey: prefix + "remoteMac") {
+            config.remoteMac = try? JSONDecoder().decode(RemoteMacTarget.self, from: data)
+        }
+        return config
     }
 
     @discardableResult
@@ -70,6 +74,9 @@ final class ConnectionProfiles {
         defaults.set(config.host, forKey: prefix + "host")
         defaults.set(config.port, forKey: prefix + "port")
         defaults.set(config.scheme, forKey: prefix + "scheme")
+        if let target = config.remoteMac, let data = try? JSONEncoder().encode(target) {
+            defaults.set(data, forKey: prefix + "remoteMac")
+        } else { defaults.removeObject(forKey: prefix + "remoteMac") }
         let ownsLegacy = mode.rawValue == defaults.string(forKey: "lisa.profiles.legacyMode")
         if ownsLegacy { defaults.set(true, forKey: "lisa.profiles.migrated") }
         if normalized == nil, ownsLegacy { writeToken("default", nil) }

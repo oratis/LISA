@@ -56,7 +56,7 @@ final class AccountWindowController: NSWindowController {
         let blurb = NSTextField(wrappingLabelWithString:
             "Sign in and this Mac runs key-free: models without your own API key route " +
             "through LISA Cloud, using your account's daily allowance and credits. " +
-            "Your soul and data stay on this Mac.")
+            "Your soul and data stay on this Mac. Connect Pocket with the same account, then approve it on this Mac.")
         blurb.font = .systemFont(ofSize: 12)
         blurb.textColor = .secondaryLabelColor
 
@@ -213,14 +213,38 @@ final class AccountWindowController: NSWindowController {
             self.refreshState()
             self.setStatus("Signed in. Restart the backend so it picks up the session.", error: false)
             self.restartButton.isHidden = false
+            Task {
+                do {
+                    _ = try await RemoteDevicesWindow.request("connect", body: ["base": base, "session": token])
+                    self.setStatus("Signed in. Open Connect iPhone to approve Pocket. Restart to update model billing.", error: false)
+                } catch {
+                    self.setStatus("Signed in. Update or restart the backend, then open Connect iPhone.", error: false)
+                }
+            }
         }
     }
 
     @objc private func signOut() {
-        BackendController.shared.upsertConfigEnv("LISA_MANAGED_SESSION", value: "")
-        refreshState()
-        setStatus("Signed out. Restart the backend to apply.", error: false)
-        restartButton.isHidden = false
+        signOutButton.isEnabled = false
+        signInButton.isEnabled = false
+        setStatus("Closing phone connections…", error: false)
+        Task {
+            defer {
+                self.signOutButton.isEnabled = true
+                self.signInButton.isEnabled = true
+            }
+            do {
+                _ = try await RemoteDevicesWindow.request("disconnect", body: [:])
+                BackendController.shared.upsertConfigEnv("LISA_MANAGED_SESSION", value: "")
+                self.refreshState()
+                self.setStatus("Signed out. Phone connections closed. Restart to update model billing.", error: false)
+                self.restartButton.isHidden = false
+            } catch {
+                // Keep the account visibly signed in until revocation is confirmed.
+                self.setStatus("Couldn't close phone connections. Restart the backend, then try signing out again.", error: true)
+                self.restartButton.isHidden = false
+            }
+        }
     }
 
     @objc private func restartBackend() {

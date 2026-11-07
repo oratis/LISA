@@ -1,4 +1,10 @@
 # Lisa Pocket — iOS companion
+Account-based Mac connections now use **Settings → Connect your Mac**: sign in to
+the same LISA account on both devices, compare the verification code, and approve
+the phone on the Mac. Pocket then prefers encrypted LAN access and falls back to
+the encrypted cloud relay, without Tailscale. Requires the updated cloud relay,
+Mac backend/app and Pocket build; see [setup, deployment and protocol](../../docs/REMOTE_CONNECTIONS.md).
+
 
 A native SwiftUI personal-assistant app for iPhone and iPad. Sign in to LISA Cloud
 to chat without a Mac, or pair your own Mac to chat with that instance, monitor

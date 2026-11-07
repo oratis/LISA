@@ -5,6 +5,7 @@ struct ServerConfig: Hashable {
     var port: Int
     var token: String?        // device or global token (nil only for loopback, unused from a phone)
     var scheme: String = "http"  // "http" for a LAN Mac; "https" for a cloud URL
+    var remoteMac: RemoteMacTarget? = nil
 
     var isConfigured: Bool { !host.isEmpty && port > 0 }
     /// Base URL. Drop the port when it's the scheme's default (so a cloud URL is
@@ -73,10 +74,34 @@ enum LisaAPICompatibility {
 final class LisaClient {
     var config: ServerConfig
     private let session: URLSession
+    private let remote: RemoteMacTransport?
 
     init(config: ServerConfig, session: URLSession = .shared) {
         self.config = config
         self.session = session
+        self.remote = config.remoteMac.map { RemoteMacTransport(target: $0) }
+    }
+
+    func invalidate() { if let remote { Task { await remote.invalidate() } } }
+    func networkChanged() { if let remote { Task { await remote.networkChanged() } } }
+
+    struct RelayHost: Decodable, Identifiable {
+        let id: String
+        let name: String
+        let publicKey: String
+        let online: Bool
+    }
+    func remoteMacs() async throws -> [RelayHost] {
+        struct Reply: Decodable { let hosts: [RelayHost] }
+        return try await decode("/api/relay/macs", as: Reply.self).hosts
+    }
+
+    func data(for request: URLRequest, path: String) async throws -> (Data, URLResponse) {
+        if let remote {
+            let (data, response) = try await remote.data(path: path, method: request.httpMethod ?? "GET", body: request.httpBody)
+            return (data, response)
+        }
+        return try await session.data(for: request)
     }
 
     /// Exchange a Sign in with Apple identity token for the cloud instance's
@@ -343,7 +368,7 @@ final class LisaClient {
 
     private func decode<T: Decodable>(_ path: String, method: String = "GET", json: [String: Any]? = nil, as: T.Type) async throws -> T {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
-        let (data, resp) = try await session.data(for: req)
+        let (data, resp) = try await data(for: req, path: path)
         try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
@@ -357,7 +382,7 @@ final class LisaClient {
     @discardableResult
     private func fireCode(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> Int {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
-        let (_, resp) = try await session.data(for: req)
+        let (_, resp) = try await data(for: req, path: path)
         try LisaAPICompatibility.validate(resp)
         return (resp as? HTTPURLResponse)?.statusCode ?? -1
     }
@@ -501,6 +526,11 @@ final class LisaClient {
             let task = Task {
                 do {
                     let req = try makeRequest(path, method: method, json: json)
+                    if let remote {
+                        try await remote.stream(path: path, method: method, body: req.httpBody) { continuation.yield($0) }
+                        continuation.finish()
+                        return
+                    }
                     let (bytes, resp) = try await session.bytes(for: req)
                     try LisaAPICompatibility.validate(resp)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? -1

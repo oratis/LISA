@@ -79,6 +79,7 @@ addenv() { # addenv NAME VALUE
 }
 addenv LISA_WEB_TOKEN        "${LISA_WEB_TOKEN}"
 addenv LISA_PUBLIC_ORIGIN     "${LISA_PUBLIC_ORIGIN:-https://cloud.meetlisa.ai}"
+addenv LISA_RELAY_ENABLED     "${LISA_RELAY_ENABLED:-0}"
 # Cloud Run is the single trusted proxy in the default deployment. The resolver
 # walks X-Forwarded-For from the right, so a caller-prepended fake first hop is
 # never treated as the rate-limit identity.
@@ -183,6 +184,10 @@ trap cleanup EXIT
 # unless LISA_FIRESTORE=1 moved the shared state off local files (B9) — the
 # guard below refuses a footgun scale-out.
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
+if [ "${LISA_RELAY_ENABLED:-0}" = "1" ] && [ "$MAX_INSTANCES" != "1" ]; then
+  echo "✗ Mac relay currently requires MAX_INSTANCES=1 (in-memory socket routing)." >&2
+  exit 1
+fi
 if [ "$MAX_INSTANCES" != "1" ] && [ -z "${LISA_FIRESTORE:-}" ]; then
   echo "✗ MAX_INSTANCES=$MAX_INSTANCES requires LISA_FIRESTORE=1 (file-backed accounts/balances are single-writer)" >&2
   exit 1
@@ -194,7 +199,7 @@ gcloud run deploy "$SERVICE" \
   --execution-environment gen2 \
   --add-volume "name=soul,type=cloud-storage,bucket=$BUCKET" \
   --add-volume-mount "volume=soul,mount-path=/data" \
-  --memory 4Gi --cpu 2 --timeout 3600 \
+  --memory 4Gi --cpu 2 --timeout 3600 --concurrency 300 \
   --set-env-vars "$ENVS" \
   ${SET_SECRETS:+--set-secrets "$SET_SECRETS"}
 
