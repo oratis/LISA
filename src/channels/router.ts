@@ -75,6 +75,7 @@ export class ChannelRouter {
     let ctx = this.threads.get(key);
     if (ctx) return ctx;
     const session = await SessionStore.create({
+      origin: "channel",
       cwd: this.opts.cwd,
       model: this.opts.model,
     });

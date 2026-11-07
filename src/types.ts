@@ -87,6 +87,8 @@ export interface Skill {
 }
 
 export interface SessionHeader {
+  /** Remote channel threads can have different authors in the same Lisa home. */
+  origin?: "channel";
   type: "session";
   id: string;
   /**

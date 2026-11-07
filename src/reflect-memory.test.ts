@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { ReflectionInterruptedError, reflectOnSession, parseReflectionPayload } from "./reflect.js";
 import { readMemory, writeMemory, appendMemory } from "./memory/store.js";
-import { evidenceFromHistory } from "./memory/evidence.js";
+import { evidenceFromHistory, recentMemoryEvidence } from "./memory/evidence.js";
 import type { Provider, ProviderRunOpts } from "./providers/types.js";
 import type { StoredMessage } from "./types.js";
 
@@ -84,6 +84,62 @@ test("reflection sees current memory, corrects it from evidence and consumes ide
   assert.equal(second.usage, undefined);
   assert.equal(calls, 1);
 });
+
+for (const currentCitation of [true, false]) {
+  test(`a reference to an earlier conversation requires a current citation (${currentCitation})`, async () => {
+    const earlier = "In the pressroom swatch list, Twilight means violet ink.";
+    const decision = "Use Twilight as my regular pressroom ink.";
+    const history: StoredMessage[] = [
+      { role: "user", content: decision },
+      { role: "assistant", content: "Understood." },
+    ];
+    const logs = path.join(dir, "sessions");
+    await fs.mkdir(logs);
+    for (const [id, ts, message] of [
+      ["sample", "2025-07-01T12:00:00Z", earlier],
+      ["choice", "2025-07-02T12:00:00Z", decision],
+    ] as const) {
+      const header = { type: "session", version: 2, id, cwd: "/workspace", startedAt: ts };
+      const utterance = { type: "message", ts, message: { role: "user", content: message } };
+      await fs.writeFile(
+        path.join(logs, id + ".jsonl"),
+        [header, utterance].map((e) => JSON.stringify(e)).join("\n") + "\n",
+      );
+    }
+    const [mapping] = await recentMemoryEvidence(["sample"]);
+    const [choice] = evidenceFromHistory(history, "choice");
+    const provider = fakeProvider((opts) => {
+      assert.ok(JSON.stringify(opts.messages).includes(mapping!.id));
+      const quotes = [{ id: mapping!.id, quote: earlier }];
+      if (currentCitation) quotes.push({ id: choice!.id, quote: decision });
+      return {
+        summary: "Pressroom ink selection.",
+        operations: [
+          {
+            kind: "memory_append",
+            store: "user",
+            entry: "Regular pressroom ink: violet.",
+            reason: "Resolve the user's swatch selection.",
+            source_quotes: quotes,
+          },
+        ],
+      };
+    });
+    const result = await reflectOnSession({ sessionId: "choice", history, provider });
+    if (currentCitation) {
+      const { memoryRevisionHistory } = await import("./memory/review.js");
+      const [rev] = await memoryRevisionHistory("user");
+      assert.deepEqual(
+        new Set(rev!.sources.map((s) => s.sessionId)),
+        new Set(["sample", "choice"]),
+      );
+      assert.match(await readMemory("user"), /violet/);
+    } else {
+      assert.match(result.skipped.join(" "), /current session/);
+      assert.equal(await readMemory("user"), "");
+    }
+  });
+}
 
 test("new evidence in the same session can be reflected", async () => {
   let calls = 0;
