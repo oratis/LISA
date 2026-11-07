@@ -87,6 +87,8 @@ export interface Skill {
 }
 
 export interface SessionHeader {
+  /** Older logs have no author scope. Only explicit owner sessions share reflection evidence. */
+  origin?: "owner" | "channel";
   type: "session";
   id: string;
   /**

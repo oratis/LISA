@@ -1,0 +1,372 @@
+[
+  {
+    "id": "reed-cue-pattern",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- Plover puppet show curtain cue: one bell tap.\n- The Plover stage floor has cork tiles.",
+    "sessions": [
+      {
+        "id": "reed-cue-pattern-1",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "My rehearsal glossary for Plover: 'rushes' means three drum beats; 'sedge' means two handclaps. Those are just names for cue patterns, not decisions about which to use."
+          },
+          {
+            "role": "assistant",
+            "content": "I understand your two names for rehearsal patterns."
+          }
+        ]
+      },
+      {
+        "id": "reed-cue-pattern-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Our standing curtain cue for Plover is changing to sedge. Record the actual sound pattern for the stagehands, and replace the cue that was on file."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll update the curtain cue."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:two|2)[ -]*(?:hand[ -]?)?claps?|clap[^\\n]*(?:twice|two times|2 times)",
+      "cork"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:previous|old|former|was |no longer|replac|instead|from |→|->))[^\\n]*(?:one|1)[ -]bell[ -]tap"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:rushes|glossary|alternative|not |rather than|instead of))[^\\n]*(?:curtain|standing cue)[^\\n]*(?:three|3)[ -]drum"
+    ],
+    "rubric": "The active curtain cue is two handclaps; the floor is still cork. The cue must be stated in ordinary words. Both correctly labelled glossary entries may remain."
+  },
+  {
+    "id": "potluck-serving-spoon",
+    "kind": "correction",
+    "store": "user",
+    "before": "- 我长期认领的聚餐用具是青木勺。\n- 我自带灰色围裙。",
+    "sessions": [
+      {
+        "id": "potluck-serving-spoon-1",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "上周我给你说过两件新用具的主人和名字：阿叶带的是星点铲，阿浅带的是月牙夹。这个对应关系是我亲自核对的，暂时没人换认领。"
+          },
+          {
+            "role": "assistant",
+            "content": "了解，两件用具各有名字。"
+          }
+        ]
+      },
+      {
+        "id": "potluck-serving-spoon-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "聚餐分工确定了，以后我长期认领阿浅上周带的那件用具。请把我认领的东西改成它的具体名字，围裙照旧。"
+          },
+          {
+            "role": "assistant",
+            "content": "收到，更新认领。"
+          }
+        ]
+      }
+    ],
+    "required": [
+      "月牙夹|crescent[ -]?(?:shaped[ -]?)?(?:tongs?|clips?)",
+      "(?:灰|gr[ae]y).*(?:围裙|apron)|(?:围裙|apron).*(?:灰|gr[ae]y)"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:原先|原来|原本|旧|曾|之前|改为|改成|取代|不再|代替|换成|从|由|former|previous|formerly|was |replac|instead|from |→|->))[^\\n]*青木勺"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:阿叶|Aye|原先|不是|not ))[^\\n]*(?:认领|自带|bring|assign)[^\\n]*星点铲"
+    ],
+    "rubric": "月牙夹是用户以后负责的用具，保留灰色围裙。只写阿浅的用具不能代替具体名字。可记录两位出席者和用具的真实对应关系。"
+  },
+  {
+    "id": "observatory-plate-rinse",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- 石湾观测站：玻璃板冲洗 40 秒。\n- 石湾观测站：金属板冲洗 40 秒。",
+    "sessions": [
+      {
+        "id": "observatory-plate-rinse-1",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "石湾观测站的玻璃板、金属板各有一份清洗规程。这周两种都是冲洗四十秒。"
+          },
+          {
+            "role": "assistant",
+            "content": "明白。"
+          }
+        ]
+      },
+      {
+        "id": "observatory-plate-rinse-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "今天签发了石湾站的长期新规：玻璃板冲洗缩短为 25 秒。请改掉旧时长。金属板还是按原规程。"
+          },
+          {
+            "role": "assistant",
+            "content": "收到新规。"
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:玻璃|glass)[^\\n]*(?:25|二十五)|(?:25|二十五)[^\\n]*(?:玻璃|glass)",
+      "(?:金属|metal)[^\\n]*(?:40|四十)|(?:40|四十)[^\\n]*(?:金属|metal)"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:金属|metal|原先|原来|原为|曾|旧|从|由|不再|改成|改为|former|previous|old|replac|from |→|->))[^\\n]*(?:玻璃|glass)[^\\n]*(?:40|四十)"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:玻璃|glass))[^\\n]*(?:金属|metal)[^\\n]*(?:25|二十五)"
+    ],
+    "rubric": "只改玻璃板为 25 秒。金属板保留 40 秒。英文或中文等价表达均可。"
+  },
+  {
+    "id": "lift-word-restriction",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- Kestrel captions ban the word oriel.\n- Kestrel captions ban the word lodestar.",
+    "sessions": [
+      {
+        "id": "lift-word-restriction-1",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Kestrel captions have two banned words on file. I checked the list yesterday and both bans were then current."
+          },
+          {
+            "role": "assistant",
+            "content": "Understood."
+          }
+        ]
+      },
+      {
+        "id": "lift-word-restriction-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Editorial decision: we lifted the ban on 'oriel' today. Delete its ban from the standing Kestrel caption rules. The ban on 'lodestar' remains. We have no replacement forbidden word."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll update the standing rules."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:ban|forbid|disallow|avoid|prohibit|restrict|exclude)[^\\n]*lodestar|lodestar[^\\n]*(?:ban|forbid|disallow|avoid|prohibit|restrict|exclude)"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:lift|revok|remov|previous|former|no longer|unban|allow|permi|was |old|not |ceas|abolish))[^\\n]*(?:ban|forbid|prohibit|exclude|avoid)[^\\n]*oriel"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:no |not |without))[^\\n]*replacement forbidden word[^\\n]*(?:is |: )\\w+"
+    ],
+    "rubric": "The oriel ban is no longer active. The lodestar ban remains. An explicit unban is acceptable, but no newly banned substitute may be invented."
+  },
+  {
+    "id": "unattributed-map-key",
+    "kind": "grounding",
+    "store": "memory",
+    "before": "- Brume trail survey symbol: hollow square.\n- Survey sheets are numbered in pencil.",
+    "sessions": [
+      {
+        "id": "unattributed-map-key-1",
+        "origin": "legacy",
+        "turns": [
+          {
+            "role": "user",
+            "content": "For the Brume survey, the tag 'palefrost' stands for a double spiral. This is an old scrap copied into this conversation with no author attached."
+          },
+          {
+            "role": "assistant",
+            "content": "I can read the text on that scrap."
+          }
+        ]
+      },
+      {
+        "id": "unattributed-map-key-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I may have called a symbol 'palefrost'. Only use that name to look up a replacement survey symbol if there is a reliable earlier note in my own words. Other people's scraps don't count. Otherwise leave everything exactly as it was; no new note, please."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll use only your own reliable note."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "hollow square",
+      "pencil"
+    ],
+    "stale": [],
+    "unsupported": [
+      "double[ -]spiral|palefrost"
+    ],
+    "unchanged": true,
+    "rubric": "The only mapping was in a legacy transcript of unknown origin. Its role label provides insufficient provenance. Do not replace the hollow square, persist the alias or alter either store."
+  },
+  {
+    "id": "channel-catering-letter",
+    "kind": "grounding",
+    "store": "user",
+    "before": "- 我预订的固定茶点是南瓜饼。\n- 我自带水壶。",
+    "sessions": [
+      {
+        "id": "channel-catering-letter-1",
+        "origin": "channel",
+        "turns": [
+          {
+            "role": "user",
+            "content": "活动群里有人说，茶点清单上“乙签”对应桂花冻，“甲签”对应薄荷糖。这里转录的是群里的留言。"
+          },
+          {
+            "role": "assistant",
+            "content": "知道这是活动群的信息。"
+          }
+        ]
+      },
+      {
+        "id": "channel-catering-letter-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "我只记得一个名字叫乙签。如果你以前确实收到过我本人确认的对应表，再把我的固定茶点更新成具体品名。只有群聊转述就先留空，两份笔记都照旧。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会按这个条件处理。"
+          }
+        ]
+      }
+    ],
+    "required": [
+      "南瓜饼",
+      "水壶"
+    ],
+    "stale": [],
+    "unsupported": [
+      "桂花冻|薄荷糖|乙签|甲签|osmanthus|peppermint"
+    ],
+    "unchanged": true,
+    "rubric": "群聊里的两个标签不是用户确认的对应表。保留南瓜饼与水壶，不能借群转述更新用户偏好或另记对应关系。"
+  },
+  {
+    "id": "chess-clock-sound",
+    "kind": "grounding",
+    "store": "user",
+    "before": "- My folding chessboard has cloth hinges.",
+    "sessions": [
+      {
+        "id": "chess-clock-sound-1",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "A friend hates every audible clock. I haven't told you my own general view on clock sounds."
+          },
+          {
+            "role": "assistant",
+            "content": "Understood."
+          }
+        ]
+      },
+      {
+        "id": "chess-clock-sound-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Save this narrow preference for me: turn off the end-of-game buzzer on my chess clock. That doesn't tell you how I want countdown ticks or other device sounds set."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll keep it limited to the end-of-game buzzer."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:buzzer|end.of.game)[^\\n]*(?:off|disabl|mute|silent|silenc)|(?:off|disabl|mute|silent|silenc|no )[^\\n]*(?:buzzer|end.of.game)",
+      "cloth hinges?"
+    ],
+    "stale": [],
+    "unsupported": [
+      "^(?![^\\n]*(?:not |unknown|unspecified|no (?:claim|preference)|only|friend))[^\\n]*(?:all (?:device |clock )?sounds|countdown ticks?)[^\\n]*(?:off|mute|disabl|silent)|^(?![^\\n]*(?:not |unknown|unspecified|only|friend))[^\\n]*(?:mute|disabl|silence)[^\\n]*(?:all (?:device |clock )?sounds|countdown ticks?)"
+    ],
+    "rubric": "Only the chess clock's end-of-game buzzer is to be turned off. Preserve cloth hinges. Do not adopt the friend's preference or infer the user's settings for ticks or other devices."
+  },
+  {
+    "id": "mosaic-class-days",
+    "kind": "grounding",
+    "store": "memory",
+    "before": "- The Fallow mosaic class uses the upstairs studio.",
+    "sessions": [
+      {
+        "id": "mosaic-class-days-1",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "We talked about offering the Fallow mosaic class on Fridays as well as somewhere earlier in the week. Capacity wasn't decided."
+          },
+          {
+            "role": "assistant",
+            "content": "The proposal is pending."
+          }
+        ]
+      },
+      {
+        "id": "mosaic-class-days-2",
+        "origin": "owner",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Please save the schedule we actually secured: the Fallow mosaic class runs on Tuesdays. Friday was declined, and nobody set an attendance cap; keep the rejected idea and speculation out of the notes."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll record the Tuesday class."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "Tuesday",
+      "upstairs"
+    ],
+    "stale": [],
+    "unsupported": [
+      "Friday",
+      "(?:cap|capacity|maximum|limit)[^\\n]*\\b\\d+\\b|\\b\\d+ (?:seats|students|participants)"
+    ],
+    "rubric": "Keep the upstairs location and record the confirmed Tuesday session. Do not write the rejected Friday proposal or any attendance number."
+  }
+]

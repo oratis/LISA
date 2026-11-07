@@ -1,5 +1,7 @@
 # Rêve live model evaluation
 
+For the subsequent independent cross-session batches, see the [holdout results](../../docs/REVE_CROSS_SESSION_HOLDOUT_2026-11-08.md).
+
 See [the report](../../docs/REVE_LIVE_EVAL_2026-11-07.md) for methodology, limitations, fixes and UI verification.
 
 - `cases.ts`: 12 synthetic cases; examines persisted memory, not model claims.
