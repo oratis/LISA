@@ -482,15 +482,26 @@ export class ReadonlyConnector<A, R> {
     sessions.forEach(this.options.changed);
     // The local delete above is already durable; revocation is bounded and its failure ignored.
     if (revoke && tokens.length) {
-      const signal = AbortSignal.timeout(this.options.revokeTimeoutMs ?? 5_000);
-      // Bounded even when a driver ignores the signal.
-      const expired = new Promise<void>((resolve) =>
-        signal.addEventListener("abort", () => resolve(), { once: true }),
-      );
-      await Promise.race([
-        Promise.allSettled(tokens.map(async (token) => revoke(token, signal))),
-        expired,
-      ]);
+      // A referenced timer, not AbortSignal.timeout(): that one is unref'd, so
+      // in a short-lived process (CLI, test) the event loop could empty before
+      // the bound fires and the await would never settle. Bounded even when a
+      // driver ignores the signal.
+      const controller = new AbortController();
+      let timer: NodeJS.Timeout | undefined;
+      const expired = new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          controller.abort(new ConnectorError("revoke_timeout"));
+          resolve();
+        }, this.options.revokeTimeoutMs ?? 5_000);
+      });
+      try {
+        await Promise.race([
+          Promise.allSettled(tokens.map(async (token) => revoke(token, controller.signal))),
+          expired,
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
     }
   }
   async retry(id: string) {
