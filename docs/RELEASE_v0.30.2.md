@@ -1,4 +1,4 @@
-# Lisa 0.30.1 — A clearer account and Pocket experience
+# Lisa 0.30.2 — A clearer account and Pocket experience
 
 The Mac account window now guides you through email and verification-code sign-in,
 then switches to a dedicated account page with live connection status and a clear
