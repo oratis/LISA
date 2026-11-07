@@ -417,13 +417,35 @@ test("review 8: tool-wide grants do not survive taint for side effects", () => {
       `${label}: the approval of this exact payload still counts`,
     );
   }
-  // A task-scoped grant is bound to the task, and holds.
+  // A task-scoped grant does not survive taint for those side effects either:
+  // "for this task" given to an earlier, harmless call is not an approval of
+  // what a page asked for since (#422 review P2-a)…
   const inTask = built(
     "bash",
     { command: "ls" },
     { origin: { kind: "task" }, taskId: "t1", tainted: true },
   );
-  assert.equal(evaluate(inTask, ctx({ grants: grantsFor(inTask, "task", NOW) })).verdict, "allow");
+  const taskGrant = grantsFor({ ...inTask, tainted: false }, "task", NOW);
+  assert.equal(evaluate(inTask, ctx({ grants: taskGrant })).verdict, "ask");
+  assert.equal(
+    evaluate({ ...inTask, tainted: false }, ctx({ grants: taskGrant })).verdict,
+    "allow",
+    "untainted, it holds",
+  );
+  // …and it still covers what taint does not override: a write inside the workspace.
+  const inside = built(
+    "write",
+    { path: "/ws/notes.md", content: "x" },
+    {
+      origin: { kind: "task" },
+      taskId: "t1",
+      tainted: true,
+      workspaceRoot: "/ws",
+      sandboxMode: "workspace-write",
+    },
+  );
+  assert.equal(inside.withinWorkspace, true);
+  assert.equal(evaluate(inside, ctx({ grants: grantsFor(inside, "task", NOW) })).verdict, "allow");
 });
 
 test("review 8: nothing asked in a tainted run offers always or 24h", () => {
@@ -442,6 +464,33 @@ test("review 8: nothing asked in a tainted run offers always or 24h", () => {
   // Untainted and not a shell: the full set, as far as the request's shape allows.
   const publish = evaluate(built("github", { action: "pr_merge", number: 1, repo: "o/r" }), ctx());
   assert.deepEqual(publish.scopes, ["once", "target", "24h", "always"]);
+});
+
+test('#422 P2-a: a tainted task run is not offered "for this task" on a side effect it would not cover', () => {
+  const task = { origin: { kind: "task" }, taskId: "t1", tainted: true };
+  for (const r of [
+    built("bash", { command: "ls" }, { ...task, sandboxMode: "workspace-write" }),
+    built("github", { action: "pr_comment", number: 1, repo: "o/r" }, task),
+    built("takoapi", { action: "call", agent: "x" }, task),
+    built("mcp__fs__delete_file", { path: "/tmp/x" }, task),
+    built("write", { path: "/tmp/outside.txt", content: "x" }, task),
+  ]) {
+    const result = evaluate(r, ctx());
+    assert.equal(result.verdict, "ask", r.tool);
+    assert.equal(result.scopes?.includes("task"), false, `${r.tool}: no task scope when tainted`);
+    assert.ok(result.scopes?.includes("once"), r.tool);
+    const clean = evaluate({ ...r, tainted: false }, ctx());
+    if (clean.verdict === "ask" && r.category !== "exec") {
+      assert.ok(clean.scopes?.includes("task"), `${r.tool}: offered while untainted`);
+    }
+  }
+  // Untainted, a shell ask in a task still offers it.
+  const bash = built(
+    "bash",
+    { command: "ls" },
+    { ...task, tainted: false, sandboxMode: "danger-full-access" },
+  );
+  assert.ok(evaluate(bash, ctx()).scopes?.includes("task"));
 });
 
 test("review 8: a user rule stricter than a grant wins, whichever is newer", () => {

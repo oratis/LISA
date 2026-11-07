@@ -321,7 +321,12 @@ export interface MatchOptions {
    *  - "once"  — only the grant for this exact payload digest.
    */
   mode?: "any" | "bound" | "once";
-  /** Exclude tool-wide "24h" / "always" grants (a tainted run), keeping task-scoped ones. */
+  /**
+   * Exclude standing grants — tool-wide "24h" / "always" and task-scoped ones
+   * alike — for a side effect in a tainted run: one click on an earlier, harmless
+   * call is not an approval of what a page asked for since (#422 review P2-a).
+   * Only the approval of the exact payload, or a target-bound grant, still counts.
+   */
   noBlanket?: boolean;
   /** @deprecated use `mode: "bound"`. */
   boundOnly?: boolean;
@@ -358,11 +363,11 @@ export function matchGrants(
     if (covered) return used;
   }
   if (mode === "bound") return null;
+  if (opts.noBlanket) return null;
   if (req.taskId) {
     const task = live.find((g) => g.scope === "task" && g.taskId === req.taskId);
     if (task) return [task];
   }
-  if (opts.noBlanket) return null;
   const blanket = live.find(
     (g) => (g.scope === "24h" && g.target === undefined) || g.scope === "always",
   );

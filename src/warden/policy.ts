@@ -73,7 +73,7 @@ export interface PolicyResult extends Decision {
 /** Categories with no effect outside Lisa's own home. "auto" by default. */
 const BENIGN: ReadonlySet<ActionCategory> = new Set(["read", "self", "draft"]);
 const SENSITIVE: ReadonlySet<DataClass> = new Set(["pii", "secret", "private-message"]);
-/** Side effects a tool-wide grant must not cover once the run is tainted. */
+/** Side effects a standing grant (tool-wide or task-scoped) must not cover once the run is tainted. */
 const NO_BLANKET_WHEN_TAINTED: ReadonlySet<ActionCategory> = new Set([
   "exec",
   "network",
@@ -84,6 +84,21 @@ const NO_BLANKET_WHEN_TAINTED: ReadonlySet<ActionCategory> = new Set([
 
 function isBenign(category: ActionCategory): boolean {
   return BENIGN.has(category);
+}
+
+/**
+ * A side effect a standing grant must not cover once the run is tainted: exec,
+ * network, send, publish, delete, and a write outside the workspace. Neither a
+ * tool-wide "always" / "24h" grant nor a task-scoped one covers it, and none is
+ * offered for it — the same set a confirmed envelope stops covering
+ * (`taintOverridesEnvelope`).
+ */
+function standingGrantsStopAtTaint(req: ActionRequest): boolean {
+  return (
+    req.tainted &&
+    (NO_BLANKET_WHEN_TAINTED.has(req.category) ||
+      (req.category === "write" && req.withinWorkspace !== true))
+  );
 }
 
 /** Which column of the default matrix this request falls in. */
@@ -430,6 +445,9 @@ function offeredScopes(req: ActionRequest, explicitAsk: boolean): GrantScope[] {
     if ((scope === "always" || scope === "24h") && (req.category === "exec" || req.tainted)) {
       return false;
     }
+    // …and "for this task" in a tainted run is the same click for the rest of
+    // the run: not offered where it would not count (standingGrantsStopAtTaint).
+    if (scope === "task" && standingGrantsStopAtTaint(req)) return false;
     // What a command touches cannot be enumerated, so it has no target to bind.
     if (scope === "target" && req.category === "exec") return false;
     return true;
@@ -473,11 +491,9 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
     forced?.grants === "once" || explicitAsk ? "once" : (forced?.grants ?? "any");
   const granted = matchGrants(req, ctx.grants, now, {
     mode,
-    // Tool-wide "always" / "24h" grants do not survive taint for side effects.
-    noBlanket:
-      req.tainted &&
-      (NO_BLANKET_WHEN_TAINTED.has(req.category) ||
-        (req.category === "write" && req.withinWorkspace !== true)),
+    // Standing grants — tool-wide or for this task — do not survive taint for
+    // side effects (#422 review P2-a).
+    noBlanket: standingGrantsStopAtTaint(req),
   });
   if (granted) {
     return finalize(req, {

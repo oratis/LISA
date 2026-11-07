@@ -93,8 +93,8 @@ The task runner records a run's taint itself as well (a call to a builtin taint 
 - A `task` grant lasts for one run of the task. It is revoked when the run ends, whatever the outcome (succeeded, failed, cancelled — also when that ending is completed by a later process after a crash), and every revocation is audited (`grant_revoked`). Deleting the task revokes them too — also mid-run, when the run never gets to end, and from `lisa tasks rm`. A task grant older than a run's start that is still there when the run starts (an ending recorded while Warden was off) is revoked before the run's first decision. A later run of the same task asks again.
 
 - A `target` grant matches only when every target of the request is covered. If the targets could not be enumerated completely — too many recipients, a nested value, a key the classifier does not know — no `target` scope is offered and no target grant or target rule applies.
-- Tool-wide `always` and `24h` grants do not apply in a tainted run to exec, a write outside the workspace, network, send, publish or delete.
-- The card never offers `always` or `24h` for exec, or for anything asked in a tainted run. The one exception is tainted egress, where `24h` is offered and is bound to the host.
+- Standing grants — tool-wide `always` and `24h`, and `task` — do not apply in a tainted run to exec, a write outside the workspace, network, send, publish or delete: the same side effects a confirmed envelope stops covering. "For this task" given to an earlier, harmless command is not an approval of what a page asked for since (#422 review P2-a). The approval of the exact payload, and a grant bound to every target, still count.
+- The card never offers `always` or `24h` for exec, or for anything asked in a tainted run. The one exception is tainted egress, where `24h` is offered and is bound to the host. In a tainted task run it does not offer `task` for those side effects either.
 - A user rule stricter than a grant wins, whichever is newer. Under an explicit `ask` rule only the approval of that exact payload counts.
 - A command that names Warden's state gets no scope wider than `once`.
 
