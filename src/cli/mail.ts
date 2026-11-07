@@ -39,20 +39,31 @@ function parseFlags(args: string[]): Record<string, string> {
 
 function ask(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(a); }));
+  return new Promise((resolve) =>
+    rl.question(question, (a) => {
+      rl.close();
+      resolve(a);
+    }),
+  );
 }
 
 function printAccounts(): void {
   const accounts = loadAccounts();
-  const gated = isGranted("mail") ? "● granted" : "○ NOT granted (sweeps are blocked — `lisa consent grant mail`)";
+  const gated = isGranted("mail")
+    ? "● granted"
+    : "○ NOT granted (sweeps are blocked — `lisa consent grant mail`)";
   console.log(`Mail — consent: ${gated}\n`);
   if (accounts.length === 0) {
     console.log("  (no accounts) — add one with `lisa mail connect --email you@host`");
     return;
   }
   for (const a of accounts) {
-    const when = a.lastSweepAt ? new Date(a.lastSweepAt).toISOString().slice(0, 16).replace("T", " ") : "never";
-    console.log(`  ${a.enabled ? "●" : "○"} ${a.id.padEnd(16)} ${a.email}  [${a.provider}${a.host ? " " + a.host : ""}]  swept: ${when}`);
+    const when = a.lastSweepAt
+      ? new Date(a.lastSweepAt).toISOString().slice(0, 16).replace("T", " ")
+      : "never";
+    console.log(
+      `  ${a.enabled ? "●" : "○"} ${a.id.padEnd(16)} ${a.email}  [${a.provider}${a.host ? " " + a.host : ""}]  swept: ${when}`,
+    );
   }
 }
 
@@ -63,7 +74,7 @@ async function connectGmail(flags: Record<string, string>): Promise<number> {
   if (!clientId || !clientSecret) {
     console.error("Gmail OAuth needs a Google OAuth client id + secret.");
     console.error("One-time setup: in a Google Cloud project, enable the Gmail API and create an");
-    console.error("OAuth client of type \"Desktop app\", then:");
+    console.error('OAuth client of type "Desktop app", then:');
     console.error("  lisa mail connect --provider gmail --client-id <id> --client-secret <secret>");
     console.error("  (or set LISA_GOOGLE_CLIENT_ID / LISA_GOOGLE_CLIENT_SECRET)");
     return 1;
@@ -76,11 +87,17 @@ async function connectGmail(flags: Record<string, string>): Promise<number> {
     code = await new Promise<string>((resolve, reject) => {
       const server = createServer((req, res) => {
         const u = new URL(req.url ?? "/", "http://127.0.0.1");
-        if (u.pathname !== "/oauth2callback") { res.writeHead(404); res.end(); return; }
+        if (u.pathname !== "/oauth2callback") {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
         const c = u.searchParams.get("code");
         const s = u.searchParams.get("state");
         res.writeHead(200, { "content-type": "text/html" });
-        res.end("<html><body style='font-family:sans-serif;padding:2rem'>Lisa: Gmail connected. You can close this tab.</body></html>");
+        res.end(
+          "<html><body style='font-family:sans-serif;padding:2rem'>Lisa: Gmail connected. You can close this tab.</body></html>",
+        );
         server.close();
         if (s !== state) reject(new Error("OAuth state mismatch"));
         else if (!c) reject(new Error("no authorization code"));
@@ -94,9 +111,20 @@ async function connectGmail(flags: Record<string, string>): Promise<number> {
         const url = buildAuthUrl({ clientId, redirectUri, state });
         console.log("Opening your browser to approve read-only Gmail access.");
         console.log("If it doesn't open, paste this URL:\n  " + url + "\n");
-        try { spawn("open", [url], { stdio: "ignore", detached: true }).unref(); } catch { /* print-only */ }
+        try {
+          spawn("open", [url], { stdio: "ignore", detached: true }).unref();
+        } catch {
+          /* print-only */
+        }
       });
-      setTimeout(() => { try { server.close(); } catch { /* noop */ } reject(new Error("timed out waiting for authorization")); }, 300_000);
+      setTimeout(() => {
+        try {
+          server.close();
+        } catch {
+          /* noop */
+        }
+        reject(new Error("timed out waiting for authorization"));
+      }, 300_000);
     });
   } catch (err) {
     console.error("✗ " + (err as Error).message);
@@ -105,9 +133,15 @@ async function connectGmail(flags: Record<string, string>): Promise<number> {
   try {
     const tokens = await exchangeCode({ code, clientId, clientSecret, redirectUri });
     const email = await gmailProfileEmail(tokens.accessToken);
-    const account = addAccount(
+    const account = await addAccount(
       { provider: "gmail", email: email || "gmail", label: flags.label },
-      { refreshToken: tokens.refreshToken, accessToken: tokens.accessToken, expiry: tokens.expiry, clientId, clientSecret },
+      {
+        refreshToken: tokens.refreshToken,
+        accessToken: tokens.accessToken,
+        expiry: tokens.expiry,
+        clientId,
+        clientSecret,
+      },
     );
     grant("mail");
     console.log(`\n✓ connected ${email} (${account.id}, gmail). Mail consent granted.`);
@@ -145,15 +179,23 @@ export async function runMailCommand(subargs: string[]): Promise<number> {
     }
     let pass = flags.pass ?? process.env.LISA_MAIL_PASS ?? "";
     if (!pass) {
-      console.log(`Connecting ${email} via IMAP ${host}. Use an app-password / authorization code (not your login password).`);
+      console.log(
+        `Connecting ${email} via IMAP ${host}. Use an app-password / authorization code (not your login password).`,
+      );
       pass = (await ask("App-password: ")).trim();
     }
     if (!pass) {
       console.error("no password provided.");
       return 1;
     }
-    const account = addAccount(
-      { provider: "imap", email, host, port: flags.port ? Number(flags.port) : 993, label: flags.label },
+    const account = await addAccount(
+      {
+        provider: "imap",
+        email,
+        host,
+        port: flags.port ? Number(flags.port) : 993,
+        label: flags.label,
+      },
       { password: pass },
     );
     grant("mail"); // connecting a mailbox is the consent act; revoke any time
@@ -164,20 +206,31 @@ export async function runMailCommand(subargs: string[]): Promise<number> {
 
   if (sub === "remove") {
     const id = subargs[1];
-    if (!id) { console.error("remove needs an account id (see `lisa mail list`)."); return 1; }
-    console.log(removeAccount(id) ? `✓ removed ${id}.` : `no such account: ${id}`);
+    if (!id) {
+      console.error("remove needs an account id (see `lisa mail list`).");
+      return 1;
+    }
+    console.log((await removeAccount(id)) ? `✓ removed ${id}.` : `no such account: ${id}`);
     return 0;
   }
 
   if (sub === "enable" || sub === "disable") {
     const id = subargs[1];
-    if (!id) { console.error(`${sub} needs an account id.`); return 1; }
-    console.log(setAccountEnabled(id, sub === "enable") ? `✓ ${id} ${sub}d.` : `no such account: ${id}`);
+    if (!id) {
+      console.error(`${sub} needs an account id.`);
+      return 1;
+    }
+    console.log(
+      setAccountEnabled(id, sub === "enable") ? `✓ ${id} ${sub}d.` : `no such account: ${id}`,
+    );
     return 0;
   }
 
   if (sub === "sweep") {
-    if (!isGranted("mail")) { console.error("mail consent not granted — `lisa consent grant mail`."); return 1; }
+    if (!isGranted("mail")) {
+      console.error("mail consent not granted — `lisa consent grant mail`.");
+      return 1;
+    }
     console.log("Reading + classifying mail…");
     const res = await sweepAll();
     console.log("\n" + formatDigestText(res.digest));
@@ -187,11 +240,16 @@ export async function runMailCommand(subargs: string[]): Promise<number> {
 
   if (sub === "digest") {
     const d = latestDigest();
-    if (!d) { console.log("No digest yet — run `lisa mail sweep`."); return 0; }
+    if (!d) {
+      console.log("No digest yet — run `lisa mail sweep`.");
+      return 0;
+    }
     console.log(formatDigestText(d));
     return 0;
   }
 
-  console.error(`unknown mail subcommand "${sub}" — use list | connect | sweep | digest | remove | enable | disable.`);
+  console.error(
+    `unknown mail subcommand "${sub}" — use list | connect | sweep | digest | remove | enable | disable.`,
+  );
   return 1;
 }

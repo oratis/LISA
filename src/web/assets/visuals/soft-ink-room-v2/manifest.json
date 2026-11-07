@@ -1,0 +1,41 @@
+{
+  "version": "soft-ink-room-v2",
+  "poses": {
+    "sleep": {
+      "src": "/assets/visuals/soft-ink-room-v2/sleep.webp",
+      "aspect": 0.8996960486322189,
+      "width": 24,
+      "contact": [
+        79,
+        82
+      ]
+    },
+    "read": {
+      "src": "/assets/visuals/soft-ink-room-v2/read.webp",
+      "aspect": 0.5704989154013015,
+      "width": 19.5,
+      "contact": [
+        69,
+        68
+      ]
+    },
+    "work": {
+      "src": "/assets/visuals/soft-ink-room-v2/work.webp",
+      "aspect": 0.6119402985074627,
+      "width": 21.5,
+      "contact": [
+        78,
+        67
+      ]
+    },
+    "tea": {
+      "src": "/assets/visuals/soft-ink-room-v2/tea.webp",
+      "aspect": 0.5388127853881278,
+      "width": 18.5,
+      "contact": [
+        68,
+        69
+      ]
+    }
+  }
+}

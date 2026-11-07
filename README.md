@@ -79,7 +79,7 @@ The merged **reach-out gate** applies source controls, quiet hours, deduplicatio
 
 ## Development status
 
-The latest tagged package is **v0.28.1** ([release notes](docs/RELEASE_v0.28.1.md)). Current `main` may include later work; a merged feature is not proof that it has been deployed to Cloud or released in a native binary.
+The latest tagged package is **v0.28.2** ([release notes](docs/RELEASE_v0.28.2.md)). Current `main` may include later work; a merged feature is not proof that it has been deployed to Cloud or released in a native binary.
 
 | Workstream | Status (iOS availability rechecked 2026-10-24) |
 | --- | --- |

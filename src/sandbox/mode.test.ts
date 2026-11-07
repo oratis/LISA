@@ -106,17 +106,13 @@ describe("wrapForSandbox — fail closed, never silently unconfined", () => {
   });
 
   test("a bounded mode on an unsupported platform refuses instead of degrading", async (t) => {
-    if (process.platform === "darwin") {
-      // The real macOS path is exercised below; simulate the other branch.
-      const original = Object.getOwnPropertyDescriptor(process, "platform")!;
-      t.after(() => Object.defineProperty(process, "platform", original));
-      Object.defineProperty(process, "platform", { value: "sunos" });
-    }
+    // Linux runners may have bubblewrap installed. Always simulate a genuinely
+    // unsupported platform so this tests refusal, not the runner's packages.
+    const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+    t.after(() => Object.defineProperty(process, "platform", original));
+    Object.defineProperty(process, "platform", { value: "sunos" });
     await assert.rejects(
-      wrapForSandbox(
-        { mode: "workspace-write", allowNetwork: true, cwd: "/w" },
-        "echo hi",
-      ),
+      wrapForSandbox({ mode: "workspace-write", allowNetwork: true, cwd: "/w" }, "echo hi"),
       (err: unknown) => {
         assert.ok(err instanceof SandboxUnavailableError);
         assert.equal(err.code, "SANDBOX_UNAVAILABLE");
@@ -175,10 +171,7 @@ describe("untrusted surfaces + argv confinement (H2 follow-up)", () => {
       assert.ok(w.args.includes("rm"), "the argv is wrapped, not dropped");
       await w.cleanup?.();
     } else {
-      await assert.rejects(
-        wrapArgvForSandbox(spec, "rm", ["-rf", "x"]),
-        SandboxUnavailableError,
-      );
+      await assert.rejects(wrapArgvForSandbox(spec, "rm", ["-rf", "x"]), SandboxUnavailableError);
     }
   });
 });

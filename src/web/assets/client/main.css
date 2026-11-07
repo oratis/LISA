@@ -266,13 +266,18 @@
   /* Identity card */
   .identity {
     display: grid;
-    grid-template-columns: 56px 1fr;
+    grid-template-columns: 56px minmax(0, 1fr);
+    min-width: 0;
     gap: 12px;
     align-items: center;
     padding: 12px;
     background: var(--bg-card);
     border: 1px solid var(--border-new);
     border-radius: 14px;
+  }
+  .identity > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .identity .avatar-wrap {
     width: 56px;
@@ -321,6 +326,7 @@
   }
   .identity .mood {
     display: inline-flex;
+    max-width: 100%;
     align-items: center;
     gap: 5px;
     margin-top: 4px;
@@ -332,6 +338,7 @@
   }
   .identity .mood::before {
     content: "";
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
     border-radius: 50%;
@@ -2129,9 +2136,9 @@
     padding-bottom: 5px;
     border-bottom: 1px solid var(--border-new);
   }
-  :is(.msg, .idle-block, .as-text) h3 { font-size: 13.5px; color: #cfe9ff; }
+  :is(.msg, .idle-block, .as-text) h3 { font-size: 13.5px; color: var(--fg); }
   :is(.msg, .idle-block, .as-text) :is(h4, h5, h6) { font-size: 13px; color: var(--fg-2); }
-  :is(.msg, .idle-block, .as-text) strong { font-weight: 680; color: #fff; }
+  :is(.msg, .idle-block, .as-text) strong { font-weight: 680; color: var(--fg); }
   :is(.msg, .idle-block, .as-text) em { font-style: italic; color: var(--fg-2); }
   :is(.msg, .idle-block, .as-text) a {
     color: var(--accent);
@@ -2618,77 +2625,168 @@
     .rightbar { display: none; }
   }
 
-  /* ── Mobile / narrow ───────────────────────────────────────── */
+  /* Phone chrome is hidden until the mobile breakpoint. */
+  .mobile-only { display: none; }
+  .titlebar-brand { display: inline-flex; align-items: center; gap: 9px; }
+  .mobile-icon {
+    width: 44px; height: 44px; flex: none; padding: 10px;
+    align-items: center; justify-content: center;
+    border: 0; border-radius: 14px; background: transparent; color: var(--fg-2);
+    font: inherit; font-size: 20px; cursor: pointer;
+  }
+  .mobile-icon svg { display: block; width: 22px; height: 22px; }
+  .mobile-icon:active { background: var(--accent-soft); }
+  .mobile-sheet {
+    color: var(--fg); background: var(--bg-deep);
+    border: 1px solid var(--border-strong); border-radius: 24px 24px 0 0;
+    padding: 0; width: 100%; max-width: 540px;
+    max-height: min(88dvh, calc(var(--mobile-height, 100dvh) - 16px));
+    margin: auto auto 0; overflow: auto; overscroll-behavior: contain;
+    box-shadow: 0 -12px 60px rgba(0,0,0,.25);
+  }
+  .mobile-sheet::backdrop { background: rgba(0,0,0,.48); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .mobile-sheet-head {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
+    justify-content: space-between; gap: 12px; padding: 12px 12px 4px 20px;
+    background: var(--bg-deep); border-radius: 24px 24px 0 0;
+  }
+  .mobile-sheet-head h2 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -.02em; }
+  .mobile-sheet-head .mobile-icon { display: flex; }
+  .mobile-actions { padding: 8px 12px max(16px, env(safe-area-inset-bottom)); }
+  .mobile-actions .fbtn {
+    width: 100%; height: auto; min-height: 52px; padding: 12px;
+    justify-content: flex-start; gap: 14px; border-radius: 12px;
+    font: inherit; font-size: 15px; text-align: left;
+  }
+  .mobile-actions .fbtn::after { content: attr(aria-label); }
+  .mobile-actions .fbtn svg { flex: none; width: 22px; height: 22px; }
+
+  /* ── Mobile: full-height conversation, thumb navigation, native sheets ── */
   @media (max-width: 720px) {
-    body {
+    html, body { background: var(--bg-deep); overscroll-behavior: none; }
+    body { padding: 0; -webkit-text-size-adjust: 100%; }
+    .mobile-only { display: flex; }
+    body .frame {
+      position: fixed; top: var(--mobile-top, 0px); left: 0;
+      width: 100%; height: 100vh; height: var(--mobile-height, 100dvh);
       padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas: "titlebar" "main" "mobile-tabs";
+      background: var(--bg-deep);
     }
-    .frame {
+    .titlebar {
+      min-height: 58px; padding: 4px 10px; gap: 8px;
+      justify-content: space-between; position: relative;
+      pointer-events: auto; background: var(--bg-deep);
+      font-size: 17px; letter-spacing: -.02em; color: var(--fg);
+    }
+    .titlebar-brand { margin-right: auto; }
+    .titlebar-brand img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; object-position: 50% 22%; }
+    .titlebar .session-tag { display: none; }
+    .titlebar .conn-pill { margin-left: 0; max-width: 38%; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; padding: 4px 7px; }
+    .rightbar, .frame > .sidebar { display: none; }
+    .main { min-width: 0; min-height: 0; background: none; }
+    #viewChat.view.active { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+    .mobile-sheet .sidebar {
+      display: flex; max-height: none; margin: 0; padding: 12px 16px max(20px, env(safe-area-inset-bottom));
+      gap: 18px; border: 0; border-radius: 0; background: none; box-shadow: none;
+      overflow: visible; backdrop-filter: none; -webkit-backdrop-filter: none;
+    }
+    body[data-theme="calm"] .mobile-sheet .sidebar { background: none; box-shadow: none; }
+    .mobile-sheet .identity { grid-template-columns: 44px minmax(0, 1fr); padding: 12px; }
+    .mobile-sheet .identity .avatar-wrap { width: 44px; height: 44px; }
+    .mobile-sheet .identity-desire { display: none; }
+    .mobile-sheet .nav-item { min-height: 72px; font-size: 12px; }
+    .mobile-sheet .tnode, .mobile-sheet .tleaf { min-height: 44px; }
+    .mobile-sheet .tree-mode-btn, .mobile-sheet .new-btn { min-height: 44px; min-width: 44px; }
+    .mobile-sheet .sb-footer { display: none; }
+
+    .mobile-tabs {
+      grid-area: mobile-tabs; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px; padding: 6px 12px max(8px, env(safe-area-inset-bottom));
+      background: var(--bg-deep); border-top: 1px solid var(--border-new);
+    }
+    .mobile-tab {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; min-height: 48px; padding: 5px 4px; border: 0; border-radius: 14px;
+      background: transparent; color: var(--fg-3); font: inherit; font-size: 11.5px;
+      font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .mobile-tab svg { display: block; width: 22px; height: 22px; }
+    .mobile-tab.active { color: var(--accent); background: var(--accent-soft); }
+    .mobile-tab:active { background: var(--bg-card); }
+    body.mobile-keyboard .mobile-tabs { display: none; }
+
+    .fnbar { padding: 2px 10px 2px 16px; gap: 2px; min-height: 48px; background: transparent; overflow: hidden; }
+    body[data-theme="calm"] .fnbar { background: transparent; }
+    .fnbar [data-panel], #fnPanel, .fnbar .fbar-spacer { display: none; }
+    .fnbar .fbtn { width: 44px; height: 44px; border-radius: 13px; }
+    .tabstrip { flex: 1; min-width: 0; }
+    .ctx-chip { width: 100%; max-width: none; padding: 6px 0; border: 0; background: none; font-size: 13px; gap: 7px; }
+    .ctx-chip .ctx-meta { display: none; }
+    .ctx-chip .ctx-x { min-width: 44px; min-height: 36px; margin: -6px 0; }
+    .fn-find { flex: 1; min-width: 0; width: 100%; height: 40px; font-size: 16px; }
+    .fnbar.searching .tabstrip { display: none; }
+    #log { padding: 20px 16px 16px; gap: 7px; overscroll-behavior-y: contain; scroll-padding-bottom: 16px; }
+    .role { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; margin-top: 12px; padding-top: 0; }
+    .role.lisa { color: var(--fg-3); }
+    .msg { max-width: 94%; font-size: 15px; line-height: 1.65; padding: 11px 14px; border-radius: 18px; flex-shrink: 0; }
+    .role.lisa + .msg { border-top-left-radius: 5px; }
+    .role.you + .msg { border-bottom-right-radius: 5px; }
+    .msg.attach-label { font-size: 11.5px; }
+    .chat-empty { padding: 20px 16px; background: transparent; border: 0; }
+    .chat-empty .ce-lead { font-size: 15px; line-height: 1.6; }
+    .chat-empty .ce-starter { min-height: 48px; font-size: 14px; padding: 12px; border-radius: 14px; }
+    #attachPreview { padding: 8px 12px 4px; max-height: 145px; }
+    #attachPreview:empty { padding: 0; }
+    #form {
+      grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
+      gap: 4px; padding: 10px 10px 12px; align-items: end;
+      background: var(--bg-deep); border-top-color: transparent;
+    }
+    body[data-theme="calm"] #form { background: var(--bg-deep); }
+    #form .plus-wrap { grid-column: 1; grid-row: 1; align-self: end; }
+    #input { grid-column: 2; grid-row: 1; min-width: 0; font-size: 16px; line-height: 22px; padding: 10px 12px; border-radius: 22px; max-height: min(144px, 28dvh); }
+    #recordBtn { grid-column: 3; grid-row: 1; align-self: end; height: 44px; }
+    #plusBtn { height: 44px; }
+    #plusBtn svg, #recordBtn svg { width: 22px; height: 22px; }
+    #sendBtn { grid-column: 4; grid-row: 1; width: 44px; height: 44px; border-radius: 50%; padding: 0; box-shadow: none; }
+    #sendBtn span { display: none; }
+    #sendBtn svg { width: 21px; height: 21px; }
+    #sendBtn:hover:not(:disabled) { transform: none; box-shadow: none; }
+    .plus-menu { min-width: 220px; border-radius: 18px; padding: 8px; }
+    .plus-menu button { min-height: 48px; font: inherit; font-size: 15px; }
+    .view-head { padding: 16px; }
+    .view-scroll { padding: 16px; overscroll-behavior-y: contain; }
+    .view-act { min-height: 44px; }
+    body .modal-bg { align-items: flex-end; }
+    body .modal { width: 100%; max-height: 88dvh; border-radius: 24px 24px 0 0; }
+    body .modal-close { min-width: 44px; min-height: 44px; }
+    body .modal-body { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+    .session-rename-form input { font-size: 16px; }
+  }
+
+  /* ── Forced compact / "sidebar mode" ─────────────────────────────
+     Preserve the desktop stacked option; phones always use the app shell. */
+  @media (min-width: 721px) {
+    body.force-compact .frame {
       grid-template-columns: 1fr;
-      /* titlebar · sidebar (capped, scrolls) · main view-stack (fills rest) */
       grid-template-rows: auto auto 1fr;
       grid-template-areas:
         "titlebar"
         "sidebar"
         "main";
-      /* Mobile browsers shrink the viewport as their toolbars come and go;
-         dvh tracks that so the composer never hides behind the toolbar.
-         Older engines ignore the unknown unit and keep the 100vh above. */
-      height: 100dvh;
     }
-    /* No traffic lights to clear on a phone. */
-    .titlebar { padding: 0 14px; }
-    .rightbar { display: none; }
-    .sidebar {
+    body.force-compact .rightbar { display: none; }
+    body.force-compact .sidebar {
       max-height: 38vh;
       padding: 14px 14px 12px;
       gap: 14px;
     }
-    /* Function bar: fewer buttons, tighter spacing. The five quick-panel
-       buttons (soul/skills/tools/plans/pair) are all reachable from the
-       Memory view, and pairing is a Mac-side (loopback-only) action anyway;
-       the right-panel toggle has nothing to toggle here (the rail is hidden
-       at this width). What remains — session chip · KB · mail · find ·
-       theme — fits a 375px row without scrolling. */
-    .fnbar { padding: 6px 10px; gap: 4px; }
-    .fnbar [data-panel], #fnPanel { display: none; }
-    /* 44px touch targets without growing the visible controls: an invisible
-       pseudo-element pads each small button's hit area (WCAG 2.5.8). The
-       buttons are position:relative above; ::after is otherwise unused. */
-    .fbtn::after, .tree-mode-btn::after, .new-btn::after, .session-ctrl .mc::after, .ctx-chip .ctx-x::after {
-      content: ""; position: absolute; inset: -4px;
-    }
-    .tree-mode-btn::after, .new-btn::after, .session-ctrl .mc::after, .ctx-chip .ctx-x::after { inset: -8px -4px; }
-    .fn-find { width: 120px; }
-    #log { padding: 14px 12px 16px; }
-    .msg { max-width: 94%; }
-    #attachPreview { padding: 4px 12px 0; }
-    #form {
-      grid-template-columns: 36px 36px 1fr 84px;
-      padding: 10px 14px 14px;
-    }
-    #input { font-size: 16px; /* prevents iOS Safari auto-zoom */ }
+    body.force-compact #form { grid-template-columns: 36px 36px 1fr 84px; }
   }
-
-  /* ── Forced compact / "sidebar mode" ─────────────────────────────
-     Same stacked layout as the narrow breakpoint, but toggled on at ANY
-     width (persisted client-side) so Lisa can be docked as a skinny panel. */
-  body.force-compact .frame {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr;
-    grid-template-areas:
-      "titlebar"
-      "sidebar"
-      "main";
-  }
-  body.force-compact .rightbar { display: none; }
-  body.force-compact .sidebar {
-    max-height: 38vh;
-    padding: 14px 14px 12px;
-    gap: 14px;
-  }
-  body.force-compact #form { grid-template-columns: 36px 36px 1fr 84px; }
 
   /* ===================================================================
      Modal panel (skills / memory / tools / soul) — unchanged from the

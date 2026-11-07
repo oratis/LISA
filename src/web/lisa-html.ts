@@ -122,10 +122,12 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
   <!-- ╔════════════════ Title bar (drag zone) ════════════════╗ -->
   <div class="titlebar">
-    <span>Lisa</span><span class="session-tag" id="titlebarSession"></span>
+    <button class="mobile-only mobile-icon" id="mobileMenuBtn" type="button" aria-label="Open navigation and sessions" aria-haspopup="dialog" aria-controls="mobileMenu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h12M4 18h16"/></svg></button>
+    <span class="titlebar-brand"><img class="mobile-only" id="mobileAvatar" src="/assets/icon-192.png" alt=""><span id="mobileName">Lisa</span></span><span class="session-tag" id="titlebarSession"></span>
     <!-- Backend liveness (UX-10). Hidden until the /events stream is down or
          has gone silent past the heartbeat window. -->
     <span class="conn-pill" id="connPill" role="status" aria-live="polite" hidden></span>
+    <button class="mobile-only mobile-icon" id="mobileNewChat" type="button" aria-label="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 3l5 5M10 14l1-5 7-7 5 5-7 7-6 1Z"/></svg></button>
   </div>
 
   <!-- ╔════════════════ Sidebar ════════════════╗ -->
@@ -206,6 +208,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
       <button class="fbtn" type="button" id="fnPanel" title="Collapse / expand the right panel" aria-label="Toggle right panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg></button>
       <button class="fbtn" type="button" id="fnTheme" title="Theme: Nebula ↔ Calm" aria-label="Toggle theme"><svg id="fnThemeMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="fnThemeSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+      <button class="fbtn mobile-only" type="button" id="mobileToolsBtn" aria-label="Conversation actions" aria-haspopup="dialog" aria-controls="mobileTools" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
     </div>
 
     <!-- Agent read-only stream (F1) — swaps in for the chat surface while
@@ -241,7 +244,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
         </div>
       </div>
       <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
-      <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
+      <textarea id="input" rows="1" aria-label="Message Lisa" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)"></textarea>
       <button type="submit" id="sendBtn" aria-label="Send message" title="Send message">
         <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Send</span>
@@ -262,6 +265,10 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
     <section class="view" id="viewMail"></section>
     <section class="view" id="viewSettings"></section>
   </div>
+
+  <nav class="mobile-only mobile-tabs" id="mobileTabs" aria-label="Main navigation">
+    <button class="mobile-tab" id="mobileMore" type="button" aria-label="More" aria-haspopup="dialog" aria-controls="mobileMenu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>More</span></button>
+  </nav>
 
   <!-- ╔════════════════ Right panel (status rail) ════════════════╗
        The relocated sidebar lower half as one structured panel:
@@ -339,6 +346,15 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 </div>
 
 <!-- ╔════════════════ Overlays ════════════════╗ -->
+
+<!-- The existing sidebar and action buttons move into these sheets on phones. -->
+<dialog class="mobile-sheet" id="mobileMenu" aria-labelledby="mobileMenuTitle">
+  <div class="mobile-sheet-head"><h2 id="mobileMenuTitle">Explore Lisa</h2><button class="mobile-icon" type="button" data-close-sheet aria-label="Close navigation">✕</button></div>
+</dialog>
+<dialog class="mobile-sheet" id="mobileTools" aria-labelledby="mobileToolsTitle">
+  <div class="mobile-sheet-head"><h2 id="mobileToolsTitle">Conversation</h2><button class="mobile-icon" type="button" data-close-sheet aria-label="Close actions">✕</button></div>
+  <div class="mobile-actions" id="mobileActions"></div>
+</dialog>
 
 <div class="modal-bg" id="modalBg">
   <div class="modal">

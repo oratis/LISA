@@ -1,0 +1,19 @@
+.github-connection-card { margin: 16px 0; padding: 20px; border: 1px solid var(--border, #d9d5ce); border-radius: 16px; background: var(--bg-2, #f6f4ef); max-width: 680px; color: var(--fg, #242424); }
+.github-card-header { display: flex; align-items: center; gap: 12px; font-size: 17px; }
+.github-readonly { font-size: 11.5px; border: 1px solid currentColor; padding: 2px 8px; border-radius: 10px; opacity: .7; }
+.github-status { font-weight: 600; margin: 12px 0 8px; }
+.github-account, .github-repositories { font-size: 13px; overflow-wrap: anywhere; }
+.github-detail { font-size: 12px; line-height: 1.65; opacity: .75; margin: 8px 0; }
+.github-button { font: inherit; font-size: 12px; padding: 9px 12px; margin: 6px 8px 0 0; border: 1px solid var(--border, #bcb8b0); border-radius: 8px; background: var(--bg, #fff); color: inherit; cursor: pointer; }
+.github-button:hover { border-color: currentColor; }
+.github-button:disabled { opacity: .45; cursor: default; }
+.github-button:focus-visible, .github-repo-input:focus-visible, .github-login-link:focus-visible { outline: 2px solid #45846a; outline-offset: 3px; }
+.github-secondary { background: transparent; opacity: .7; }
+.github-error { color: #b64438; font-size: 12px; line-height: 1.6; }
+.github-user-code { display: block; font-size: 24px; letter-spacing: .14em; margin: 14px 0; }
+.github-login-link { display: inline-block; color: inherit; font-size: 13px; }
+.github-repo-list { max-height: 220px; overflow-y: auto; margin-top: 12px; }
+.github-repo-option { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: 13px; overflow-wrap: anywhere; }
+.github-repo-option input { margin-top: 3px; flex-shrink: 0; }
+.github-repo-input { width: min(100%, 300px); box-sizing: border-box; padding: 8px; border: 1px solid var(--border, #bcb8b0); border-radius: 6px; background: var(--bg, #fff); color: inherit; margin-top: 12px; }
+@media (max-width: 540px) { .github-connection-card { padding: 16px; } .github-button { min-height: 40px; } }

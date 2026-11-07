@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import { appIcon } from "../data/brand.json";
 const { lang = "en" } = Astro.props;
 const zh = lang === "zh-CN";
 const prefix = zh ? "/zh-CN" : "";
@@ -64,7 +65,7 @@ const copy = zh ? {
       <p class="note">{copy.tags}</p>
     </div>
     <aside class="starter-panel" aria-label={copy.starters}>
-      <img src="/assets/lisa-app-icon.png" alt="Lisa" width="112" height="112" />
+      <img src={appIcon} alt="Lisa" width="112" height="112" />
       <h2>{copy.starters}</h2>
       <ul>{copy.prompts.map((prompt) => <li>{prompt}</li>)}</ul>
     </aside>

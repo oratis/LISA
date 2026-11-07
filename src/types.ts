@@ -113,7 +113,8 @@ export interface SessionHeader {
 }
 
 export type SessionEntry =
-  | { type: "message"; ts: string; message: StoredMessage }
+  | { type: "message"; ts: string; message: StoredMessage; connectorRequestId?: string }
+  | { type: "connector_trace"; ts: string; requestId: string; message: StoredMessage }
   | { type: "model_change"; ts: string; model: string }
   | { type: "reflection"; ts: string; summary: string }
   /**
