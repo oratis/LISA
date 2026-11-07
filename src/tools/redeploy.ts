@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "../types.js";
+import { childEnv } from "../child-env.js";
 
 interface RedeployInput {
   message?: string;
@@ -71,19 +72,15 @@ async function runBuild(
   return await new Promise((resolve) => {
     const child = spawn("npm", ["run", "build"], {
       cwd,
-      env: process.env,
+      env: childEnv(),
       signal,
     });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (b: Buffer) => (stdout += b.toString("utf8")));
     child.stderr.on("data", (b: Buffer) => (stderr += b.toString("utf8")));
-    child.on("close", (code) =>
-      resolve({ code: code ?? 1, stdout, stderr }),
-    );
-    child.on("error", (err) =>
-      resolve({ code: 1, stdout, stderr: stderr || String(err) }),
-    );
+    child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+    child.on("error", (err) => resolve({ code: 1, stdout, stderr: stderr || String(err) }));
   });
 }
 

@@ -20,6 +20,7 @@
  */
 import { EventEmitter } from "node:events";
 import { detectPlan } from "../model/plans.js";
+import { childEnv } from "../child-env.js";
 
 export type PtyState = "working" | "waiting" | "error" | "done";
 
@@ -270,7 +271,7 @@ export class PtyAgent {
       cols: opts.cols ?? 120,
       rows: opts.rows ?? 32,
       cwd: opts.cwd,
-      env: process.env,
+      env: childEnv(),
     });
     const id = "p" + (++counter).toString(36) + "-" + Date.now().toString(36).slice(-4);
     const agent = new PtyAgent(id, opts, cli, proc, now);

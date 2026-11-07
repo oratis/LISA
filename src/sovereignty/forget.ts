@@ -654,8 +654,12 @@ function redactSessionLine(
     const msg = e.message as Record<string, unknown>;
     const r = redactContent(msg.content, m);
     if (!r.changed) return none;
+    // A conversation expression renders from its catalog record, not from the
+    // readable fallback text. Keeping the record would show the forgotten
+    // topic's sticker and caption again; drop it so the line reads FORGOTTEN.
+    const { expression: _expression, ...rest } = e;
     return {
-      line: JSON.stringify({ ...e, message: { ...msg, content: r.content } }),
+      line: JSON.stringify({ ...rest, message: { ...msg, content: r.content } }),
       hit: true,
       sample: r.sample,
     };

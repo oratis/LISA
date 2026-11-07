@@ -20,7 +20,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
-export type StubMode = "ok" | "unauthorized";
+export type StubMode = "ok" | "unauthorized" | "expressions";
 
 /** The soul the "ok" stub dreams. Fixed, so assertions can name it. */
 export const STUB_BIRTH_OUTPUT = {
@@ -70,9 +70,14 @@ export async function startStubAnthropic(mode: StubMode): Promise<StubServer> {
   let requests = 0;
 
   const server = http.createServer((req, res) => {
+    void handle(req, res).catch((error) => res.destroy(error));
+  });
+  async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
     // Drain the body: the SDK sends one, and an unread request stream keeps
     // the socket half-open on some Node versions.
-    req.resume();
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
 
     if (!req.url?.startsWith("/v1/messages")) {
       res.writeHead(404, { "content-type": "application/json" });
@@ -94,7 +99,38 @@ export async function startStubAnthropic(mode: StubMode): Promise<StubServer> {
       return;
     }
 
-    const text = JSON.stringify(STUB_BIRTH_OUTPUT);
+    const messages = body.messages ?? [];
+    const last = messages.at(-1);
+    const completed =
+      Array.isArray(last?.content) &&
+      last.content.some((b: { type: string }) => b.type === "tool_result");
+    const user = [...messages]
+      .reverse()
+      .find(
+        (m) =>
+          m.role === "user" &&
+          (typeof m.content === "string" ||
+            m.content.some((b: { type: string }) => b.type === "text")),
+      );
+    const prompt =
+      typeof user?.content === "string" ? user.content : JSON.stringify(user?.content ?? "");
+    if (mode === "expressions" && completed && prompt.includes("fail expression")) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          type: "error",
+          error: { type: "invalid_request_error", message: "fixture failure after queue" },
+        }),
+      );
+      return;
+    }
+    if (mode === "expressions" && completed && prompt.includes("slow expression"))
+      await new Promise((r) => setTimeout(r, 2000));
+    const expressionTool =
+      mode === "expressions" &&
+      !completed &&
+      body.tools?.some((t: { name: string }) => t.name === "reply_expression");
+    const text = mode === "expressions" ? "Here with you." : JSON.stringify(STUB_BIRTH_OUTPUT);
     res.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
@@ -111,6 +147,44 @@ export async function startStubAnthropic(mode: StubMode): Promise<StubServer> {
       usage: { input_tokens: 11, output_tokens: 0 },
     };
     sse(res, "message_start", { type: "message_start", message });
+    if (expressionTool) {
+      for (let index = 0; index < 2; index++) {
+        sse(res, "content_block_start", {
+          type: "content_block_start",
+          index,
+          content_block: {
+            type: "tool_use",
+            id: "expression-" + requests + "-" + index,
+            name: "reply_expression",
+            input: {},
+          },
+        });
+        sse(res, "content_block_delta", {
+          type: "content_block_delta",
+          index,
+          delta: {
+            type: "input_json_delta",
+            partial_json: JSON.stringify({
+              assetId: "sticker-hello",
+              format: prompt.includes("static")
+                ? "static"
+                : prompt.includes("emoji")
+                  ? "emoji"
+                  : "animated",
+            }),
+          },
+        });
+        sse(res, "content_block_stop", { type: "content_block_stop", index });
+      }
+      sse(res, "message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "tool_use", stop_sequence: null },
+        usage: { output_tokens: 30 },
+      });
+      sse(res, "message_stop", { type: "message_stop" });
+      res.end();
+      return;
+    }
     sse(res, "content_block_start", {
       type: "content_block_start",
       index: 0,
@@ -134,7 +208,7 @@ export async function startStubAnthropic(mode: StubMode): Promise<StubServer> {
     });
     sse(res, "message_stop", { type: "message_stop" });
     res.end();
-  });
+  }
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;

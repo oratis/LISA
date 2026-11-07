@@ -52,6 +52,7 @@ export function remoteFetch(
                   : res.status === 403
                     ? "mcp_access_denied"
                     : "mcp_request_failed",
+              res.status,
             );
           }
           if ([202, 204, 405].includes(res.status)) {

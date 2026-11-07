@@ -28,6 +28,7 @@ enum ConnectionMode: String, CaseIterable, Identifiable {
 @MainActor
 final class AppState: ObservableObject {
     private let profiles: ConnectionProfiles
+    @Published var expressionPreferences = ExpressionPreferences()
     @Published var chatDraft = ""
     @Published var aiConsent = AISharingConsent()
     @Published var showAppleRevocationHelp = false

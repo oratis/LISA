@@ -12,6 +12,8 @@ struct ChatMessage: Identifiable, Equatable {
     var role: Role
     var text: String = ""
     var tools: [String] = []
+    var expression: ConversationExpression?
+    var expressionLive = false
     var status: Status = .ok
     /// The turn died because the session allowance is spent (HTTP 402). Drives
     /// the inline "Add credits…" button — a second route to the In-App
@@ -36,6 +38,11 @@ final class ChatModel: ObservableObject {
     /// back empty / errored / cancelled.
     private var lastUserText: String?
 
+    func markExpressionSeen(_ id: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[index].expressionLive = false
+    }
+
     // ── history ──
     func loadHistory(_ client: LisaClient) async {
         guard messages.isEmpty, let r = try? await client.history(page: 0) else { return }
@@ -56,8 +63,8 @@ final class ChatModel: ObservableObject {
 
     private static func map(_ m: HistoryMessage) -> ChatMessage? {
         // Tool-result-only records are model context, not a user chat bubble.
-        guard !m.content.isEmpty || !m.tools.isEmpty else { return nil }
-        return ChatMessage(role: m.role == "user" ? .user : .lisa, text: m.content, tools: m.tools)
+        guard !m.content.isEmpty || !m.tools.isEmpty || m.expression != nil else { return nil }
+        return ChatMessage(role: m.role == "user" ? .user : .lisa, text: m.expression == nil ? m.content : "", tools: m.tools, expression: m.expression)
     }
 
     // ── mood (seed from a ping, then track the SSE, reconnect with backoff) ──
@@ -116,8 +123,12 @@ final class ChatModel: ObservableObject {
                     switch msg.type {
                     case "text":
                         if let t = msg.text, !t.isEmpty { messages[idx].text += t }
+                    case "expression":
+                        if let expression = ConversationExpression.decode(msg.object["expression"]), messages[idx].expression?.id != expression.id {
+                            messages[idx].expression = expression; messages[idx].expressionLive = true
+                        }
                     case "tool_start":
-                        if let n = msg.object["name"] as? String, !messages[idx].tools.contains(n) {
+                        if let n = msg.object["name"] as? String, n != "reply_expression", !messages[idx].tools.contains(n) {
                             messages[idx].tools.append(n)
                         }
                     case "error":
@@ -143,7 +154,7 @@ final class ChatModel: ObservableObject {
     /// otherwise it's an empty turn (retryable, not an error).
     private func resolveEnding(_ idx: Int) {
         guard messages.indices.contains(idx), messages[idx].status == .streaming else { return }
-        if messages[idx].text.isEmpty && messages[idx].tools.isEmpty {
+        if messages[idx].text.isEmpty && messages[idx].tools.isEmpty && messages[idx].expression == nil {
             messages[idx].status = .empty
             messages[idx].text = "Lisa didn't reply."
         } else {
@@ -182,6 +193,7 @@ final class ChatModel: ObservableObject {
 }
 
 struct ChatView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var app: AppState
     @StateObject private var model = ChatModel()
     @State private var input = ""
@@ -189,6 +201,11 @@ struct ChatView: View {
     @StateObject private var aiGate = AISharingGate()
     @State private var loadedConfig: ServerConfig?
     private static let bottomID = "chat-bottom"
+
+    private func refreshExpressions() async {
+        let expected = app.config
+        if let prefs = try? await app.client.expressionPreferences(), !Task.isCancelled, app.config == expected { app.expressionPreferences = prefs }
+    }
 
     var body: some View {
         NavigationStack {
@@ -220,11 +237,21 @@ struct ChatView: View {
                 model.startMood(app.client)
                 await model.loadHistory(app.client)
             }
+            .task(id: app.config) {
+                app.expressionPreferences = ExpressionPreferences()
+                await refreshExpressions()
+            }
             .onDisappear {
                 model.stopMood()
                 if loadedConfig != app.config { model.cancel() }
             }
-            .onAppear { consumeDraft() }
+            .onAppear { consumeDraft(); Task { await refreshExpressions() } }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await refreshExpressions() } }
+            }
+            .onChange(of: model.sending) { _, sending in
+                if !sending { Task { await refreshExpressions() } }
+            }
             .onChange(of: app.chatDraft) { _, _ in consumeDraft() }
             // The gate drops its own sheet and pending check; the stream is the model's.
             .onChange(of: app.aiConsent.generation) { _, _ in model.cancel() }
@@ -305,11 +332,13 @@ struct ChatView: View {
                     ForEach(model.messages) { msg in
                         // A blank streaming bubble is stood in for by the typing
                         // indicator below — don't render an empty bubble.
-                        if !isWaitingBubble(msg) {
+                        if !isWaitingBubble(msg) && !(msg.expression != nil && msg.text.isEmpty && msg.tools.isEmpty && app.expressionPreferences.display == .off) {
                             MessageBubble(
                                 message: msg,
                                 onRetry: retryAction(for: msg),
-                                onAddCredits: msg.needsCredits ? { showPaywall = true } : nil
+                                onAddCredits: msg.needsCredits ? { showPaywall = true } : nil,
+                                expressionClient: app.client, expressionPreferences: app.expressionPreferences,
+                                onExpressionStarted: { model.markExpressionSeen(msg.id) }
                             )
                         }
                     }
@@ -339,7 +368,7 @@ struct ChatView: View {
 
     /// A Lisa turn that's mid-stream with nothing to show yet.
     private func isWaitingBubble(_ msg: ChatMessage) -> Bool {
-        msg.role == .lisa && msg.status == .streaming && msg.text.isEmpty && msg.tools.isEmpty
+        msg.role == .lisa && msg.status == .streaming && msg.text.isEmpty && msg.tools.isEmpty && msg.expression == nil
     }
 
     /// Show the typing indicator while the newest Lisa turn hasn't produced anything.
@@ -412,6 +441,9 @@ struct MessageBubble: View {
     /// Present when the turn was refused for lack of credits — the in-chat
     /// route to the In-App Purchases (see `ChatMessage.needsCredits`).
     var onAddCredits: (() -> Void)? = nil
+    var expressionClient: LisaClient? = nil
+    var expressionPreferences = ExpressionPreferences()
+    var onExpressionStarted: (() -> Void)? = nil
 
     var body: some View {
         HStack {
@@ -424,6 +456,9 @@ struct MessageBubble: View {
                     case .code(let c):
                         CodeBlock(text: c)
                     }
+                }
+                if let expression = message.expression, let client = expressionClient {
+                    ConversationExpressionView(expression: expression, client: client, preferences: expressionPreferences, live: message.expressionLive, onPlaybackStarted: onExpressionStarted)
                 }
                 if !message.tools.isEmpty {
                     HStack(spacing: Theme.Space.xs) {

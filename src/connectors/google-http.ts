@@ -65,6 +65,7 @@ export function googleHttp(
                 : response.status === 429
                   ? "google_rate_limited"
                   : "google_request_failed",
+            response.status,
           );
         }
         const body = await readResponseTextCapped(response, 512_000);

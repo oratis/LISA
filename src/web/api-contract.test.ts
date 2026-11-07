@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { expressionCatalog, resolveExpression } from "../expressions/catalog.js";
 import type http from "node:http";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
@@ -149,6 +150,19 @@ describe("API contract source and generated constants", () => {
 });
 
 describe("actual server DTOs conform to OpenAPI v1", () => {
+  test("conversation expressions and shared preferences match the additive v1 contract", () => {
+    for (const asset of expressionCatalog) {
+      const expression = resolveExpression({
+        version: 1,
+        id: "message-1",
+        assetId: asset.id,
+        format: "animated",
+      });
+      assertContract("ConversationExpression", expression);
+      assertContract("SSEEvent", { type: "expression", expression });
+    }
+    assertContract("ExpressionPreferences", { display: "auto", frequency: "restrained" });
+  });
   test("Google cards expose scope and account without credential handles", () => {
     const card = {
       id: "request-1",

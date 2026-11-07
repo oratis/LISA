@@ -3614,3 +3614,15 @@
 /* Keep the shell's status decoration on the same lifecycle as Lisa's portrait. */
 html[data-motion="paused"] *, html[data-motion="paused"] *::before, html[data-motion="paused"] *::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+.expression-bubble { margin: 4px 0 12px; width: 152px; flex: none; }
+.expression-bubble[hidden], .expression-bubble [hidden] { display: none !important; }
+.expression-bubble img { display: block; width: 128px; height: 128px; object-fit: contain; }
+.expression-emoji { display: grid; place-items: center; width: 128px; height: 128px; font-size: 64px; }
+.expression-bubble figcaption { color: var(--fg-3); font-size: 12px; }
+.expression-bubble button { color: var(--accent); background: transparent; border: 0; padding: 8px 0; min-height: 44px; cursor: pointer; }
+.expression-settings select { font: inherit; padding: 8px; margin: 4px 12px 4px 0; color: var(--fg); background: var(--bg-card); border: 1px solid var(--border-new); border-radius: 8px; }
+.expression-settings p { color: var(--fg-2); font-size: 12px; }
+/* Phone shell: 44px touch targets like the rest of the shell, and never under
+   16px (iOS Safari zooms into a smaller focused control). */
+@media (max-width: 720px) { .expression-settings select { font-size: 16px; min-height: 44px; } }
