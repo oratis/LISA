@@ -38,6 +38,7 @@
 
 import AppKit
 import Foundation
+import LisaSetup
 
 @MainActor
 final class BackendController {
@@ -113,49 +114,82 @@ final class BackendController {
     /// Upsert KEY=value in ~/.lisa/config.env (replace the existing line or
     /// append; empty value keeps the line — the backend treats "" as unset).
     func upsertConfigEnv(_ key: String, value: String) {
+        try? updateConfigEnv([key: value])
+    }
+
+    /// Save one account transition together; never report success after a failed write.
+    func updateConfigEnv(_ values: [String: String]) throws {
+        guard values.allSatisfy({ !$0.key.contains("\n") && !$0.value.contains("\n") && !$0.value.contains("\r") }) else {
+            throw NSError(domain: "LISAConfig", code: 1)
+        }
         let path = lisaPath("config.env")
-        var lines = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "")
+        let existing = FileManager.default.fileExists(atPath: path)
+            ? try String(contentsOfFile: path, encoding: .utf8) : ""
+        var lines = existing
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
         if let last = lines.last, last.isEmpty { lines.removeLast() }
-        var replaced = false
-        for i in lines.indices {
-            let stripped = lines[i].trimmingCharacters(in: .whitespaces)
-            let body = stripped.hasPrefix("export ") ? String(stripped.dropFirst(7)) : stripped
-            if body.hasPrefix("\(key)=") {
-                lines[i] = "\(key)=\(value)"
-                replaced = true
-                break
+        for (key, value) in values {
+            var replaced = false
+            for i in lines.indices {
+                let stripped = lines[i].trimmingCharacters(in: .whitespaces)
+                let body = stripped.hasPrefix("export ") ? String(stripped.dropFirst(7)) : stripped
+                if body.hasPrefix("\(key)=") {
+                    lines[i] = "\(key)=\(value)"
+                    replaced = true
+                }
             }
+            if !replaced { lines.append("\(key)=\(value)") }
         }
-        if !replaced { lines.append("\(key)=\(value)") }
         let dir = (path as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        try? (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let temporary = path + "." + UUID().uuidString + ".tmp"
+        let data = Data((lines.joined(separator: "\n") + "\n").utf8)
+        guard FileManager.default.createFile(atPath: temporary, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw NSError(domain: "LISAConfig", code: 2)
+        }
+        defer { try? FileManager.default.removeItem(atPath: temporary) }
+        guard rename(temporary, path) == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
     }
 
-    /// Stop the (detached) backend and start a fresh one so config.env changes
-    /// apply. The backend was launched with nohup, so we match its command line;
-    /// killing only `lisa serve --web` variants keeps unrelated processes safe.
+    /// Restart only the Lisa process serving our local port. Other checkouts and
+    /// background services must survive account changes in this app.
     func restart(_ completion: @escaping (Bool) -> Void) {
-        let kill = Process()
-        kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        kill.arguments = ["-f", "serve --web"]
-        kill.terminationHandler = { [weak self] _ in
-            // Give the old process a beat to release the port, then hop back to
-            // the main actor: the waiter list and start() are both isolated
-            // there. A self-removing NotificationCenter observer would need to
-            // mutate its own token after a sendable closure captured it, which
-            // is a hard error under -warnings-as-errors (T-11).
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                guard let self else { return }
-                self.startWaiters.append { up, _ in completion(up) }
-                self.start()
-            }
+        Task {
+            let stopped = await Task.detached(priority: .userInitiated) {
+                Self.stopLocalBackend()
+            }.value
+            guard stopped else { completion(false); return }
+            startWaiters.append { up, _ in completion(up) }
+            start()
         }
-        try? kill.run()
+    }
+
+    nonisolated private static func stopLocalBackend() -> Bool {
+        func output(_ executable: String, _ arguments: [String]) -> String? {
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            do { try process.run() } catch { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            return String(data: data, encoding: .utf8)
+        }
+        guard let listeners = output("/usr/sbin/lsof", ["-nP", "-t", "-iTCP:5757", "-sTCP:LISTEN"]) else { return false }
+        let pids = Set(listeners.split(whereSeparator: { $0.isWhitespace }).compactMap { Int32($0) })
+        for pid in pids {
+            guard let command = output("/bin/ps", ["-p", String(pid), "-o", "command="]),
+                  CloudAccountRules.isLisaBackendCommand(command) else { return false }
+        }
+        for pid in pids where kill(pid, SIGTERM) != 0 && errno != ESRCH { return false }
+        for _ in 0..<100 {
+            if pids.allSatisfy({ kill($0, 0) != 0 && errno == ESRCH }) { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
     }
 
     // MARK: - Probe
