@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
-import { withStreamRetry } from "./stream-retry.js";
+import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
 /**
@@ -102,7 +102,7 @@ export class AnthropicProvider implements Provider {
     // retries don't cover these — they're thrown while iterating a 200 stream —
     // so without this a momentary proxy/network blip surfaces as a hard error.
     // Safe because we only retry while no delta has been forwarded yet.
-    const message = await withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
+    const message = await withStreamRetry(streamRetryOpts(opts), async (markEmitted) => {
       const stream: StreamLike = opts.compaction
         ? this.client.beta.messages.stream({ ...params, ...extras }, requestOpts)
         : this.client.messages.stream(params, requestOpts);

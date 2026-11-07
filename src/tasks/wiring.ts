@@ -1,9 +1,10 @@
 /**
  * Process-wide injection points for the Task Engine.
  *
- * The engine itself never imports Warden or the Reach-out gate; those PRs call
- * the setters below at startup (one line each in server.ts / cli.ts). Until
- * then the defaults are deliberately SAFE:
+ * The engine itself never imports Warden or the Reach-out gate. A host hands
+ * them in: the web server passes Warden's task factory to its runners when it
+ * runs in Warden mode (tasks-host `approvalFactory`, which takes precedence over
+ * the process-wide setter below). The defaults are deliberately SAFE:
  *   - no approval factory ⇒ the runner denies every side-effecting tool call;
  *   - no deliver          ⇒ results fall back to the host's default channel
  *     (the web server registers a conversation task card); with no host

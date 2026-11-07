@@ -152,7 +152,7 @@ test("default matrix: task / routine / watcher need the envelope", () => {
   }
 });
 
-test("a tainted task may only reach off-host targets its envelope named", () => {
+test("a tainted task: the envelope still covers workspace writes, never an off-host side effect", () => {
   const o = { origin: { kind: "task" as const }, taskId: "t1", tainted: true };
   const loose = { categories: ["network", "write"] as ActionCategory[] };
   assert.equal(
@@ -166,9 +166,21 @@ test("a tainted task may only reach off-host targets its envelope named", () => 
     ),
     "allow",
   );
+  // Taint overrides the envelope for side effects (#422 review H1): even the
+  // one target it names asks once the run has read outside content…
   const named = { categories: ["network"] as ActionCategory[], targets: ["api.good.test"] };
+  const toNamed = evaluate(
+    req({ ...o, category: "network", targets: ["api.good.test"] }),
+    ctx({ envelope: named }),
+  );
+  assert.equal(toNamed.verdict, "ask");
+  assert.equal(toNamed.ruleId, "system:tainted-envelope");
+  // …while the same call in an untainted run is pre-approved.
   assert.equal(
-    verdict({ ...o, category: "network", targets: ["api.good.test"] }, { envelope: named }),
+    verdict(
+      { ...o, tainted: false, category: "network", targets: ["api.good.test"] },
+      { envelope: named },
+    ),
     "allow",
   );
   assert.equal(
@@ -375,7 +387,8 @@ test("user rules: tighten freely, loosen only within the floors", () => {
     "deny",
   );
   assert.equal(verdict({ category: "exec", surface: "cloud" }, { rules: loose }), "deny");
-  // A tainted task with an "auto" rule still needs its envelope.
+  // A tainted task with an "auto" rule asks — and its envelope does not
+  // cover exec once the run is tainted either (#422 review H1).
   const task = {
     category: "exec" as const,
     origin: { kind: "task" as const },
@@ -383,7 +396,11 @@ test("user rules: tighten freely, loosen only within the floors", () => {
     sandboxed: true,
   };
   assert.equal(verdict(task, { rules: loose }), "ask");
-  assert.equal(verdict(task, { rules: loose, envelope: { categories: ["exec"] } }), "allow");
+  assert.equal(verdict(task, { rules: loose, envelope: { categories: ["exec"] } }), "ask");
+  assert.equal(
+    verdict({ ...task, tainted: false }, { rules: loose, envelope: { categories: ["exec"] } }),
+    "allow",
+  );
 
   // target override beats tool override beats category; strictest target wins.
   const layered = parseRules({
