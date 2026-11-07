@@ -46,7 +46,9 @@ export type SoulCaller =
   | "heartbeat"
   | "desire_review"
   | "manual"
-  | "migration";
+  | "migration"
+  /** The person exercised "forget" (memory sovereignty): literal redactions only. */
+  | "user_forget";
 
 interface CallerContext {
   caller: SoulCaller;

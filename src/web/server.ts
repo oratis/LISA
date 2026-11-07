@@ -209,6 +209,7 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { handleMemoryApi } from "./memory-api.js";
 import { handleReveApi } from "./reve-api.js";
 import { createWebWarden, handleWardenApi, wardenTrust, crossSiteProblem } from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
@@ -735,6 +736,50 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     return adoptCtxForStore(await SessionStore.open(id));
   };
   const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
+  /**
+   * Re-read a chat's history and latest reflection from its transcript,
+   * THROUGH its turn chain (the same in-place swap the cloud session switch
+   * uses): an idle chat reloads at once, a chat mid-turn right after that
+   * turn has persisted its reply.
+   */
+  const reloadChatFromDisk = (c: ChatCtx): Promise<void> => {
+    const job = c.chain.then(async () => {
+      const [{ messages }, reflectionSummary] = await Promise.all([
+        c.session.readMessagePage(0, 9999),
+        c.session.readLatestReflection(),
+      ]);
+      c.history.length = 0;
+      c.history.push(...messages);
+      c.reflectionSummary = reflectionSummary;
+      c.prompt = undefined;
+    });
+    c.chain = job.then(
+      () => {},
+      () => {},
+    );
+    return job;
+  };
+  /**
+   * After an applied forget (memory-api onForgetApplied): the transcripts were
+   * redacted on disk, but every chat this process holds still has the old
+   * messages in memory and would send them to the model on its next turn.
+   * Reload them — on the Mac every cached session, in the hosted edition only
+   * the calling account's runtime. Idle chats are awaited; a chat with a turn
+   * in flight reloads after it, without holding the forget's response.
+   */
+  const reloadChatsAfterForget = async (): Promise<void> => {
+    const scoped = homeScope.getStore();
+    const ctxs = scoped
+      ? [tenantRuntimes.peek(scoped)].filter((c): c is ChatCtx => c !== undefined)
+      : [...new Set([globalChat, ...sessionCtxs.values()])];
+    const idle: Promise<void>[] = [];
+    for (const c of ctxs) {
+      const job = reloadChatFromDisk(c);
+      if (ctxTurns.has(c)) void job.catch(() => {});
+      else idle.push(job);
+    }
+    await Promise.all(idle);
+  };
   const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
     const scoped = homeScope.getStore();
     if (!scoped) return { value: globalChat, release: () => {} };
@@ -2779,6 +2824,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 });
               }
             : undefined,
+      })
+    ) {
+      return;
+    }
+    // Memory sovereignty (W8): entries edit/delete, forget, export. Tenant-
+    // scoped in cloud (account session required); owner-only writes on Mac.
+    if (
+      await handleMemoryApi(req, res, url, {
+        cloud,
+        accountUid,
+        loopback: isLoopbackAddress(remoteAddr),
+        onForgetApplied: reloadChatsAfterForget,
       })
     ) {
       return;

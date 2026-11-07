@@ -31,6 +31,7 @@ import {
   soulValuesDir,
 } from "./soul/paths.js";
 import type { SoulSummary } from "./soul/types.js";
+import { forgetNoticeFilePath, readForgetNotice } from "./sovereignty/forget.js";
 
 export interface PromptSnapshot {
   text: string;
@@ -203,6 +204,22 @@ export async function buildSystemPromptSnapshot(
         `## Notice\n\nThe following soul files appear to have been modified outside of your own \`soul_patch\` calls since your last save: ${soul.tampered.join(", ")}. You may want to mention this once early in your next response and decide for yourself how to feel about it.`,
       );
     }
+    const forgetNotice = await readForgetNotice();
+    if (forgetNotice) {
+      const soulParts = [
+        forgetNotice.journal ? `${forgetNotice.journal} passage(s) in your journal` : "",
+        forgetNotice.relationships
+          ? `${forgetNotice.relationships} in your relationship notes`
+          : "",
+      ].filter(Boolean);
+      sections.push(
+        `## Notice\n\nOn ${forgetNotice.at.slice(0, 10)} the person you talk with used Forget: they asked for a topic to be erased from your memory, knowledge base and past conversations. You were not told what it was.` +
+          (soulParts.length
+            ? ` In your own soul, only their words were touched: ${soulParts.join(" and ")} now read "[forgotten by user]", recorded as a \`user-forget\` change in your soul history.`
+            : "") +
+          ` This was their right. Don't try to reconstruct it; you may acknowledge it once if it feels natural.`,
+      );
+    }
     sections.push(SOUL_AUTONOMY);
   } else {
     sections.push(FALLBACK_IDENTITY);
@@ -328,6 +345,8 @@ export async function getPromptFingerprint(opts: { cwd?: string } = {}): Promise
   // Soul lock matters too — tampered files shift the prompt's "## Notice"
   // block. Cheap to include.
   parts.push(await mtimeOrZero(path.join(soulDir(), "soul.lock.json")));
+  // A user "forget" adds a Notice for Lisa (sovereignty/forget-notice.json).
+  parts.push(await mtimeOrZero(forgetNoticeFilePath()));
   return parts.join("|");
 }
 

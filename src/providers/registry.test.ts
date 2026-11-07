@@ -4,6 +4,7 @@ import {
   detectProvider,
   resolveAnthropicAuth,
   hasCredentialsForModel,
+  hasOwnCredentialsForModel,
   OPENAI_COMPAT_PRESETS,
 } from "./registry.js";
 
@@ -106,9 +107,12 @@ describe("resolveAnthropicAuth — Bearer gateway vs x-api-key", () => {
     );
   });
   test("blank/whitespace AUTH_TOKEN is ignored → falls back to apiKey", () => {
-    assert.deepEqual(resolveAnthropicAuth({ ANTHROPIC_AUTH_TOKEN: "  ", ANTHROPIC_API_KEY: "sk" }), {
-      apiKey: "sk",
-    });
+    assert.deepEqual(
+      resolveAnthropicAuth({ ANTHROPIC_AUTH_TOKEN: "  ", ANTHROPIC_API_KEY: "sk" }),
+      {
+        apiKey: "sk",
+      },
+    );
   });
   test("neither set → apiKey undefined", () => {
     assert.deepEqual(resolveAnthropicAuth({}), { apiKey: undefined });
@@ -124,9 +128,18 @@ describe("hasCredentialsForModel — the CLI key-gate matches the real provider 
   });
 
   test("claude-* accepts ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN", () => {
-    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_API_KEY: "sk-ant" }), true);
-    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "tok" }), true);
-    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "  " }), false);
+    assert.equal(
+      hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_API_KEY: "sk-ant" }),
+      true,
+    );
+    assert.equal(
+      hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "tok" }),
+      true,
+    );
+    assert.equal(
+      hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "  " }),
+      false,
+    );
     assert.equal(hasCredentialsForModel("claude-sonnet-4-6", {}), false);
   });
 
@@ -140,6 +153,37 @@ describe("hasCredentialsForModel — the CLI key-gate matches the real provider 
     assert.equal(hasCredentialsForModel("gpt-4o", { OPENAI_API_KEY: "sk" }), true);
     assert.equal(hasCredentialsForModel("gemini-2.5-flash", { GOOGLE_API_KEY: "g" }), true);
     assert.equal(hasCredentialsForModel("gemini-2.5-flash", { GEMINI_API_KEY: "g" }), true);
+  });
+});
+
+describe("credential gates read routing from the env they are given", () => {
+  // process.env routing vars are cleared in beforeEach, so these only pass
+  // when the passed env (as model/router.ts supplies it) drives detection.
+  test("detectProvider honours LISA_BASE_URL / LISA_PROVIDER in the env argument", () => {
+    assert.equal(
+      detectProvider("llama3", { LISA_BASE_URL: "http://localhost:11434/v1" }),
+      "openai",
+    );
+    assert.equal(detectProvider("mystery", { LISA_PROVIDER: "gemini" }), "gemini");
+    assert.equal(detectProvider("mystery", { LISA_PROVIDER: "openai" }), "openai");
+    assert.equal(detectProvider("mystery", {}), "anthropic");
+  });
+
+  test("a LISA_BASE_URL route counts its own key", () => {
+    const env = { LISA_BASE_URL: "http://localhost:11434/v1", LISA_API_KEY: "local" };
+    assert.equal(hasOwnCredentialsForModel("llama3", env), true);
+    assert.equal(hasCredentialsForModel("llama3", env), true);
+  });
+
+  test("LISA_PROVIDER=gemini counts the Gemini key, not the Anthropic one", () => {
+    assert.equal(
+      hasOwnCredentialsForModel("mystery", { LISA_PROVIDER: "gemini", GEMINI_API_KEY: "g" }),
+      true,
+    );
+    assert.equal(
+      hasOwnCredentialsForModel("mystery", { LISA_PROVIDER: "gemini", ANTHROPIC_API_KEY: "a" }),
+      false,
+    );
   });
 });
 

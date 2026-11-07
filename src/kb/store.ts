@@ -421,6 +421,36 @@ export async function writeWiki(opts: {
   });
 }
 
+/**
+ * User-initiated "forget" on one entry — the one sanctioned edit of an
+ * otherwise immutable source. Under the KB write lock the entry is re-read
+ * and handed to `decide`, which sees the CURRENT page and returns "delete",
+ * a new body/extra (metadata otherwise kept), or null to leave it alone.
+ */
+export async function forgetInEntry(
+  layer: KbLayer,
+  slug: string,
+  decide: (entry: KbEntry) => "delete" | { body: string; extra?: Record<string, string> } | null,
+): Promise<"deleted" | "rewritten" | "unchanged" | "missing"> {
+  return withFileLock(kbLockPath(), async () => {
+    const file = entryFile(layer, slug);
+    if (!(await pathExists(file))) return "missing";
+    const entry = parseEntry(layer, slug, await fs.readFile(file, "utf8"));
+    const next = decide(entry);
+    if (next === null) return "unchanged";
+    if (next === "delete") {
+      await fs.rm(file, { force: true });
+      await regenerateIndexLocked();
+      await commitKb(`kb: user-forget remove ${layer}/${slug}`);
+      return "deleted";
+    }
+    await atomicWrite(file, serializeEntry({ ...entry, body: next.body, extra: next.extra }));
+    await regenerateIndexLocked();
+    await commitKb(`kb: user-forget ${layer}/${slug}`);
+    return "rewritten";
+  });
+}
+
 /** Delete an entry (user-initiated). Returns false if it didn't exist. */
 export async function removeEntry(layer: KbLayer, slug: string): Promise<boolean> {
   return withFileLock(kbLockPath(), async () => {
