@@ -1,3 +1,4 @@
+import { resourcePageFromCursors } from "./resource-pagination.js";
 import { ConnectorError, type CredentialAccess, type ReadonlyDriver } from "./types.js";
 import { notionHttp, NOTION_ORIGIN, type NotionHttp } from "./notion-http.js";
 import {
@@ -208,10 +209,9 @@ export class NotionReadonlyDriver implements ReadonlyDriver<NotionAccount, Notio
   }
   resources(credentials: CredentialAccess, page: number, signal: AbortSignal) {
     if (!Number.isInteger(page) || page < 1 || page > 10) throw new ConnectorError("invalid_page");
-    return this.use(credentials, signal, async (c) => {
-      let cursor: string | undefined;
-      for (let n = 1; n <= page; n++) {
-        const r = list(
+    return this.use(credentials, signal, (c) =>
+      resourcePageFromCursors(page, async (cursor) => {
+        const batch = list(
           await this.http("/v1/search", signal, {
             token: c.accessToken,
             json: {
@@ -221,15 +221,14 @@ export class NotionReadonlyDriver implements ReadonlyDriver<NotionAccount, Notio
             },
           }),
         );
-        if (n === page)
-          return r.items
+        return {
+          items: batch.items
             .filter((p) => p.archived !== true && p.in_trash !== true)
-            .map((p) => this.resourceFrom(p));
-        cursor = r.cursor;
-        if (!cursor) return [];
-      }
-      return [];
-    });
+            .map((p) => this.resourceFrom(p)),
+          cursor: batch.cursor,
+        };
+      }),
+    );
   }
   resource(credentials: CredentialAccess, id: string, signal: AbortSignal) {
     if (!notionId(id)) throw new ConnectorError("invalid_resource");
