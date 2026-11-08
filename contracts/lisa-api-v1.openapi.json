@@ -1530,7 +1530,18 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1583,7 +1594,18 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1668,7 +1690,18 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1754,7 +1787,18 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1828,7 +1872,18 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1901,7 +1956,18 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -2000,7 +2066,18 @@
                 "linear",
                 "google-drive",
                 "notion",
-                "slack"
+                "slack",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           }
@@ -2032,7 +2109,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "description": "Include the non-GitHub connection cards for this local chat.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/api/skills": {
@@ -5954,7 +6042,8 @@
               "team",
               "file",
               "page",
-              "channel"
+              "channel",
+              "selected"
             ]
           },
           "timeZone": {
@@ -6035,7 +6124,7 @@
           },
           "authorizationUrl": {
             "type": "string",
-            "description": "Short-lived trusted Google, Linear or Notion authorization URL; no access token, client secret or PKCE verifier."
+            "description": "Short-lived provider authorization URL. Tokens, client secrets and PKCE verifiers are never included."
           }
         },
         "additionalProperties": false
@@ -6086,7 +6175,18 @@
               "linear",
               "google-drive",
               "notion",
-              "slack"
+              "slack",
+              "todoist",
+              "outlook-mail",
+              "outlook-calendar",
+              "onedrive",
+              "sharepoint",
+              "jira",
+              "confluence",
+              "figma",
+              "dropbox",
+              "apple-calendar",
+              "apple-reminders"
             ]
           }
         },
@@ -6113,7 +6213,18 @@
                     "linear",
                     "google-drive",
                     "notion",
-                    "slack"
+                    "slack",
+                    "todoist",
+                    "outlook-mail",
+                    "outlook-calendar",
+                    "onedrive",
+                    "sharepoint",
+                    "jira",
+                    "confluence",
+                    "figma",
+                    "dropbox",
+                    "apple-calendar",
+                    "apple-reminders"
                   ]
                 },
                 "name": {
@@ -6127,6 +6238,30 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "workspace": {
+                  "type": "object",
+                  "properties": {
+                    "vendor": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "hint": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "vendor",
+                    "unit",
+                    "hint",
+                    "scope"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -6137,6 +6272,32 @@
               ],
               "additionalProperties": false
             }
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "request": {
+                  "$ref": "#/components/schemas/ConnectorRequest"
+                }
+              },
+              "required": [
+                "provider",
+                "request"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unavailableProviders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stores currently unavailable while restoring cards."
           }
         },
         "required": [
@@ -6831,7 +6992,9 @@
           "canRestore": {
             "type": "boolean"
           },
-          "agentRecapEnabled": {"type": "boolean"},
+          "agentRecapEnabled": {
+            "type": "boolean"
+          },
           "reflectionEnabled": {
             "type": "boolean"
           },

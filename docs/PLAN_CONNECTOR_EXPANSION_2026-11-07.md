@@ -1,6 +1,6 @@
 # LISA 其他连接器调研与接入方案
 
-> 状态：C0/C1/C2/C3 已合并；C4 Slack 本机只读切片已实现，详见第 11 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
+> 状态：GitHub、Google Calendar、Gmail、Linear、Google Drive、Notion、Slack 已合并。本批实现其余 11 项本机只读连接器，配置与验收见第 13 节。飞书单独保留在 [#460](https://github.com/oratis/LISA/pull/460)。
 > 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。调研阶段未登录账号；后续实现的真实授权范围和验收结果分别记录在第 8、9、10 节。
 
 ## 1 建议先交付什么
@@ -301,3 +301,56 @@ C3 PR [#445](https://github.com/oratis/LISA/pull/445) 已合并。本批继续�
 真实 Slack PKCE 授权已回调，首次实时 scope 检查因隐式 `identify` 被拒绝，修复后用同一已获得的有效授权完成账号检查和频道选择。并修复了 `users.conversations` 成员列表不返回 `is_member` 的兼容问题，确认及读取仍要求 `conversations.info.is_member=true`。在隔离本机预览中选择一个验收频道，原聊天自动返回近七天 **2 条消息、未截断**，未输出正文；刷新后仍仅有一份结果。临时授权诊断数据已移除，正式实现无凭据诊断旁路。
 
 自动测试涵盖真实 loopback state/PKCE 回调（供应商响应为替身）、精确权限和身份、令牌轮换、成员/共享频道、分页、越界参数和响应拒绝、文本截断与附件剥离、读取后权限变化、断开与重启恢复去重。浏览器测试覆盖卡片默认未选、回调后选择频道、同一任务仅完成一次、刷新、后续复用、取消与混合来源提示。此外已用真实刷新令牌验证轮换、持久化与账号保持一致，修复刷新响应同样附带 `identify` 的兼容问题。真实撤权、限流与讨论串正文读取尚未做账号级验收，这些路径由自动测试覆盖；不将此次 2 条频道消息验收扩展为全功能验证。
+
+## 13 其余 11 项只读连接器
+
+在本机聊天输入“只读查看 Outlook Calendar 未来一周的日程”等明确包含服务名的请求。卡片先显示权限，登录后选择资源，点击「只读连接并继续」。一次任务可选同一来源的最多 30 个资源。原任务使用单独的只读工具继续，刷新聊天从持久记录恢复结果。断开会删除本机凭据，并取消该连接上尚未完成的任务；供应商授权可在对应账号设置中撤销。
+
+| 连接器 | 卡片确认的范围 | 原任务能读取的内容 |
+|---|---|---|
+| Todoist | 项目 | 最多 50 条活动任务，含标题、优先级和到期日。使用 `data:read`。 |
+| Outlook Mail | 邮件文件夹 | 最近 50 封邮件的主题、收件时间和已读状态。使用委托 `Mail.ReadBasic`。 |
+| Outlook Calendar | 日历 | 事件标题、开始与结束时间、时区和全天标记。默认未来七天，可查最多 31 天。使用 `Calendars.ReadBasic`。 |
+| OneDrive | 用户 Drive 中的文件或文件夹 | 所选文本文件的内容，或文件夹的直接子项。使用 `Files.Read`。 |
+| SharePoint | 已授予应用访问权的站点，指定其默认文档库中的项目 | 文件和文件夹读取方式同 OneDrive。卡片输入 `siteId\|itemId`，其中 siteId 形如 `example.sharepoint.com,站点集合GUID,站点GUID`。 |
+| Jira | 站点内的项目 | 按更新时间读取最多 50 个工单的键、摘要和状态。固定 JQL，返回的项目 ID 必须匹配。 |
+| Confluence | 站点内的页面 | 所选页面的 Storage 格式正文，最多 30,000 字符。链接和附件留在来源文档中。 |
+| Figma | 文件或节点 | 卡片接受设计链接、文件 key，或 `fileKey\|123:456`。读取三层设计结构、节点名称和有限文本，最多 100 个子节点。 |
+| Dropbox | 文件或文件夹 | 指定文本文件的内容或文件夹直接子项。使用 `account_info.read files.metadata.read files.content.read`。 |
+| Apple Calendar | 本机日历 | 使用 EventKit 读取所选日历的事件、时间和全天标记，日期窗口同 Outlook Calendar。 |
+| Apple Reminders | 本机提醒事项列表 | 读取所选列表未完成的事项、优先级和到期时间。 |
+
+微软四项分别授权，均增加 `User.Read` 以绑定账号，`offline_access` 用于续期。SharePoint 需要工作或学校租户的委托 `Sites.Selected`，还须由该租户管理员预先给应用授予目标站点的 **read** 角色。连接卡不创建站点权限。云文件读取限制为指定的文本类型，单个响应最多 1 MB，正文最多 30,000 字符。文件夹最多返回 50 个直接子项。Graph 提供的下载地址仅在允许的微软域名上使用，下载请求不携带 Graph 令牌。[Graph Selected 权限](https://learn.microsoft.com/en-us/graph/permissions-selected-overview) · [Graph 下载行为](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content)
+
+Jira、Confluence 和 Figma 使用官方 REST API。这样可按项目、页面或节点约束请求，避免依赖远程 MCP 客户端的分发资格。Atlassian 请求 `read:me`、`offline_access` 与单项 `read:jira-work` 或 `read:page:confluence`，按授权站点枚举资源，也可输入 `cloudId\|projectId` 或 `cloudId\|pageId`。Figma 使用 `current_user:read file_content:read`；账户方案、OAuth 应用发布状态和 API 限额仍由 Figma 决定。[Atlassian 3LO](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/) · [Figma OAuth](https://developers.figma.com/docs/rest-api/oauth-apps/)
+
+### 配置与使用
+
+Todoist 在首次点击登录时向官方注册仅含 `data:read` 的 PKCE 公共客户端，本机复用该客户端 ID。Apple 两项需要 macOS 14 或以上版本及 Xcode Command Line Tools。首次点击授权时，LISA 在本机编译并签名随包提供的 EventKit 助手，系统会分别询问日历和提醒事项的**完全访问**权限。助手只实现读取，连接卡再限定日历或列表。系统授权、机器和当前 OS 用户在执行时复核。[Todoist OAuth 与动态注册](https://developer.todoist.com/api/v1/) · [Apple EventKit 权限](https://developer.apple.com/documentation/eventkit/accessing-the-event-store)
+
+其余云服务需要注册 OAuth 应用。在 `~/.lisa/config.env` 设置 `LISA_WORKSPACE_CLIENTS_FILE` 指向本机 JSON 文件的绝对路径，将权限设为 `0600`，重启本机 LISA。只需填写使用的服务。每个连接器的键优先于共享的供应商键，方便管理员为不同权限使用单独的应用。
+
+```json
+{
+  "microsoft": { "clientId": "<Application (client) ID>", "tenant": "<Directory (tenant) ID>" },
+  "atlassian": { "clientId": "<3LO client ID>", "clientSecret": "<secret>" },
+  "figma": { "clientId": "<OAuth app ID>", "clientSecret": "<secret>" },
+  "dropbox": { "clientId": "<App key>" }
+}
+```
+
+在供应商后台登记以下本机回调。同一时间登录一个来源，网页回到 localhost 后在原卡片选择资源。微软使用桌面公共客户端和 S256 PKCE；个人账号可把 `tenant` 设为 `consumers`，SharePoint 需要组织租户 GUID。Dropbox 使用 S256 PKCE 和离线 token。[Microsoft 授权码流程](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow) · [Dropbox OAuth](https://developers.dropbox.com/oauth-guide)
+
+| 应用 | 回调 |
+|---|---|
+| Microsoft Entra | `http://localhost:4870/oauth/microsoft` |
+| Atlassian 3LO | `http://localhost:4870/oauth/atlassian` |
+| Figma | `http://localhost:4870/oauth/figma` |
+| Dropbox | `http://localhost:4870/oauth/dropbox` |
+| Todoist | `http://localhost:4870/oauth/todoist` |
+
+### 验证范围
+
+11 个 Chromium 用例分别从聊天输入开始，经连接卡、授权、未选状态、资源确认、真实服务端 continuation 和历史刷新，核对内容只读一次、原会话只有一份结果。云端回环监听是真实的，供应商响应、EventKit 授权数据与模型在自动化测试中使用替身。另有越权、权限扩大、凭据轮换、跨用户或跨资源、文件版本变化与出站限制测试。
+
+本机已向 Todoist 官方成功注册 `data:read` 公共客户端；其响应确认回调与 `token_endpoint_auth_method=none`。EventKit 助手已在本机编译、签名并读取系统授权状态，两项均未取得完全访问。真实用户账号的资源读取及生产租户同意仍待相应账号与权限验收。

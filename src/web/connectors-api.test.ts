@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { handleConnectorApi } from "./connectors-api.js";
 import { ConnectorError } from "../connectors/types.js";
 import type { ConnectorService } from "../connectors/service.js";
+import { workspaceIds } from "../connectors/workspace/catalog.js";
 import type { ConnectorProvider } from "../connectors/catalog.js";
 
 test("generic connector routes enforce owner/origin, bounded JSON, and scoped provider actions", async (t) => {
@@ -28,6 +29,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     ["notion", fake],
     ["slack", fake],
   ]);
+  for (const id of workspaceIds) services.set(id, fake);
   const server = http.createServer((req, res) => {
     void handleConnectorApi(req, res, req.url!, services, owner).then((handled) => {
       if (!handled) {
@@ -50,7 +52,10 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     });
   const catalog = await fetch(base + "/api/connectors");
   assert.equal(catalog.status, 200);
-  assert.equal(((await catalog.json()) as { connectors: unknown[] }).connectors.length, 7);
+  assert.equal(
+    ((await catalog.json()) as { connectors: unknown[] }).connectors.length,
+    7 + workspaceIds.length,
+  );
   for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }])
     assert.equal((await post("{}", headers)).status, 403, JSON.stringify(headers));
   const rebound = await new Promise<number | undefined>((resolve, reject) => {
@@ -71,7 +76,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal((await post("{}", { origin: "https://evil.example" }, "linear")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 200);
   assert.equal(actions, 2);
-  for (const provider of ["google-drive", "notion", "slack"]) {
+  for (const provider of ["google-drive", "notion", "slack", ...workspaceIds]) {
     assert.equal((await post("{}", { origin: "https://evil.example" }, provider)).status, 403);
     assert.equal((await post("{}", {}, provider)).status, 200);
   }
@@ -89,5 +94,5 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     assert.equal((await fetch(base + route)).status, 403);
   assert.equal((await post("{}")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 403);
-  assert.equal(actions, 5);
+  assert.equal(actions, 5 + workspaceIds.length);
 });

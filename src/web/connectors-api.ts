@@ -14,10 +14,14 @@ export async function handleConnectorApi(
 ): Promise<boolean> {
   const url = new URL(rawUrl, "http://localhost");
   const match =
-    /^\/api\/connectors\/(google-calendar|gmail|linear|google-drive|notion|slack)(?:\/requests(?:\/([a-zA-Z0-9_-]{1,100})\/(authorize|resources|confirm|cancel|retry))?|\/(disconnect))$/.exec(
+    /^\/api\/connectors\/([a-z][a-z0-9-]{0,48})(?:\/requests(?:\/([a-zA-Z0-9_-]{1,100})\/(authorize|resources|confirm|cancel|retry))?|\/(disconnect))$/.exec(
       url.pathname,
     );
-  if (url.pathname !== "/api/connectors" && !match) return false;
+  if (
+    url.pathname !== "/api/connectors" &&
+    (!match || match[1] === "github" || !CONNECTOR_CATALOG.some((c) => c.id === match[1]))
+  )
+    return false;
   const json = (status: number, body: unknown) => {
     res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(JSON.stringify(body));
@@ -29,8 +33,32 @@ export async function handleConnectorApi(
   }
   try {
     if (req.method === "GET" && url.pathname === "/api/connectors") {
+      const session = url.searchParams.get("sessionId");
+      if (session !== null && !/^[a-zA-Z0-9_-]{1,100}$/.test(session))
+        throw new ConnectorError("invalid_session");
+      const requests = [];
+      const unavailableProviders = [];
+      if (session !== null) {
+        // One corrupt provider store must not hide the other providers' cards.
+        const groups = await Promise.all(
+          Array.from(services, async ([provider, service]) => {
+            try {
+              return { provider, requests: await service.list(session) };
+            } catch {
+              return { provider, requests: null };
+            }
+          }),
+        );
+        for (const group of groups) {
+          if (group.requests === null) unavailableProviders.push(group.provider);
+          else
+            for (const request of group.requests)
+              requests.push({ provider: group.provider, request });
+        }
+      }
       json(200, {
         connectors: CONNECTOR_CATALOG,
+        ...(session === null ? {} : { requests, unavailableProviders }),
       });
       return true;
     }

@@ -1,0 +1,128 @@
+// Public card metadata. Credentials and tenant-specific settings never enter this catalog.
+export const workspaceApps = {
+  todoist: {
+    name: "Todoist",
+    vendor: "todoist",
+    scope: "data:read",
+    unit: "project",
+    hint: "Project ID",
+    intent: /\btodoist\b/i,
+  },
+  "outlook-mail": {
+    name: "Outlook Mail",
+    vendor: "microsoft",
+    scope: "Mail.ReadBasic",
+    unit: "mailFolder",
+    hint: "Mail folder ID",
+    intent: /(?:outlook|微软).{0,16}(?:邮件|邮箱|收件箱|mail|inbox)|(?:mail|inbox).{0,12}outlook/i,
+  },
+  "outlook-calendar": {
+    name: "Outlook Calendar",
+    vendor: "microsoft",
+    scope: "Calendars.ReadBasic",
+    unit: "calendar",
+    hint: "Calendar ID",
+    intent: /(?:outlook|微软).{0,24}(?:日历|日程|会议|calendar|schedule)|calendar.{0,12}outlook/i,
+  },
+  onedrive: {
+    name: "OneDrive",
+    vendor: "microsoft",
+    scope: "Files.Read",
+    unit: "file",
+    hint: "Drive item ID",
+    intent: /\bone\s?drive\b/i,
+  },
+  sharepoint: {
+    name: "SharePoint",
+    vendor: "microsoft",
+    scope: "Sites.Selected",
+    unit: "siteFile",
+    hint: "siteId|itemId",
+    intent: /\bsharepoint\b/i,
+  },
+  jira: {
+    name: "Jira",
+    vendor: "atlassian",
+    scope: "read:jira-work",
+    unit: "project",
+    hint: "cloudId|projectId",
+    intent: /\bjira\b/i,
+  },
+  confluence: {
+    name: "Confluence",
+    vendor: "atlassian",
+    scope: "read:page:confluence",
+    unit: "page",
+    hint: "cloudId|pageId",
+    intent: /\bconfluence\b/i,
+  },
+  figma: {
+    name: "Figma",
+    vendor: "figma",
+    scope: "file_content:read",
+    unit: "design",
+    hint: "Figma URL / fileKey|nodeId",
+    intent: /\bfigma\b/i,
+  },
+  dropbox: {
+    name: "Dropbox",
+    vendor: "dropbox",
+    scope: "files.metadata.read files.content.read",
+    unit: "file",
+    hint: "id:…",
+    intent: /\bdropbox\b/i,
+  },
+  "apple-calendar": {
+    name: "Apple Calendar",
+    vendor: "apple",
+    scope: "events",
+    unit: "calendar",
+    hint: "Calendar ID",
+    intent: /(?:apple|macOS|苹果).{0,10}(?:日历|日程|calendar)|iCal\b/i,
+  },
+  "apple-reminders": {
+    name: "Apple Reminders",
+    vendor: "apple",
+    scope: "reminders",
+    unit: "reminderList",
+    hint: "Reminder list ID",
+    intent: /(?:apple|macOS|苹果).{0,10}(?:提醒事项|提醒|reminders)/i,
+  },
+} as const;
+export type WorkspaceId = keyof typeof workspaceApps;
+export const workspaceIds = Object.keys(workspaceApps) as WorkspaceId[];
+export type CloudId = Exclude<WorkspaceId, "apple-calendar" | "apple-reminders">;
+/** The same permission string is shown on the card and used in the authorization request. */
+export function workspaceScopes(id: WorkspaceId) {
+  const app = workspaceApps[id];
+  switch (app.vendor) {
+    case "microsoft":
+      return "User.Read " + app.scope + " offline_access";
+    case "atlassian":
+      return "read:me " + app.scope + " offline_access";
+    case "dropbox":
+      return "account_info.read " + app.scope;
+    case "figma":
+      return "current_user:read " + app.scope;
+    default:
+      return app.scope;
+  }
+}
+export function workspaceReadIntents(text: string) {
+  if (
+    /删除|创建|更新|修改|清空|标记|发送|回复|邀请|写入|上传|移动到|归档|\b(?:send|reply|create|delete|write|edit|update|invite|archive|upload|move|assign|mark|close)\b/i.test(
+      text,
+    )
+  )
+    return [];
+  if (
+    !/查看|读取|看看|列出|汇总|总结|梳理|只读|安排|待办|日程|查找|read|list|summari[sz]e|review|inspect|show|schedule|what|find/i.test(
+      text,
+    )
+  )
+    return [];
+  return workspaceIds.filter((id) => workspaceApps[id].intent.test(text));
+}
+export function toolName(id: WorkspaceId) {
+  return id.replaceAll("-", "_") + "_read";
+}
