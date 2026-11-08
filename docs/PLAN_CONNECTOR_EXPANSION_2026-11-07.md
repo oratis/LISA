@@ -322,7 +322,7 @@ C3 PR [#445](https://github.com/oratis/LISA/pull/445) 已合并。本批继续�
 
 微软四项分别授权，均增加 `User.Read` 以绑定账号，`offline_access` 用于续期。SharePoint 需要工作或学校租户的委托 `Sites.Selected`，还须由该租户管理员预先给应用授予目标站点的 **read** 角色。连接卡不创建站点权限。云文件读取限制为指定的文本类型，单个响应最多 1 MB，正文最多 30,000 字符。文件夹最多返回 50 个直接子项。Graph 提供的下载地址仅在允许的微软域名上使用，下载请求不携带 Graph 令牌。[Graph Selected 权限](https://learn.microsoft.com/en-us/graph/permissions-selected-overview) · [Graph 下载行为](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content)
 
-Jira、Confluence 和 Figma 使用官方 REST API。这样可按项目、页面或节点约束请求，避免依赖远程 MCP 客户端的分发资格。Atlassian 请求 `read:me`、`offline_access` 与单项 `read:jira-work` 或 `read:page:confluence`，按授权站点枚举资源，也可输入 `cloudId\|projectId` 或 `cloudId\|pageId`。Figma 使用 `current_user:read file_content:read`；账户方案、OAuth 应用发布状态和 API 限额仍由 Figma 决定。[Atlassian 3LO](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/) · [Figma OAuth](https://developers.figma.com/docs/rest-api/oauth-apps/)
+Jira、Confluence 和 Figma 使用官方 REST API。这样可按项目、页面或节点约束请求，避免依赖远程 MCP 客户端的分发资格。Atlassian 请求 `read:me`、`offline_access` 与单项 `read:jira-work` 或 `read:page:confluence`，按授权站点枚举资源，也可输入 `cloudId|projectId` 或 `cloudId|pageId`。Figma 使用 `current_user:read file_content:read`；账户方案、OAuth 应用发布状态和 API 限额仍由 Figma 决定。[Atlassian 3LO](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/) · [Figma OAuth](https://developers.figma.com/docs/rest-api/oauth-apps/)
 
 ### 配置与使用
 
@@ -333,11 +333,14 @@ Todoist 在首次点击登录时向官方注册仅含 `data:read` 的 PKCE 公�
 ```json
 {
   "microsoft": { "clientId": "<Application (client) ID>", "tenant": "<Directory (tenant) ID>" },
-  "atlassian": { "clientId": "<3LO client ID>", "clientSecret": "<secret>" },
+  "jira": { "clientId": "<Jira 3LO client ID>", "clientSecret": "<secret>" },
+  "confluence": { "clientId": "<Confluence 3LO client ID>", "clientSecret": "<secret>" },
   "figma": { "clientId": "<OAuth app ID>", "clientSecret": "<secret>" },
   "dropbox": { "clientId": "<App key>" }
 }
 ```
+
+Atlassian 会累积同一应用和账号的授权，同时使用 Jira 和 Confluence 时可分别注册客户端。若微软租户返回既有的额外权限，也可按 `outlook-mail`、`outlook-calendar`、`onedrive` 和 `sharepoint` 分别配置客户端。权限不符时连接卡会提示重新配置。
 
 在供应商后台登记以下本机回调。同一时间登录一个来源，网页回到 localhost 后在原卡片选择资源。微软使用桌面公共客户端和 S256 PKCE；个人账号可把 `tenant` 设为 `consumers`，SharePoint 需要组织租户 GUID。Dropbox 使用 S256 PKCE 和离线 token。[Microsoft 授权码流程](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow) · [Dropbox OAuth](https://developers.dropbox.com/oauth-guide)
 

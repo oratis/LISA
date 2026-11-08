@@ -18,6 +18,13 @@ const githubStatus = {
   cancelled: tr('github.status.cancelled'), failed: tr('github.status.failed'), expired: tr('github.status.expired')
 };
 const githubErrors = {
+  workspace_reauthorize: tr('workspace.renew'),
+  workspace_scope_mismatch: tr('workspace.mismatch'),
+  workspace_invalid_period: tr('workspace.period'),
+  workspace_content_unavailable: tr('workspace.type'),
+  workspace_resource_changed: tr('workspace.changed'),
+  workspace_rate_limited: tr('workspace.rate'),
+  oauth_callback_port_in_use: tr('workspace.busy'),
   workspace_client_not_configured: tr('workspace.config'),
   workspace_inaccessible: tr('workspace.access'),
   workspace_eventkit_platform: tr('workspace.platform'),
