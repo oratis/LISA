@@ -367,3 +367,117 @@ describe("parseCodexActivity — O-D2 widened 128KB tail", () => {
     assert.ok(a.filesTouched.includes("late.ts"), "late file captured");
   });
 });
+
+test("desktop rollouts keep the project outside the tail and unwrap messages and calls once", async () => {
+  const { parseCodexSteps, parseCodexTranscript } = await import("./observer.js");
+  const ts = "2026-11-08T11:00:00Z";
+  const event = (type: string) => ({ type: "event_msg", payload: { type } });
+  const item = (payload: object) => ({ timestamp: ts, type: "response_item", payload });
+  const f = await writeRollout("desktop/rollout-session.jsonl", [
+    { type: "session_meta", payload: { cwd: "/work/desktop-project" } },
+    item({ type: "reasoning", encrypted_content: SECRET.repeat(10000) }),
+    event("task_started"),
+    item({ type: "message", role: "user", content: [{ type: "input_text", text: "question" }] }),
+    { type: "event_msg", payload: { type: "user_message", message: "question" } },
+    item({
+      type: "function_call",
+      name: "exec_command",
+      arguments: JSON.stringify({ cmd: "git " + SECRET }),
+    }),
+    item({ type: "custom_tool_call", name: "apply_patch", input: SECRET }),
+    item({ type: "custom_tool_call_output", output: SECRET }),
+    item({
+      type: "message",
+      role: "assistant",
+      phase: "commentary",
+      content: [{ type: "output_text", text: "progress" }],
+    }),
+    {
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: { total_token_usage: { input_tokens: 9, output_tokens: 3 } },
+      },
+    },
+    {
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: { total_token_usage: { input_tokens: 12, output_tokens: 5 } },
+      },
+    },
+  ]);
+  assert.deepEqual(await parseCodexState(f), {
+    state: "working",
+    reason: "assistant",
+    cwd: "/work/desktop-project",
+  });
+  const activity = await parseCodexActivity(f);
+  assert.deepEqual(activity?.lastTools, ["exec_command", "apply_patch"]);
+  assert.equal(activity.lastCommandName, "git");
+  assert.deepEqual(activity.tokens, { input: 12, output: 5 });
+  const steps = await parseCodexSteps(f);
+  assert.deepEqual(
+    steps.map((s) => s.kind),
+    ["user", "tool", "tool", "assistant"],
+  );
+  const transcript = await parseCodexTranscript(f);
+  assert.deepEqual(
+    transcript.map((s) => s.ts),
+    Array(4).fill(ts),
+  );
+  assert.deepEqual(
+    transcript.filter((s) => s.text).map((s) => s.text),
+    ["question", "progress"],
+  );
+  assert.ok(!JSON.stringify([activity, steps, transcript]).includes(SECRET));
+  await fsp.appendFile(f, JSON.stringify(event("task_complete")) + "\n");
+  assert.equal((await parseCodexState(f)).state, "waiting");
+});
+
+test("owner transcript finds the request before large tool output, skips context and coalesces Codex UI mirrors", async () => {
+  const { parseCodexTranscript } = await import("./observer.js");
+  const item = (role: string, text: string, kinds: string[]) => ({
+    type: "response_item",
+    payload: {
+      type: "message",
+      role,
+      content: [{ type: "input_text", text }],
+      internal_chat_message_metadata_passthrough: { content_item_kinds: kinds },
+    },
+  });
+  const f = await writeRollout("desktop/rollout-owner.jsonl", [
+    item("user", SECRET, ["environments.environment_context"]),
+    item(
+      "user",
+      "# Files mentioned by the user:\n" + SECRET + "\n\n## My request:\nShow my sessions",
+      ["user.text"],
+    ),
+    {
+      type: "event_msg",
+      payload: {
+        type: "item_completed",
+        item: { type: "UserMessage", content: [{ type: "text", text: "Show my sessions" }] },
+      },
+    },
+    {
+      type: "response_item",
+      payload: { type: "custom_tool_call_output", output: SECRET.repeat(18000) },
+    },
+    {
+      type: "event_msg",
+      payload: {
+        type: "item_completed",
+        item: { type: "AgentMessage", content: [{ type: "Text", text: "Here they are" }] },
+      },
+    },
+  ]);
+  const entries = await parseCodexTranscript(f);
+  assert.deepEqual(
+    entries.map((e) => [e.kind, e.text]),
+    [
+      ["user", "Show my sessions"],
+      ["assistant", "Here they are"],
+    ],
+  );
+});
