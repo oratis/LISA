@@ -25,12 +25,12 @@ export async function readTextOrEmpty(p: string): Promise<string> {
   }
 }
 
-export async function atomicWrite(p: string, content: string): Promise<void> {
+export async function atomicWrite(p: string, content: string, mode?: number): Promise<void> {
   // A running dream must not offer to revert a write it did not make (W9).
   noteHomeWrite(p);
   await ensureDir(path.dirname(p));
   const tmp = `${p}.${crypto.randomBytes(6).toString("hex")}.tmp`;
-  await fs.writeFile(tmp, content, "utf8");
+  await fs.writeFile(tmp, content, { encoding: "utf8", mode });
   await fs.rename(tmp, p);
 }
 

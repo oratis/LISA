@@ -1,0 +1,124 @@
+:root {
+  color-scheme: light dark;
+  font:
+    16px/1.55 system-ui,
+    sans-serif;
+  background: Canvas;
+  color: CanvasText;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 900px;
+  margin: auto;
+  padding: 28px clamp(16px, 5vw, 54px) 80px;
+}
+a {
+  color: inherit;
+}
+header {
+  margin-bottom: 24px;
+}
+h1 {
+  font-size: 2.2rem;
+  margin: 0.4em 0;
+}
+h2 {
+  font-size: 1.18rem;
+  margin: 0;
+}
+h3 {
+  font-size: 1rem;
+}
+.heading,
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.actions {
+  justify-content: flex-start;
+  margin: 0.7rem 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem;
+  margin-top: 12px;
+}
+section,
+details {
+  padding: 18px 0;
+  border-top: 1px solid color-mix(in srgb, CanvasText 23%, transparent);
+}
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: Canvas;
+  border: 1px solid color-mix(in srgb, CanvasText 32%, transparent);
+  border-radius: 6px;
+  padding: 0.45em 0.7em;
+}
+button,
+summary {
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+button[aria-pressed="true"],
+.primary {
+  background: #234e46;
+  color: #fff;
+}
+.grid button {
+  text-align: left;
+}
+.grid button small {
+  display: block;
+}
+small {
+  opacity: 0.74;
+}
+label {
+  display: grid;
+  gap: 4px;
+  margin: 0.6rem 0;
+}
+textarea {
+  resize: vertical;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 23rem;
+  overflow: auto;
+  background: color-mix(in srgb, CanvasText 6%, Canvas);
+  padding: 0.9em;
+  border-radius: 6px;
+}
+article {
+  border-left: 3px solid #61978b;
+  padding-left: 1em;
+  margin: 1em 0;
+}
+#notice:not(:empty) {
+  padding: 0.6em 0.8em;
+  background: color-mix(in srgb, #a98b36 18%, Canvas);
+}
+[hidden] {
+  display: none !important;
+}
+summary {
+  font-weight: 600;
+}
+input[type="checkbox"] {
+  margin-right: 0.45rem;
+}

@@ -78,6 +78,7 @@ export function toolsForCapabilityProfile(
  */
 const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/agent/",
+  "/api/agent-host/",
   "/api/agents/",
   "/api/advisor/",
   "/api/claude/",
@@ -92,6 +93,7 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/control/",
   "/api/devices/",
   "/api/dispatch/",
+  "/api/fleet/",
   "/api/mail/",
   "/api/pair/",
   "/api/plans/",

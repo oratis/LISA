@@ -20,7 +20,10 @@ import {
 } from "./protocol.js";
 import { sendFrame } from "./broker.js";
 
+import { fleetRoute, type FleetGrant, type FleetPeer } from "./fleet/types.js";
+
 interface Grant {
+  fleet?: FleetGrant;
   id: string;
   publicKey: string;
   name: string;
@@ -40,6 +43,7 @@ interface Stored {
   requireSecurePairing?: boolean;
 }
 interface Pending {
+  fleet?: boolean;
   id: string;
   publicKey: string;
   name: string;
@@ -227,7 +231,7 @@ export class RemoteHost {
       // key-substituting relay can forge. `waiting` requests have no code yet and hold
       // one of the ten slots; the owner can clear them.
       pending: [...this.pending.values()].map(
-        ({ id, name, code, createdAt, expiresAt, protocol, known }) => ({
+        ({ id, name, code, createdAt, expiresAt, protocol, known, fleet }) => ({
           id,
           name,
           code,
@@ -236,18 +240,20 @@ export class RemoteHost {
           secure: protocol === 2,
           known,
           waiting: !code,
+          ...(fleet ? { fleet: true } : {}),
         }),
       ),
       devices:
-        this.stored?.grants.map(({ id, name, createdAt, pairing }) => ({
+        this.stored?.grants.map(({ id, name, createdAt, pairing, fleet }) => ({
           id,
           name,
           createdAt,
           secure: pairing === 2,
+          ...(fleet ? { fleet } : {}),
         })) ?? [],
     };
   }
-  approve(id: string, code: string): void {
+  approve(id: string, code: string, fleet?: FleetGrant): void {
     this.expirePending();
     const pending = this.pending.get(id);
     const others = this.stored?.grants.filter((g) => g.id !== id) ?? [];
@@ -256,6 +262,9 @@ export class RemoteHost {
       !pending ||
       !pending.code ||
       pending.code !== code ||
+      !!pending.fleet !== !!fleet ||
+      (!!fleet && pending.protocol !== 2) ||
+      this.stored.grants.some((g) => g.id === id && !!g.fleet !== !!fleet) ||
       others.length >= 20 ||
       (pending.protocol === 1 && this.stored.requireSecurePairing)
     )
@@ -265,6 +274,7 @@ export class RemoteHost {
       {
         id,
         publicKey: pending.publicKey,
+        ...(fleet ? { fleet } : {}),
         name: pending.name,
         createdAt: Date.now(),
         ...(pending.protocol === 2 ? { pairing: 2 as const } : {}),
@@ -325,6 +335,12 @@ export class RemoteHost {
       !!this.stored?.enabled &&
       !!this.stored.grants.find((g) => g.id === req.headers["x-lisa-link-device"])
     );
+  }
+  fleetPeer(req: http.IncomingMessage): FleetPeer | undefined {
+    if (!this.authorized(req) || !this.stored) return;
+    const grant = this.stored.grants.find((g) => g.id === req.headers["x-lisa-link-device"]);
+    if (grant?.fleet && grant.pairing === 2)
+      return { ...grant.fleet, deviceId: grant.id, hostId: keyId(this.stored.identity.publicKey) };
   }
   private expirePending(): void {
     for (const [id, p] of this.pending) if (p.expiresAt < Date.now()) this.pending.delete(id);
@@ -580,6 +596,8 @@ export class RemoteHost {
     if (frame.v === PAIRING_VERSION) {
       // A v2 phone never relies on the uncommitted v1 code, so it is not sent.
       welcome.v = PAIRING_VERSION;
+      welcome.agentHostVersion = 1;
+      if (grant?.fleet) welcome.role = "agent-host";
       // Pairing runs over the cloud route only. Already-allowed devices go through it
       // too: their phone must still verify THIS Mac's key against the Mac's screen.
       if (frame.pair === true && fromCloud && frame.commit !== undefined) {
@@ -673,6 +691,7 @@ export class RemoteHost {
     const check = Buffer.from(pairingCommitment(hostKey, pending.publicKey, nonce), "base64");
     if (!crypto.timingSafeEqual(check, Buffer.from(c.commit, "base64"))) throw new Error();
     // Only a phone holding this key can open a commitment on this channel.
+    pending.fleet = message.role === "agent-host";
     pending.protocol = 2;
     pending.commit = c.commit;
     pending.nonce = c.nonce;
@@ -680,11 +699,25 @@ export class RemoteHost {
     if (c.name) pending.name = c.name;
     if (offered) pending.offer = undefined;
     c.used = true;
-    c.send(c.cipher!.seal({ type: "paired", code: pending.code }));
+    c.send(
+      c.cipher!.seal({
+        type: "paired",
+        code: pending.code,
+        ...(pending.fleet ? { role: "agent-host" } : {}),
+      }),
+    );
   }
   private forward(id: string, c: Channel, msg: Record<string, unknown>): void {
     const route = typeof msg.path === "string" ? msg.path : "";
     const method = typeof msg.method === "string" ? msg.method : "";
+    const grant = this.stored?.grants.find((g) => g.id === c.deviceId);
+    if (
+      !grant ||
+      (grant.fleet ? !fleetRoute(method, route) : route.startsWith("/api/agent-host/"))
+    ) {
+      this.closeChannel(id);
+      return;
+    }
     // Fixed loopback target, canonical relative path, no supplied headers or URLs.
     if (
       !/^(\/api\/|\/assets\/(?:lisa|visuals)\/|\/chat(?:\?|$)|\/events(?:\?|$))/.test(route) ||

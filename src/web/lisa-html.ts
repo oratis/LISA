@@ -90,7 +90,7 @@ export function mainHtmlCsp(nonce: string): string {
  * page is byte-identical to the pre-CSP version, which is what the tests and
  * any non-HTTP consumer want.
  */
-export function renderMainHtml(opts: { nonce?: string } = {}): string {
+export function renderMainHtml(opts: { nonce?: string; remoteFleet?: boolean } = {}): string {
   const nonceAttr = opts.nonce ? ` nonce="${opts.nonce}"` : "";
   return `<!doctype html>
 <html lang="en"><head>
@@ -158,6 +158,8 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
         <p class="identity-desire" id="sbDesire" title="">—</p>
       </div>
     </div>
+
+    ${opts.remoteFleet ? '<a href="/fleet" class="nav-item" aria-label="远程 Mac · Remote Macs">远程 Mac · Remote Macs</a>' : ""}
 
     <!-- Primary navigation (3×3 tile grid view switcher — wired in setupConsole) -->
     <nav class="nav-list" id="navList">

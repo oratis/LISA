@@ -3719,10 +3719,10 @@ if ('serviceWorker' in navigator) {
       if (s.controllable === 'managed' && pend) {
         const ap = document.createElement('button');
         ap.className = 'mc approve'; ap.textContent = '✓'; ap.title = 'Approve';
-        ap.setAttribute('data-act', 'approve');
+        ap.setAttribute('data-act', 'approve'); ap.setAttribute('data-approval', s.activity.approvalId || '');
         const dn = document.createElement('button');
         dn.className = 'mc deny'; dn.textContent = '✕'; dn.title = 'Deny';
-        dn.setAttribute('data-act', 'deny');
+        dn.setAttribute('data-act', 'deny'); dn.setAttribute('data-approval', s.activity.approvalId || '');
         acts.appendChild(ap); acts.appendChild(dn);
       } else {
         const open = document.createElement('button');
@@ -4066,10 +4066,10 @@ if ('serviceWorker' in navigator) {
     if (fam === 'managed' && a.pendingPermission) {
       const ap = document.createElement('button');
       ap.className = 'mc approve'; ap.textContent = '✓ approve';
-      ap.setAttribute('data-act', 'approve');
+      ap.setAttribute('data-act', 'approve'); ap.setAttribute('data-approval', s.activity.approvalId || '');
       const dn = document.createElement('button');
       dn.className = 'mc deny'; dn.textContent = '✕ deny';
-      dn.setAttribute('data-act', 'deny');
+      dn.setAttribute('data-act', 'deny'); dn.setAttribute('data-approval', s.activity.approvalId || '');
       acts.appendChild(ap); acts.appendChild(dn);
     } else if (fam && s.state !== 'done') {
       const inp = document.createElement('input');
@@ -4590,10 +4590,10 @@ if ('serviceWorker' in navigator) {
       perm.setAttribute('data-session', s.sessionId);
       const ap = document.createElement('button');
       ap.className = 'mc approve'; ap.textContent = '✓ approve';
-      ap.setAttribute('data-act', 'approve');
+      ap.setAttribute('data-act', 'approve'); ap.setAttribute('data-approval', s.activity.approvalId || '');
       const dn = document.createElement('button');
       dn.className = 'mc deny'; dn.textContent = '✕ deny';
-      dn.setAttribute('data-act', 'deny');
+      dn.setAttribute('data-act', 'deny'); dn.setAttribute('data-approval', s.activity.approvalId || '');
       perm.appendChild(ap);
       perm.appendChild(dn);
     }
@@ -5097,10 +5097,10 @@ if ('serviceWorker' in navigator) {
     const found = agentByKey(agent + '/' + sid);
     openStreamTab({ t: 'agent', agent: agent, id: sid, label: found ? agentLabel(found) : sid });
   }
-  function runDelegatedAction(act, fam, agent, sid, cwd, sendText) {
+  function runDelegatedAction(act, fam, agent, sid, cwd, sendText, approvalId) {
     if (act === 'stream') { selectAgentAndStream(agent, sid); return; }
-    if (act === 'approve') { agentAction('managed', sid, 'approve', { allow: true }); return; }
-    if (act === 'deny') { agentAction('managed', sid, 'approve', { allow: false }); return; }
+    if (act === 'approve') { agentAction('managed', sid, 'approve', { allow: true, approvalId: approvalId }); return; }
+    if (act === 'deny') { agentAction('managed', sid, 'approve', { allow: false, approvalId: approvalId }); return; }
     if (act === 'cancel') { agentAction(fam, sid, 'cancel', null); return; }
     if (act === 'output') { ptyOutput(sid); return; }
     if (act === 'send') { agentAction(fam, sid, 'send', { text: sendText }); return; }
@@ -5311,7 +5311,7 @@ if ('serviceWorker' in navigator) {
     const agent = row.getAttribute('data-agent');
     const sid = row.getAttribute('data-session');
     const btn = t.closest('[data-act]');
-    if (btn) { runDelegatedAction(btn.getAttribute('data-act'), 'managed', agent, sid, ''); return; }
+    if (btn) { runDelegatedAction(btn.getAttribute('data-act'), 'managed', agent, sid, '', null, btn.getAttribute('data-approval')); return; }
     if (agent && sid) selectAgentAndStream(agent, sid);
   });
   const inspEl = document.getElementById('sbClaudeRows');
@@ -5325,7 +5325,7 @@ if ('serviceWorker' in navigator) {
       if (act === 'open-lisa') { switchSession(btn.getAttribute('data-lisa-id')); return; }
       const acts = t.closest('.insp-actions');
       if (!acts) return;
-      runDelegatedAction(act, acts.getAttribute('data-fam'), acts.getAttribute('data-agent'), acts.getAttribute('data-session'), acts.getAttribute('data-cwd'));
+      runDelegatedAction(act, acts.getAttribute('data-fam'), acts.getAttribute('data-agent'), acts.getAttribute('data-session'), acts.getAttribute('data-cwd'), null, btn.getAttribute('data-approval'));
     });
     inspEl.addEventListener('keydown', function (e) {
       const t = e.target;
@@ -5343,7 +5343,7 @@ if ('serviceWorker' in navigator) {
     const t = e.target;
     if (!t || !t.closest) return;
     const btn = t.closest('[data-act]');
-    if (btn) runDelegatedAction(btn.getAttribute('data-act'), 'managed', '', permEl.getAttribute('data-session'), '');
+    if (btn) runDelegatedAction(btn.getAttribute('data-act'), 'managed', '', permEl.getAttribute('data-session'), '', null, btn.getAttribute('data-approval'));
   });
   const footEl = document.getElementById('asFoot');
   if (footEl) {
@@ -5743,8 +5743,8 @@ if ('serviceWorker' in navigator) {
       for (var j = 0; j < btns.length; j++) {
         btns[j].addEventListener('click', function () {
           var act = this.getAttribute('data-sd');
-          if (act === 'approve') afterAct(sdAction('managed', id, 'approve', { allow: true }));
-          else if (act === 'deny') afterAct(sdAction('managed', id, 'approve', { allow: false }));
+          if (act === 'approve') afterAct(sdAction('managed', id, 'approve', { allow: true, approvalId: s.activity.approvalId }));
+          else if (act === 'deny') afterAct(sdAction('managed', id, 'approve', { allow: false, approvalId: s.activity.approvalId }));
           else if (act === 'cancel') afterAct(sdAction(fam, id, 'cancel', null));
           else if (act === 'send') doSend();
           else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t); }); }));

@@ -81,6 +81,14 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   },
   "accounts.json": { forget: "not_scanned", what: "account records (email addresses)" },
   "devices.json": { forget: "not_scanned", what: "paired device names" },
+  "remote-link.json": {
+    forget: "not_scanned",
+    what: "paired device names and remote access grants",
+  },
+  fleet: {
+    forget: "not_scanned",
+    what: "registered workspaces, agent results and pending tool inputs",
+  },
   "otp.json": { forget: "not_scanned", what: "sign-in codes by email address" },
   "current-mood.json": { forget: "not_scanned", what: "current mood and its origin label" },
   "import-backups": { forget: "not_scanned", what: "data backed up by `lisa import --replace`" },

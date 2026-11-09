@@ -71,7 +71,8 @@ describe("ManagedAgent — approval-paused tool flow", () => {
     assert.equal(a.view().state, "waiting");
     assert.equal(a.view().stateReason, "permission");
 
-    assert.equal(reg.decide(v.id, true), true);
+    assert.equal(reg.decide(v.id, true, "previous-request"), false);
+    assert.equal(reg.decide(v.id, true, a.view().pending!.id), true);
     await waitFor(() => {
       const x = a.view();
       return x.state === "waiting" && !x.pending;
@@ -105,7 +106,7 @@ describe("ManagedAgent — approval-paused tool flow", () => {
     });
     const a = reg.get(v.id)!;
     await waitFor(() => !!a.view().pending);
-    reg.decide(v.id, false);
+    reg.decide(v.id, false, a.view().pending!.id);
     await waitFor(() => a.view().state === "waiting" && !a.view().pending);
     assert.equal(ran, false, "denied tool must not execute");
     reg.cancel(v.id);
@@ -152,7 +153,7 @@ describe("ManagedAgent — follow-ups + cancel", () => {
   test("send/decide/cancel on an unknown id → false", () => {
     const reg = new ManagedRegistry();
     assert.equal(reg.send("nope", "x"), false);
-    assert.equal(reg.decide("nope", true), false);
+    assert.equal(reg.decide("nope", true, "missing"), false);
     assert.equal(reg.cancel("nope"), false);
   });
 });

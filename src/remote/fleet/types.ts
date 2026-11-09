@@ -1,0 +1,46 @@
+import { createHash } from "node:crypto";
+
+export const HOST_API = "/api/agent-host/v1";
+export const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+export const HOST_ID = /^[0-9a-f]{32}$/;
+export interface FleetGrant {
+  workspaces: string[];
+  control: boolean;
+}
+export interface FleetPeer extends FleetGrant {
+  deviceId: string;
+  hostId: string;
+}
+export class FleetError extends Error {
+  constructor(
+    readonly status: number,
+    code: string,
+  ) {
+    super(code);
+  }
+}
+export function requiredText(value: unknown, max: number): string {
+  if (typeof value !== "string" || !value.trim() || value.length > max || value.includes("\0"))
+    throw new FleetError(400, "invalid_text");
+  return value;
+}
+export function uuid(value: unknown): string {
+  if (typeof value !== "string" || !UUID.test(value)) throw new FleetError(400, "invalid_id");
+  return value;
+}
+export function digest(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+export function fleetRoute(method: string, path: string): boolean {
+  if (!path.startsWith(HOST_API + "/")) return false;
+  const suffix = path.slice(HOST_API.length);
+  if (method === "GET")
+    return (
+      ["/capabilities", "/runs"].includes(suffix) ||
+      /^\/(?:runs|operations)\/[a-f0-9-]{36}$/.test(suffix)
+    );
+  return (
+    method === "POST" &&
+    (suffix === "/runs" || /^\/runs\/[a-f0-9-]{36}\/(?:messages|decisions|cancel)$/.test(suffix))
+  );
+}

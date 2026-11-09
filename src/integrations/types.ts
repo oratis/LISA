@@ -56,6 +56,8 @@ export interface SessionActivity {
   tokens?: { input: number; output: number };
   /** Tool name awaiting a permission decision, if the session is blocked on one. */
   pendingPermission?: string;
+  /** One-shot identifier of the managed tool call shown to the user. */
+  approvalId?: string;
 }
 
 /**

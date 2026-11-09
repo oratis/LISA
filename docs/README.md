@@ -54,6 +54,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 | [PLAN_SENSE_S2_v1.0.md](./PLAN_SENSE_S2_v1.0.md) | Ambient vision + voice — the most privacy-sensitive block; gated on the consent framework. |
 | [PLAN_SENSE_SOCIAL_CONNECTORS_v1.0.md](./PLAN_SENSE_SOCIAL_CONNECTORS_v1.0.md) | Conversational social publishing through connected accounts. |
 | [PLAN_DISPATCH_v1.0.md](./PLAN_DISPATCH_v1.0.md) | The unified command layer over local CLI agents + TakoAPI. |
+| [Remote Mac agent design](./PLAN_REMOTE_MAC_AGENTS_2026-11-08.md) | Three-Mac design, first implementation, setup and validation of Claude Code approvals and reconnects. Physical-host acceptance remains open. |
 | [PLAN_DISPATCH_D2B_v1.0.md](./PLAN_DISPATCH_D2B_v1.0.md) | D2b — an A2A adapter putting remote agents in the hub. |
 | [PLAN_DISPATCH_D4_v1.0.md](./PLAN_DISPATCH_D4_v1.0.md) | D4 — the multi-agent monitor and advisor actions. |
 | [PLAN_OBSERVER_DEEPENING_v1.0.md](./PLAN_OBSERVER_DEEPENING_v1.0.md) | Tier-2 fidelity for the codex / opencode / aider observers. |

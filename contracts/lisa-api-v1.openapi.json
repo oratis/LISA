@@ -11,9 +11,400 @@
   "x-lisa-compatibility": {
     "missingVersionHeader": "accept-as-legacy-v1",
     "sameMajor": "accept-additive-fields",
-    "higherMajor": "reject-and-require-client-upgrade"
+    "higherMajor": "reject-and-require-client-upgrade",
+    "managedApproval": "Explicit boolean allow and the current approvalId are required. Older clients must upgrade to resolve these prompts."
   },
   "paths": {
+    "/api/agent-host/v1/capabilities": {
+      "get": {
+        "operationId": "getFleetCapabilities",
+        "description": "Requires a verified agent-host v2 grant. Lists the workspace aliases authorized for this device.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetCapabilities"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs": {
+      "get": {
+        "operationId": "getFleetRuns",
+        "description": "Most recent tasks for this controller on this Mac, filtered by workspace grant.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runs"
+                  ],
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "startFleetRun",
+        "description": "Persist the intent before spawning. The operation ID identifies the run. Changing a recorded operation payload returns 409.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}": {
+      "get": {
+        "operationId": "getFleetRun",
+        "description": "Return the latest result and pending permission for this device and run.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "run"
+                  ],
+                  "properties": {
+                    "run": {
+                      "$ref": "#/components/schemas/FleetRun"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/messages": {
+      "post": {
+        "operationId": "sendFleetMessage",
+        "description": "Send a new turn to the waiting process.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/decisions": {
+      "post": {
+        "operationId": "decideFleetApproval",
+        "description": "Resolve exactly the displayed permission. A stale approval returns 409.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "approvalId",
+                      "allow"
+                    ],
+                    "properties": {
+                      "approvalId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "allow": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelFleetRun",
+        "description": "Stop the process group. Poll the run until the process exits.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetMutation"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/operations/{id}": {
+      "get": {
+        "operationId": "getFleetReceipt",
+        "description": "Use the original host, controller and operation ID after a lost reply. An existing receipt consumes the key even when its status is unknown.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
     "/api/agents/sessions": {
       "get": {
         "operationId": "listAgentSessions",
@@ -3393,6 +3784,187 @@
       }
     },
     "schemas": {
+      "FleetWorkspace": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "FleetCapabilities": {
+        "type": "object",
+        "required": [
+          "version",
+          "hostId",
+          "instanceId",
+          "control",
+          "unavailable",
+          "workspaces"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "instanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "control": {
+            "type": "boolean"
+          },
+          "unavailable": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetWorkspace"
+            }
+          }
+        }
+      },
+      "FleetRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspaceId",
+          "hostId",
+          "state",
+          "result",
+          "approval",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "approval",
+              "waiting",
+              "cancelling",
+              "completed",
+              "cancelled",
+              "failed",
+              "unknown"
+            ]
+          },
+          "result": {
+            "type": "string"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "tool",
+                  "input",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "tool": {
+                    "enum": [
+                      "Read",
+                      "Edit",
+                      "Write"
+                    ]
+                  },
+                  "input": {
+                    "type": "object"
+                  },
+                  "expiresAt": {
+                    "type": "integer",
+                    "description": "Unix time in milliseconds."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          }
+        }
+      },
+      "FleetReceipt": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "status",
+          "run"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "unknown"
+            ]
+          },
+          "run": {
+            "$ref": "#/components/schemas/FleetRun"
+          }
+        }
+      },
+      "FleetMutation": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "workspaceId",
+          "hostId"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": [
@@ -3468,6 +4040,10 @@
           },
           "tokens": {
             "$ref": "#/components/schemas/TokenUsage"
+          },
+          "approvalId": {
+            "type": "string",
+            "description": "One-time ID bound to the displayed managed permission. Required together with an explicit boolean allow on the decision endpoint."
           },
           "pendingPermission": {
             "type": "string"

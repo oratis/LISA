@@ -11,6 +11,7 @@
  * (DEFAULT_MUTATING_TOOLS / DEFAULT_MUTATING_ACTIONS) blocks on a UI decision —
  * so an unattended managed agent can't write/exec without explicit approval.
  */
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { runAgent } from "../agent.js";
 import { DEFAULT_MODEL } from "../llm.js";
@@ -41,7 +42,7 @@ export interface ManagedView {
   filesTouched: string[];
   lastText: string;
   /** Set while paused awaiting approve/deny of a mutating tool. */
-  pending?: { tool: string };
+  pending?: { id: string; tool: string };
 }
 
 export interface ManagedStartOpts {
@@ -80,7 +81,7 @@ export class ManagedAgent {
   lastTools: string[] = [];
   filesTouched: string[] = [];
   lastText = "";
-  pending?: { tool: string; resolve: (allow: boolean) => void };
+  pending?: { id: string; tool: string; resolve: (allow: boolean) => void };
   /** Set by the registry to broadcast snapshots. */
   onChange: () => void = () => {};
 
@@ -120,11 +121,11 @@ export class ManagedAgent {
   }
 
   /** Resolve a pending approve/deny. Returns false if nothing is pending. */
-  decide(allow: boolean): boolean {
-    if (!this.pending) return false;
+  decide(allow: boolean, approvalId: string): boolean {
+    if (!this.pending || this.pending.id !== approvalId) return false;
     const p = this.pending;
-    this.setState("working", "running");
     p.resolve(allow);
+    this.setState("working", "running");
     return true;
   }
 
@@ -151,7 +152,7 @@ export class ManagedAgent {
       lastTools: [...this.lastTools],
       filesTouched: [...this.filesTouched],
       lastText: this.lastText,
-      ...(this.pending ? { pending: { tool: this.pending.tool } } : {}),
+      ...(this.pending ? { pending: { id: this.pending.id, tool: this.pending.tool } } : {}),
     };
   }
 
@@ -196,7 +197,7 @@ export class ManagedAgent {
     return new Promise((resolve) => {
       this.wake = () => {
         this.wake = undefined;
-        resolve(this.ac.signal.aborted ? null : this.queue.shift() ?? null);
+        resolve(this.ac.signal.aborted ? null : (this.queue.shift() ?? null));
       };
     });
   }
@@ -206,6 +207,7 @@ export class ManagedAgent {
     if (!isMutatingCall(APPROVAL_CFG, tool, input)) return Promise.resolve({ allow: true });
     return new Promise((resolve) => {
       this.pending = {
+        id: randomUUID(),
         tool,
         resolve: (allow) => {
           this.pending = undefined;
@@ -265,8 +267,8 @@ export class ManagedRegistry extends EventEmitter {
     return true;
   }
 
-  decide(id: string, allow: boolean): boolean {
-    return this.agents.get(id)?.decide(allow) ?? false;
+  decide(id: string, allow: boolean, approvalId: string): boolean {
+    return this.agents.get(id)?.decide(allow, approvalId) ?? false;
   }
 
   cancel(id: string): boolean {

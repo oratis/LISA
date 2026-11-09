@@ -24,7 +24,7 @@ function toSession(v: ManagedView): AgentSession {
       lastTools: v.lastTools,
       filesTouched: v.filesTouched,
       tokens: v.tokens,
-      ...(v.pending ? { pendingPermission: v.pending.tool } : {}),
+      ...(v.pending ? { pendingPermission: v.pending.tool, approvalId: v.pending.id } : {}),
     },
   };
 }
