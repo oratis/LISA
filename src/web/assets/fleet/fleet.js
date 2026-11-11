@@ -36,6 +36,66 @@
     failed: "执行失败",
     unknown: "上次中断，结果待核实",
   };
+  const outcome = {
+    allowed: "已允许",
+    denied: "已拒绝",
+    expired: "超时未处理，按拒绝执行",
+    withdrawn: "agent 已撤回请求",
+    invalid: "批准时已过期或目标已变化，未执行",
+    cancelled: "任务已停止，未处理",
+  };
+  const stopper = {
+    controller: "控制端",
+    owner: "执行机所有者",
+    timeout: "一小时时限",
+    shutdown: "执行机后端退出",
+  };
+  const reasons = {
+    claude_exited: "Claude Code 进程异常退出",
+    claude_closed: "Claude Code 在本轮结束前退出",
+    claude_protocol_error: "Claude Code 的输出无法识别",
+    claude_input_closed: "Claude Code 的输入通道已关闭",
+    claude_launch_failed: "Claude Code 启动失败",
+  };
+  // An entry type this page does not know yet is shown by name.
+  function describe(e) {
+    switch (e.type) {
+      case "turn_started":
+        return ["第 " + e.turn + " 轮开始", e.prompt];
+      case "approval_requested":
+        return ["等待审批 · " + e.tool + " " + e.target];
+      case "approval_resolved":
+        return ["审批结果 · " + (outcome[e.outcome] || e.outcome)];
+      case "tool_blocked":
+        return ["工作区策略已拒绝 · " + e.tool + " " + e.target];
+      case "turn_completed":
+        return [
+          "第 " + e.turn + " 轮完成" + (e.blocked ? " · 策略拒绝 " + e.blocked + " 次请求" : ""),
+          (e.truncated ? "… " : "") + e.result,
+        ];
+      case "turn_failed":
+        return ["第 " + e.turn + " 轮失败", e.result];
+      case "cancel_requested":
+        return ["已请求取消 · " + (stopper[e.by] || e.by)];
+      case "run_ended":
+        return [
+          "任务结束 · " +
+            (phase[e.state] || e.state) +
+            (e.reason ? " · " + (reasons[e.reason] || e.reason) : ""),
+        ];
+      case "outcome_unknown":
+        return ["执行机后端曾重启，结果待核实。原操作不会重新执行。"];
+      case "owner_released":
+        return ["执行机所有者确认旧进程已退出，已释放执行位。"];
+      case "history_started":
+        return ["此任务早于任务经过功能，记录从「" + (phase[e.state] || e.state) + "」开始。"];
+      default:
+        return [e.type];
+    }
+  }
+  // Cursors are kept per account, Mac and task, so one Mac's history never lands on another.
+  const timelines = new Map();
+  let shown = "";
   let hosts = [],
     scope = "",
     host = null,
@@ -200,6 +260,67 @@
     if (v !== version) return;
     runs = d.runs;
     render();
+    await syncTimeline(v);
+  }
+  function timelineKey(id) {
+    return scope + "|" + host.id + "|" + id;
+  }
+  async function syncTimeline(v = version) {
+    const r = runs.find((x) => x.id === runId);
+    if (!host || !r || !cap?.features?.includes("run-events")) return;
+    const account = scope,
+      id = host.id,
+      k = timelineKey(r.id);
+    let t = timelines.get(k);
+    if (!t) timelines.set(k, (t = { events: [], last: 0, gap: false, busy: false }));
+    if (t.busy || t.last === r.lastSeq) return;
+    t.busy = true;
+    try {
+      for (let page = 0, more = true; more && page < 6; page++) {
+        const d = await remote(
+          id,
+          account,
+          "/runs/" + r.id + "/events?after=" + t.last + "&limit=100",
+        );
+        if (d.reset) {
+          t.events = [];
+          t.last = 0;
+        }
+        if (d.gap) t.gap = true;
+        for (const e of d.events)
+          if (e.seq > t.last) {
+            t.events.push(e);
+            t.last = e.seq;
+          }
+        more = d.more;
+      }
+    } finally {
+      t.busy = false;
+    }
+    if (v === version) renderTimeline();
+  }
+  function renderTimeline() {
+    const r = host && cap ? runs.find((x) => x.id === runId) : null,
+      t = r && timelines.get(timelineKey(r.id)),
+      signature = t ? timelineKey(r.id) + "|" + t.last + "|" + t.gap : "";
+    if (signature === shown) return;
+    shown = signature;
+    $("timeline").hidden = !t || !t.events.length;
+    if (!t) return;
+    $("timeline-note").textContent = t.gap
+      ? "较早的记录已超出执行机的留存范围，以下从第 " + t.events[0]?.seq + " 条开始。"
+      : "";
+    $("timeline-list").replaceChildren(
+      ...t.events.map((e) => {
+        const [label, detail] = describe(e),
+          li = make("li", ""),
+          time = make("time", new Date(e.at).toLocaleTimeString());
+        time.dateTime = new Date(e.at).toISOString();
+        li.append(time, make("span", label));
+        if (detail) li.append(make("pre", detail));
+        return li;
+      }),
+    );
   }
   function render() {
     if (!host || !cap) return;
@@ -207,6 +328,7 @@
       rows = runs.filter((r) => r.workspaceId === wid),
       active = rows.find((r) => ["running", "waiting", "approval", "cancelling"].includes(r.state));
     if (!rows.some((r) => r.id === runId)) runId = (active || rows[0])?.id || "";
+    renderTimeline();
     const r = rows.find((x) => x.id === runId),
       saved = pending(),
       blocked = busy || !!saved;
@@ -245,10 +367,13 @@
     select.onchange = () => {
       runId = select.value;
       render();
+      guard(syncTimeline);
     };
     list.append(select);
     const card = make("article", "");
     card.append(make("strong", phase[r.state] || r.state));
+    if (r.updatedAt)
+      card.append(make("small", " · 最后更新 " + new Date(r.updatedAt).toLocaleString()));
     if (r.result) card.append(make("pre", r.result));
     if (r.approval) {
       const a = r.approval;
@@ -339,6 +464,7 @@
     runId = "";
     $("prompt").value = "";
     render();
+    guard(syncTimeline);
   };
   $("retry").onclick = () => guard(() => submit(pending(), true));
   $("refresh").onclick = () =>

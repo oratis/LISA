@@ -16,8 +16,13 @@ export interface Approval {
   input: Record<string, unknown>;
   expiresAt: number;
 }
+/** How a permission request ended. `invalid`: allowed too late or after its target changed. */
+export type ApprovalOutcome = "allowed" | "denied" | "expired" | "withdrawn" | "invalid";
 export interface ClaudeEvents {
-  approval(request: Approval | null): void;
+  /** A request opens with `request`. It closes with null and the way it ended. */
+  approval(request: Approval | null, closed?: { id: string; outcome: ApprovalOutcome }): void;
+  /** A tool call that the workspace policy refused without asking anyone. */
+  blocked?(tool: string, target: string): void;
   result(text: string, error: boolean): void;
   exit(error: string): void;
 }
@@ -204,16 +209,20 @@ export class LocalClaude implements ClaudeRunner {
             : { behavior: "deny", message: "Denied by workspace policy or owner" },
         },
       });
-    const decide = (id: string, allow: boolean) => {
+    const settle = (id: string, allow: boolean, expired = false) => {
       if (!pending || pending.request.id !== id) throw new FleetError(409, "stale_approval");
       const { request, cliId } = pending;
       const valid = Date.now() < request.expiresAt && projectFile(cwd, request.input.file_path);
       response(cliId, allow && valid, request.input);
       pending = undefined;
       clearTimeout(approvalTimer);
-      events.approval(null);
+      events.approval(null, {
+        id,
+        outcome: expired ? "expired" : !allow ? "denied" : valid ? "allowed" : "invalid",
+      });
       if (allow && !valid) throw new FleetError(409, "approval_expired_or_path_changed");
     };
+    const decide = (id: string, allow: boolean) => settle(id, allow);
     const protocolError = () => {
       failure = "claude_protocol_error";
       cancel();
@@ -244,6 +253,11 @@ export class LocalClaude implements ClaudeRunner {
               JSON.stringify(r.input).length > 16384
             ) {
               response(msg.request_id, false, {});
+              if (r.subtype === "can_use_tool")
+                events.blocked?.(
+                  String(r.tool_name).slice(0, 64),
+                  typeof r.input?.file_path === "string" ? r.input.file_path.slice(0, 512) : "",
+                );
               continue;
             }
             const request: Approval = {
@@ -256,16 +270,21 @@ export class LocalClaude implements ClaudeRunner {
             events.approval(request);
             approvalTimer = setTimeout(() => {
               try {
-                decide(request.id, false);
+                settle(request.id, false, true);
               } catch {
                 protocolError();
               }
             }, 300_000);
             approvalTimer.unref();
-          } else if (msg.type === "control_cancel_request" && pending?.cliId === msg.request_id) {
+          } else if (
+            msg.type === "control_cancel_request" &&
+            pending &&
+            pending.cliId === msg.request_id
+          ) {
+            const id = pending.request.id;
             pending = undefined;
             clearTimeout(approvalTimer);
-            events.approval(null);
+            events.approval(null, { id, outcome: "withdrawn" });
           } else if (msg.type === "result") {
             events.result(
               typeof msg.result === "string"

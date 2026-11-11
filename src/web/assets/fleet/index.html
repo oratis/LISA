@@ -31,6 +31,11 @@
           <label>工作区<select id="workspace"></select></label>
           <p id="capability"></p>
           <div id="runs"></div>
+          <div id="timeline" hidden>
+            <h3>任务经过</h3>
+            <p id="timeline-note"></p>
+            <ol id="timeline-list"></ol>
+          </div>
           <form id="task-form">
             <label for="prompt">给 Claude Code 的指令</label>
             <textarea id="prompt" required maxlength="16000" rows="3"></textarea>

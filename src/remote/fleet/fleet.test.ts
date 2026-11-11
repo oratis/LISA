@@ -109,6 +109,14 @@ interface Run {
   approval: { id: string } | null;
 }
 
+interface Timeline {
+  run: Run;
+  events: { seq: number; type: string; [field: string]: unknown }[];
+  lastSeq: number;
+  gap: boolean;
+  more: boolean;
+}
+
 const realBinary = process.env.LISA_FLEET_TEST_CLAUDE;
 test(
   "three independent Macs: scoped pairing, real encrypted controller, approval, result, lost replies, follow-up and cancel",
@@ -381,6 +389,8 @@ test(
       const pending = await until(run, (r) => !!r.approval || r.state === "failed");
       assert.ok(pending.approval, "expected approval; got " + JSON.stringify(pending));
       assert.equal(fs.existsSync(path.join(dir, "project-1", "approved.txt")), false);
+      // The controller's cursor before it loses the connection.
+      const seen = (await remote<Timeline>(0, "/runs/" + id + "/events")).lastSeq;
       await api(m.port, "/api/remote/disconnect", {});
       const away = await until(list, (l) => l.hosts.filter((h) => h.online).length === 2);
       assert.ok(away.hosts.some((h) => h.id === m.id && h.paired && !h.online));
@@ -427,6 +437,36 @@ test(
       await remote(0, "/runs/" + id + "/cancel", "POST", cancel);
       await remote(0, "/runs/" + id + "/cancel", "POST", cancel);
       await until(run, (r) => r.state === "cancelled");
+      // One cursor read over the encrypted relay returns what happened since, once each
+      // and in order, although every command above was sent twice.
+      const missed = await remote<Timeline>(0, "/runs/" + id + "/events?after=" + seen);
+      const steps = missed.events.filter((e) => e.type !== "tool_blocked");
+      assert.equal(missed.events[0]!.seq, seen + 1);
+      assert.deepEqual(
+        steps.map((e) => e.type),
+        [
+          "approval_resolved",
+          "turn_completed",
+          "turn_started",
+          "turn_completed",
+          "turn_started",
+          "cancel_requested",
+          "run_ended",
+        ],
+      );
+      assert.deepEqual(
+        [steps[0]!.outcome, steps[1]!.result, steps[3]!.result, steps[6]!.state],
+        ["allowed", "first complete", "followup 2", "cancelled"],
+      );
+      assert.deepEqual([missed.gap, missed.more, missed.run.state], [false, false, "cancelled"]);
+      const whole = await remote<Timeline>(0, "/runs/" + id + "/events?after=0&limit=2");
+      assert.deepEqual(
+        [whole.events.map((e) => e.type), whole.more],
+        [["turn_started", "approval_requested"], true],
+      );
+      assert.equal(whole.events[1]!.target, "approved.txt");
+      // Another Mac holds none of this task's history.
+      await assert.rejects(remote(1, "/runs/" + id + "/events"), /run_not_found/);
       if (realBinary) assert.ok(calls.includes("tool"));
       if (process.env.LISA_FLEET_TEST_BROWSER === "1") {
         const { chromium, expect } = await import("@playwright/test");
@@ -476,11 +516,28 @@ test(
           await page.getByRole("button", { name: "拒绝", exact: true }).click();
           await expect(page.locator("#runs pre")).toHaveText("first complete", { timeout: 12000 });
           assert.equal(fs.existsSync(path.join(dir, "project-1", "browser-approved.txt")), false);
+          const timeline = page.locator("#timeline-list");
+          await expect(timeline.locator("li").first()).toContainText("第 1 轮开始");
+          await expect(timeline).toContainText("审批结果 · 已拒绝");
+          await expect(timeline).toContainText("第 1 轮完成");
           await page.locator("#prompt").fill("fleet-followup browser");
           await page.locator("#follow").click();
           await expect(page.locator("#runs pre")).toHaveText("followup 2", { timeout: 12000 });
           await page.getByRole("button", { name: "取消此任务" }).click();
           await expect(page.locator("#runs strong")).toHaveText("已取消", { timeout: 12000 });
+          await expect(timeline).toContainText("第 2 轮完成");
+          await expect(timeline).toContainText("任务结束 · 已取消", { timeout: 12000 });
+          // A reload drops the page's cursor. The history is read again from the Mac.
+          await page.reload();
+          await selectHost();
+          await page.locator("#workspace").selectOption(m.workspace);
+          const newest = (await remote<{ runs: Run[] }>(0, "/runs")).runs[0]!;
+          const recorded = await remote<Timeline>(0, "/runs/" + newest.id + "/events");
+          await expect(timeline.locator("li")).toHaveCount(recorded.events.length, {
+            timeout: 12000,
+          });
+          await expect(timeline.locator("li").first()).toContainText("第 1 轮开始");
+          await expect(timeline.locator("li").last()).toContainText("任务结束 · 已取消");
           assert.equal(starts, 1);
           assert.equal((await remote<{ runs: Run[] }>(0, "/runs")).runs.length, 2);
         } finally {
@@ -514,6 +571,7 @@ test(
       const device = (await api<OwnerView>(m.port, "/api/fleet/local")).link.devices[0]!;
       await api(m.port, "/api/remote/revoke", { id: device.id });
       await assert.rejects(remote(0, "/runs"), /workspace_grant_required/);
+      await assert.rejects(remote(0, "/runs/" + id + "/events"), /workspace_grant_required/);
       assert.equal((await remote<{ control: boolean }>(2, "/capabilities")).control, false);
     } finally {
       await Promise.all(
