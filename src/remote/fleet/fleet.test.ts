@@ -125,6 +125,7 @@ test(
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-macs-")));
     const children: ChildProcess[] = [];
     const calls: string[] = [];
+    const readResults: { error: boolean; text: string }[] = [];
     // A standalone executable exercises Seatbelt's native CLI entry point even
     // when the test machine has no installed Claude Code or provider account.
     const fake = path.join(dir, "claude");
@@ -175,6 +176,14 @@ test(
         }
         const browserTurn = history.includes("browser-probe");
         const read = history.includes("read-probe");
+        if (read)
+          for (const m of body.messages as { content: unknown }[])
+            for (const block of Array.isArray(m.content) ? m.content : [])
+              if (block.type === "tool_result")
+                readResults.push({
+                  error: block.is_error === true,
+                  text: JSON.stringify(block.content),
+                });
         const toolName = read ? "Read" : "Edit";
         const tool =
           first &&
@@ -562,6 +571,12 @@ test(
           allow: true,
         });
         await until(view, (r) => r.state === "waiting");
+        // The approved Read returned the file's content from inside the sandbox.
+        assert.ok(readResults.length > 0, "the model never received the Read result");
+        assert.deepEqual(
+          readResults.filter((r) => r.error || !/approved(?!\.txt)/.test(r.text)),
+          [],
+        );
         await remote(0, probePath + "/cancel", "POST", {
           ...probe,
           operationId: crypto.randomUUID(),
