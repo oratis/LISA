@@ -109,6 +109,28 @@ article {
   padding-left: 1em;
   margin: 1em 0;
 }
+#timeline ol {
+  list-style: none;
+  margin: 0.6rem 0;
+  padding: 0;
+  border-left: 2px solid color-mix(in srgb, CanvasText 23%, transparent);
+}
+#timeline li {
+  padding: 0.25rem 0 0.25rem 0.9rem;
+}
+#timeline time {
+  margin-right: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.74;
+}
+#timeline pre {
+  margin: 0.3rem 0 0.2rem;
+  max-height: 9rem;
+  font-size: 0.9em;
+}
+#timeline-note:empty {
+  display: none;
+}
 #notice:not(:empty) {
   padding: 0.6em 0.8em;
   background: color-mix(in srgb, #a98b36 18%, Canvas);

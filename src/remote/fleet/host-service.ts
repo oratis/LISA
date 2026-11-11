@@ -3,7 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { type Approval, type ClaudeRunner, type ClaudeSession } from "./claude.js";
+import {
+  type Approval,
+  type ApprovalOutcome,
+  type ClaudeRunner,
+  type ClaudeSession,
+} from "./claude.js";
 import { digest, FleetError, HOST_API, requiredText, uuid, type FleetPeer } from "./types.js";
 
 interface Workspace {
@@ -24,8 +29,33 @@ interface RunRow {
   created: number;
 }
 type Body = Record<string, unknown>;
+type EventType =
+  | "turn_started"
+  | "approval_requested"
+  | "approval_resolved"
+  | "tool_blocked"
+  | "turn_completed"
+  | "turn_failed"
+  | "cancel_requested"
+  | "run_ended"
+  | "outcome_unknown"
+  | "owner_released"
+  | "history_started";
+const ACTIVE = "('running','waiting','approval','cancelling')";
+// Timeline bounds. A long run drops its oldest entries and reports the gap.
+const MAX_EVENTS = 500,
+  MAX_PAGE = 100,
+  MAX_BLOCKED_PER_TURN = 20,
+  PROMPT_EXCERPT = 500,
+  RESULT_EXCERPT = 4000;
 function inside(parent: string, entry: string) {
   return entry === parent || entry.startsWith(parent.endsWith("/") ? parent : parent + "/");
+}
+/** Workspace-relative when inside the workspace, so a card never needs the host's layout. */
+function target(root: string, value: unknown): string {
+  if (typeof value !== "string") return "";
+  const file = path.resolve(root, value);
+  return (inside(root, file) ? path.relative(root, file) || "." : file).slice(0, 512);
 }
 function inode(root: string) {
   const st = fs.statSync(root, { bigint: true });
@@ -38,6 +68,7 @@ export class FleetHostService {
   private readonly epoch = crypto.randomUUID();
   private readonly sessions = new Map<string, ClaudeSession>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
+  private readonly turns = new Map<string, number>();
   private closing = false;
   private closed = false;
   constructor(
@@ -50,7 +81,57 @@ export class FleetHostService {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;
       CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT,root TEXT UNIQUE,inode TEXT);
       CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,host TEXT,device TEXT,workspace TEXT,epoch TEXT,state TEXT,result TEXT,pending TEXT,created INTEGER);
-      CREATE TABLE IF NOT EXISTS ops(host TEXT,device TEXT,id TEXT,hash TEXT,run TEXT,action TEXT,at INTEGER,status TEXT,PRIMARY KEY(host,device,id));`);
+      CREATE TABLE IF NOT EXISTS ops(host TEXT,device TEXT,id TEXT,hash TEXT,run TEXT,action TEXT,at INTEGER,status TEXT,PRIMARY KEY(host,device,id));
+      CREATE TABLE IF NOT EXISTS events(run TEXT NOT NULL,seq INTEGER NOT NULL,at INTEGER NOT NULL,type TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run,seq)) WITHOUT ROWID;`);
+    this.tx(() => {
+      // A run recorded before the timeline existed starts from its verifiable state.
+      for (const r of this.db
+        .prepare("SELECT id,state FROM runs WHERE id NOT IN (SELECT run FROM events)")
+        .all())
+        this.record(String(r.id), "history_started", { state: r.state });
+      // An earlier backend owned these processes. Say so once and never relaunch.
+      for (const r of this.db
+        .prepare(`SELECT id FROM runs WHERE epoch!=? AND state IN ${ACTIVE}`)
+        .all(this.epoch)) {
+        const last = this.db
+          .prepare("SELECT type FROM events WHERE run=? ORDER BY seq DESC LIMIT 1")
+          .get(String(r.id));
+        if (last?.type !== "outcome_unknown") this.record(String(r.id), "outcome_unknown");
+      }
+    });
+  }
+  /** A state change and the timeline entry describing it commit together. */
+  private tx<T>(fn: () => T): T {
+    if (this.db.isTransaction) return fn();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const value = fn();
+      this.db.exec("COMMIT");
+      return value;
+    } catch (err) {
+      if (this.db.isTransaction) this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+  /** Append inside the caller's transaction. Sequence numbers are dense per run. */
+  private record(run: string, type: EventType, data: Record<string, unknown> = {}) {
+    const seq =
+      Number(this.db.prepare("SELECT MAX(seq) AS n FROM events WHERE run=?").get(run)?.n ?? 0) + 1;
+    this.db
+      .prepare("INSERT INTO events VALUES(?,?,?,?,?)")
+      .run(run, seq, Date.now(), type, JSON.stringify(data));
+    if (seq > MAX_EVENTS)
+      this.db.prepare("DELETE FROM events WHERE run=? AND seq<=?").run(run, seq - MAX_EVENTS);
+  }
+  /** A request that is still open when its run stops was never answered. */
+  private closePending(run: string, outcome: ApprovalOutcome | "cancelled") {
+    const pending = this.db.prepare("SELECT pending FROM runs WHERE id=?").get(run)?.pending;
+    if (typeof pending === "string")
+      this.record(run, "approval_resolved", {
+        turn: this.turns.get(run) ?? 0,
+        approvalId: (JSON.parse(pending) as Approval).id,
+        outcome,
+      });
   }
   workspaces(): Workspace[] {
     return this.db
@@ -109,6 +190,9 @@ export class FleetHostService {
   private view(r: RunRow) {
     const unknown =
       r.epoch !== this.epoch && ["running", "waiting", "approval", "cancelling"].includes(r.state);
+    const tip = this.db
+      .prepare("SELECT seq,at FROM events WHERE run=? ORDER BY seq DESC LIMIT 1")
+      .get(r.id);
     return {
       id: r.id,
       workspaceId: r.workspace,
@@ -117,12 +201,48 @@ export class FleetHostService {
       result: r.result,
       approval: !unknown && r.pending ? (JSON.parse(r.pending) as Approval) : null,
       createdAt: r.created,
+      updatedAt: Number(tip?.at ?? r.created),
+      lastSeq: Number(tip?.seq ?? 0),
+    };
+  }
+  /** One read returns the current run and the entries after the caller's cursor. */
+  private timeline(peer: FleetPeer, id: string, query: URLSearchParams) {
+    const run = this.getRun(peer, id);
+    const span = this.db
+      .prepare("SELECT MIN(seq) AS first,MAX(seq) AS last FROM events WHERE run=?")
+      .get(id);
+    const firstSeq = Number(span?.first ?? 0),
+      lastSeq = Number(span?.last ?? 0),
+      asked = Math.max(0, Math.trunc(Number(query.get("after"))) || 0),
+      // A cursor ahead of this ledger belongs to a different history. Start over.
+      reset = asked > lastSeq,
+      after = reset ? 0 : asked,
+      limit = Math.min(Math.max(Math.trunc(Number(query.get("limit"))) || MAX_PAGE, 1), MAX_PAGE);
+    const events = this.db
+      .prepare("SELECT seq,at,type,data FROM events WHERE run=? AND seq>? ORDER BY seq LIMIT ?")
+      .all(id, after, limit)
+      .map((e) => ({
+        ...(JSON.parse(String(e.data)) as Record<string, unknown>),
+        seq: Number(e.seq),
+        at: Number(e.at),
+        type: String(e.type),
+      }));
+    return {
+      run: this.view(run),
+      events,
+      firstSeq,
+      lastSeq,
+      // Entries between the cursor and the oldest retained one were dropped.
+      gap: after < firstSeq - 1,
+      reset,
+      more: (events.at(-1)?.seq ?? lastSeq) < lastSeq,
     };
   }
   read(peer: FleetPeer, route: string): unknown {
     if (route === HOST_API + "/capabilities")
       return {
         version: 1,
+        features: ["run-events"],
         hostId: peer.hostId,
         instanceId: this.epoch,
         control: peer.control,
@@ -139,6 +259,9 @@ export class FleetHostService {
         runs: all.filter((r) => peer.workspaces.includes(r.workspace)).map((r) => this.view(r)),
       };
     }
+    const [pathname = "", query = ""] = route.split("?");
+    if (pathname.endsWith("/events"))
+      return this.timeline(peer, uuid(pathname.split("/").at(-2)), new URLSearchParams(query));
     const id = uuid(route.split("/").at(-1));
     if (route === HOST_API + "/operations/" + id) {
       const row = this.db
@@ -203,6 +326,7 @@ export class FleetHostService {
         this.db
           .prepare("INSERT INTO runs VALUES(?,?,?,?,?,'running','',NULL,?)")
           .run(runId, peer.hostId, peer.deviceId, workspaceId, this.epoch, Date.now());
+        this.record(runId, "turn_started", { turn: 1, prompt: text!.slice(0, PROMPT_EXCERPT) });
       } else {
         const r = this.getRun(peer, runId);
         if (r.workspace !== workspaceId || !this.sessions.has(runId))
@@ -234,81 +358,160 @@ export class FleetHostService {
     // unknown receipt, durably paired with the original run and payload hash.
     try {
       if (start) {
+        let blocked = 0;
+        this.turns.set(runId, 1);
+        const turn = () => this.turns.get(runId) ?? 0;
         const session = this.runner.start(workspace.root, {
-          approval: (a) =>
-            this.db
-              .prepare("UPDATE runs SET pending=?,state=? WHERE id=? AND state!='cancelling'")
-              .run(a ? JSON.stringify(a) : null, a ? "approval" : "running", runId),
+          approval: (a, closed) =>
+            this.tx(() => {
+              const applied = this.db
+                .prepare("UPDATE runs SET pending=?,state=? WHERE id=? AND state!='cancelling'")
+                .run(a ? JSON.stringify(a) : null, a ? "approval" : "running", runId).changes;
+              if (!applied) return;
+              // The card shows the tool and its target. Full input stays on the run view.
+              if (a)
+                this.record(runId, "approval_requested", {
+                  turn: turn(),
+                  approvalId: a.id,
+                  tool: a.tool,
+                  target: target(workspace.root, a.input.file_path),
+                  expiresAt: a.expiresAt,
+                });
+              else if (closed)
+                this.record(runId, "approval_resolved", {
+                  turn: turn(),
+                  approvalId: closed.id,
+                  outcome: closed.outcome,
+                });
+            }),
+          blocked: (tool, file) => {
+            if (++blocked <= MAX_BLOCKED_PER_TURN)
+              this.tx(() =>
+                this.record(runId, "tool_blocked", {
+                  turn: turn(),
+                  tool,
+                  target: target(workspace.root, file),
+                }),
+              );
+          },
           result: (value, error) => {
-            this.db
-              .prepare(
-                "UPDATE runs SET result=?,state=?,pending=NULL WHERE id=? AND state!='cancelling'",
-              )
-              .run(value, error ? "failed" : "waiting", runId);
+            this.tx(() => {
+              this.closePending(runId, "withdrawn");
+              const applied = this.db
+                .prepare(
+                  "UPDATE runs SET result=?,state=?,pending=NULL WHERE id=? AND state!='cancelling'",
+                )
+                .run(value, error ? "failed" : "waiting", runId).changes;
+              if (applied)
+                this.record(runId, error ? "turn_failed" : "turn_completed", {
+                  turn: turn(),
+                  result: value.slice(-RESULT_EXCERPT),
+                  ...(value.length > RESULT_EXCERPT ? { truncated: true } : {}),
+                  ...(blocked ? { blocked } : {}),
+                });
+            });
+            blocked = 0;
             if (error) this.sessions.get(runId)?.cancel();
           },
           exit: (err) => {
             this.sessions.delete(runId);
             clearTimeout(this.timers.get(runId));
             this.timers.delete(runId);
-            this.db
-              .prepare(
-                `UPDATE runs SET pending=NULL,state=CASE WHEN state='cancelling' THEN 'cancelled' WHEN state='waiting' AND ?='' THEN 'completed' ELSE 'failed' END,
+            this.tx(() => {
+              this.closePending(runId, "cancelled");
+              this.db
+                .prepare(
+                  `UPDATE runs SET pending=NULL,state=CASE WHEN state='cancelling' THEN 'cancelled' WHEN state='waiting' AND ?='' THEN 'completed' ELSE 'failed' END,
               result=CASE WHEN result='' THEN ? ELSE result END WHERE id=?`,
-              )
-              .run(err, err || "claude_closed", runId);
+                )
+                .run(err, err || "claude_closed", runId);
+              const state = this.db.prepare("SELECT state FROM runs WHERE id=?").get(runId)?.state;
+              // A stopped process exits non-zero. Only a failure needs its cause.
+              this.record(runId, "run_ended", {
+                state,
+                ...(state === "failed" ? { reason: err || "claude_closed" } : {}),
+              });
+            });
+            this.turns.delete(runId);
             this.finishShutdown();
           },
         });
         this.sessions.set(runId, session);
-        const timer = setTimeout(() => this.stopRun(runId), 60 * 60_000);
+        const timer = setTimeout(() => this.stopRun(runId, "timeout"), 60 * 60_000);
         timer.unref();
         this.timers.set(runId, timer);
         session.send(text!);
       } else if (action === "messages") {
         this.sessions.get(runId)!.send(text!);
-        this.db.prepare("UPDATE runs SET state='running' WHERE id=?").run(runId);
+        const next = (this.turns.get(runId) ?? 0) + 1;
+        this.turns.set(runId, next);
+        this.tx(() => {
+          this.db.prepare("UPDATE runs SET state='running' WHERE id=?").run(runId);
+          this.record(runId, "turn_started", {
+            turn: next,
+            prompt: text!.slice(0, PROMPT_EXCERPT),
+          });
+        });
       } else if (action === "decisions")
         this.sessions.get(runId)!.decide(approvalId!, body.allow === true);
-      else if (action === "cancel") this.stopRun(runId);
+      else if (action === "cancel") this.stopRun(runId, "controller");
       else throw new FleetError(400, "unknown_action");
       this.db
         .prepare("UPDATE ops SET status='accepted' WHERE host=? AND device=? AND id=?")
         .run(peer.hostId, peer.deviceId, op);
     } catch (err) {
       if (start) {
-        this.sessions.get(runId)?.cancel();
-        this.db
-          .prepare("UPDATE runs SET state='failed',result='claude_launch_failed' WHERE id=?")
-          .run(runId);
+        // With a process, its exit closes the run. Without one, nothing else will.
+        const session = this.sessions.get(runId);
+        this.tx(() => {
+          this.db
+            .prepare("UPDATE runs SET state='failed',result='claude_launch_failed' WHERE id=?")
+            .run(runId);
+          if (session)
+            this.record(runId, "turn_failed", { turn: 1, result: "claude_launch_failed" });
+          else this.record(runId, "run_ended", { state: "failed", reason: "claude_launch_failed" });
+        });
+        if (!session) this.turns.delete(runId);
+        else session.cancel();
       }
       throw err;
     }
     return this.read(peer, HOST_API + "/operations/" + op);
   }
-  private stopRun(id: string) {
-    this.db.prepare("UPDATE runs SET state='cancelling',pending=NULL WHERE id=?").run(id);
+  private stopRun(id: string, by: "controller" | "owner" | "timeout" | "shutdown") {
+    this.tx(() => {
+      this.closePending(id, "cancelled");
+      const applied = this.db
+        .prepare(
+          "UPDATE runs SET state='cancelling',pending=NULL WHERE id=? AND state!='cancelling'",
+        )
+        .run(id).changes;
+      if (applied) this.record(id, "cancel_requested", { by });
+    });
     this.sessions.get(id)?.cancel();
   }
   ownerRuns() {
     const rows = this.db
-      .prepare(
-        "SELECT * FROM runs WHERE state IN ('running','waiting','approval','cancelling') ORDER BY created",
-      )
+      .prepare(`SELECT * FROM runs WHERE state IN ${ACTIVE} ORDER BY created`)
       .all() as unknown as RunRow[];
     return rows.map((r) => ({ id: r.id, workspaceId: r.workspace, state: this.view(r).state }));
   }
   ownerStop(id: string, confirmed: boolean) {
-    if (this.sessions.has(id)) this.stopRun(id);
+    if (this.sessions.has(id)) this.stopRun(id, "owner");
     else if (confirmed) {
       // The local owner checked the machine after an unclean backend shutdown.
       // Preserve the uncertain outcome and its receipt while releasing the slot.
-      const updated = this.db
-        .prepare(
-          "UPDATE runs SET state='unknown',pending=NULL WHERE id=? AND epoch!=? AND state IN ('running','waiting','approval','cancelling')",
-        )
-        .run(id, this.epoch);
-      if (!updated.changes) throw new FleetError(409, "run_not_unknown");
+      const released = this.tx(() => {
+        const orphan = this.db
+          .prepare(`SELECT 1 FROM runs WHERE id=? AND epoch!=? AND state IN ${ACTIVE}`)
+          .get(id, this.epoch);
+        if (!orphan) return false;
+        this.closePending(id, "cancelled");
+        this.db.prepare("UPDATE runs SET state='unknown',pending=NULL WHERE id=?").run(id);
+        this.record(id, "owner_released");
+        return true;
+      });
+      if (!released) throw new FleetError(409, "run_not_unknown");
     } else throw new FleetError(409, "verify_previous_process_exited");
     return { ok: true };
   }
@@ -320,7 +523,7 @@ export class FleetHostService {
   }
   shutdown() {
     this.closing = true;
-    for (const id of this.sessions.keys()) this.stopRun(id);
+    for (const id of this.sessions.keys()) this.stopRun(id, "shutdown");
     this.finishShutdown();
   }
 }
