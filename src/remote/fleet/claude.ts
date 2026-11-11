@@ -119,14 +119,21 @@ export class LocalClaude implements ClaudeRunner {
     const q = JSON.stringify;
     policy +=
       '\n(deny file-read-data file-write* (subpath "/Users") (subpath "/Volumes") (subpath "/private/tmp") (subpath "/private/var/folders"))';
+    // Seatbelt lets a rule naming one operation outrank a later wildcard. The deny above
+    // names file-read-data, so the grant must name it too or the agent can write to its
+    // workspace and scratch space without being able to read either.
     policy +=
-      "\n(allow file-read* file-write* (subpath " + q(cwd) + ") (subpath " + q(scratch) + "))";
+      "\n(allow file-read-data file-read* file-write* (subpath " +
+      q(cwd) +
+      ") (subpath " +
+      q(scratch) +
+      "))";
     // Bun opens the temporary directory ancestors at startup. Grant directory
     // nodes individually, without granting access to files beneath them.
     for (const directory of [scratch, cwd, path.dirname(binary)])
       for (let parent = path.dirname(directory); parent !== "/"; parent = path.dirname(parent))
         policy += "\n(allow file-read-data (literal " + q(parent) + "))";
-    policy += "\n(allow file-read* (literal " + q(binary) + "))";
+    policy += "\n(allow file-read-data file-read* (literal " + q(binary) + "))";
     for (const dir of [
       fs.realpathSync(this.home),
       ...sandboxProtections().paths,
@@ -138,6 +145,8 @@ export class LocalClaude implements ClaudeRunner {
       PATH: "/usr/bin:/bin",
       TMPDIR: scratch,
       CLAUDE_CONFIG_DIR: scratch,
+      // Current Claude Code keeps internal files under /tmp unless told otherwise.
+      CLAUDE_CODE_TMPDIR: scratch,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       DISABLE_AUTOUPDATER: "1",
