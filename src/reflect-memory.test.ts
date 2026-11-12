@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ReflectionInterruptedError, reflectOnSession, parseReflectionPayload } from "./reflect.js";
+import {
+  ReflectionInterruptedError,
+  durableReflectionSummary,
+  reflectOnSession,
+  parseReflectionPayload,
+} from "./reflect.js";
 import { readMemory, writeMemory, appendMemory } from "./memory/store.js";
 import { evidenceFromHistory, recentMemoryEvidence } from "./memory/evidence.js";
 import type { Provider, ProviderRunOpts } from "./providers/types.js";
@@ -198,6 +203,10 @@ test("malformed operations retry without crashing the operation loop; errors are
   });
   const first = await reflectOnSession({ history, sessionId: "session1", provider });
   assert.equal(first.malformed, true);
+  // The placeholder is something to show, never something to store or replay.
+  assert.match(first.summary, /unparseable/);
+  assert.equal(durableReflectionSummary(first), null);
+  assert.equal(durableReflectionSummary({ ...first, malformed: false, summary: "ok" }), "ok");
   assert.equal(first.usage?.inputTokens, 240);
   await reflectOnSession({ history, sessionId: "session1", provider });
   assert.equal(calls, 4);

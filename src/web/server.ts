@@ -81,7 +81,11 @@ import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
 import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
-import { reflectOnSession, ReflectionInterruptedError } from "../reflect.js";
+import {
+  durableReflectionSummary,
+  reflectOnSession,
+  ReflectionInterruptedError,
+} from "../reflect.js";
 import { reflectWithUsage } from "./reflect-request.js";
 import {
   DEFAULT_REFLECT_DEBOUNCE_MS,
@@ -1728,17 +1732,28 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               // Advance the marker only on success, so a failed reflect retries next
               // tick instead of silently dropping the conversation.
               ctx.activity.lastReflectedUserCount = snapshotUserCount;
-              await ctx.session.appendReflection(r.summary);
-              ctx.reflectionSummary = r.summary;
+              const summary = durableReflectionSummary(r);
+              if (summary === null) {
+                // Unparseable even after reflectOnSession's own retry. The marker
+                // above still advances: holding it back would repeat two model
+                // calls a minute for as long as the output stays unparseable, and
+                // nothing is lost by moving on — a malformed pass is not
+                // checkpointed, so the next user message reflects this stretch
+                // again. What must not happen is storing the placeholder.
+                logError("[reflect] unparseable output after retry — summary left unchanged");
+                return;
+              }
+              await ctx.session.appendReflection(summary);
+              ctx.reflectionSummary = summary;
               broadcast({
                 type: "reflect_done",
-                summary: r.summary,
+                summary,
                 at: new Date().toISOString(),
               });
               // The summary and applied lines are distilled conversation content —
               // log counts, not text.
               logInfo(
-                `[reflect] ${decision.reason} → summary updated (${r.summary.length} chars, ${r.applied.length} applied)`,
+                `[reflect] ${decision.reason} → summary updated (${summary.length} chars, ${r.applied.length} applied)`,
               );
             } catch (err) {
               logError(`[reflect] failed: ${(err as Error).message}`);
@@ -5879,7 +5894,10 @@ self.addEventListener('fetch', (event) => {
             }),
           permit ? (usage) => permit.settle("reflect", usage) : undefined,
         );
-        if (chat.session.id === sessionId) chat.reflectionSummary = r.summary;
+        // A malformed pass is reported to the caller as-is, but its placeholder
+        // text must not become the summary the next turn's prompt is built from.
+        const summary = durableReflectionSummary(r);
+        if (chat.session.id === sessionId && summary !== null) chat.reflectionSummary = summary;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(r));
       } catch (err) {

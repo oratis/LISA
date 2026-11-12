@@ -39,7 +39,7 @@ import {
   resolveDefaultModel,
   hasCredentialsForModel,
 } from "./providers/registry.js";
-import { reflectOnSession } from "./reflect.js";
+import { durableReflectionSummary, reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
 import { colorEnabled, setColorOverride } from "./cli/ansi.js";
 import { createEventRenderer, type EventRenderer } from "./cli/render.js";
@@ -979,7 +979,9 @@ async function main(): Promise<void> {
         sessionId: session.id,
         model: args.model,
       });
-      await session.appendReflection(reflection.summary);
+      // The placeholder a malformed pass returns is not a summary to resume from.
+      const summary = durableReflectionSummary(reflection);
+      if (summary !== null) await session.appendReflection(summary);
       console.error(`[reflection] ${reflection.summary}`);
       for (const a of reflection.applied) console.error(`  applied: ${a}`);
       for (const s of reflection.skipped) console.error(`  skipped: ${s}`);

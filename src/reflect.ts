@@ -137,6 +137,20 @@ export interface ReflectionResult {
   usage?: ProviderUsage;
 }
 
+/**
+ * The summary a pass leaves behind for its session, or null when it left none.
+ *
+ * A pass whose output could not be parsed even after the retry does not throw;
+ * it returns `malformed: true` with placeholder text in `summary` so the caller
+ * has something to show. That text is a diagnostic, not a summary. Stored as
+ * the session's reflection it is what a resumed session opens with, and on the
+ * web it is what the prompt carries in place of the history a long chat trims.
+ * Every caller that persists or reuses a summary goes through this.
+ */
+export function durableReflectionSummary(r: ReflectionResult): string | null {
+  return r.malformed ? null : r.summary;
+}
+
 const REFLECTOR_RETRY_SUFFIX = `\n\nCRITICAL: your previous output could not be parsed. Output ONLY a single valid JSON object matching the schema — no prose, no markdown code fence, nothing before or after the JSON.`;
 
 /** Minimum message count for a session to count as "substantial" — below this,
