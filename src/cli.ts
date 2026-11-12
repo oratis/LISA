@@ -727,6 +727,7 @@ async function main(): Promise<void> {
         subcommand: args.subcommand,
         serveWeb: args.serveWeb,
         reflect: args.reflect,
+        idleMinutes: args.idleMinutes,
         thinking: args.thinking,
         compaction: args.compaction,
         approval: args.approval,

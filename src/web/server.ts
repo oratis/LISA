@@ -603,6 +603,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       subcommand: "serve",
       serveWeb: true,
       reflect: opts.reflect,
+      idleMinutes: opts.idleMinutes,
       thinking: opts.thinking,
       compaction: false,
       approval: "auto",
@@ -1572,7 +1573,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // away]" note. Without this the guard is asymmetric — the scheduler blocks
   // reflect-during-dream, but a dream could still start mid-reflect.
   let idleWatcher: ReturnType<typeof getIdleWatcher> | null = null;
-  if (opts.idleMinutes && opts.idleMinutes > 0) {
+  // `policy.idleDream` is false on the hosted edition whatever the flag says:
+  // the dream runs on the process-level chat, which there is nobody's.
+  if (policy.idleDream && opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     idleWatcher = watcher;
     watcher.on("idle", async () => {
