@@ -26,6 +26,7 @@ export function createWebFetchTool(
 ): ToolDefinition<WebFetchInput, string> {
   return {
     name: "web_fetch",
+    concurrencySafe: true,
     description:
       "Fetch a URL via HTTP(S) GET. Returns status, content-type, and body. " +
       "By default HTML is converted to readable text (scripts, styles, tags stripped). " +

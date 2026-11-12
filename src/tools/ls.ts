@@ -8,6 +8,7 @@ interface LsInput {
 
 export const lsTool: ToolDefinition<LsInput, string> = {
   name: "ls",
+  concurrencySafe: true,
   description:
     "List the immediate contents of a directory with type and size. " +
     "`path` defaults to the current working directory. Hidden entries are skipped.",

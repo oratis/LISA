@@ -5664,6 +5664,9 @@ self.addEventListener('fetch', (event) => {
             model: activeModel,
             thinking: policy.thinking,
             compaction: policy.compaction,
+            // Independent lookups in one model turn overlap instead of queueing.
+            // Local edition only: hosted turns are metered call by call.
+            parallelTools: !cloud,
             // Approval gating on the web surface (T-7). undefined under
             // "auto", so that path is byte-identical to before. Under "warden"
             // the turn's Warden session decides; webApproval stays as the

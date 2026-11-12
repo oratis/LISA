@@ -17,6 +17,7 @@ import type { KbLayer } from "./paths.js";
 
 const kbSearch: ToolDefinition<{ query: string; limit?: number }, string> = {
   name: "kb_search",
+  concurrencySafe: true,
   description:
     "Search the user's personal knowledge base — their saved sources + the wiki pages you maintain. " +
     "Reach for this whenever a question touches the user's own captured knowledge, notes, or documents. " +
@@ -41,6 +42,7 @@ const kbSearch: ToolDefinition<{ query: string; limit?: number }, string> = {
 
 const kbRead: ToolDefinition<{ layer?: KbLayer; slug: string }, string> = {
   name: "kb_read",
+  concurrencySafe: true,
   description:
     "Read one knowledge-base entry in full, by slug (from kb_search, index.md, or a [[wikilink]]). " +
     "layer is 'wiki' (pages you maintain) or 'sources' (the user's raw, immutable captures); " +

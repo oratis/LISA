@@ -917,6 +917,9 @@ async function main(): Promise<void> {
       thinking: args.thinking,
       compaction: args.compaction,
       approval,
+      // Independent lookups in one model turn overlap instead of queueing
+      // (ignored whenever an approval mode is on).
+      parallelTools: true,
       preToolHook: async (name, input) => {
         const r = await fireHooks(
           "PreToolUse",

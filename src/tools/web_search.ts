@@ -106,6 +106,7 @@ export function createWebSearchTool(
 ): ToolDefinition<WebSearchInput, string> {
   return {
     name: "web_search",
+    concurrencySafe: true,
     description:
       "Search the web via DuckDuckGo (no API key needed). " +
       "Returns the top matches with title, URL, and a short snippet. " +

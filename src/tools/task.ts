@@ -29,6 +29,7 @@ export function createTaskTool(deps: {
 }): ToolDefinition<TaskInput, string> {
   return {
     name: "task",
+    concurrencySafe: true,
     description:
       "Spawn a sub-agent to handle a self-contained task in its own context window. " +
       "Use this for: exploring large codebases (`type: explore`), running multi-step research, " +
