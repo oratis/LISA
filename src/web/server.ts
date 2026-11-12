@@ -311,7 +311,11 @@ import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
 import { resolveClientIp } from "./client-ip.js";
-import { selectWebModelContextForTurn, webContextBudgetTokens } from "./context-budget.js";
+import {
+  selectWebModelContextForTurn,
+  webContextBudgetTokens,
+  type ContextAnchor,
+} from "./context-budget.js";
 import {
   configuredPublicOrigin,
   requireCloudPublicOrigin,
@@ -734,6 +738,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     chain: Promise<void>;
     prompt?: { fp: string; text: string };
     reflectionSummary?: string;
+    /** Where the last turn's model context started (see context-budget.ts). */
+    contextAnchor?: ContextAnchor;
     activity: TenantActivityState<AdvisorCardState>;
     connectorRevision?: number;
   }
@@ -5612,7 +5618,11 @@ self.addEventListener('fetch', (event) => {
             files,
             budgetTokens: webContextBudgetTokens(),
             latestReflection: chat.reflectionSummary,
+            // Start where the previous turn's window started while that still
+            // fits, so a long chat keeps a cacheable prefix between turns.
+            anchor: chat.contextAnchor,
           });
+          chat.contextAnchor = modelContext.anchor;
           if (modelContext.omittedMessages > 0) {
             logInfo(
               `[context] omitted ${modelContext.omittedMessages} older message(s); ` +
