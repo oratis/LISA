@@ -92,7 +92,13 @@ function isLoopbackHostHeader(host: string | undefined): boolean {
     name === "localhost" ||
     name === "[::1]" ||
     name.endsWith(".localhost") ||
-    /^127(?:\.\d{1,3}){3}$/.test(name)
+    /^127(?:\.\d{1,3}){3}$/.test(name) ||
+    // The unspecified address: `--host 0.0.0.0` prints http://0.0.0.0:<port>,
+    // and opening that on this machine connects over loopback. It is an IP
+    // literal, so no DNS name an attacker controls can produce it, and nothing
+    // off this machine can reach us by it.
+    name === "0.0.0.0" ||
+    name === "[::]"
   );
 }
 
@@ -128,6 +134,48 @@ export function crossSiteProblem(
     return "cross_origin_request";
   }
   if (loopbackTrust && !isLoopbackHostHeader(req.headers.host)) return "untrusted_host";
+  return null;
+}
+
+/**
+ * Why a request that is trusted ONLY because its peer is loopback is refused,
+ * or null. The Mac edition asks a loopback caller for no credential at all, so
+ * for those callers this is the whole gate, and it has to run before any route.
+ *
+ *  - Every method: the Host must be a loopback name. A DNS-rebinding page is
+ *    same-origin as far as its own browser can tell, connects from loopback,
+ *    and can otherwise READ everything (soul, memory, sessions) as well as
+ *    write it; a tunnel pointed at the port is every stranger on the internet.
+ *  - State-changing methods: `crossSiteProblem` in full. Requiring JSON is not
+ *    enough on its own, because most routes parse the body themselves and a
+ *    cross-site `text/plain` form post is a "simple" request no preflight stops.
+ *  - Reads from another site are refused unless they are a navigation.
+ *    Following a link into Lisa (docs, an OAuth return, the Mac app's offline
+ *    placeholder) is a cross-site navigation and must keep working; another
+ *    site's script or subresource fetching an API route has no such excuse,
+ *    and some reads cost a model call.
+ *
+ * A caller with no browser metadata at all (the CLI, the native apps, curl)
+ * is unaffected: a page cannot make its browser omit these headers.
+ */
+export function loopbackTrustProblem(
+  req: http.IncomingMessage,
+  publicOrigin: string | null = safePublicOrigin(),
+): string | null {
+  const method = (req.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+    return crossSiteProblem(req, true, publicOrigin);
+  }
+  if (!isLoopbackHostHeader(req.headers.host)) return "untrusted_host";
+  const site = req.headers["sec-fetch-site"];
+  const mode = req.headers["sec-fetch-mode"];
+  if (
+    typeof site === "string" &&
+    site.toLowerCase() === "cross-site" &&
+    !(typeof mode === "string" && mode.toLowerCase() === "navigate")
+  ) {
+    return "cross_site_request";
+  }
   return null;
 }
 

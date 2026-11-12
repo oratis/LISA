@@ -250,7 +250,13 @@ import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
 import { handleMemoryApi } from "./memory-api.js";
 import { handleReveApi } from "./reve-api.js";
-import { createWebWarden, handleWardenApi, wardenTrust, crossSiteProblem } from "./warden-api.js";
+import {
+  createWebWarden,
+  handleWardenApi,
+  wardenTrust,
+  crossSiteProblem,
+  loopbackTrustProblem,
+} from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
 import {
@@ -2598,6 +2604,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const uidHome = homeForUid(accountUid);
         await fs.mkdir(uidHome, { recursive: true });
         homeScope.enterWith(uidHome);
+      }
+    } else {
+      // Loopback on the Mac edition: no credential was asked for, so the only
+      // thing between another site's page and every route below is what the
+      // browser says about the request. One gate here instead of a guard each
+      // route has to remember — most did not, including /chat, which drives
+      // the full local tool set. See loopbackTrustProblem for what is refused.
+      const problem = loopbackTrustProblem(req);
+      if (problem) {
+        res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: problem }));
+        return;
       }
     }
 
