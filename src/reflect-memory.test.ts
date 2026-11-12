@@ -445,3 +445,61 @@ test("a failed completion checkpoint records each incurred token once and marks 
     [["error", "reflection_failed", 120, 30, 4, 5]],
   );
 });
+
+test("a reply cut off at the output cap is retried with room to finish, not a sterner prompt", async () => {
+  const seen: Array<{ maxTokens?: number; system: string }> = [];
+  const full = JSON.stringify(correction());
+  const provider: Provider = {
+    name: "offline",
+    async runTurn(opts) {
+      seen.push({ maxTokens: opts.maxTokens, system: opts.systemPrompt });
+      const first = seen.length === 1;
+      return {
+        content: [{ type: "text", text: first ? full.slice(0, 40) : full, citations: [] }],
+        stopReason: first ? "max_tokens" : "end_turn",
+        usage: { inputTokens: 120, outputTokens: 30, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      };
+    },
+  };
+  await writeMemory("memory", "- API port: 3000");
+  const result = await reflectOnSession({ history, sessionId: "session-cut", provider });
+
+  assert.equal(result.malformed, undefined);
+  assert.equal(result.summary, "Updated the API port.");
+  assert.equal(seen.length, 2);
+  // Same instructions — the first reply was not wrong, only unfinished — and a
+  // larger cap, so the second attempt is not cut off at the same place.
+  assert.equal(seen[1]!.system, seen[0]!.system);
+  assert.ok(
+    seen[1]!.maxTokens! > seen[0]!.maxTokens!,
+    JSON.stringify(seen.map((s) => s.maxTokens)),
+  );
+  assert.ok(seen[0]!.maxTokens! >= 4_000, "the first cap leaves room for a full payload");
+});
+
+test("a reply that is not JSON at all still gets the stricter instruction, under the same cap", async () => {
+  const seen: Array<{ maxTokens?: number; system: string }> = [];
+  const provider = fakeProvider((opts) => {
+    seen.push({ maxTokens: opts.maxTokens, system: opts.systemPrompt });
+    return seen.length === 1 ? "I would rather talk about this." : correction();
+  });
+  await writeMemory("memory", "- API port: 3000");
+  const result = await reflectOnSession({ history, sessionId: "session-prose", provider });
+  assert.equal(result.malformed, undefined);
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1]!.maxTokens, seen[0]!.maxTokens);
+  assert.match(seen[1]!.system, /could not be parsed/);
+});
+
+test("a reply that wraps the JSON in prose is used as is: no retry, no second model call", async () => {
+  let calls = 0;
+  const provider = fakeProvider(() => {
+    calls++;
+    return `好的，以下是这次对话的反思：\n${JSON.stringify(correction())}\n\n以上。`;
+  });
+  await writeMemory("memory", "- API port: 3000");
+  const result = await reflectOnSession({ history, sessionId: "session-wrapped", provider });
+  assert.equal(result.malformed, undefined);
+  assert.equal(result.summary, "Updated the API port.");
+  assert.equal(calls, 1);
+});

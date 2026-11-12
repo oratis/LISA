@@ -1,4 +1,5 @@
 import path from "node:path";
+import { extractJsonObject } from "./model-json.js";
 import { assertHomeDirectory, readHomeTextOrEmpty } from "./home-files.js";
 import { atomicWrite } from "./fs-utils.js";
 import { DEFAULT_MODEL } from "./llm.js";
@@ -151,6 +152,19 @@ export function durableReflectionSummary(r: ReflectionResult): string | null {
   return r.malformed ? null : r.summary;
 }
 
+/**
+ * Output cap for the reflector. The payload is a summary, an optional journal
+ * entry and up to 32 operations that quote their evidence — in CJK text that
+ * is several thousand tokens — and on models whose thinking cannot be turned
+ * off, thinking is spent from the same cap before the JSON starts. The old cap
+ * of 2,000 could be reached mid-object, which reads as "unparseable", and the
+ * retry ran under the same cap. A cap bounds a reply; it does not buy one, so
+ * a generous cap costs nothing on the replies that were already short.
+ */
+const REFLECT_MAX_TOKENS = 6_000;
+/** For the one retry of a reply that was cut off at REFLECT_MAX_TOKENS. */
+const REFLECT_RETRY_MAX_TOKENS = 16_000;
+
 const REFLECTOR_RETRY_SUFFIX = `\n\nCRITICAL: your previous output could not be parsed. Output ONLY a single valid JSON object matching the schema — no prose, no markdown code fence, nothing before or after the JSON.`;
 
 /** Minimum message count for a session to count as "substantial" — below this,
@@ -169,7 +183,15 @@ export function parseReflectionPayload(
   try {
     obj = JSON.parse(stripJsonFence(raw));
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    // The reply is not JSON as a whole. It usually still CONTAINS the object —
+    // after a line of preamble, or before a closing remark — and that was the
+    // whole of what the memory eval recorded as "unparseable" ("Unexpected
+    // token '好'", "non-whitespace character after JSON"). Take the object;
+    // if there is none, report the parse error as before so the caller retries.
+    obj = extractJsonObject(raw, (o) => typeof o.summary === "string");
+    if (obj === undefined) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
   if (typeof obj !== "object" || obj === null) {
     return { ok: false, error: "output is not a JSON object" };
@@ -409,7 +431,10 @@ async function reflectOnSessionInner(
     },
   };
 
-  const runReflector = async (systemPrompt: string): Promise<string> => {
+  const runReflector = async (
+    systemPrompt: string,
+    maxTokens: number,
+  ): Promise<{ text: string; truncated: boolean }> => {
     await checkActive();
     const result = await provider.runTurn({
       model,
@@ -426,26 +451,39 @@ async function reflectOnSessionInner(
           ],
         },
       ],
-      maxTokens: 2_000,
+      maxTokens,
       signal,
     });
     await checkActive();
-    return result.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("\n")
-      .trim();
+    return {
+      text: result.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b as { text: string }).text)
+        .join("\n")
+        .trim(),
+      truncated: result.stopReason === "max_tokens",
+    };
   };
 
   // Quality gate (R1): a malformed reflection used to silently degrade to a
   // no-op result. Retry once with a stricter instruction; if it still can't be
   // parsed, persist the raw output for debugging and record an error run rather
   // than swallowing it.
-  let raw = await runReflector(REFLECTOR_SYSTEM);
+  const first = await runReflector(REFLECTOR_SYSTEM, REFLECT_MAX_TOKENS);
+  let raw = first.text;
   let parsed = parseReflectionPayload(raw);
   if (!parsed.ok) {
-    const firstError = parsed.error;
-    const retryRaw = await runReflector(REFLECTOR_SYSTEM + REFLECTOR_RETRY_SUFFIX);
+    const firstError = first.truncated
+      ? `${parsed.error} (output cut at max_tokens)`
+      : parsed.error;
+    // A reply cut off at the output cap is not a formatting mistake: asking
+    // again more sternly under the same cap is cut off at the same place. It
+    // gets the same instructions and room to finish. Anything else gets the
+    // stricter instruction, as before.
+    const retry = first.truncated
+      ? await runReflector(REFLECTOR_SYSTEM, REFLECT_RETRY_MAX_TOKENS)
+      : await runReflector(REFLECTOR_SYSTEM + REFLECTOR_RETRY_SUFFIX, REFLECT_MAX_TOKENS);
+    const retryRaw = retry.text;
     const retryParsed = parseReflectionPayload(retryRaw);
     if (retryParsed.ok) {
       raw = retryRaw;
