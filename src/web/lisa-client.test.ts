@@ -656,7 +656,9 @@ describe("Control view quick approve/deny answers the request it shows", () => {
     extractFunction(MAIN_CLIENT_JS, "ctrlRowHTML"),
     extractFunction(MAIN_CLIENT_JS, "ctrlQuickDecision"),
   ].join("\n");
-  const ctx = createContext({});
+  // The row asks the page for an agent's display name (#470); none is set here,
+  // so it falls back to the session id.
+  const ctx = createContext({ window: { lisaAgentLabel: () => "" } });
   runInContext(
     `${src}; globalThis.__row = ctrlRowHTML; globalThis.__decide = ctrlQuickDecision;`,
     ctx,
