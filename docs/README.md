@@ -120,6 +120,7 @@ several are cited by name from source comments.
 
 ## Releases
 
+- [v0.31.0 — Your other Macs, more of your apps](./RELEASE_v0.31.0.md)
 - [v0.30.0 — Yours to see, keep and undo](./RELEASE_v0.30.0.md)
 - [v0.29.1 — Mac connection security and reliability](./RELEASE_v0.29.1.md)
 - [v0.29.0 — Pocket connects to your Mac anywhere](./RELEASE_v0.29.0.md)
