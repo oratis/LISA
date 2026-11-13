@@ -106,14 +106,11 @@ Run the account, session, quota, IAP, admission, autonomy and server regression
 suites alongside type checking and build. Browser verification covers all 11
 modules, login, search/detail, ticket save and mobile layout.
 
-The final production rollout applies only console-related changes to the latest
-already-live cloud commit `349e53c` (v0.30.1-beta.1), retaining its expression and
-hosted-account updates. An earlier build on the old v0.27.1 baseline was discarded
-when a concurrent release promoted the newer cloud version. Verify that traffic
-still points to the inspected baseline immediately before promoting a console
-revision; never overwrite a concurrent production release.
+Before promoting a console revision, verify that production traffic still
+points to the baseline you inspected; never overwrite a concurrent production
+release.
 
 The website image derives from its currently deployed image and changes only
 nginx proxy configuration. First deploy a zero-traffic revision; verify denied
-and authorized read-only endpoints before promoting. Keep the previous cloud
-`lisa-cloud-expr-349e53c` and website `lisa-web-00029-gej` revisions for rollback.
+and authorized read-only endpoints before promoting. Keep the previous cloud and
+website revisions available for rollback.
