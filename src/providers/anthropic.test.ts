@@ -1,5 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { AnthropicProvider, anthropicUsage, modelSupportsEffort } from "./anthropic.js";
 import type { ProviderRunOpts } from "./types.js";
 
@@ -192,6 +194,123 @@ describe("AnthropicProvider — transient empty-stream retry", () => {
 
     assert.equal(calls, 1); // surfaced, not retried — output already streamed
     assert.deepEqual(deltas, ["partial"]);
+  });
+});
+
+/**
+ * What actually goes over the wire, through the real SDK against a local stub.
+ * Which header carries the credential, and which API version is asked for, are
+ * decided inside the SDK and have changed between its majors (1.0 moved the
+ * API key to `Authorization` and the version to 2026-10-21), so they are
+ * pinned here: an SDK bump that changes either one fails a test instead of
+ * changing requests unnoticed.
+ */
+describe("AnthropicProvider — request headers on the wire", () => {
+  interface Seen {
+    url?: string;
+    headers: http.IncomingHttpHeaders;
+    body: Record<string, unknown>;
+  }
+
+  /** One turn against a stub that streams a minimal message; returns the request it got. */
+  async function sendTurn(
+    auth: { apiKey?: string; authToken?: string },
+    run: Partial<ProviderRunOpts> = {},
+  ): Promise<Seen> {
+    let seen: Seen | undefined;
+    const server = http.createServer((req, res) => {
+      void respond(req, res).catch((error: Error) => res.destroy(error));
+    });
+    async function respond(req: http.IncomingMessage, res: http.ServerResponse) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      seen = {
+        url: req.url,
+        headers: req.headers,
+        body: JSON.parse(Buffer.concat(chunks).toString()),
+      };
+      const events: Array<[string, Record<string, unknown>]> = [
+        [
+          "message_start",
+          {
+            message: {
+              id: "msg_stub",
+              type: "message",
+              role: "assistant",
+              model: "claude-test",
+              content: [],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 1, output_tokens: 0 },
+            },
+          },
+        ],
+        ["content_block_start", { index: 0, content_block: { type: "text", text: "" } }],
+        ["content_block_delta", { index: 0, delta: { type: "text_delta", text: "hi" } }],
+        ["content_block_stop", { index: 0 }],
+        [
+          "message_delta",
+          { delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } },
+        ],
+        ["message_stop", {}],
+      ];
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      for (const [type, data] of events) {
+        res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+      }
+      res.end();
+    }
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      const provider = new AnthropicProvider({ ...auth, baseURL: `http://127.0.0.1:${port}` });
+      const result = await provider.runTurn({ ...baseOpts(), ...run });
+      assert.equal(result.stopReason, "end_turn");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    assert.ok(seen, "the stub received no request");
+    return seen;
+  }
+
+  test("an API key goes out in x-api-key, not as a bearer token", async () => {
+    const { url, headers } = await sendTurn({ apiKey: "sk-test-key" });
+    assert.equal(url, "/v1/messages");
+    assert.equal(headers["x-api-key"], "sk-test-key");
+    assert.equal(headers.authorization, undefined);
+    assert.equal(headers["anthropic-version"], "2026-10-21");
+  });
+
+  test("an auth token goes out as Authorization: Bearer, with no x-api-key", async () => {
+    // A key left in the environment must not ride along to the gateway the
+    // token is for.
+    const saved = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "sk-env-key";
+    try {
+      const { headers } = await sendTurn({ authToken: "gateway-token" });
+      assert.equal(headers.authorization, "Bearer gateway-token");
+      assert.equal(headers["x-api-key"], undefined);
+    } finally {
+      if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = saved;
+    }
+  });
+
+  test("given both, the auth token wins and the key is not sent", async () => {
+    const { headers } = await sendTurn({ apiKey: "sk-test-key", authToken: "gateway-token" });
+    assert.equal(headers.authorization, "Bearer gateway-token");
+    assert.equal(headers["x-api-key"], undefined);
+  });
+
+  test("compaction asks for its beta by header, on the same path", async () => {
+    const { url, headers, body } = await sendTurn({ apiKey: "sk-test-key" }, { compaction: true });
+    assert.equal(url, "/v1/messages");
+    assert.equal(headers["anthropic-beta"], "compact-2026-01-12");
+    assert.equal(headers["x-api-key"], "sk-test-key");
+    assert.deepEqual(body.context_management, { edits: [{ type: "compact_20260112" }] });
+    // `betas` is the SDK's name for the header; it is not a body field.
+    assert.equal("betas" in body, false);
   });
 });
 
