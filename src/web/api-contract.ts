@@ -63,6 +63,22 @@ export function agentSessionsResponse(
   };
 }
 
+/**
+ * The JSON error body agent-control routes answer with (contract:
+ * ErrorResponse): a stable machine `error` code a client can branch on, and a
+ * `message` it can show as-is. Extra fields (e.g. legacy `ok: false`) are kept.
+ */
+export function writeApiError(
+  res: http.ServerResponse,
+  status: number,
+  error: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+): void {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify({ ...extra, error, message }));
+}
+
 /** Wire shape of a Lisa chat session — the on-disk `path` never serializes. */
 export type ApiLisaSession = Omit<SessionInfo, "path">;
 

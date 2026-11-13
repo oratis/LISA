@@ -154,7 +154,7 @@ import {
   CTRL_BODY_LIMIT,
   RICH_BODY_LIMIT,
 } from "./http-body.js";
-import { agentSessionsResponse, applyApiVersionHeader } from "./api-contract.js";
+import { agentSessionsResponse, applyApiVersionHeader, writeApiError } from "./api-contract.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
@@ -189,7 +189,13 @@ import {
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedAgentSubset } from "../tools/registry.js";
 import { managedRegistry } from "../agents/managed.js";
-import { ptyRegistry, ptyEnabled, ptyAvailability, normalizeAgentKind } from "../agents/pty.js";
+import {
+  ptyRegistry,
+  ptyEnabled,
+  ptyAvailability,
+  normalizeAgentKind,
+  PtyStartError,
+} from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { sweepAll, pollNewMail, probeAccount } from "../mail/service.js";
 import { friendlyMailError } from "../mail/connect-error.js";
@@ -4344,7 +4350,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // ── PTY agents (Stage C spike, off unless LISA_PTY_AGENTS=1) ─────────
     // Real `claude`/`codex` CLIs LISA spawns under a pseudo-terminal: it types
     // your task + follow-ups and can read the terminal tail. Behind the same
-    // auth gate; 503 when the spike flag is off / node-pty is absent.
+    // auth gate. Errors are JSON {error, message}; /start answers 503
+    // pty_disabled | cli_missing and 500 spawn_failed (PtyStartError), and
+    // /status tells a client up front which of those a start would hit.
     if (req.method === "GET" && url === "/api/agents/pty/status") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(await ptyAvailability()));
@@ -4358,13 +4366,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         payload = JSON.parse(pBody || "{}");
       } catch {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("bad json");
+        writeApiError(res, 400, "bad_json", "The request body is not valid JSON.");
         return;
       }
       if (!ptyEnabled()) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end("PTY agents are disabled — set LISA_PTY_AGENTS=1 to enable this spike");
+        writeApiError(
+          res,
+          503,
+          "pty_disabled",
+          "PTY agents are disabled on this Mac — set LISA_PTY_AGENTS=1 and restart `lisa serve --web`",
+        );
         return;
       }
       const agent =
@@ -4380,8 +4391,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // signal, so we can't guard against resuming a *live* rollout and corrupting
       // it — refuse with a clear 400 rather than silently spawning a fresh session.
       if (resumeSessionId && normalizeAgentKind(agent) !== "claude-code") {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end(
+        writeApiError(
+          res,
+          400,
+          "resume_unsupported",
           `resume-adopt is only supported for claude sessions (got "${agent}"); start a fresh agent instead`,
         );
         return;
@@ -4389,14 +4402,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Adopting an existing session needs no task (it continues the convo); a
       // fresh agent does. Guard: never resume a session that's currently live.
       if (!resumeSessionId && (typeof payload.task !== "string" || !payload.task.trim())) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("task required");
+        writeApiError(res, 400, "task_required", "A task is required.");
         return;
       }
       if (resumeSessionId && liveClaudeSessionIds().has(resumeSessionId)) {
-        res.writeHead(409, { "content-type": "text/plain" });
-        res.end(
-          "that session is currently live (open in the app/terminal) — close it first; resuming a live session would corrupt its transcript",
+        writeApiError(
+          res,
+          409,
+          "session_live",
+          "That session is currently live (open in the app/terminal) — close it first; resuming a live session would corrupt its transcript",
         );
         return;
       }
@@ -4414,8 +4428,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, agent: view }));
       } catch (err) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end((err as Error).message);
+        // 503 = this Mac can't run PTY agents as configured (a setting or an
+        // install away); a spawn that fails anyway is a server error, not
+        // "disabled" — shipped Pocket builds read every 503 as "turn it on".
+        const code = err instanceof PtyStartError ? err.code : "spawn_failed";
+        const message =
+          err instanceof PtyStartError
+            ? err.message
+            : `Couldn't start the agent: ${(err as Error).message}`;
+        writeApiError(res, code === "spawn_failed" ? 500 : 503, code, message);
       }
       return;
     }
