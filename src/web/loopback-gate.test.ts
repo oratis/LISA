@@ -80,7 +80,20 @@ function send(
 ): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      { host: "127.0.0.1", port, path: route, method, headers, agent: false },
+      {
+        host: "127.0.0.1",
+        port,
+        path: route,
+        method,
+        // node:http does not frame a body on GET/HEAD/DELETE by itself. Unframed,
+        // the server's parser rejects the trailing bytes with a bare 400, and
+        // whether that or the route's answer arrives first is a race.
+        headers:
+          body === undefined
+            ? headers
+            : { ...headers, "content-length": String(Buffer.byteLength(body)) },
+        agent: false,
+      },
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
