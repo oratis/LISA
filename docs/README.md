@@ -76,6 +76,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 | Plan | Scope |
 |---|---|
 | [PLAN_HARNESS_ALIGNMENT_v1.0.md](./PLAN_HARNESS_ALIGNMENT_v1.0.md) | Aligning with the DeepSeek harness: capability seam, sandbox modes, prompt in the session log. |
+| [T3 Code agent workflow proposal](./PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md) | Fleet task timeline (first slice implemented in #473), per-task viewing from Pocket, turn-level diffs, provider capabilities, and optional T3 integration. |
 | [PLAN_KNOWLEDGE_BASE_v2.0.md](./PLAN_KNOWLEDGE_BASE_v2.0.md) | Knowledge base v2: URL ingest, the daily brief, the link graph. |
 | [PLAN_DESIRE_EVOLUTION_v1.0.md](./PLAN_DESIRE_EVOLUTION_v1.0.md) | Why her wishes didn't change with a conversation, and how to fix it without breaking sovereignty. |
 | [PLAN_MAIL_v1.0.md](./PLAN_MAIL_v1.0.md) | The read-only mailbox and its daily digest. |
