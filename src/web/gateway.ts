@@ -137,7 +137,8 @@ const ZERO: ProviderUsage = {
  * request/response, so an asynchronous job (a batch that completes later) would
  * be billed to the operator's key with nothing left to settle it against.
  *
- * Anthropic: `/v1/messages`, optionally `?beta=true` (the SDK's beta client).
+ * Anthropic: `/v1/messages`, optionally `?beta=true` (the SDK's beta client
+ * before 1.3; later ones send the bare path).
  * OpenAI-compatible: the managed client's base is `/gw/openai/v1`, so it sends
  * `/v1/chat/completions`; the provider base already carries its own version
  * (`https://api.openai.com/v1`, `…/paas/v4`), so the upstream path is
