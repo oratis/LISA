@@ -254,6 +254,32 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     try {
       const r = await request(srv.port, "POST", "/reflect", { body: "{}" });
       assert.notEqual(r.status, 409, "manual must not be refused by the reflection gate");
+      const stale = await request(srv.port, "POST", "/reflect", {
+        headers: { "x-lisa-session-id": "no-longer-selected" },
+        body: "{}",
+      });
+      assert.equal(stale.status, 409);
+      assert.deepEqual(JSON.parse(stale.text), { error: "session_changed" });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("a competing reflection gets a stable conflict without leaking its lock path", async () => {
+    const { withFileLock } = await import("../soul/lock.js");
+    const { reflectionsDir } = await import("../paths.js");
+    const srv = await boot();
+    try {
+      const session = await request(srv.port, "GET", "/session");
+      const { id } = JSON.parse(session.text) as { id: string };
+      const response = await withFileLock(path.join(reflectionsDir(), `${id}.lock`), () =>
+        request(srv.port, "POST", "/reflect", {
+          body: "{}",
+          headers: { "x-lisa-session-id": id },
+        }),
+      );
+      assert.equal(response.status, 409);
+      assert.deepEqual(JSON.parse(response.text), { error: "reflection_busy" });
     } finally {
       await srv.close();
     }

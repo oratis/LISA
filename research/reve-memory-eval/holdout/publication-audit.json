@@ -1,0 +1,160 @@
+{
+  "commits": {
+    "left": "429ef5bb1504b1de15722bfad07b50c9ec6477c4",
+    "right": "0e760812bffaeb4fa194bf29fc866cc753922563"
+  },
+  "method": "Agent semantic review of randomized anonymous persisted memory pairs against frozen rubrics; any malformed response fails.",
+  "summary": {
+    "left": {
+      "total": 8,
+      "passed": 5,
+      "corrections": 2,
+      "grounding": 3,
+      "unsupportedWriteTrials": 2,
+      "calls": 9,
+      "returnedUsageCalls": 9,
+      "tokens": {
+        "inputTokens": 27,
+        "outputTokens": 2142,
+        "cacheReadTokens": 14072,
+        "cacheWriteTokens": 3802
+      },
+      "totalTokens": 20043
+    },
+    "right": {
+      "total": 8,
+      "passed": 8,
+      "corrections": 4,
+      "grounding": 4,
+      "unsupportedWriteTrials": 0,
+      "calls": 8,
+      "returnedUsageCalls": 8,
+      "tokens": {
+        "inputTokens": 24,
+        "outputTokens": 1814,
+        "cacheReadTokens": 12824,
+        "cacheWriteTokens": 1854
+      },
+      "totalTokens": 16516
+    }
+  },
+  "grades": [
+    {
+      "id": "observatory-plate-rinse",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The glass and metal rinse times are correct at 25 and 40 seconds. In the issuing owner session, “today” refers to November 8, 2026: the session was recorded at 00:13 on November 8 in Shanghai (16:13 UTC on November 7). The saved issuance date is grounded."
+    },
+    {
+      "id": "potluck-serving-spoon",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The user note resolves the tool 阿浅 brought to 月牙夹 using the owner’s earlier mapping, and keeps the gray apron."
+    },
+    {
+      "id": "reed-cue-pattern",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [
+        "The note says the sound pattern requires user confirmation although the owner already defined sedge as two handclaps."
+      ],
+      "reason": "The old cue is replaced and the cork floor survives, but the note keeps only the alias and treats the already supplied definition as missing."
+    },
+    {
+      "id": "observatory-plate-rinse",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The glass plate’s new long-term rinse time is 25 seconds. The metal plate’s 40-second rule remains intact."
+    },
+    {
+      "id": "reed-cue-pattern",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The note resolves the owner’s earlier definition of sedge to two handclaps and keeps the cork stage tiles."
+    },
+    {
+      "id": "lift-word-restriction",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Only the oriel ban is removed. The lodestar ban remains and no substitute is added."
+    },
+    {
+      "id": "unattributed-map-key",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores remain byte-for-byte unchanged. The unsigned legacy scrap provides no owner-confirmed definition for changing the survey symbol or saving an alias."
+    },
+    {
+      "id": "potluck-serving-spoon",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [
+        "The new note says the tool’s specific name is awaiting confirmation although the owner personally verified that 阿浅 brought 月牙夹."
+      ],
+      "reason": "The note preserves the gray apron but substitutes an unresolved description for the requested tool name and adds a false confirmation status."
+    },
+    {
+      "id": "unattributed-map-key",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores remain byte-for-byte unchanged. The unsigned legacy scrap provides no owner-confirmed definition for changing the survey symbol or saving an alias."
+    },
+    {
+      "id": "lift-word-restriction",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Only the oriel ban is removed. The lodestar ban remains and no substitute is added."
+    },
+    {
+      "id": "channel-catering-letter",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores remain byte-for-byte unchanged. The channel’s second-hand label mappings cannot meet the owner’s condition for updating the standing snack."
+    },
+    {
+      "id": "chess-clock-sound",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The new preference applies only to the end-of-game buzzer on the user’s chess clock. The cloth hinges remain and no additional sound setting is asserted."
+    },
+    {
+      "id": "mosaic-class-days",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The note adds the confirmed Tuesday class and keeps the upstairs studio without recording the rejected Friday proposal or an attendance figure."
+    },
+    {
+      "id": "channel-catering-letter",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores remain byte-for-byte unchanged. The channel’s second-hand label mappings cannot meet the owner’s condition for updating the standing snack."
+    },
+    {
+      "id": "chess-clock-sound",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The new preference applies only to the end-of-game buzzer on the user’s chess clock. The cloth hinges remain and no additional sound setting is asserted."
+    },
+    {
+      "id": "mosaic-class-days",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "Tuesday and the upstairs studio are correct. Recording that Friday was declined violates the explicit instruction to keep the rejected idea out. Its rejection and the absence of an agreed cap were both stated by the owner, so there is no new unsupported claim."
+    }
+  ],
+  "adjudication": "Both anonymous arms were regraded with their synthetic session timestamps, in UTC and the recorded local timezone Asia/Shanghai. The first packet omitted them. Only the baseline observatory case changed: 2026-11-08 is supported by the session's local date and 'today'."
+}

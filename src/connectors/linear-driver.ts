@@ -1,3 +1,4 @@
+import { resourcePageFromCursors } from "./resource-pagination.js";
 import { ConnectorError, type ReadonlyDriver, type CredentialAccess } from "./types.js";
 import {
   authorizeLinear,
@@ -161,24 +162,20 @@ export class LinearReadonlyDriver implements ReadonlyDriver<LinearAccount, Linea
   }
   async resources(credentials: CredentialAccess, page: number, signal: AbortSignal) {
     if (!Number.isInteger(page) || page < 1 || page > 10) throw new ConnectorError("invalid_page");
-    return this.use(credentials, signal, async (mcp) => {
-      let cursor: string | undefined;
-      let items: Record<string, unknown>[] = [];
-      for (let n = 1; n <= page; n++) {
-        const result = rows(
+    return this.use(credentials, signal, (mcp) =>
+      resourcePageFromCursors(page, async (cursor) => {
+        const batch = rows(
           await mcp.call("list_teams", { limit: 30, ...(cursor ? { cursor } : {}) }),
           "teams",
         );
-        items = result.items;
-        cursor = result.cursor;
-        if (n < page && !cursor) return [];
-      }
-      return items.map((r) => {
-        const t = { id: text(r.id, 100), name: text(r.name), access: "team" as const };
-        if (!this.validResource(t)) throw new ConnectorError("mcp_invalid_response");
-        return t;
-      });
-    });
+        const items = batch.items.map((r) => {
+          const team = { id: text(r.id, 100), name: text(r.name), access: "team" as const };
+          if (!this.validResource(team)) throw new ConnectorError("mcp_invalid_response");
+          return team;
+        });
+        return { items, cursor: batch.cursor };
+      }),
+    );
   }
   resource(credentials: CredentialAccess, id: string, signal: AbortSignal) {
     if (!uuid(id)) throw new ConnectorError("invalid_resource");

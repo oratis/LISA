@@ -109,6 +109,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
 
         webView = wv
         view = container
+        applyAppearance(UserDefaults.standard.string(forKey: "lisaAppearancePreference") ?? "system")
         NotificationCenter.default.addObserver(self, selector: #selector(syncMotionVisibility), name: NSWindow.didChangeOcclusionStateNotification, object: nil)
 
         observeBackend()
@@ -199,13 +200,29 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
     func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }
-        if type == "start_backend" {
+        if type == "appearance" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "localhost",
+                  message.frameInfo.securityOrigin.port == 5757,
+                  let preference = body["preference"] as? String,
+                  ["system", "calm", "nebula"].contains(preference) else { return }
+            UserDefaults.standard.set(preference, forKey: "lisaAppearancePreference")
+            applyAppearance(preference)
+        } else if type == "start_backend" {
             BackendController.shared.start()
         } else if type == "setup_backend" {
             // UX-7: the splash's second door — the guided install wizard, for
             // when the backend isn't just stopped but was never installed.
             BackendSetupController.shared.presentFromMenu()
         }
+    }
+
+    private func applyAppearance(_ preference: String) {
+        let appearance: NSAppearance? = preference == "calm" ? NSAppearance(named: .aqua)
+            : preference == "nebula" ? NSAppearance(named: .darkAqua) : nil
+        view.appearance = appearance
+        view.window?.appearance = appearance
+        webView.underPageBackgroundColor = .windowBackgroundColor
     }
 
     /// Reload the chat as soon as the backend reports up (snappier than waiting
@@ -220,7 +237,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
 
     /// Show a styled "backend not running" placeholder inside the WebView
     /// when localhost:5757 isn't reachable. Visually consistent with the
-    /// real chat UI's dark theme; replaced atomically when the next
+    /// real chat UI's chosen appearance; replaced atomically when the next
     /// retry succeeds (the actual page load replaces the entire document).
     private func loadOfflineSplash(error: Error) {
         // Prefer the backend's OWN reason for not being there — BackendController
@@ -242,65 +259,61 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         // to localhost:5757 directly with location.assign — that triggers
         // a fresh load attempt.
         let escaped = errorMessage
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let preference = UserDefaults.standard.string(forKey: "lisaAppearancePreference") ?? "system"
+        let theme = preference == "calm" ? "light" : preference == "nebula" ? "dark" : "system"
         return """
-        <!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">
+        <!doctype html><html lang=\"en\" data-theme=\"\(theme)\"><head><meta charset=\"utf-8\">
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
         <title>LISA — backend offline</title>
         <style>
-          :root { color-scheme: dark; }
-          html, body { margin:0; padding:0; height:100%; background: #07091a;
-            font-family: -apple-system, BlinkMacSystemFont, \"SF Pro Text\",
-                         \"Inter\", system-ui, sans-serif;
-            color: #e8eaff; -webkit-font-smoothing: antialiased; user-select: none; }
-          body { display: flex; align-items: center; justify-content: center;
-            background:
-              radial-gradient(ellipse at 30% 20%, #1a1238 0%, transparent 50%),
-              radial-gradient(ellipse at 80% 70%, #0a1f3a 0%, transparent 60%),
-              linear-gradient(180deg, #0b1024 0%, #07091a 100%); }
-          .card { width: min(560px, 88vw); padding: 32px 36px;
-            background: rgba(20, 26, 64, 0.65);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 18px; backdrop-filter: blur(30px); }
-          h1 { font-size: 22px; margin: 0 0 6px;
-               letter-spacing: 0.01em; color: #ffd066; }
-          p.sub { margin: 0 0 22px; color: #aeb5d3; font-size: 14px; line-height: 1.5; }
-          h2 { font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
-               text-transform: uppercase; color: #6ad4ff; margin: 18px 0 8px; }
-          pre { margin: 0; padding: 12px 14px; background: rgba(0, 0, 0, 0.30);
-               border-radius: 10px; font-family: ui-monospace, \"SF Mono\", Menlo, monospace;
-               font-size: 12.5px; color: #e8eaff; line-height: 1.55;
-               white-space: pre-wrap; word-break: break-all;
-               cursor: copy; transition: background 120ms ease; user-select: all; }
-          pre:hover { background: rgba(106, 212, 255, 0.10); }
-          .row { display: flex; gap: 10px; margin-top: 24px; }
-          button { flex: 1; padding: 11px 14px; font-family: inherit;
-                   font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em;
-                   border-radius: 12px; cursor: pointer;
-                   background: linear-gradient(180deg, #6ad4ff 0%, #4eb8e5 100%);
-                   color: #0a1024; border: 0;
-                   box-shadow: 0 4px 14px rgba(106, 212, 255, 0.25);
-                   transition: transform 120ms ease, box-shadow 120ms ease; }
-          button:hover { transform: translateY(-1px);
-                         box-shadow: 0 6px 18px rgba(106, 212, 255, 0.35); }
-          button.ghost { background: rgba(255,255,255,0.06); color: #cdd3f0;
-                         box-shadow: none; border: 1px solid rgba(255,255,255,0.16); }
-          button:disabled { opacity: 0.6; cursor: default; transform: none; }
-          .err { margin-top: 18px; padding: 10px 12px; border-radius: 8px;
-                 background: rgba(255, 85, 119, 0.08); color: #ff95a8;
-                 border: 1px solid rgba(255, 85, 119, 0.30);
-                 font-size: 11.5px; font-family: ui-monospace, Menlo, monospace; }
-          .hint { color: #6c7398; font-size: 11.5px; margin-top: 18px; line-height: 1.5; }
+          :root { color-scheme: dark; --bg:#0b1024; --card:#161c3c; --fg:#e8eaff;
+            --secondary:#aeb5d3; --muted:#969fbe; --accent:#6ad4ff; --on-accent:#0a1024;
+            --border:#303858; --well:#0c1126; --error:#ff95a8; }
+          :root[data-theme="light"] { color-scheme:light; --bg:#f5f6fa; --card:#fff; --fg:#1b2430;
+            --secondary:#4d5666; --muted:#5f6878; --accent:#4f5bd5; --on-accent:#fff;
+            --border:#dde2ec; --well:#f0f3f8; --error:#be2945; }
+          @media (prefers-color-scheme: light) {
+            :root:not([data-theme="dark"]) { color-scheme:light; --bg:#f5f6fa; --card:#fff; --fg:#1b2430;
+              --secondary:#4d5666; --muted:#5f6878; --accent:#4f5bd5; --on-accent:#fff;
+              --border:#dde2ec; --well:#f0f3f8; --error:#be2945; }
+          }
+          * { box-sizing:border-box; }
+          html, body { margin:0; min-height:100%; background:var(--bg); color:var(--fg);
+            font-family:-apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            -webkit-font-smoothing:antialiased; }
+          body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:56px 24px 24px; }
+          .card { width:min(560px, 100%); padding:32px; background:var(--card);
+            border:1px solid var(--border); border-radius:20px; box-shadow:0 16px 48px rgba(32,45,70,.08); }
+          h1 { font-size:26px; margin:0 0 10px; letter-spacing:-.025em; }
+          p.sub { margin:0 0 24px; color:var(--secondary); font-size:15px; line-height:1.65; }
+          h2 { font-size:13px; font-weight:600; color:var(--secondary); margin:24px 0 10px; }
+          pre { margin:0; padding:12px 14px; background:var(--well); color:var(--fg);
+            border:1px solid var(--border); border-radius:10px; font:12.5px/1.6 ui-monospace, Menlo, monospace;
+            white-space:pre-wrap; overflow-wrap:anywhere; user-select:all; }
+          .row { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+          button { flex:1; min-height:44px; padding:12px 16px; font:600 14px system-ui;
+            border-radius:12px; cursor:pointer; background:var(--accent); color:var(--on-accent); border:0; }
+          button:hover { filter:brightness(.95); }
+          button.ghost { background:var(--card); color:var(--fg); border:1px solid var(--border); }
+          button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+          button:disabled { opacity:.6; cursor:default; }
+          .err { margin-top:18px; padding:12px; border-radius:10px; background:var(--well);
+            color:var(--error); border:1px solid var(--border); font:12px/1.6 ui-monospace, Menlo, monospace;
+            overflow-wrap:anywhere; user-select:text; }
+          .hint { color:var(--muted); font-size:13px; margin-top:20px; line-height:1.6; }
         </style></head><body>
         <div class=\"card\">
-          <h1>LISA backend offline</h1>
+          <h1>Let’s reconnect Lisa</h1>
           <p class=\"sub\">
-            Lisa.app starts its own backend on <code>http://localhost:5757</code>
-            — that server isn't answering yet.
+            Lisa’s local service isn’t responding yet. Start it below to get back
+            to your conversations.
           </p>
 
           <div class=\"row\">
-            <button id=\"startBtn\" onclick=\"startBackend()\">▶&nbsp;&nbsp;Start Lisa backend</button>
+            <button id=\"startBtn\" onclick=\"startBackend()\">Start Lisa</button>
             <button class=\"ghost\" onclick=\"location.assign('http://localhost:5757/')\">Retry</button>
           </div>
           <div class=\"row\">

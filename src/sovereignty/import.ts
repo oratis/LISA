@@ -33,8 +33,10 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
-import { lisaGlobalHome } from "../paths.js";
-import { memoryMaxBytes, type MemoryStore } from "../memory/store.js";
+import { homeScope, lisaGlobalHome } from "../paths.js";
+import { withMemoryLock, memoryMaxBytes, type MemoryStore } from "../memory/store.js";
+import { assertHomeDirectory } from "../home-files.js";
+import { invalidateMemoryReviews, withReviewReset } from "../memory/review.js";
 import { appendSovereigntyAudit } from "./audit.js";
 import { EXPORT_FORMAT, EXPORT_FORMAT_VERSION } from "./export.js";
 import {
@@ -364,14 +366,22 @@ function verify(manifest: ManifestShape, written: Map<string, Written>): void {
 /** Does an area of the target home already hold data (ignoring locks/temp)? */
 async function areaHasData(into: string, root: string): Promise<boolean> {
   if (root === "memory") {
-    for (const f of ["MEMORY.md", "USER.md"]) {
+    let occupied = false;
+    for (const section of ["reviews", "revisions"]) {
+      const dir = path.join(into, "memory", section);
+      await assertHomeDirectory(dir);
+      if (await exists(dir)) occupied = true;
+    }
+    for (const f of ["MEMORY.md", "USER.md", ".review-generation"]) {
       try {
-        if ((await fsp.stat(path.join(into, "memory", f))).size > 0) return true;
-      } catch {
-        // missing
+        const stat = await fsp.lstat(path.join(into, "memory", f));
+        if (!stat.isFile()) throw new Error("unsafe target memory file");
+        if (f !== ".review-generation" && stat.size > 0) occupied = true;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
     }
-    return false;
+    return occupied;
   }
   let names: string[];
   try {
@@ -501,6 +511,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
     );
   }
 
+  await homeScope.run(into, () => assertHomeDirectory(into));
   await fsp.mkdir(into, { recursive: true, mode: 0o700 });
   const staging = await fsp.mkdtemp(path.join(into, ".import-"));
   try {
@@ -513,7 +524,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
       [...written.keys()].some((p) => p.startsWith(`${r}/`)),
     );
     for (const root of roots) {
-      if (await areaHasData(into, root)) {
+      if (await homeScope.run(into, () => areaHasData(into, root))) {
         if (opts.replace) continue;
         if (root === "soul") {
           throw new ImportError(
@@ -538,47 +549,69 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
     const trash = path.join(staging, ".replaced");
     const done: Move[] = [];
     const move = async (from: string, to: string): Promise<void> => {
+      await assertHomeDirectory(path.dirname(from));
+      await assertHomeDirectory(path.dirname(to));
       await fsp.mkdir(path.dirname(to), { recursive: true, mode: 0o700 });
       await fsp.rename(from, to);
       done.push({ from, to });
     };
     let backedUp = false;
-    try {
-      for (const root of roots) {
-        if (root === "memory") {
-          // One area: both stores are replaced together, so a store the
-          // archive lacks is not left behind from the old Lisa. The rest of
-          // memory/ (caches, the write lock) is infrastructure and stays.
-          for (const { file: f } of MEMORY_STORE_FILES) {
-            const staged = path.join(staging, "memory", f);
-            const target = path.join(into, "memory", f);
-            if (await exists(target)) {
-              await move(target, path.join(backupRoot ?? trash, "memory", f));
-              backedUp ||= Boolean(backupRoot);
+    const swap = async () => {
+      try {
+        for (const root of roots) {
+          if (root === "memory") {
+            // One area: both stores are replaced together, so a store the
+            // archive lacks is not left behind from the old Lisa. The rest of
+            // memory/ (caches, the write lock) is infrastructure and stays.
+            // Provenance belongs to the previous memory, including snapshots
+            // whose after-text might coincidentally equal the imported store.
+            // Stage a new generation so pre-import proposals fail even then.
+            if ((await areaHasData(into, "memory")) && !opts.replace)
+              throw new Error("memory changed during import");
+            await fsp.writeFile(
+              path.join(staging, "memory", ".review-generation"),
+              JSON.stringify(crypto.randomUUID()) + "\n",
+              { mode: 0o600 },
+            );
+            const names = [
+              ...MEMORY_STORE_FILES.map((f) => f.file),
+              "reviews",
+              "revisions",
+              ".review-generation",
+            ];
+            for (const f of names) {
+              const staged = path.join(staging, "memory", f);
+              const target = path.join(into, "memory", f);
+              if (await exists(target)) {
+                await move(target, path.join(backupRoot ?? trash, "memory", f));
+                backedUp ||= Boolean(backupRoot);
+              }
+              if (await exists(staged)) await move(staged, target);
             }
-            if (await exists(staged)) await move(staged, target);
+            continue;
           }
-          continue;
+          const target = path.join(into, root);
+          if (await exists(target)) {
+            // Non-empty only reaches here with replace; an empty/lock-only dir
+            // is moved aside into staging and discarded with it.
+            const hasData = await areaHasData(into, root);
+            await move(target, path.join(hasData && backupRoot ? backupRoot : trash, root));
+            backedUp ||= hasData && Boolean(backupRoot);
+          }
+          await move(path.join(staging, root), target);
         }
-        const target = path.join(into, root);
-        if (await exists(target)) {
-          // Non-empty only reaches here with replace; an empty/lock-only dir
-          // is moved aside into staging and discarded with it.
-          const hasData = await areaHasData(into, root);
-          await move(target, path.join(hasData && backupRoot ? backupRoot : trash, root));
-          backedUp ||= hasData && Boolean(backupRoot);
+        if (!roots.includes("memory")) await invalidateMemoryReviews();
+      } catch (e) {
+        for (const m of done.reverse()) {
+          await fsp.rename(m.to, m.from).catch(() => {});
         }
-        await move(path.join(staging, root), target);
+        throw new ImportError(
+          "swap_failed",
+          `import could not be completed and was rolled back: ${(e as Error).message}`,
+        );
       }
-    } catch (e) {
-      for (const m of done.reverse()) {
-        await fsp.rename(m.to, m.from).catch(() => {});
-      }
-      throw new ImportError(
-        "swap_failed",
-        `import could not be completed and was rolled back: ${(e as Error).message}`,
-      );
-    }
+    };
+    if (roots.length) await homeScope.run(into, () => withReviewReset(() => withMemoryLock(swap)));
 
     const bytes = [...written.values()].reduce((n, w) => n + w.size, 0);
     await appendSovereigntyAudit(

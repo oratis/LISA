@@ -7,6 +7,8 @@
  *
  * NOTE: one template literal — NO backticks inside (island.ts trap).
  */
+import { PAGE_APPEARANCE_CSS, PAGE_APPEARANCE_JS } from "./page-appearance.js";
+
 export const ACCOUNT_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -14,33 +16,34 @@ export const ACCOUNT_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LISA — Account</title>
 <style>
-  :root { color-scheme: dark; }
+  ${PAGE_APPEARANCE_CSS}
   * { box-sizing: border-box; margin: 0; }
   body {
     min-height: 100vh; display: grid; place-items: center;
-    background: #0b0e13; color: #e6e9ef;
+    background: var(--page-bg); color: var(--page-text);
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   .card {
     width: min(92vw, 430px); padding: 32px 28px; border-radius: 16px;
-    background: #12161e; border: 1px solid #232a36;
+    background: var(--page-card); border: 1px solid var(--page-border);
   }
   h1 { font-size: 22px; margin-bottom: 18px; }
   .row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 15px; }
-  .row .k { color: #8a93a5; }
-  .bar { height: 8px; border-radius: 4px; background: #232a36; overflow: hidden; margin: 10px 0 18px; }
-  .bar > div { height: 100%; background: #58d68d; }
-  h2 { font-size: 14px; color: #8a93a5; margin: 22px 0 8px; }
+  .row .k { color: var(--page-muted); }
+  .bar { height: 8px; border-radius: 4px; background: var(--page-border); overflow: hidden; margin: 10px 0 18px; }
+  .bar > div { height: 100%; background: var(--page-success); }
+  h2 { font-size: 14px; color: var(--page-muted); margin: 22px 0 8px; }
   button {
     width: 100%; margin-top: 8px; padding: 11px; border: 0; border-radius: 10px;
-    background: #1b2330; color: #e6e9ef; font-size: 15px; cursor: pointer;
-    border: 1px solid #2a3342; text-align: left; display: flex; justify-content: space-between;
+    background: var(--page-inset); color: var(--page-text); font-size: 15px; cursor: pointer;
+    border: 1px solid var(--page-border); text-align: left; display: flex; justify-content: space-between;
   }
-  button:hover { border-color: #5b8cff; }
-  button.quiet { background: transparent; border: 0; color: #8a93a5; text-align: center; display: block; }
-  .note { color: #5d6575; font-size: 12px; margin-top: 14px; }
-  .ok { color: #58d68d; font-size: 13px; margin-bottom: 10px; display: none; }
+  button:hover { border-color: var(--page-accent); }
+  button.quiet { background: transparent; border: 0; color: var(--page-muted); text-align: center; display: block; }
+  .note { color: var(--page-muted); font-size: 12px; margin-top: 14px; }
+  .ok { color: var(--page-success); font-size: 13px; margin-bottom: 10px; display: none; }
 </style>
+<script>${PAGE_APPEARANCE_JS}</script>
 </head>
 <body>
 <div class="card">
@@ -61,11 +64,11 @@ export const ACCOUNT_HTML = `<!doctype html>
   </div>
 
   <h2>Your Mac</h2>
-  <div class="row" style="display:block; font-size: 13px; color: #8a93a5;">
+  <div class="row" style="display:block; font-size: 13px; color: var(--page-muted);">
     Cloud Lisa carries her soul, memory, knowledge and chat. Terminal control,
     screen sense and local dispatch live on your own machine — by design.
     Pair the Mac app to bring them into this account (identity bridge, coming
-    soon). <a href="https://meetlisa.ai/install" style="color:#5b8cff">Get the Mac app →</a>
+    soon). <a href="https://meetlisa.ai/install" style="color:var(--page-accent)">Get the Mac app →</a>
   </div>
 
   <button class="quiet" id="logout">Sign out</button>

@@ -19,6 +19,7 @@ const { beginDreamForKind, withDream } = await import("./record.js");
 const { listDreams, readDream } = await import("./store.js");
 const { requestReconsider } = await import("./reconsider.js");
 const { setAutonomyEnabled } = await import("../autonomy/state.js");
+const { evidenceFromHistory } = await import("../memory/evidence.js");
 const { appendMemory } = await import("../memory/store.js");
 const soulStore = await import("../soul/store.js");
 
@@ -70,7 +71,20 @@ describe("reflective entry points produce dream records", () => {
     const payload = JSON.stringify({
       summary: "We talked about Rust.",
       journal: "",
-      operations: [{ kind: "memory_append", store: "user", entry: "learning Rust this month" }],
+      operations: [
+        {
+          kind: "memory_append",
+          store: "user",
+          entry: "learning Rust this month",
+          reason: "The user said so.",
+          source_quotes: [
+            {
+              id: evidenceFromHistory(history, "s1")[0]!.id,
+              quote: "I'm learning Rust this month.",
+            },
+          ],
+        },
+      ],
     });
     const seen: string[] = [];
     const r1 = await reflectOnSession({
@@ -89,6 +103,31 @@ describe("reflective entry points produce dream records", () => {
     assert.equal(newest.autonomyRunIds.length, 1);
     assert.deepEqual(newest.reconsiderDelivered, [req.id]);
     assert.ok(newest.changes.some((c) => c.path === "memory/USER.md"));
+
+    const nextRequest = await requestReconsider(
+      target,
+      "Revisit this after reflecting once already.",
+    );
+    const repeated: string[] = [];
+    await reflectOnSession({
+      history,
+      sessionId: "s1",
+      model: "test",
+      provider: scripted(payload, repeated),
+    });
+    assert.ok(
+      repeated[0]!.includes(nextRequest.id),
+      "a new reconsideration reaches a previously processed session",
+    );
+    const duplicate = await reflectOnSession({
+      history,
+      sessionId: "s1",
+      model: "test",
+      provider: scripted(payload, repeated),
+    });
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(duplicate.summary, r1.summary);
+    assert.equal(repeated.length, 1);
 
     // The next reflection does not see the note again.
     const seen2: string[] = [];

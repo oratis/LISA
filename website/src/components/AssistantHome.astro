@@ -93,11 +93,11 @@ const copy = zh ? {
   .lede { font-size:1.08rem; color:var(--muted); line-height:1.7; max-width:62ch; }
   .hero h1 { font-size:clamp(2.5rem,5.3vw,4.6rem); line-height:1.08; letter-spacing:-.04em; }
   .hero .actions { margin:1.7rem 0 1rem; }
-  .starter-panel { padding:2rem; border:1px solid var(--border); border-radius:24px; background:radial-gradient(ellipse at top right,#173139 0%,var(--panel) 70%); }
+  .starter-panel { padding:2rem; border:1px solid var(--border); border-radius:24px; background:radial-gradient(ellipse at top right,var(--hero-tint) 0%,var(--panel) 70%); box-shadow:var(--shadow); }
   .starter-panel img { border-radius:26px; display:block; margin-bottom:1.4rem; }
   .starter-panel h2 { font-size:1.2rem; }
   .starter-panel ul { list-style:none; padding:0; margin:1rem 0 0; display:grid; gap:.75rem; }
-  .starter-panel li { border:1px solid var(--border); border-radius:12px; padding:.9rem 1rem; color:var(--ink); background:#0a0b0d80; line-height:1.5; }
+  .starter-panel li { border:1px solid var(--border); border-radius:12px; padding:.9rem 1rem; color:var(--ink); background:var(--starter-bg); line-height:1.6; }
   .section { margin-top:4rem; }
   .feature-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-top:1.3rem; }
   .mode-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1.5rem; margin-top:1.3rem; }

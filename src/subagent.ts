@@ -53,6 +53,8 @@ export interface SubagentResult {
   toolCallCount: number;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
   /** "end_turn" | "max_iterations" | "budget_exceeded" | … — lets callers see truncation. */
   stopReason: string;
 }
@@ -95,6 +97,8 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
     toolCallCount,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
+    cacheReadTokens: result.cacheReadTokens,
+    cacheWriteTokens: result.cacheWriteTokens,
     stopReason: result.stopReason,
   };
 }

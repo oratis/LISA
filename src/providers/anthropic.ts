@@ -125,6 +125,7 @@ export class AnthropicProvider implements Provider {
       return (await stream.finalMessage()) as Anthropic.Message;
     });
     return {
+      model: message.model,
       content: message.content,
       stopReason: message.stop_reason ?? "end_turn",
       usage: anthropicUsage(message.usage),

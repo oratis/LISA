@@ -2,7 +2,7 @@
 
 Static, bilingual (EN + zh-CN) marketing + docs site for Lisa.
 
-Built with [Astro](https://astro.build). Static pages with a small script for the native mobile navigation dialog. Dark surfaces, lime actions and self-hosted fonts are shared across both languages.
+Built with [Astro](https://astro.build). Static pages with a small script for the native mobile navigation dialog. Light and dark themes (following the system or the header picker) and self-hosted fonts are shared across both languages.
 
 ## Local dev
 

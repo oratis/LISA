@@ -33,7 +33,7 @@ flowchart LR
 
 ## Agent 循环
 
-2026-11 本机只读连接：`src/connectors/service.ts` 为 GitHub、Google Calendar、Gmail、Linear、Google Drive、Notion 共享持久请求、授权尝试隔离、资源确认、取消、恢复租约和结果提交；`types.ts` 定义经过审查的只读适配器契约。`github.ts` 保留旧 API 的兼容包装。Google 驱动将日历忙闲、日程详情和 Gmail 标签读取限制为固定操作、固定 Google 主机、DNS 固定、无重定向和有界响应。仅 `local-owner` Web 开放 `/api/connectors` 及其子路径，Cloud/远程设备拒绝。
+2026-11 本机只读连接：`src/connectors/service.ts` 为 GitHub、Google Calendar、Gmail、Linear、Google Drive、Notion、Slack 共享持久请求、授权尝试隔离、资源确认、取消、恢复租约和结果提交；`types.ts` 定义经过审查的只读适配器契约。`github.ts` 保留旧 API 的兼容包装。Google 驱动将日历忙闲、日程详情和 Gmail 标签读取限制为固定操作、固定 Google 主机、DNS 固定、无重定向和有界响应。仅 `local-owner` Web 开放 `/api/connectors` 及其子路径，Cloud/远程设备拒绝。
 
 明确的只读聊天会先保存原文和附件、展示统一连接卡，再在同一 session 队列自动恢复。恢复重新构造工具集合：对应 provider 的单一读取工具；仅 GitHub 原请求明确涉及本机文件时加 `read/ls/grep`。不带 Shell、旧版写工具、插件 Hook 或子代理。新用户消息取消未完成的连接任务。本切片每 provider 一个账号，每个任务一个来源；混合来源请求提示拆分，不静默完成一部分。正常通用聊天仍沿用原注册表。
 
@@ -44,6 +44,8 @@ Linear 使用官方 `/mcp/readonly`、DCR + PKCE `read` 授权与 issuer 绑定�
 Drive 使用 Google 桌面 Picker OAuth（仅 `drive.file`、`trigger_onepick`，state/PKCE 回调携带选定文件 ID），不请求全盘权限或浏览器 access token。卡片二次确认后，仅允许选定 ID 的元数据、文本下载、Docs/Slides 文本导出和 Sheets 首个工作表 CSV；最多 1 MB / 30,000 字，拒绝文件夹、快捷方式和附件。Google 文件级授权含写权限，UI 明确告知；LISA 执行器仅有读操作。
 
 Notion 使用 confidential OAuth + state + 预注册 localhost 回调；不假称供应商支持 PKCE。`notion-http.ts` 固定 API 版本和读路由，OAuth introspection 必须返回且仅返回 `read_content`。凭据轮换串行保存，身份绑定 workspace ID 与 users/me ID（兼容 person/bot）。确认页面后最多读取 200 普通块、4 层、12 次 children 请求和 30,000 字；不展开子页面、数据库、同步块或外部链接。读取前后复核页面与已遍历容器，所有正文均为不可信数据。两者沿用公共取消、租约、重启恢复和单次结果提交。
+
+Slack 使用注册桌面应用的 PKCE + user OAuth 和轮换令牌，无客户端密钥；四项频道读取 scope 精确匹配，实时 scope 头与刷新响应仅额外允许隐式 `identify`。`slack_read` 固定 Web API 读取所选成员频道的历史/讨论串，禁止私信、共享频道、搜索、文件和写入；不是官方 MCP 透传。默认七天、最多 31 天、100 条/40,000 字符，读取前后检查账号/频道，结果一律不可信。成员列表可省略 `is_member`，但确认和读取的频道详情必须明确为 true。配置、边界及真实验收见 `docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md` 第 11 节。
 
 `src/agent.ts` 的核心职责：
 
@@ -68,7 +70,7 @@ Soul 位于动态 `lisaHome()` 下，包含：
 
 Soul 写入具备文件锁、原子写入、审计和 Git 溯源等防护。Reflection 从会话中提取结构化操作，更新日志、记忆、技能、情绪、观点和欲望，并对格式错误进行重试。
 
-关键风险不是“是否能写”，而是“同一段会话是否会被重复反思”。Cloud sweep 当前更接近按时间扫描，而不是按消息水位和幂等键消费。
+Cloud sweep 按会话的用户消息水位决定是否触发反思。反思在会话锁下按原文片段指纹去重。`memory/review.ts` 在记忆锁下核对版本、验证引用并记录可恢复快照。Rêve 页面在当前账户范围内展示记忆来源、反思和自主运行用量。
 
 ## Knowledge Base
 

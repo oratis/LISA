@@ -391,7 +391,14 @@ struct ChatView: View {
     private var composer: some View {
         HStack(spacing: Theme.Space.s) {
             TextField("Message…", text: $input, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.border, lineWidth: Theme.hairline))
+                .foregroundStyle(Theme.text)
+                .tint(Theme.accent)
+                .accessibilityLabel("Message Lisa")
                 .lineLimit(1...5)
                 .onSubmit(sendCurrent)
             if model.sending {
@@ -413,6 +420,8 @@ struct ChatView: View {
             }
         }
         .padding()
+        .background(Theme.panel)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: Theme.hairline) }
     }
 
     private func sendCurrent() {
@@ -452,7 +461,7 @@ struct MessageBubble: View {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                     switch seg {
                     case .text(let t):
-                        Text(renderMarkdown(t)).textSelection(.enabled)
+                        Text(renderMarkdown(t)).font(.body).lineSpacing(3).textSelection(.enabled)
                     case .code(let c):
                         CodeBlock(text: c)
                     }
@@ -461,9 +470,11 @@ struct MessageBubble: View {
                     ConversationExpressionView(expression: expression, client: client, preferences: expressionPreferences, live: message.expressionLive, onPlaybackStarted: onExpressionStarted)
                 }
                 if !message.tools.isEmpty {
-                    HStack(spacing: Theme.Space.xs) {
-                        ForEach(message.tools, id: \.self) { tool in
-                            ThemePill(text: tool, color: Theme.accent)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Space.xs) {
+                            ForEach(message.tools, id: \.self) { tool in
+                                ThemePill(text: tool, color: Theme.accent)
+                            }
                         }
                     }
                 }
@@ -488,10 +499,11 @@ struct MessageBubble: View {
                     .accessibilityLabel("Retry")
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(bubbleBg, in: RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(bubbleBg, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius).strokeBorder(Theme.border, lineWidth: Theme.hairline))
             .foregroundStyle(textColor)
-            .frame(maxWidth: 320, alignment: message.role == .user ? .trailing : .leading)
+            .frame(maxWidth: 560, alignment: message.role == .user ? .trailing : .leading)
             if message.role == .lisa { Spacer(minLength: 36) }
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
@@ -500,7 +512,7 @@ struct MessageBubble: View {
     }
 
     private var segments: [MessageSegment] { parseSegments(message.text) }
-    private var bubbleBg: Color { message.role == .user ? Theme.accent.opacity(0.18) : Theme.card }
+    private var bubbleBg: Color { message.role == .user ? Theme.userBubble : Theme.card }
     /// Errors read red; empty/stopped turns read muted; normal text is primary.
     private var textColor: Color {
         switch message.status {

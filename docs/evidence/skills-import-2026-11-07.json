@@ -1,0 +1,54 @@
+{
+  "kind": "historical-installed-app-validation",
+  "date": "2026-11-07",
+  "timezone": "Asia/Shanghai",
+  "backendVersion": "0.29.1",
+  "chatModel": "claude-sonnet-4-6",
+  "scope": "Non-hidden personal skill directories in Codex and Claude; excludes system, plugin, cloud and project skills.",
+  "sourceEntries": { "codex": 14, "claude": 14, "total": 28 },
+  "sameNameIdenticalDuplicatesRemoved": 11,
+  "uniqueImportedSkills": 17,
+  "installedFilesVerified": 422,
+  "sourcesUnchanged": true,
+  "adaptations": [
+    {
+      "skill": "wechat-mp-publish",
+      "file": "SKILL.md",
+      "change": "Rebase source-app skill paths to the Lisa skill directory."
+    }
+  ],
+  "discovery": {
+    "apiUniqueSkills": 17,
+    "skillManageReadableSkills": 17,
+    "nativePanelPersonalSkills": 17,
+    "skillNamesInActualChatPrompt": 17
+  },
+  "realChat": {
+    "usedMockProvider": false,
+    "finished": true,
+    "toolCalls": 10,
+    "toolCallCounts": {
+      "skill_manage": 2,
+      "bash": 7,
+      "set_mood": 1
+    },
+    "skillViews": ["wechat-mp-publish", "gcp-os-e2e"],
+    "toolErrors": 0,
+    "streamErrors": 0,
+    "artifactChecks": {
+      "wechatHtmlContentAndInlineStyles": "passed",
+      "wechatMetadataTitleAndAuthor": "passed",
+      "sourceBundleContent": "passed",
+      "sourceBundleExcludesGitTargetOutput": "passed"
+    }
+  },
+  "notTested": [
+    "Same-name skills with different contents",
+    "Bulk import through the application UI",
+    "Automatic skill selection",
+    "Every imported skill's complete workflow",
+    "External account authorization, publishing or deployment",
+    "Full regression suite on this pull request's base"
+  ],
+  "rawEvidenceLocation": "Retained locally; not included in this repository."
+}

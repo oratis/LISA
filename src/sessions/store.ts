@@ -71,6 +71,7 @@ export class SessionStore {
   }
 
   static async create(opts: {
+    origin?: SessionHeader["origin"];
     cwd: string;
     model: string;
     /** Overrides the environment-resolved mode (H2). */
@@ -87,6 +88,7 @@ export class SessionStore {
     const file = path.join(sessionsDir(), `${id}.jsonl`);
     const header: SessionHeader = {
       type: "session",
+      ...(opts.origin ? { origin: opts.origin } : {}),
       id,
       version: 2,
       startedAt: new Date().toISOString(),

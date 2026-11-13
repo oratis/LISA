@@ -1,5 +1,7 @@
 # LISA 1.0 推进计划 — Sense · Dispatch · Reve · Model
 
+> **2026-10-24 产品层补充：** [三端产品对齐方案](PLAN_PRODUCT_ALIGNMENT_2026-10-24.md)基于最新 Manus／Dot／Muse 研究和 v0.28.1 源码，将现有任务、信任与记忆底座展开为 App／Mac／Web 的交付路径。新增方案仍是提案；四支柱、既有批准范围及安全地板不变。页面规格见 [三端设计](DESIGN_CROSS_PLATFORM_ASSISTANT_v1.0.md)。
+
 > 方法：在 v0.9.1 树（commit `43442d5`）上并行盘点四支柱现状（感知 / 调度 / 反思 / 模型），
 > 交叉对照 [PRODUCT_REVIEW_v0.9.md](./PRODUCT_REVIEW_v0.9.md)、[AUTONOMY_ROADMAP.md](./AUTONOMY_ROADMAP.md)、
 > [ORCHESTRATOR_PLAN.md](./ORCHESTRATOR_PLAN.md)，得出"从 0.9 到 1.0 还差什么"。

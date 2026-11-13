@@ -4,6 +4,8 @@
 
 状态：**已批准，执行中**（2026-10-02）。用户批准按本文的全部推荐执行，第 5 节的决策改写一并生效。本文写的是目标和计划，不等于已交付；交付情况以文末"执行记录"和各 PR 为准。
 
+> **2026-10-24 续篇：** [产品对齐方案](PLAN_PRODUCT_ALIGNMENT_2026-10-24.md)和[三端设计](DESIGN_CROSS_PLATFORM_ASSISTANT_v1.0.md)承接 W1–W8 的用户体验与工程依赖；[新研究](RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md)更新 Manus 2.0／Automations、Dot 移动首用及 Muse 地域等事实。续篇按 10 月 24 日的 v0.28.1 基线列出新增工作包；原已批准事项的执行记录见文末。
+
 依据：
 - [Always-on 个人 agent 竞品调研](RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md)（Grok Bot · Cue · Muse · Dots 与行业格局）
 - [LISA 能力盘点](research/always-on-agents-2026-09/lisa-capability-inventory.md)（逐项代码路径与成熟度）

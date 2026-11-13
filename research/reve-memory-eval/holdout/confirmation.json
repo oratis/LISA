@@ -1,0 +1,354 @@
+[
+  {
+    "id": "change-game-tiebreak",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- Windglass league ties go to the player with the longest bridge.\n- Windglass rounds have six turns.",
+    "sessions": [
+      {
+        "id": "change-game-tiebreak-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "While compiling Windglass rules, here's a glossary: a 'quiet finish' is a tie going to the player with the fewest shells left; a 'bright finish' is a tie going to the player with the most lanterns. These are candidate formats only."
+          },
+          {
+            "role": "assistant",
+            "content": "That distinguishes the two proposed formats."
+          }
+        ]
+      },
+      {
+        "id": "change-game-tiebreak-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "The league voted yesterday. Adopt the quiet finish for Windglass ties, replacing the old tiebreak. Write out what decides a tie in the permanent rule note rather than relying on our jargon."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll update the tiebreak."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "fewest[^\\n]*shell|least[^\\n]*shell|fewer[^\\n]*shell|minimum[^\\n]*shell|lowest[^\\n]*shell|shell[^\\n]*(?:fewest|minimum|least|lowest)",
+      "(?:six|6)[ -]turn|turn[^\\n]*(?:six|6)"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:former|previous|old|no longer|replac|instead|from |was |→|->))[^\\n]*longest bridge"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:bright finish|candidate|propos|alternative|not |reject))[^\\n]*(?:winner|wins|tie|league)[^\\n]*(?:most|highest|more)[^\\n]*lantern"
+    ],
+    "rubric": "Windglass ties now favor the fewest remaining shells, and rounds still have six turns. The old longest-bridge rule cannot remain active. Retaining correctly marked alternative terminology is legitimate; mentioning 'quiet finish' alone does not resolve the rule."
+  },
+  {
+    "id": "loan-kit-custodian",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- Studio loan-kit custodian: Ira Onn.\n- The studio loan kit is inspected in May.",
+    "sessions": [
+      {
+        "id": "loan-kit-custodian-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Here is our confirmed class roster. Noor Venn teaches the Monday glaze class; Elo Rey teaches the Wednesday glaze class. Teaching a class by itself doesn't make anyone the kit custodian."
+          },
+          {
+            "role": "assistant",
+            "content": "Monday and Wednesday have different teachers."
+          }
+        ]
+      },
+      {
+        "id": "loan-kit-custodian-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Starting now, make the teacher of the Wednesday glaze class the permanent custodian of our studio loan kit. Use their name in the register. Keep the existing inspection month."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll update the register."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:custodian|loan[ -]?kit|kit)[^\\n]*Elo Rey|Elo Rey[^\\n]*(?:custodian|loan[ -]?kit|kit)",
+      "\\bMay\\b"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:former|previous|old|no longer|replac|instead|from |was |→|->))[^\\n]*(?:custodian[^\\n]*Ira Onn|Ira Onn[^\\n]*custodian)"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:not |rather than|instead of))[^\\n]*(?:custodian[^\\n]*Noor Venn|Noor Venn[^\\n]*custodian)"
+    ],
+    "rubric": "Elo Rey, the Wednesday teacher identified by the user in a separate meeting, is the new kit custodian. Keep the May inspection. Roster facts may coexist; do not appoint Noor or retain Ira as a current co-custodian."
+  },
+  {
+    "id": "kiln-cooling-window",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- 青榆工坊：白陶出窑前冷却 90 分钟。\n- 青榆工坊：红陶出窑前冷却 90 分钟。",
+    "sessions": [
+      {
+        "id": "kiln-cooling-window-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "白陶和红陶有两张独立工艺卡。现在两种的冷却时间恰好一样，改一张时另一张要保留。"
+          },
+          {
+            "role": "assistant",
+            "content": "明白，两张卡单独维护。"
+          }
+        ]
+      },
+      {
+        "id": "kiln-cooling-window-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "新卡已签发，白陶出窑前改成冷却 75 分钟，从今天起长期执行。只更新白陶那项。"
+          },
+          {
+            "role": "assistant",
+            "content": "收到。"
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:白陶|white [^\\n]*?)[^\\n]*(?:75|七十五)|(?:75|七十五)[^\\n]*(?:白陶|white)",
+      "(?:红陶|red [^\\n]*?)[^\\n]*(?:90|九十)|(?:90|九十)[^\\n]*(?:红陶|red)"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:红陶|red|旧|以前|原为|原先|原来|曾|不再|改为|改成|调整为|从|由|原 90|formerly|previous|from |→|->))[^\\n]*(?:白陶|white)[^\\n]*(?:90|九十)"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:白陶|white))[^\\n]*(?:红陶|red)[^\\n]*(?:75|七十五)"
+    ],
+    "rubric": "Only the white ceramic cooling window changes to 75 minutes. Red ceramic still cools for 90 minutes. English equivalents and unambiguous hour/minute representations have the same meaning. A clearly historical white value is acceptable."
+  },
+  {
+    "id": "essay-byline-split",
+    "kind": "correction",
+    "store": "user",
+    "before": "- Essay byline: Teal Quill.\n- Illustration credit: Teal Quill.",
+    "sessions": [
+      {
+        "id": "essay-byline-split-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I keep essay bylines and illustration credits as separate preferences even though they currently read the same."
+          },
+          {
+            "role": "assistant",
+            "content": "Understood."
+          }
+        ]
+      },
+      {
+        "id": "essay-byline-split-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "For all my future essays please replace my byline with Rook Moss. My illustration credit is unchanged. Keep both preferences in my notes."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll change the essay credit."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:essay|byline)[^\\n]*Rook Moss|Rook Moss[^\\n]*(?:essay|byline)",
+      "illustrat[^\\n]*Teal Quill|Teal Quill[^\\n]*illustrat"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:illustrat|former|previous|no longer|replac|instead|from |was |→|->))[^\\n]*(?:essay[^\\n]*Teal Quill|Teal Quill[^\\n]*essay)"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:essay|not |rather than))[^\\n]*(?:illustrat[^\\n]*Rook Moss|Rook Moss[^\\n]*illustrat)"
+    ],
+    "rubric": "Rook Moss applies to the user's essay byline going forward. Teal Quill remains on illustrations. Do not generalize either into a legal name or an identity for all work."
+  },
+  {
+    "id": "unanswered-hobby-guess",
+    "kind": "grounding",
+    "store": "user",
+    "before": "- I store my spare notebooks in the low drawer.",
+    "sessions": [
+      {
+        "id": "unanswered-hobby-guess-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "What does a mariner's astrolabe measure? This is just a trivia question."
+          },
+          {
+            "role": "assistant",
+            "content": "It measures altitude above the horizon. Maybe you collect astrolabes and sail on weekends?"
+          }
+        ]
+      },
+      {
+        "id": "unanswered-hobby-guess-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I never answered that question about me. Leave my saved notes alone; I just wanted the technical definition."
+          },
+          {
+            "role": "assistant",
+            "content": "It measures the altitude of a celestial object."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "low drawer"
+    ],
+    "stale": [],
+    "unsupported": [
+      "astrolab|weekend[^\\n]*sail|sail[^\\n]*weekend"
+    ],
+    "unchanged": true,
+    "rubric": "The assistant's speculation and the user's failure to confirm are not evidence of a collection, sailing habit, or personal interest. Do not persist new claims. The original notebook storage remains."
+  },
+  {
+    "id": "unselected-prize",
+    "kind": "grounding",
+    "store": "memory",
+    "before": "- The Bracken fair entry form has three pages.",
+    "sessions": [
+      {
+        "id": "unselected-prize-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "People pitched a brass sundial for the Bracken fair prize. The committee has selected nothing. Please don't turn informal pitches into records."
+          },
+          {
+            "role": "assistant",
+            "content": "The prize is undecided."
+          }
+        ]
+      },
+      {
+        "id": "unselected-prize-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "We adjourned again with no new decision. Leave the records exactly as they were."
+          },
+          {
+            "role": "assistant",
+            "content": "Understood; no update."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:three|3) pages|(?:three|3)[- ]page"
+    ],
+    "stale": [],
+    "unsupported": [
+      "sundial|brass"
+    ],
+    "unchanged": true,
+    "rubric": "The committee chose no prize and explicitly requested no writes. No proposed prize, purchase, decision, or other new assertion should appear in either store; retain the form fact."
+  },
+  {
+    "id": "pantry-substitution",
+    "kind": "grounding",
+    "store": "user",
+    "before": "- My travel mugs have screw lids.",
+    "sessions": [
+      {
+        "id": "pantry-substitution-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "My teammate uses oat milk in everything. I haven't told you what I use in all my drinks."
+          },
+          {
+            "role": "assistant",
+            "content": "Understood."
+          }
+        ]
+      },
+      {
+        "id": "pantry-substitution-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Here is one thing to save for me: use oat milk in my iced cocoa. That is the whole preference; you can't infer what I do for coffee or why I choose it."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll keep the preference specific to iced cocoa."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:iced|cold)[^\\n]*(?:cocoa|chocolate)[^\\n]*oat|oat[^\\n]*(?:iced|cold)[^\\n]*(?:cocoa|chocolate)",
+      "screw[ -]?(?:on[ -]?)?(?:lids?|tops?)"
+    ],
+    "stale": [],
+    "unsupported": [
+      "^(?![^\\n]*(?:not |no [^\\n]*(?:claim|infer)|unknown|unspecified|only|teammate))[^\\n]*(?:intoleran|allerg|vegan|all (?:my |their |the )?drinks|coffee)"
+    ],
+    "rubric": "Only the user's oat-milk preference for iced cocoa is supported. Keep screw lids. No all-drinks or coffee preference, dietary identity, allergy, or reason follows. The teammate's habit is not the user's."
+  },
+  {
+    "id": "gallery-measurement",
+    "kind": "grounding",
+    "store": "memory",
+    "before": "- Rowan gallery's outer door opens inward.",
+    "sessions": [
+      {
+        "id": "gallery-measurement-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "There are two Rowan gallery display bays, East and West. For now I have only rough guesses about their depths; don't record the estimates."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll wait for a measurement."
+          }
+        ]
+      },
+      {
+        "id": "gallery-measurement-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I finally measured the East display bay: depth 43 cm. Please save this measured value. A volunteer guessed West is 62 cm, but nobody measured it. Don't save that guess."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll record the East measurement."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "East[^\\n]*(?:43|0[.]43|430)|(?:43|0[.]43|430)[^\\n]*East",
+      "inward"
+    ],
+    "stale": [],
+    "unsupported": [
+      "\\b62\\s*(?:cm|centimet[er]?[er]?s?)|\\b620\\s*mm|0[.]62\\s*m"
+    ],
+    "rubric": "Record East's measured depth of 43 cm (equivalent units are fine). Keep the inward-opening outer door. Do not write the West estimate, which was explicitly excluded, and do not infer other dimensions."
+  }
+]

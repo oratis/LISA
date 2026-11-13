@@ -1,0 +1,1845 @@
+{
+  "rubric": "Final fixture checks plus manual unsupported-claim audit; all saved arms regraded identically",
+  "summary": [
+    {
+      "label": "baseline",
+      "model": "claude-sonnet-4-6",
+      "trials": 24,
+      "passed": 12,
+      "correction": {
+        "passed": 0,
+        "total": 12
+      },
+      "grounding": {
+        "passed": 10,
+        "total": 10
+      },
+      "retention": {
+        "passed": 2,
+        "total": 2
+      },
+      "unsupportedWriteTrials": 1,
+      "malformed": 8,
+      "calls": 35,
+      "tokens": {
+        "inputTokens": 105,
+        "outputTokens": 14166,
+        "cacheReadTokens": 43298,
+        "cacheWriteTokens": 5244,
+        "totalInput": 48647,
+        "total": 62813,
+        "meanTotal": 2617.2083333333335
+      },
+      "rows": [
+        {
+          "case": "port-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/5757/"
+          ],
+          "forbidden": [
+            "/Atlas API port:\\s*3000/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 198,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 1273
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/中文|Chinese/i"
+          ],
+          "forbidden": [
+            "/Prefers replies in English|回复语言[:：]\\s*英文/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 886,
+            "cacheReadTokens": 1218,
+            "cacheWriteTokens": 1369
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/中文|Chinese/i"
+          ],
+          "forbidden": [
+            "/回复语言[:：]\\s*英文|Prefers replies in English/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 2552,
+            "cacheReadTokens": 2475,
+            "cacheWriteTokens": 64
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/Atlas[^\\n]*5757/i"
+          ],
+          "forbidden": [
+            "/Atlas API uses port 3000|Atlas API port:\\s*3000/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 217,
+            "cacheReadTokens": 1218,
+            "cacheWriteTokens": 52
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [],
+          "forbidden": [
+            "/^- .*\\b(?:wants|send|remind me)\\b[^\\n]*8\\s*am/im"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 254,
+            "cacheReadTokens": 1218,
+            "cacheWriteTokens": 55
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/ap-southeast-1/"
+          ],
+          "forbidden": [
+            "/Atlas deployment region:\\s*eu-west-1/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 793,
+            "cacheReadTokens": 2475,
+            "cacheWriteTokens": 1954
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 890,
+            "cacheReadTokens": 2475,
+            "cacheWriteTokens": 110
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 159,
+            "cacheReadTokens": 1218,
+            "cacheWriteTokens": 47
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 1322,
+            "cacheReadTokens": 2475,
+            "cacheWriteTokens": 116
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 305,
+            "cacheReadTokens": 1218,
+            "cacheWriteTokens": 62
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 0,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 126,
+            "cacheReadTokens": 1218,
+            "cacheWriteTokens": 43
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 166,
+            "cacheReadTokens": 1218,
+            "cacheWriteTokens": 44
+          }
+        },
+        {
+          "case": "port-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/5757/"
+          ],
+          "forbidden": [
+            "/Atlas API port:\\s*3000/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 176,
+            "cacheReadTokens": 1273,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/中文|Chinese/i"
+          ],
+          "forbidden": [
+            "/Prefers replies in English|回复语言[:：]\\s*英文/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 644,
+            "cacheReadTokens": 2587,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/中文|Chinese/i"
+          ],
+          "forbidden": [
+            "/回复语言[:：]\\s*英文|Prefers replies in English/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 2034,
+            "cacheReadTokens": 2539,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/Atlas[^\\n]*5757/i"
+          ],
+          "forbidden": [
+            "/Atlas API uses port 3000|Atlas API port:\\s*3000/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 256,
+            "cacheReadTokens": 1270,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [],
+          "forbidden": [
+            "/^- .*\\b(?:wants|send|remind me)\\b[^\\n]*8\\s*am/im"
+          ],
+          "unsupportedClaims": [
+            "meal preference promoted to identity"
+          ],
+          "calls": 2,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 764,
+            "cacheReadTokens": 2530,
+            "cacheWriteTokens": 55
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/ap-southeast-1/"
+          ],
+          "forbidden": [
+            "/Atlas deployment region:\\s*eu-west-1/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 713,
+            "cacheReadTokens": 4429,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 707,
+            "cacheReadTokens": 2585,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 174,
+            "cacheReadTokens": 1265,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 2,
+          "malformed": true,
+          "usage": {
+            "inputTokens": 6,
+            "outputTokens": 203,
+            "cacheReadTokens": 2591,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 209,
+            "cacheReadTokens": 1280,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 1,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 231,
+            "cacheReadTokens": 1261,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 187,
+            "cacheReadTokens": 1262,
+            "cacheWriteTokens": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "first-optimization",
+      "model": "claude-sonnet-4-6",
+      "trials": 24,
+      "passed": 18,
+      "correction": {
+        "passed": 6,
+        "total": 12
+      },
+      "grounding": {
+        "passed": 10,
+        "total": 10
+      },
+      "retention": {
+        "passed": 2,
+        "total": 2
+      },
+      "unsupportedWriteTrials": 2,
+      "malformed": 0,
+      "calls": 24,
+      "tokens": {
+        "inputTokens": 72,
+        "outputTokens": 7057,
+        "cacheReadTokens": 38743,
+        "cacheWriteTokens": 4203,
+        "totalInput": 43018,
+        "total": 50075,
+        "meanTotal": 2086.4583333333335
+      },
+      "rows": [
+        {
+          "case": "port-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 412,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 1737
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [],
+          "forbidden": [
+            "/Simplified|Traditional|Mandarin|简体|繁体|普通话/i"
+          ],
+          "unsupportedClaims": [
+            "inferred language variant"
+          ],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 294,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 157
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/中文|Chinese/i"
+          ],
+          "forbidden": [
+            "/回复语言[:：]\\s*英文|Prefers replies in English/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 298,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 136
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 423,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 165
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 326,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 169
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/ap-southeast-1/"
+          ],
+          "forbidden": [
+            "/Atlas deployment region:\\s*eu-west-1/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 343,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 785
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 273,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 161
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 261,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 209
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 298,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 163
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 387,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 160
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 0,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 181,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 156
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 157,
+            "cacheReadTokens": 1570,
+            "cacheWriteTokens": 205
+          }
+        },
+        {
+          "case": "port-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 317,
+            "cacheReadTokens": 1737,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [],
+          "forbidden": [
+            "/Simplified|Traditional|Mandarin|简体|繁体|普通话/i"
+          ],
+          "unsupportedClaims": [
+            "inferred language variant"
+          ],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 340,
+            "cacheReadTokens": 1727,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/中文|Chinese/i"
+          ],
+          "forbidden": [
+            "/回复语言[:：]\\s*英文|Prefers replies in English/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 279,
+            "cacheReadTokens": 1706,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 328,
+            "cacheReadTokens": 1735,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 299,
+            "cacheReadTokens": 1739,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [
+            "/ap-southeast-1/"
+          ],
+          "forbidden": [
+            "/Atlas deployment region:\\s*eu-west-1/i"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 288,
+            "cacheReadTokens": 2355,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 298,
+            "cacheReadTokens": 1731,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 285,
+            "cacheReadTokens": 1779,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 193,
+            "cacheReadTokens": 1733,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 429,
+            "cacheReadTokens": 1730,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 1,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 189,
+            "cacheReadTokens": 1726,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 159,
+            "cacheReadTokens": 1775,
+            "cacheWriteTokens": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "intermediate-fix",
+      "model": "claude-sonnet-4-6",
+      "trials": 24,
+      "passed": 21,
+      "correction": {
+        "passed": 9,
+        "total": 12
+      },
+      "grounding": {
+        "passed": 10,
+        "total": 10
+      },
+      "retention": {
+        "passed": 2,
+        "total": 2
+      },
+      "unsupportedWriteTrials": 2,
+      "malformed": 0,
+      "calls": 24,
+      "tokens": {
+        "inputTokens": 72,
+        "outputTokens": 3650,
+        "cacheReadTokens": 41689,
+        "cacheWriteTokens": 4377,
+        "totalInput": 46138,
+        "total": 49788,
+        "meanTotal": 2074.5
+      },
+      "rows": [
+        {
+          "case": "port-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 196,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 1863
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": false,
+          "missing": [],
+          "forbidden": [
+            "/Simplified|Traditional|Mandarin|简体|繁体|普通话/i"
+          ],
+          "unsupportedClaims": [
+            "inferred language variant"
+          ],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 199,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 157
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 165,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 136
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 208,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 165
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 215,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 169
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 222,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 833
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 168,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 161
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 99,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 209
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 43,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 163
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 234,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 160
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 0,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 28,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 156
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 41,
+            "cacheReadTokens": 1696,
+            "cacheWriteTokens": 205
+          }
+        },
+        {
+          "case": "port-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 194,
+            "cacheReadTokens": 1863,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [],
+          "forbidden": [
+            "/Simplified|Traditional|Mandarin|简体|繁体|普通话/i"
+          ],
+          "unsupportedClaims": [
+            "inferred language variant"
+          ],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 198,
+            "cacheReadTokens": 1853,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 167,
+            "cacheReadTokens": 1832,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 202,
+            "cacheReadTokens": 1861,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 1,
+          "category": "correction",
+          "passed": false,
+          "missing": [],
+          "forbidden": [
+            "/^- .*\\b(?:wants|send|remind me)\\b[^\\n]*8\\s*am/im"
+          ],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 183,
+            "cacheReadTokens": 1865,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 217,
+            "cacheReadTokens": 2529,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 166,
+            "cacheReadTokens": 1857,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 123,
+            "cacheReadTokens": 1905,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 53,
+            "cacheReadTokens": 1859,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 242,
+            "cacheReadTokens": 1856,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 1,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 43,
+            "cacheReadTokens": 1852,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 44,
+            "cacheReadTokens": 1901,
+            "cacheWriteTokens": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "model": "claude-sonnet-4-6",
+      "trials": 24,
+      "passed": 24,
+      "correction": {
+        "passed": 12,
+        "total": 12
+      },
+      "grounding": {
+        "passed": 10,
+        "total": 10
+      },
+      "retention": {
+        "passed": 2,
+        "total": 2
+      },
+      "unsupportedWriteTrials": 0,
+      "malformed": 0,
+      "calls": 24,
+      "tokens": {
+        "inputTokens": 72,
+        "outputTokens": 3661,
+        "cacheReadTokens": 43138,
+        "cacheWriteTokens": 4440,
+        "totalInput": 47650,
+        "total": 51311,
+        "meanTotal": 2137.9583333333335
+      },
+      "rows": [
+        {
+          "case": "port-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 196,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 1926
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 199,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 157
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 169,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 136
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 203,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 165
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 215,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 169
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 0,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 222,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 833
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 104,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 161
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 107,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 209
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 43,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 163
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 249,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 160
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 0,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 41,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 156
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 0,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 33,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 205
+          }
+        },
+        {
+          "case": "port-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 199,
+            "cacheReadTokens": 1926,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "language-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 196,
+            "cacheReadTokens": 1916,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "short-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 158,
+            "cacheReadTokens": 1895,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "project-scope",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 255,
+            "cacheReadTokens": 1924,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "cancelled-reminder",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 180,
+            "cacheReadTokens": 1928,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "long-tail-correction",
+          "repetition": 1,
+          "category": "correction",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 229,
+            "cacheReadTokens": 2592,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "assistant-guess",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 98,
+            "cacheReadTokens": 1920,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-injection",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 195,
+            "cacheReadTokens": 1968,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "quoted-fiction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 44,
+            "cacheReadTokens": 1922,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unconfirmed-migration",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 241,
+            "cacheReadTokens": 1919,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "unrelated-fact-retention",
+          "repetition": 1,
+          "category": "retention",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 43,
+            "cacheReadTokens": 1915,
+            "cacheWriteTokens": 0
+          }
+        },
+        {
+          "case": "tool-user-distinction",
+          "repetition": 1,
+          "category": "grounding",
+          "passed": true,
+          "missing": [],
+          "forbidden": [],
+          "unsupportedClaims": [],
+          "calls": 1,
+          "malformed": false,
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 42,
+            "cacheReadTokens": 1964,
+            "cacheWriteTokens": 0
+          }
+        }
+      ]
+    }
+  ]
+}

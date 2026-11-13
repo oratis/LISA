@@ -1529,7 +1529,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1581,7 +1582,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1665,7 +1667,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1750,7 +1753,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1823,7 +1827,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1895,7 +1900,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1993,7 +1999,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           }
@@ -2689,6 +2696,154 @@
           },
           "403": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reve": {
+      "get": {
+        "operationId": "getReveOverview",
+        "description": "Bounded, tenant-scoped reflection, memory revision and usage overview. Does not invoke a model. partial identifies unavailable sections; missing cache counts are tracked separately.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30,
+              "default": 7
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped result; Cache-Control: no-store.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveOverview"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account or trusted origin required."
+          },
+          "503": {
+            "description": "Overview unavailable."
+          }
+        }
+      }
+    },
+    "/api/reve/revisions/{id}": {
+      "get": {
+        "operationId": "getReveRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped result; Cache-Control: no-store.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveRevision"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account or trusted origin required."
+          },
+          "404": {
+            "description": "Revision not found in this tenant."
+          },
+          "503": {
+            "description": "Revision unavailable or corrupt."
+          }
+        }
+      }
+    },
+    "/api/reve/revisions/{id}/restore": {
+      "post": {
+        "operationId": "restoreReveRevision",
+        "description": "Owner-only, same-origin restore. Compare-and-swap preserves newer memory writes; a successful restore records another revision. Body limit 512 bytes.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped result; Cache-Control: no-store.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveRestoreResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON."
+          },
+          "403": {
+            "description": "Owner or trusted origin required."
+          },
+          "404": {
+            "description": "Revision not found in this tenant."
+          },
+          "409": {
+            "description": "Memory changed after the revision."
+          },
+          "413": {
+            "description": "Body exceeds 512 bytes."
+          },
+          "415": {
+            "description": "JSON content type required."
+          },
+          "503": {
+            "description": "Restore unavailable."
           }
         }
       }
@@ -5768,7 +5923,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Display name; stable identity is id plus workspaceId for Notion."
+            "description": "Display name; stable identity is id plus workspaceId for Notion and Slack."
           },
           "workspaceId": {
             "type": "string"
@@ -5798,7 +5953,8 @@
               "metadata",
               "team",
               "file",
-              "page"
+              "page",
+              "channel"
             ]
           },
           "timeZone": {
@@ -5806,6 +5962,10 @@
           },
           "mimeType": {
             "type": "string"
+          },
+          "isPrivate": {
+            "type": "boolean",
+            "description": "Whether a selected Slack channel is private."
           }
         },
         "required": [
@@ -5925,7 +6085,8 @@
               "gmail",
               "linear",
               "google-drive",
-              "notion"
+              "notion",
+              "slack"
             ]
           }
         },
@@ -5951,7 +6112,8 @@
                     "gmail",
                     "linear",
                     "google-drive",
-                    "notion"
+                    "notion",
+                    "slack"
                   ]
                 },
                 "name": {
@@ -6382,6 +6544,579 @@
           }
         },
         "additionalProperties": true
+      },
+      "ReveUsage": {
+        "type": "object",
+        "required": [
+          "inputTokens",
+          "outputTokens",
+          "cacheReadTokens",
+          "cacheWriteTokens",
+          "incompleteCacheRuns"
+        ],
+        "properties": {
+          "inputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cacheReadTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cacheWriteTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "incompleteCacheRuns": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ReveRevisionSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "store",
+          "at",
+          "status",
+          "changeCount",
+          "sources",
+          "reason",
+          "canRestore"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "store": {
+            "type": "string",
+            "enum": [
+              "user",
+              "memory"
+            ]
+          },
+          "at": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "applied"
+            ]
+          },
+          "restores": {
+            "type": "string"
+          },
+          "changeCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string"
+          },
+          "canRestore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReveEvidenceQuote": {
+        "type": "object",
+        "required": [
+          "id",
+          "quote"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
+      },
+      "ReveMemoryChange": {
+        "type": "object",
+        "required": [
+          "kind",
+          "reason",
+          "evidence"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "append",
+              "replace",
+              "remove"
+            ]
+          },
+          "old_text": {
+            "type": "string"
+          },
+          "new_text": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveEvidenceQuote"
+            }
+          }
+        }
+      },
+      "ReveRevision": {
+        "type": "object",
+        "required": [
+          "id",
+          "store",
+          "createdAt",
+          "status",
+          "before",
+          "after",
+          "changes",
+          "sources",
+          "canRestore"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "store": {
+            "type": "string",
+            "enum": [
+              "user",
+              "memory"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "applied"
+            ]
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "restores": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveMemoryChange"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "sessionId",
+                "role"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool"
+                  ]
+                },
+                "at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "canRestore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReveOverview": {
+        "type": "object",
+        "required": [
+          "generatedAt",
+          "days",
+          "limits",
+          "enabled",
+          "partial",
+          "canRestore",
+          "agentRecapEnabled",
+          "reflectionEnabled",
+          "stats",
+          "memory",
+          "revisions",
+          "reflections",
+          "knowledge",
+          "desires",
+          "runs"
+        ],
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "limits": {
+            "type": "object",
+            "required": [
+              "runs",
+              "revisionsPerStore",
+              "displayedRecords"
+            ],
+            "properties": {
+              "runs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "revisionsPerStore": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "displayedRecords": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "partial": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "canRestore": {
+            "type": "boolean"
+          },
+          "agentRecapEnabled": {"type": "boolean"},
+          "reflectionEnabled": {
+            "type": "boolean"
+          },
+          "stats": {
+            "type": "object",
+            "required": [
+              "runs",
+              "completed",
+              "issues",
+              "changes",
+              "corrections",
+              "usage"
+            ],
+            "properties": {
+              "runs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "completed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "issues": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "changes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "corrections": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "usage": {
+                "$ref": "#/components/schemas/ReveUsage"
+              }
+            }
+          },
+          "memory": {
+            "type": "object",
+            "required": [
+              "user",
+              "memory"
+            ],
+            "properties": {
+              "user": {
+                "type": "object",
+                "required": [
+                  "bytes",
+                  "limit"
+                ],
+                "properties": {
+                  "bytes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "memory": {
+                "type": "object",
+                "required": [
+                  "bytes",
+                  "limit"
+                ],
+                "properties": {
+                  "bytes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveRevisionSummary"
+            }
+          },
+          "reflections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "sessionId",
+                "at",
+                "summary",
+                "appliedCount",
+                "skipped"
+              ],
+              "properties": {
+                "sessionId": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "appliedCount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "skipped": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "knowledge": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "sources",
+              "pages",
+              "brokenCount",
+              "orphanCount",
+              "broken",
+              "orphans"
+            ],
+            "properties": {
+              "sources": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pages": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "brokenCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "orphanCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "broken": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "from",
+                    "target"
+                  ],
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "orphans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "ref",
+                    "title"
+                  ],
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "desires": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "slug",
+                "what",
+                "why",
+                "actionable",
+                "needsUser"
+              ],
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "what": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                },
+                "actionable": {
+                  "type": "boolean"
+                },
+                "needsUser": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "at",
+                "outcome",
+                "inputTokens",
+                "outputTokens",
+                "durationMs"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string"
+                },
+                "inputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "outputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "durationMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ReveRestoreResult": {
+        "type": "object",
+        "required": [
+          "changed",
+          "revisionId"
+        ],
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "alreadyApplied": {
+            "type": "boolean"
+          }
+        }
       },
       "ReveDreamSummary": {
         "type": "object",
