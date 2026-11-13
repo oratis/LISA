@@ -45,7 +45,14 @@ async function harness(backend: http.RequestListener) {
   const wss = new WebSocketServer({ noServer: true });
   const uplinks: WebSocket[] = [];
   const nextUplink: Array<(ws: WebSocket) => void> = [];
+  /** forbid: answer the Mac's relay upgrade 403, as a relay does for a refused session. */
+  const control = { forbid: false, forbidden: 0 };
   cloud.on("upgrade", (req, socket, head) => {
+    if (control.forbid) {
+      control.forbidden++;
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws.on("error", () => {});
       ws.once("message", (data) => {
@@ -59,9 +66,10 @@ async function harness(backend: http.RequestListener) {
     });
   });
   const cloudPort = await listen(cloud);
+  const base = `http://127.0.0.1:${cloudPort}`;
   const host = new RemoteHost(home, backendPort);
   const uplink = new Promise<WebSocket>((resolve) => nextUplink.push(resolve));
-  await host.connect(`http://127.0.0.1:${cloudPort}`, "alice");
+  await host.connect(base, "alice");
   const ws = await uplink;
   const hostKey = (ws as WebSocket & { hostKey?: string }).hostKey!;
   const frames = new Map<string, Frame[]>();
@@ -87,6 +95,22 @@ async function harness(backend: http.RequestListener) {
     hostKey,
     phone,
     closed,
+    base,
+    control,
+    /** The cloud stops answering at all (connection refused), as in an outage. */
+    async cloudDown() {
+      await new Promise<void>((r) => {
+        cloud.close(() => r());
+        cloud.closeAllConnections();
+        for (const s of uplinks) s.terminate();
+      });
+    },
+    async cloudUp() {
+      await new Promise<void>((r) => cloud.listen(cloudPort, "127.0.0.1", r));
+    },
+    lanPort(target = host): number {
+      return ((target as unknown as { lan: http.Server }).lan.address() as AddressInfo).port;
+    },
     async nextFrame(channel: string, timeoutMs = 3000): Promise<Frame | "closed"> {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
@@ -133,7 +157,7 @@ async function harness(backend: http.RequestListener) {
       api.closeAllConnections();
       cloud.closeAllConnections();
       await new Promise<void>((r) => api.close(() => r()));
-      await new Promise<void>((r) => cloud.close(() => r()));
+      await new Promise<void>((r) => (cloud.listening ? cloud.close(() => r()) : r()));
       fs.rmSync(home, { recursive: true, force: true });
     },
   };
@@ -721,6 +745,136 @@ test("downgrade: a key-substituting relay that speaks v1 to the Mac is flagged, 
     // ...while a v2 pairing on the same strict Mac goes through, with its rounds capped.
     assert.ok((await pairV2(h, "d3", identity())).code);
   } finally {
+    await h.close();
+  }
+});
+
+async function until(check: () => boolean, timeoutMs: number, what: string): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+/** An allowed phone's whole request over the LAN listener, as Pocket does on Wi-Fi. */
+async function overLan(port: number, phone: LinkIdentity, hostKey: string, route: string) {
+  const lan = new WebSocket(`ws://127.0.0.1:${port}/link`);
+  lan.on("error", () => {});
+  const inbox: Frame[] = [];
+  lan.on("message", (data) => inbox.push(JSON.parse(data.toString())));
+  await once(lan, "open");
+  const next = async () => {
+    await until(() => inbox.length > 0 || lan.readyState !== WebSocket.OPEN, 5000, "LAN frame");
+    assert.ok(inbox.length, "the LAN channel closed");
+    return inbox.shift()!;
+  };
+  try {
+    const salt = crypto.randomBytes(32).toString("base64");
+    const cipher = new LinkCipher(phone, hostKey, salt, "client");
+    lan.send(JSON.stringify({ type: "hello", publicKey: phone.publicKey, salt, name: "Test" }));
+    const welcome = cipher.open((await next()) as never);
+    assert.equal(welcome.authorized, true);
+    lan.send(JSON.stringify(request(cipher, welcome.challenge, route)));
+    const chunks: Buffer[] = [];
+    while (true) {
+      const msg = cipher.open((await next()) as never);
+      if (msg.type === "chunk") chunks.push(Buffer.from(msg.body as string, "base64"));
+      if (msg.type === "end") return Buffer.concat(chunks).toString();
+    }
+  } finally {
+    lan.terminate();
+  }
+}
+
+test(
+  "Reconnect while the cloud is down keeps LAN devices working, and the Mac comes back with the cloud",
+  { timeout: 40_000 },
+  async () => {
+    const h = await harness((_req, res) => res.end("ok"));
+    try {
+      const { welcome } = await h.hello("c1");
+      h.host.approve(keyId(h.phone.publicKey), welcome.code as string);
+      const port = h.lanPort();
+      assert.equal(await overLan(port, h.phone, h.hostKey, "/api/x"), "ok");
+      await h.cloudDown();
+      await until(() => !h.host.status().online, 5000, "the relay to drop");
+      // The owner presses Reconnect: account validation fails before anything is torn down.
+      await assert.rejects(h.host.connect(h.base, "alice"));
+      assert.equal(h.lanPort(), port, "the LAN listener must survive a failed Reconnect");
+      assert.equal(await overLan(port, h.phone, h.hostKey, "/api/x"), "ok");
+      assert.equal(h.host.status().enabled, true);
+      // ...and the relay retry loop kept running: the Mac returns once the cloud does.
+      await h.cloudUp();
+      await until(() => h.host.status().online, 25_000, "the Mac to come back online");
+      assert.equal(h.host.status().error, "");
+    } finally {
+      await h.close();
+    }
+  },
+);
+
+test(
+  "a relay 403 keeps phone connections on, keeps retrying and reports sign_in_required",
+  { timeout: 30_000 },
+  async () => {
+    const h = await harness((_req, res) => res.end("ok"));
+    try {
+      h.control.forbid = true;
+      h.ws.terminate();
+      await until(() => h.control.forbidden >= 1, 5000, "a refused reconnect");
+      // The generic `error` event that follows the aborted handshake must not win.
+      await new Promise((r) => setTimeout(r, 200));
+      const status = h.host.status();
+      assert.deepEqual(
+        [status.enabled, status.online, status.error],
+        [true, false, "sign_in_required"],
+      );
+      const saved = JSON.parse(fs.readFileSync(path.join(h.home, "remote-link.json"), "utf8"));
+      assert.equal(saved.enabled, true, "a 403 must not turn phone connections off for good");
+      // LAN devices are unaffected, and the relay is retried with backoff until it lets
+      // the Mac in again (e.g. after an account-service hiccup).
+      await until(() => h.control.forbidden >= 2, 10_000, "a second attempt");
+      h.control.forbid = false;
+      await until(() => h.host.status().online, 15_000, "the Mac to come back online");
+      assert.equal(h.host.status().error, "");
+    } finally {
+      await h.close();
+    }
+  },
+);
+
+test("restore with an expired session starts LAN and says the owner must sign in again", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  const claims = (exp: number) =>
+    `s1.${Buffer.from(JSON.stringify({ uid: "alice", exp })).toString("base64url")}.sig`;
+  const restored = new RemoteHost(h.home, 1);
+  try {
+    const { welcome } = await h.hello("c1");
+    h.host.approve(keyId(h.phone.publicKey), welcome.code as string);
+    h.host.stop();
+    h.control.forbid = true; // what any relay answers an expired session
+    await restored.restore(h.base, claims(Date.now() - 1000));
+    const status = restored.status();
+    assert.deepEqual(
+      [status.enabled, status.signedIn, status.sessionExpired, status.error],
+      [true, true, true, "sign_in_required"],
+    );
+    // An approved device on the same Wi-Fi still reaches this Mac.
+    const lan = new WebSocket(`ws://127.0.0.1:${h.lanPort(restored)}/link`);
+    lan.on("error", () => {});
+    await once(lan, "open");
+    lan.terminate();
+    await until(() => h.control.forbidden >= 1, 5000, "the relay attempt");
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(restored.status().error, "sign_in_required");
+    // A live session is not reported as expired.
+    const fresh = new RemoteHost(h.home, 1);
+    await fresh.restore(h.base, claims(Date.now() + 60_000));
+    assert.equal(fresh.status().sessionExpired, false);
+    fresh.stop();
+  } finally {
+    restored.stop();
     await h.close();
   }
 });

@@ -14,6 +14,8 @@ import {
   pairingCode,
   pairingCommitment,
   pairingNonce,
+  RELAY_PING,
+  RELAY_PONG,
   verificationCode,
   type LinkIdentity,
   type SealedFrame,
@@ -95,6 +97,17 @@ const MAX_PAIRING_ROUNDS = 5;
  * clock skew instead of failing every request as "interrupted". */
 const CLOCK_SKEW = 5 * 60_000;
 const REQUEST_TTL = 120_000;
+const HEARTBEAT_MS = 20_000;
+
+/** The unverified expiry of a session token, for display only (the relay decides). */
+function sessionExpiry(session: string): number | undefined {
+  try {
+    const claims = JSON.parse(Buffer.from(session.split(".")[1] ?? "", "base64url").toString());
+    return typeof claims.exp === "number" ? claims.exp : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function cloudBase(raw: string): string {
   const url = new URL(raw);
@@ -173,12 +186,15 @@ export class RemoteHost {
     if (!this.stored?.enabled || !base || !session || cloudBase(base) !== this.stored.base) return;
     try {
       const claims = JSON.parse(Buffer.from(session.split(".")[1] ?? "", "base64url").toString());
-      if (claims.uid !== this.stored.uid || claims.exp <= Date.now()) return;
+      if (claims.uid !== this.stored.uid) return;
     } catch {
       return;
     }
-    // Previously approved LAN devices remain reachable during an internet outage.
+    // Previously approved LAN devices remain reachable during an internet outage, and
+    // after the session expires: they hold grants from this Mac, not from the account.
+    // The relay keeps being retried; status() tells the owner to sign in again.
     this.session = session;
+    if (this.sessionExpired()) this.error = "sign_in_required";
     const generation = this.generation;
     await this.startLan();
     this.openRelay(generation);
@@ -186,7 +202,8 @@ export class RemoteHost {
   async connect(rawBase: string, session: string): Promise<void> {
     const base = cloudBase(rawBase);
     if (!session) throw new Error("sign_in_required");
-    this.stop();
+    // Validate before tearing anything down: when the cloud is unreachable, the LAN
+    // listener and the relay retry loop that are already running must keep running.
     const generation = this.generation;
     // Resolve the authority from the server, never from unverified token claims.
     const response = await fetch(`${base}/api/auth/me`, {
@@ -194,10 +211,20 @@ export class RemoteHost {
       redirect: "error",
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) throw new Error("sign_in_required");
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error(
+        response.status === 401 || response.status === 403
+          ? "sign_in_required"
+          : "cloud_unavailable",
+      );
+    }
     const me = (await response.json()) as { signedIn?: boolean; uid?: string };
     if (!me.signedIn || !me.uid) throw new Error("sign_in_required");
+    // A disconnect or another connect finished meanwhile: it wins.
     if (generation !== this.generation) throw new Error("connection_cancelled");
+    this.stop();
+    this.error = "";
     if (this.stored?.uid !== me.uid || this.stored.base !== base) {
       // A different account starts with no grants. Agents its devices started stop.
       for (const g of this.stored?.grants ?? [])
@@ -215,9 +242,15 @@ export class RemoteHost {
     }
     this.stored.enabled = true;
     this.session = session;
+    this.failures = 0;
     this.save();
     await this.startLan();
-    this.openRelay(generation);
+    this.openRelay(this.generation);
+  }
+  /** The session's own expiry has passed: only signing in again brings the relay back. */
+  private sessionExpired(): boolean {
+    const exp = this.session ? sessionExpiry(this.session) : undefined;
+    return exp !== undefined && exp <= Date.now();
   }
   status() {
     this.expirePending();
@@ -225,6 +258,7 @@ export class RemoteHost {
       enabled: this.stored?.enabled ?? false,
       online: this.online,
       signedIn: !!this.session,
+      sessionExpired: this.sessionExpired(),
       name: os.hostname(),
       error: this.error,
       hostId: this.stored ? keyId(this.stored.identity.publicKey) : null,
@@ -448,6 +482,9 @@ export class RemoteHost {
     });
     this.relay = ws;
     let alive = true;
+    // The most specific reason this attempt failed; the generic `error` event that
+    // follows an aborted handshake must not replace it.
+    let failure = "";
     ws.on("pong", () => {
       alive = true;
     });
@@ -456,6 +493,8 @@ export class RemoteHost {
         type: "register",
         publicKey: this.stored!.identity.publicKey,
         name: os.hostname(),
+        // This Mac sends RELAY_PING; a relay may drop it when the pings stop.
+        heartbeat: true,
       });
       this.heartbeat = setInterval(() => {
         if (!alive) {
@@ -463,13 +502,22 @@ export class RemoteHost {
           return;
         }
         alive = false;
-        if (ws.readyState === WebSocket.OPEN) ws.ping();
-      }, 20_000);
+        if (ws.readyState !== WebSocket.OPEN) return;
+        // A protocol ping proves the TCP path; the application ping also proves, to a
+        // hibernating relay, that this Mac is still there (a sleeping Mac stops both).
+        ws.ping();
+        ws.send(RELAY_PING);
+      }, HEARTBEAT_MS);
       this.heartbeat.unref();
     });
     ws.on("message", (data) => {
       try {
-        const msg = JSON.parse(data.toString());
+        const text = data.toString();
+        if (text === RELAY_PONG) {
+          alive = true;
+          return;
+        }
+        const msg = JSON.parse(text);
         if (msg.type === "registered") {
           this.online = true;
           this.error = "";
@@ -496,13 +544,18 @@ export class RemoteHost {
       }
     });
     ws.on("error", () => {
-      this.error = "relay_unreachable";
+      if (generation !== this.generation) return;
+      this.error = failure || "relay_unreachable";
     });
     ws.on("unexpected-response", (_request, response) => {
-      this.error = response.statusCode === 403 ? "sign_in_required" : "relay_unavailable";
+      // 403: the relay refused this account session (expired, revoked, or an account
+      // service hiccup on an older relay). Phone connections stay ON and the relay
+      // keeps being retried; only the owner turns them off, and signing in again
+      // (connect) replaces the session. LAN devices keep working meanwhile.
+      failure = response.statusCode === 403 ? "sign_in_required" : "relay_unavailable";
+      if (generation === this.generation) this.error = failure;
       response.resume();
       ws.terminate();
-      if (response.statusCode === 403) this.disable();
     });
     ws.on("close", () => {
       if (generation !== this.generation) return;

@@ -566,19 +566,32 @@ export async function deleteAccount(uid: string): Promise<boolean> {
 
 /**
  * The gate's session check: does this (uid, sv) pair name a live account?
- * Wrong/stale sv ⇒ revoked (deleted account, future password change).
+ * Wrong/stale sv ⇒ "revoked" (deleted account, future password change).
+ * "unavailable" ⇒ the account authority could not be read: the session is
+ * neither accepted nor declared revoked, so callers answer 503, not 401/403 —
+ * a client (the Mac's relay link) must retry instead of treating it as a sign-out.
  */
-export async function sessionAccountValid(uid: string, sv: number): Promise<boolean> {
+export async function sessionAccountState(
+  uid: string,
+  sv: number,
+): Promise<"valid" | "revoked" | "unavailable"> {
   try {
     const acct = await getAccount(uid);
-    return !!acct && acct.sessionVersion === sv && (await adminAccountAllowed(uid));
+    return !!acct && acct.sessionVersion === sv && (await adminAccountAllowed(uid))
+      ? "valid"
+      : "revoked";
   } catch (err) {
     // Authentication must fail closed when the account authority is unreadable.
     // Do not let an async HTTP handler rejection crash the process, and do not
     // silently recreate/overwrite the directory.
     console.error(`[accounts] session validation unavailable: ${(err as Error).message}`);
-    return false;
+    return "unavailable";
   }
+}
+
+/** sessionAccountState as a yes/no; an unreadable authority is a no (fail closed). */
+export async function sessionAccountValid(uid: string, sv: number): Promise<boolean> {
+  return (await sessionAccountState(uid, sv)) === "valid";
 }
 
 /**

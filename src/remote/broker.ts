@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { keyId, MAX_BUFFER, MAX_FRAME, type HostInfo } from "./protocol.js";
+import { keyId, MAX_BUFFER, MAX_FRAME, RELAY_PING, RELAY_PONG, type HostInfo } from "./protocol.js";
 
 export type RelayAccount = { uid: string; expiresAt: number };
 type Host = { socket: WebSocket; info: HostInfo; clients: Map<string, WebSocket> };
@@ -39,7 +39,14 @@ export class RelayBroker {
         const url = new URL(req.url ?? "/", "http://relay");
         const token = req.headers.authorization?.replace(/^Bearer /, "") ?? "";
         // Native Bearer clients only: neither cookies, URL tokens nor browser origins.
-        const account = !req.headers.origin && (await authenticate(token));
+        let account: RelayAccount | null | false;
+        try {
+          account = !req.headers.origin && (await authenticate(token));
+        } catch {
+          // The account service is down: retryable, never a sign-out (403).
+          socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+          return;
+        }
         if (!account || !["/api/relay/host", "/api/relay/client"].includes(url.pathname)) {
           socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
           return;
@@ -108,18 +115,26 @@ export class RelayBroker {
     }, 5_000);
     ws.on("message", (data) => {
       try {
-        const msg = JSON.parse(data.toString());
+        const text = data.toString();
+        // Same answer as the Cloudflare relay's WebSocket auto-response.
+        if (text === RELAY_PING) {
+          if (ws.readyState === WebSocket.OPEN) ws.send(RELAY_PONG);
+          return;
+        }
+        const msg = JSON.parse(text);
         if (!registered) {
-          if (
-            msg.type !== "register" ||
-            typeof msg.name !== "string" ||
-            this.list(uid).length >= 10
-          )
-            throw new Error();
+          if (msg.type !== "register" || typeof msg.name !== "string") throw new Error();
           const id = keyId(msg.publicKey);
           key = `${uid}:${id}`;
-          // An active host cannot be replaced by another client of the account.
-          if (this.hosts.has(key)) throw new Error();
+          // The same Mac reconnecting (after sleep or a network change) replaces the
+          // socket it left behind. Only this account can register here, and a host
+          // without the private key cannot complete any phone's handshake.
+          const stale = this.hosts.get(key);
+          if (!stale && this.list(uid).length >= 10) throw new Error();
+          if (stale) {
+            this.hosts.delete(key);
+            stale.socket.terminate();
+          }
           registered = {
             socket: ws,
             info: { id, publicKey: msg.publicKey, name: msg.name.slice(0, 80), online: true },

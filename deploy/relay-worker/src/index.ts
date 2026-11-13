@@ -10,11 +10,22 @@ type Attachment = Account & {
   opened: number;
   checked: number;
   host?: HostInfo;
+  /** The host declared at registration that it sends PING; only then can silence mean gone. */
+  heartbeat?: boolean;
+  /** Last message from this host that reached the actor (refreshed at most every SEEN_MS). */
+  seen?: number;
   hostID?: string;
   channel?: string;
 };
 const MAX_FRAME = 1024 * 1024;
 const RECHECK_MS = 15_000;
+/** A Mac sends PING every 20 s. The runtime answers it without waking this actor
+ * (WebSocket auto-response) and records when; byte-exact, see src/remote/protocol.ts. */
+const PING = '{"type":"ping"}';
+const PONG = '{"type":"pong"}';
+/** A heartbeat host silent this long is gone (asleep, or its network changed). */
+const HOST_TIMEOUT_MS = 45_000;
+const SEEN_MS = 10_000;
 
 function error(status: number, reason: string): Response {
   return Response.json({ error: reason }, { status, headers: { "cache-control": "no-store" } });
@@ -98,21 +109,43 @@ export default {
 
 /** Socket attachments survive hibernation. No keys, messages or account tokens go to SQL. */
 export class AccountRelay extends DurableObject<Env> {
+  private readonly hostTimeout: number;
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // Answered by the runtime even while this actor hibernates: no wake-up per Mac ping.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
+    // Tests shorten the timeout; production does not set this variable.
+    const override = Number((env as { HOST_TIMEOUT_MS?: string }).HOST_TIMEOUT_MS);
+    this.hostTimeout = override > 0 ? override : HOST_TIMEOUT_MS;
+  }
   private sockets(): WebSocket[] {
     return this.ctx.getWebSockets().filter((ws) => ws.readyState === WebSocket.OPEN);
   }
   private attachment(ws: WebSocket): Attachment {
     return ws.deserializeAttachment() as Attachment;
   }
-  private host(id: string): WebSocket | undefined {
-    return this.sockets().find(
-      (ws) => this.attachment(ws).role === "host" && this.attachment(ws).host?.id === id,
-    );
+  /** A host that promised pings and stopped: a sleeping Mac or a dead TCP path. A Mac
+   * without the heartbeat (0.31 and earlier) is only ever replaced, never timed out. */
+  private silent(ws: WebSocket, a: Attachment = this.attachment(ws)): boolean {
+    if (a.role !== "host" || !a.host || !a.heartbeat) return false;
+    const pinged = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0;
+    return Math.max(a.seen ?? a.opened, pinged) + this.hostTimeout < Date.now();
+  }
+  private host(id: string, includeSilent = false): WebSocket | undefined {
+    return this.sockets().find((ws) => {
+      const a = this.attachment(ws);
+      return a.role === "host" && a.host?.id === id && (includeSilent || !this.silent(ws, a));
+    });
   }
   list(): HostInfo[] {
     return this.sockets().flatMap((ws) => {
       const a = this.attachment(ws);
-      return a.host && a.expiresAt > Date.now() && a.checked + 30_000 > Date.now() ? [a.host] : [];
+      return a.host &&
+        a.expiresAt > Date.now() &&
+        a.checked + 30_000 > Date.now() &&
+        !this.silent(ws, a)
+        ? [a.host]
+        : [];
     });
   }
   async fetch(request: Request): Promise<Response> {
@@ -128,7 +161,8 @@ export class AccountRelay extends DurableObject<Env> {
     if (this.sockets().length >= 80) return error(429, "account_capacity");
     if (
       role === "host" &&
-      this.sockets().filter((ws) => this.attachment(ws).role === "host").length >= 10
+      this.sockets().filter((ws) => this.attachment(ws).role === "host" && !this.silent(ws))
+        .length >= 10
     )
       return error(429, "host_capacity");
     if (role === "client") {
@@ -214,11 +248,19 @@ export class AccountRelay extends DurableObject<Env> {
             .update(Buffer.from(msg.publicKey, "base64"))
             .digest("hex")
             .slice(0, 32);
-          if (this.host(id)) throw new Error();
+          // The same Mac reconnecting (after sleep or a network change) replaces the
+          // socket it left behind, which may never report its own close. Only this
+          // account reaches this actor, and a host without the Mac's private key
+          // cannot complete any phone's handshake.
+          const stale = this.host(id, true);
+          if (stale && stale !== ws) this.close(stale, 4000, "replaced");
           a.host = { id, name: msg.name.slice(0, 80), publicKey: msg.publicKey, online: true };
+          if (msg.heartbeat === true) a.heartbeat = true;
+          a.seen = Date.now();
           ws.serializeAttachment(a);
           this.send(ws, { type: "registered", id });
         } else {
+          if ((a.seen ?? 0) + SEEN_MS < Date.now()) ws.serializeAttachment({ ...a, seen: Date.now() });
           const client = this.sockets().find((peer) => {
             const c = this.attachment(peer);
             return c.role === "client" && c.hostID === a.host!.id && c.channel === msg.channel;
@@ -262,22 +304,28 @@ export class AccountRelay extends DurableObject<Env> {
         try {
           return [token, await authenticate(token, this.env.AUTH_ORIGIN)] as const;
         } catch {
-          return [token, null] as const;
+          // The account service is down: not a revocation. The socket stays, but its
+          // `checked` ages, so after 30 s it is unlisted and its messages are refused.
+          return [token, undefined] as const;
         }
       }),
     );
     const accounts = new Map(checked);
     for (const ws of sockets) {
+      // Closing a host above also closed its phones.
+      if (ws.readyState !== WebSocket.OPEN) continue;
       const a = this.attachment(ws);
       const account = accounts.get(a.token);
-      if (
-        !account ||
-        account.uid !== a.uid ||
+      if (this.silent(ws, a)) {
+        this.close(ws, 4408, "heartbeat_timeout");
+      } else if (
+        account === null ||
+        (account && account.uid !== a.uid) ||
         a.expiresAt <= Date.now() ||
         (a.role === "host" && !a.host && a.opened + 5000 < Date.now())
       ) {
         this.close(ws, 1008, "session_expired");
-      } else {
+      } else if (account) {
         ws.serializeAttachment({ ...a, checked: Date.now() });
       }
     }
