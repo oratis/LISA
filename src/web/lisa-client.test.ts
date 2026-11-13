@@ -643,3 +643,68 @@ describe("dispatch card status", () => {
     assert.notEqual(dispatchState({ status: "banana", alive: false }).cls, "done");
   });
 });
+
+describe("Control view quick approve/deny answers the request it shows", () => {
+  // The managed approve endpoint resolves one approval id. A quick button that
+  // forgot it would be refused for every allow.
+  const src = [
+    extractFunction(MAIN_CLIENT_JS, "escapeHtml"),
+    extractFunction(MAIN_CLIENT_JS, "esc"),
+    extractFunction(MAIN_CLIENT_JS, "statusClass"),
+    extractFunction(MAIN_CLIENT_JS, "statusLabel"),
+    extractFunction(MAIN_CLIENT_JS, "ctrlProgress"),
+    extractFunction(MAIN_CLIENT_JS, "ctrlRowHTML"),
+    extractFunction(MAIN_CLIENT_JS, "ctrlQuickDecision"),
+  ].join("\n");
+  const ctx = createContext({});
+  runInContext(
+    `${src}; globalThis.__row = ctrlRowHTML; globalThis.__decide = ctrlQuickDecision;`,
+    ctx,
+  );
+  const row = (ctx as { __row: (s: unknown) => string }).__row;
+  const decide = (ctx as { __decide: (b: unknown) => Record<string, unknown> }).__decide;
+  /** The attributes of each quick button, read back from the rendered row. */
+  const buttons = (html: string) =>
+    [...html.matchAll(/<button class="cr-quick[^"]*"([^>]*)>/g)].map((m) =>
+      Object.fromEntries([...m[1]!.matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]])),
+    );
+  const fakeButton = (attrs: Record<string, string>) => ({
+    getAttribute: (name: string) => (name in attrs ? attrs[name] : null),
+  });
+  const session = {
+    sessionId: "m-1",
+    state: "waiting",
+    controllable: "managed",
+    activity: { pendingPermission: "write_file", approvalId: "a-42" },
+  };
+
+  test("both buttons carry the pending approval id", () => {
+    const found = buttons(row(session));
+    assert.deepEqual(
+      found.map((b) => [b["data-q"], b["data-sid"], b["data-approval"]]),
+      [
+        ["approve", "m-1", "a-42"],
+        ["deny", "m-1", "a-42"],
+      ],
+    );
+  });
+
+  test("a click sends the decision together with that id", () => {
+    const [approve, deny] = buttons(row(session)).map(fakeButton);
+    assert.deepEqual({ ...decide(approve) }, { allow: true, approvalId: "a-42" });
+    assert.deepEqual({ ...decide(deny) }, { allow: false, approvalId: "a-42" });
+  });
+
+  test("an id is escaped into the attribute, and a row without one sends no id", () => {
+    const odd = buttons(
+      row({ ...session, activity: { pendingPermission: "x", approvalId: 'a"><b>' } }),
+    );
+    assert.equal(odd[0]!["data-approval"], "a&quot;&gt;&lt;b&gt;");
+    const bare = buttons(row({ ...session, activity: { pendingPermission: "x" } })).map(fakeButton);
+    assert.deepEqual({ ...decide(bare[1]) }, { allow: false });
+  });
+
+  test("an observe-only session gets no quick buttons", () => {
+    assert.deepEqual(buttons(row({ ...session, controllable: "pty" })), []);
+  });
+});

@@ -5662,8 +5662,10 @@ if ('serviceWorker' in navigator) {
     if (pend) {
       h += '<div class="cr-pend">⚠ wants to run ' + esc(pend);
       if (s.controllable === 'managed') {
-        h += '<button class="cr-quick ok" data-q="approve" data-sid="' + id + '">approve</button>';
-        h += '<button class="cr-quick no" data-q="deny" data-sid="' + id + '">deny</button>';
+        // The server resolves only the request this row shows, so the buttons carry its id.
+        var aid = esc(a.approvalId || '');
+        h += '<button class="cr-quick ok" data-q="approve" data-sid="' + id + '" data-approval="' + aid + '">approve</button>';
+        h += '<button class="cr-quick no" data-q="deny" data-sid="' + id + '" data-approval="' + aid + '">deny</button>';
       }
       h += '</div>';
     } else if (err) {
@@ -5671,6 +5673,13 @@ if ('serviceWorker' in navigator) {
     }
     h += '</div>';
     return h;
+  }
+  // The decision body for a Control row's quick approve/deny button.
+  function ctrlQuickDecision(btn) {
+    var body = { allow: btn.getAttribute('data-q') === 'approve' };
+    var approvalId = btn.getAttribute('data-approval');
+    if (approvalId) body.approvalId = approvalId;
+    return body;
   }
   // POST an action to the right agent family, surfacing the server error text.
   function sdAction(fam, id, action, body) {
@@ -5798,7 +5807,7 @@ if ('serviceWorker' in navigator) {
           e.stopPropagation();
           var self = e.currentTarget;
           self.disabled = true;
-          sdAction('managed', self.getAttribute('data-sid'), 'approve', { allow: self.getAttribute('data-q') === 'approve' })
+          sdAction('managed', self.getAttribute('data-sid'), 'approve', ctrlQuickDecision(self))
             .then(function () { if (window.refreshClaudeSessions) window.refreshClaudeSessions(); renderControl(); })
             .catch(function (err) { self.disabled = false; scroll.insertAdjacentHTML('afterbegin', '<div class="view-empty" style="color:var(--err-color)">' + esc(err.message) + '</div>'); });
         });
