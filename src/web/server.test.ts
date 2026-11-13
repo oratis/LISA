@@ -452,6 +452,12 @@ describe("managed approve keeps a migration window for shipped Pocket builds", (
       assert.ok(pendingOf(allowed.id));
       const stale = await approve(allowed.id, { allow: true, approvalId: "previous-request" });
       assert.equal(stale.status, 409, stale.text);
+      // JSON with a code to branch on and a message to show (#490) — Pocket
+      // maps stale_approval to "already handled" and refreshes.
+      assert.match(stale.headers["content-type"] ?? "", /application\/json/);
+      const staleBody = JSON.parse(stale.text) as { error: string; message: string };
+      assert.equal(staleBody.error, "stale_approval");
+      assert.ok(staleBody.message.length > 0);
 
       // New clients: allow names the request that was shown.
       const ok = await approve(allowed.id, { allow: true, approvalId: pendingOf(allowed.id)!.id });
@@ -466,6 +472,23 @@ describe("managed approve keeps a migration window for shipped Pocket builds", (
       assert.deepEqual(ran, ["allowed"], "the denied tool must not run");
       const nothing = await approve(denied.id, { allow: false });
       assert.equal(nothing.status, 409, "no request is left to deny");
+
+      // Other control errors Pocket can hit are JSON {error, message} too.
+      const control = (id: string, action: string, body?: unknown) =>
+        request(srv.port, "POST", "/api/agents/managed/" + id + "/" + action, {
+          headers: { "content-type": "application/json" },
+          body: body === undefined ? "" : JSON.stringify(body),
+        });
+      for (const [r, status, error] of [
+        [await control("no-such-agent", "cancel"), 404, "unknown_session"],
+        [await control(denied.id, "send", {}), 400, "text_required"],
+        [await control(denied.id, "explode"), 400, "bad_action"],
+      ] as const) {
+        assert.equal(r.status, status, r.text);
+        const body = JSON.parse(r.text) as { error: string; message: string };
+        assert.equal(body.error, error);
+        assert.equal(typeof body.message, "string");
+      }
     } finally {
       managedRegistry.cancel(allowed.id);
       managedRegistry.cancel(denied.id);

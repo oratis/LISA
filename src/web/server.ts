@@ -154,7 +154,12 @@ import {
   CTRL_BODY_LIMIT,
   RICH_BODY_LIMIT,
 } from "./http-body.js";
-import { agentSessionsResponse, applyApiVersionHeader, writeApiError } from "./api-contract.js";
+import {
+  agentSessionsResponse,
+  apiAgentSession,
+  applyApiVersionHeader,
+  writeApiError,
+} from "./api-contract.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
@@ -1323,8 +1328,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // sessions that have since ended. (Dedups consecutive same-state events.)
     recordEvent(session);
     pushBridge.onAgentUpdate(session);
-    // New generalized event for the multi-agent UI.
-    broadcast({ type: "agent_session_update", ...session });
+    // New generalized event for the multi-agent UI. The row is serialized
+    // exactly like the REST roster (no jsonlPath, `resumable` set, ISO
+    // lastMtime) — Pocket replaces its row with this copy (#490).
+    broadcast({
+      type: "agent_session_update",
+      ...apiAgentSession(session, (id) => liveClaudeSessionIds().has(id)),
+    });
     // Back-compat: the island still listens for claude_session_update as a
     // "something changed, refetch" trigger. Keep emitting it for Claude Code.
     if (session.agent === "claude-code") {
@@ -4266,13 +4276,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         payload = JSON.parse(mBody || "{}");
       } catch {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("bad json");
+        writeApiError(res, 400, "bad_json", "The request body is not valid JSON.");
         return;
       }
       if (typeof payload.task !== "string" || !payload.task.trim()) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("task required");
+        writeApiError(res, 400, "task_required", "A task is required.");
         return;
       }
       const cwd =
@@ -4327,22 +4335,40 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           (raw !== undefined && raw !== null && typeof raw !== "string") ||
           (payload.allow && !approvalId)
         ) {
-          res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "approval_id_and_boolean_decision_required" }));
+          writeApiError(
+            res,
+            400,
+            "approval_id_and_boolean_decision_required",
+            "Send {allow: true|false}; an approval must also name the request (approvalId).",
+          );
           return;
         }
         ok = managedRegistry.decide(id, payload.allow, approvalId);
         if (!ok) {
-          res.writeHead(409, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "stale_approval" }));
+          // Already answered (here or on another device), replaced by a newer
+          // request, or the agent is gone: the client should refresh, not retry.
+          writeApiError(
+            res,
+            409,
+            "stale_approval",
+            "This request was already handled or has changed — refresh to see the current state.",
+          );
           return;
         }
+      } else if (action === "send") {
+        writeApiError(res, 400, "text_required", "send needs a JSON body {text}.");
+        return;
       } else {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("action must be send|cancel|approve");
+        writeApiError(res, 400, "bad_action", "action must be send|cancel|approve");
         return;
       }
-      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      if (!ok) {
+        writeApiError(res, 404, "unknown_session", "That agent is no longer running on this Mac.", {
+          ok,
+        });
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok }));
       return;
     }
@@ -4445,8 +4471,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const id = url.slice("/api/agents/pty/".length, -"/output".length);
       const out = ptyRegistry.output(decodeURIComponent(id));
       if (out === null) {
-        res.writeHead(404, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false }));
+        writeApiError(res, 404, "unknown_session", "That agent is no longer on this Mac.", {
+          ok: false,
+        });
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
@@ -4461,8 +4488,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const id = decodeURIComponent(url.slice("/api/agents/pty/".length, -"/stream".length));
       const initial = ptyRegistry.output(id);
       if (initial === null) {
-        res.writeHead(404, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false }));
+        writeApiError(res, 404, "unknown_session", "That agent is no longer on this Mac.", {
+          ok: false,
+        });
         return;
       }
       res.writeHead(200, {
@@ -4471,6 +4499,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         connection: "keep-alive",
       });
       res.write(`data: ${JSON.stringify({ type: "snapshot", text: initial })}\n\n`);
+      // Attached after the agent already exited (a re-attach, or a detail view
+      // opened from an old roster row): no "done" update will ever come, so
+      // finish now with the same end frame the live path sends below (#490).
+      const finished = ptyRegistry.get(id)?.view();
+      if (finished?.state === "done") {
+        res.end(`data: ${JSON.stringify({ type: "end", state: finished.state })}\n\n`);
+        return;
+      }
       attachSseHeartbeat(req, res); // T-11 — an idle terminal is still a live stream
       const onOut = (e: { id: string; chunk: string }) => {
         if (e.id !== id) return;
@@ -4516,12 +4552,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (action === "send" && typeof payload.text === "string")
         ok = ptyRegistry.send(id, payload.text);
       else if (action === "cancel") ok = ptyRegistry.cancel(id);
-      else {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("action must be send|cancel");
+      else if (action === "send") {
+        writeApiError(res, 400, "text_required", "send needs a JSON body {text}.");
+        return;
+      } else {
+        writeApiError(res, 400, "bad_action", "action must be send|cancel");
         return;
       }
-      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      if (!ok) {
+        writeApiError(res, 404, "unknown_session", "That agent is no longer on this Mac.", { ok });
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok }));
       return;
     }

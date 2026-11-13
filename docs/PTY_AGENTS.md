@@ -168,7 +168,8 @@ a full arrow-key TUI. Raw attach is future work.
 
 ### Errors
 
-`POST /api/agents/pty/start` errors are JSON `{"error": "<code>", "message": "<text to show>"}`:
+Every error from these routes is JSON `{"error": "<code>", "message": "<text to show>"}`
+(404s also keep the legacy `"ok": false`). `POST /api/agents/pty/start`:
 
 | Status | `error` | When | `/status` tells you ahead of time |
 | --- | --- | --- | --- |
@@ -177,6 +178,11 @@ a full arrow-key TUI. Raw attach is future work.
 | 500 | `spawn_failed` | anything else — node-pty absent, `posix_spawnp failed.`, …; `message` carries the cause | `installed: false` (`reason: "missing-module"`) or `spawnHelperExecutable: false` (`reason: "spawn-helper-not-executable"`) |
 | 400 | `bad_json` / `task_required` / `resume_unsupported` | malformed request | — |
 | 409 | `session_live` | adopting a session that's still open | the row has no `resumable` |
+
+`send` / `cancel` / `output` / `stream` on an unknown id answer `404 unknown_session`;
+`send` without text `400 text_required`. The managed-agent routes use the same shape,
+including `409 stale_approval` when an approve/deny names a request that was already
+answered or replaced (refresh; don't retry).
 
 ## Code
 
