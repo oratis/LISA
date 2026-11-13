@@ -1,4 +1,9 @@
-/** Reviewed local-owner providers. Examples are editable read requests for the chat composer. */
+import { workspaceApps, workspaceIds, workspaceScopes } from "./workspace/catalog.js";
+
+/**
+ * Reviewed local-owner providers; adding a catalog entry never enables arbitrary
+ * MCP. Examples are editable read requests for the chat composer.
+ */
 export const CONNECTOR_CATALOG = [
   {
     id: "github",
@@ -70,11 +75,27 @@ export const CONNECTOR_CATALOG = [
       "zh-CN": "总结我选定的 Notion 页面内容。",
     },
   },
+  ...workspaceIds.map((id) => {
+    const { name, vendor, unit, hint, example } = workspaceApps[id];
+    return {
+      id,
+      name,
+      access: "read" as const,
+      authModes: ["login"],
+      example,
+      workspace: { vendor, unit, hint, scope: workspaceScopes(id) },
+    };
+  }),
 ] as const;
 export type ConnectorProvider = (typeof CONNECTOR_CATALOG)[number]["id"];
 
 /** Directory lookups are side-effect free, including while a connection card is waiting. */
-export function connectorCatalogReply(message: string, language?: string): string | undefined {
+export function connectorCatalogReply(
+  message: string,
+  language?: string,
+  /** Sources this install can serve; the others are not offered. */
+  available: (id: ConnectorProvider) => boolean = () => true,
+): string | undefined {
   const text = message.trim();
   const command = /^\/connectors(?:[ \t]+([^\r\n]{1,100}))?$/i.exec(text);
   const chinese =
@@ -88,10 +109,12 @@ export function connectorCatalogReply(message: string, language?: string): strin
   if (!command && !chinese && !english) return;
   const zh = chinese || (!!command && /^zh\b/i.test(language ?? ""));
   const query = command?.[1]?.trim().toLowerCase() ?? "";
-  const entries = CONNECTOR_CATALOG.filter((app) =>
-    [app.id, app.name, app.example.en, app.example["zh-CN"]].some((v) =>
-      v.toLowerCase().includes(query),
-    ),
+  const entries = CONNECTOR_CATALOG.filter(
+    (app) =>
+      available(app.id) &&
+      [app.id, app.name, app.example.en, app.example["zh-CN"]].some((v) =>
+        v.toLowerCase().includes(query),
+      ),
   );
   if (!entries.length)
     return zh

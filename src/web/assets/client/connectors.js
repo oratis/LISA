@@ -4,6 +4,13 @@ const githubSelections = new Map();
 let githubRefreshing = false;
 let githubHistoryDirty = false;
 let githubLastSession = '';
+const workspaceCards = new Map();
+function workspaceLoginUrl(url, vendor) {
+  if (new Set(url.searchParams.keys()).size !== url.searchParams.size || url.username || url.password || url.hash || url.searchParams.get('redirect_uri') !== 'http://localhost:4870/oauth/' + vendor) return false;
+  if (vendor === 'microsoft') return url.origin === 'https://login.microsoftonline.com' && /^\/(?:[a-f\d-]{36}|consumers)\/oauth2\/v2\.0\/authorize$/i.test(url.pathname);
+  const paths = { atlassian: 'https://auth.atlassian.com/authorize', dropbox: 'https://www.dropbox.com/oauth2/authorize', todoist: 'https://app.todoist.com/oauth/authorize', figma: 'https://www.figma.com/oauth' };
+  return paths[vendor] === url.origin + url.pathname;
+}
 
 const githubStatus = {
   waiting: tr('github.status.waiting'), authorizing: tr('github.status.authorizing'), selecting: tr('github.status.selecting'),
@@ -11,6 +18,19 @@ const githubStatus = {
   cancelled: tr('github.status.cancelled'), failed: tr('github.status.failed'), expired: tr('github.status.expired')
 };
 const githubErrors = {
+  workspace_reauthorize: tr('workspace.renew'),
+  workspace_scope_mismatch: tr('workspace.mismatch'),
+  workspace_invalid_period: tr('workspace.period'),
+  workspace_content_unavailable: tr('workspace.type'),
+  workspace_resource_changed: tr('workspace.changed'),
+  workspace_rate_limited: tr('workspace.rate'),
+  oauth_callback_port_in_use: tr('workspace.busy'),
+  workspace_client_not_configured: tr('workspace.config'),
+  workspace_inaccessible: tr('workspace.access'),
+  workspace_eventkit_platform: tr('workspace.platform'),
+  workspace_eventkit_build: tr('workspace.build'),
+  workspace_eventkit_unavailable: tr('workspace.unavailable'),
+  workspace_eventkit_access: tr('workspace.systemAccess'),
   slack_client_not_configured: tr('connector.error.slack_client_not_configured'),
   slack_reauthorization_required: tr('connector.error.slack_reauthorization_required'),
   slack_read_scope_required: tr('connector.error.slack_read_scope_required'),
@@ -118,6 +138,17 @@ const connectorIconPaths = {
   slack: 'M10 3L7 21 M17 3l-3 18 M4 9h17 M3 15h17',
   notion: 'M5 3h10l4 4v14H5z M14 3v5h5 M8 12h8 M8 16h6',
   linear: 'M4 17l3 3 M3 12l9 9 M5 7l12 12 M8 5a9 9 0 0 1 12 12z',
+  todoist: 'M4 7l2 2 3-3 M12 8h8 M4 15l2 2 3-3 M12 16h8',
+  'outlook-mail': 'M3 4h18v16H3z M3 13h5l2 3h4l2-3h5',
+  'outlook-calendar': 'M3 5h18v16H3z M3 10h18 M8 3v4 M16 3v4 M9 15l2 2 4-4',
+  onedrive: 'M7 18h11a4 4 0 0 0 0-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 7 18z',
+  sharepoint: 'M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M5 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M19 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M10.5 8.5l-4 7 M13.5 8.5l4 7 M8 18h8',
+  jira: 'M3 4h18v16H3z M9 4v16 M15 4v16 M5 8h2 M11 8h2 M17 8h2',
+  confluence: 'M8 3h9l4 4v11H8z M16 3v5h5 M4 7v14h11',
+  figma: 'M12 2l6 9-6 11-6-11z M12 2v9 M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
+  dropbox: 'M3 8l9-5 9 5-9 5z M3 8v8l9 5 9-5V8 M12 13v8',
+  'apple-calendar': 'M4 5h16v16H4z M4 10h16 M9 3v4 M15 3v4 M10 14h4v4h-4z',
+  'apple-reminders': 'M4 6a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z M10 6h10 M4 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z M10 12h10 M4 18a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z M10 18h10',
   lock: 'M5 10h14v11H5z M8 10V7a4 4 0 0 1 8 0v3',
 };
 function connectorIcon(name) {
@@ -130,7 +161,92 @@ function connectorIcon(name) {
   return svg;
 }
 
-function renderResourcePicker(card, footer, request, provider) {
+// Per-provider card copy, login modes and authorization-link checks. Workspace providers
+// come from the server catalog and share one shape (workspaceCard), so a new source is
+// one catalog entry rather than another branch in every ternary below.
+const googleLoginUrl = url => url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth';
+const connectorCards = {
+  github: {
+    name: 'GitHub', detail: tr('github.detail'), authorizeDetail: tr('github.authorizeDetail'),
+    modes: { existing: tr('github.existing'), login: tr('github.login') },
+    account: a => '@' + a.login,
+    custom: {
+      placeholder: tr('github.repoPlaceholder'), label: tr('github.repoLabel'), add: tr('github.add'),
+      invalid: githubErrorText('github_repository_unavailable'),
+      parse: value => /^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(value) ? value : '',
+    },
+  },
+  'google-calendar': {
+    name: 'Google Calendar', detail: tr('connector.calendarDetail'), authorizeDetail: tr('connector.authorizeDetail'),
+    modes: { freebusy: tr('connector.auth.freebusy'), events: tr('connector.auth.events') },
+    account: a => a.email, open: tr('connector.openGoogle'), loginUrl: googleLoginUrl,
+  },
+  gmail: {
+    name: 'Gmail', detail: tr('connector.gmailDetail'), authorizeDetail: tr('connector.authorizeDetail'),
+    modes: { login: tr('connector.auth.gmail') },
+    account: a => a.email, open: tr('connector.openGoogle'), loginUrl: googleLoginUrl,
+  },
+  'google-drive': {
+    name: 'Google Drive', detail: tr('connector.driveDetail'), authorizeDetail: tr('connector.driveAuthorize'),
+    modes: { login: tr('connector.auth.drive') },
+    account: a => a.email, open: tr('connector.openGoogle'), loginUrl: googleLoginUrl,
+  },
+  linear: {
+    name: 'Linear', detail: tr('connector.linearDetail'), authorizeDetail: tr('connector.linearAuthorize'),
+    modes: { login: tr('connector.auth.linear') },
+    account: a => [a.name, a.email].filter(Boolean).join(' · '), open: tr('connector.openLinear'),
+    loginUrl: url => url.origin === 'https://mcp.linear.app' && url.pathname === '/authorize' && url.searchParams.get('scope') === 'read' && url.searchParams.get('resource') === 'https://mcp.linear.app/mcp/readonly',
+  },
+  notion: {
+    name: 'Notion', detail: tr('connector.notionDetail'), authorizeDetail: tr('connector.notionAuthorize'),
+    modes: { login: tr('connector.auth.notion') },
+    account: a => a.workspaceName + ' · ' + a.name, open: tr('connector.openNotion'),
+    loginUrl: url => url.origin === 'https://api.notion.com' && url.pathname === '/v1/oauth/authorize' && url.searchParams.get('owner') === 'user' && url.searchParams.get('response_type') === 'code',
+  },
+  slack: {
+    name: 'Slack', detail: tr('connector.slackDetail'), authorizeDetail: tr('connector.slackAuthorize'),
+    modes: { login: tr('connector.auth.slack') },
+    account: a => a.workspaceName + ' · ' + a.name, open: tr('connector.openSlack'),
+    loginUrl: url => url.origin === 'https://slack.com' && url.pathname === '/oauth/v2/authorize' && !url.searchParams.get('scope') && url.searchParams.get('user_scope') === 'channels:read,channels:history,groups:read,groups:history' && url.searchParams.get('code_challenge_method') === 'S256',
+  },
+};
+// A typed resource ID; a Figma link becomes fileKey or fileKey|nodeId.
+function workspaceResourceId(provider, value) {
+  let id = value;
+  if (provider === 'figma' && /^https:\/\//i.test(id)) {
+    try {
+      const link = new URL(id);
+      const match = /^\/(?:design|file|proto)\/([A-Za-z0-9_-]+)(?:\/|$)/.exec(link.pathname);
+      const node = link.searchParams.get('node-id');
+      if (!match || !['www.figma.com', 'figma.com'].includes(link.hostname) || link.port || link.username || link.password || (node && !/^\d+[:-]\d+$/.test(node))) return '';
+      id = match[1] + (node ? '|' + node.replace('-', ':') : '');
+    } catch { return ''; }
+  }
+  return id.length <= 700 && !/[\u0000-\u001f\u007f]/.test(id) ? id : '';
+}
+function workspaceCard(app) {
+  const name = app.name;
+  const native = app.workspace.vendor === 'apple';
+  return {
+    name,
+    detail: native ? tr('workspace.nativeScope', { name }) : tr('workspace.scope', { name, scope: app.workspace.scope }),
+    authorizeDetail: tr(native ? 'workspace.system' : 'workspace.return', { name }),
+    modes: { login: tr(native ? 'workspace.allow' : 'workspace.login', { name }) },
+    account: a => a.name,
+    open: tr('workspace.open', { name }),
+    loginUrl: native ? undefined : url => workspaceLoginUrl(url, app.workspace.vendor),
+    // Apple calendars and lists are only offered by the local EventKit reader.
+    custom: native ? undefined : {
+      placeholder: app.workspace.hint, label: tr('workspace.id', { name }), add: tr('workspace.add'),
+      invalid: tr('workspace.invalidId'), parse: value => workspaceResourceId(app.id, value),
+    },
+  };
+}
+function connectorCard(provider) {
+  const app = workspaceCards.get(provider);
+  return app ? workspaceCard(app) : connectorCards[provider] || connectorCards.github;
+}
+function renderResourcePicker(card, footer, request, provider, custom) {
   const limit = 30; // ConnectorService.confirm grant limit and resource page size.
   const isGitHub = provider === 'github';
   const key = card.dataset.connectorKey;
@@ -245,23 +361,23 @@ function renderResourcePicker(card, footer, request, provider) {
   more.addEventListener('click', load);
   more.hidden = !draft.hasMore || draft.page === 1;
 
-  if (isGitHub) {
+  if (custom) {
     const form = githubNode('form', '', 'connector-custom');
     const customInput = document.createElement('input');
     customInput.className = 'github-repo-input';
-    customInput.placeholder = tr('github.repoPlaceholder');
-    customInput.setAttribute('aria-label', tr('github.repoLabel'));
+    customInput.placeholder = custom.placeholder;
+    customInput.setAttribute('aria-label', custom.label);
     customInput.required = true;
-    customAdd = githubNode('button', tr('github.add'), 'github-button');
+    customAdd = githubNode('button', custom.add, 'github-button');
     customAdd.type = 'submit';
     form.append(customInput, customAdd);
     picker.appendChild(form);
     customInput.addEventListener('input', () => customInput.setCustomValidity(''));
     form.addEventListener('submit', event => {
       event.preventDefault();
-      const id = customInput.value.trim();
-      if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(id)) {
-        customInput.setCustomValidity(githubErrorText('github_repository_unavailable'));
+      const id = custom.parse(customInput.value.trim());
+      if (!id) {
+        customInput.setCustomValidity(custom.invalid);
         customInput.reportValidity();
         return;
       }
@@ -281,11 +397,8 @@ function renderResourcePicker(card, footer, request, provider) {
 function githubRender(request, provider) {
   const selecting = request.status === 'selecting';
   const isGitHub = provider === "github";
-  const isLinear = provider === "linear";
-  const isDrive = provider === "google-drive";
-  const isNotion = provider === "notion";
-  const isSlack = provider === "slack";
-  const name = isSlack ? "Slack" : isDrive ? "Google Drive" : isNotion ? "Notion" : isLinear ? "Linear" : provider === "google-calendar" ? "Google Calendar" : provider === "gmail" ? "Gmail" : "GitHub";
+  const info = connectorCard(provider);
+  const name = info.name;
   const resources = isGitHub ? request.repositories : request.resources;
   const action = (operation, body) => githubAction(request.id, operation, body, provider);
   const key = provider + ":" + request.id;
@@ -298,12 +411,7 @@ function githubRender(request, provider) {
   mark.appendChild(connectorIcon(provider));
   const identity = githubNode('div', '', 'connector-identity');
   identity.appendChild(githubNode('strong', name));
-  let accountName = '';
-  if (request.account) {
-    const account = request.account;
-    accountName = isGitHub ? '@' + account.login : isNotion || isSlack ? account.workspaceName + ' · ' + account.name :
-      isLinear ? [account.name, account.email].filter(Boolean).join(' · ') : account.email;
-  }
+  const accountName = request.account ? info.account(request.account) : '';
   if (!selecting && accountName) identity.appendChild(githubNode('span', accountName, 'github-account'));
   const badge = githubNode('span', tr('github.readonly'), 'github-readonly');
   badge.prepend(connectorIcon('lock'));
@@ -317,27 +425,24 @@ function githubRender(request, provider) {
   if (resources.length) card.appendChild(githubNode('p', resources.map(r => isGitHub ? r.fullName : r.name).join(' · '), 'github-repositories'));
   if (request.error) card.appendChild(githubNode('p', githubErrorText(request.error), 'github-error'));
   if (['waiting', 'failed'].includes(request.status)) {
-    card.appendChild(githubNode('p', isGitHub ? tr('github.detail') : tr(isSlack ? 'connector.slackDetail' : isDrive ? 'connector.driveDetail' : isNotion ? 'connector.notionDetail' : isLinear ? 'connector.linearDetail' : provider === 'gmail' ? 'connector.gmailDetail' : 'connector.calendarDetail'), 'github-detail'));
+    card.appendChild(githubNode('p', info.detail, 'github-detail'));
     if (isGitHub) card.appendChild(githubNode('p', tr('github.preview'), 'github-detail'));
     if (request.connected) githubButton(card, tr('github.retry'), () => action('retry'));
     addLoginActions(card);
   }
   function addLoginActions(target) {
-    const modes = isGitHub ? ['existing', 'login'] : (isSlack || isLinear || isDrive || isNotion || provider === 'gmail') ? ['login'] : ['freebusy', 'events'];
-    for (const mode of modes) {
+    for (const [mode, label] of Object.entries(info.modes)) {
       if (selecting && mode === 'existing') continue;
-      const label = isGitHub ? tr(mode === 'existing' ? 'github.existing' : 'github.login')
-        : tr('connector.auth.' + (isSlack ? 'slack' : isDrive ? 'drive' : isNotion ? 'notion' : isLinear ? 'linear' : provider === 'gmail' ? 'gmail' : mode));
       githubButton(target, label, async () => { githubSelections.delete(key); await action('authorize', { mode }); });
     }
   }
   if (request.status === 'authorizing') {
-    card.appendChild(githubNode('p', isGitHub ? tr('github.authorizeDetail') : tr(isSlack ? 'connector.slackAuthorize' : isDrive ? 'connector.driveAuthorize' : isNotion ? 'connector.notionAuthorize' : isLinear ? 'connector.linearAuthorize' : 'connector.authorizeDetail'), 'github-detail'));
-    if (!isGitHub && request.authorizationUrl) {
+    card.appendChild(githubNode('p', info.authorizeDetail, 'github-detail'));
+    if (info.loginUrl && request.authorizationUrl) {
       try {
         const url = new URL(request.authorizationUrl);
-        if ((isSlack ? url.origin === 'https://slack.com' && url.pathname === '/oauth/v2/authorize' && !url.searchParams.get('scope') && url.searchParams.get('user_scope') === 'channels:read,channels:history,groups:read,groups:history' && url.searchParams.get('code_challenge_method') === 'S256' : isNotion ? url.origin === 'https://api.notion.com' && url.pathname === '/v1/oauth/authorize' && url.searchParams.get('owner') === 'user' && url.searchParams.get('response_type') === 'code' : isLinear ? url.origin === 'https://mcp.linear.app' && url.pathname === '/authorize' && url.searchParams.get('scope') === 'read' && url.searchParams.get('resource') === 'https://mcp.linear.app/mcp/readonly' : url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth') && !url.username && !url.password) {
-          const link = githubNode('a', tr(isSlack ? 'connector.openSlack' : isNotion ? 'connector.openNotion' : isLinear ? 'connector.openLinear' : 'connector.openGoogle'), 'github-login-link');
+        if (info.loginUrl(url) && !url.username && !url.password) {
+          const link = githubNode('a', info.open, 'github-login-link');
           link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; card.appendChild(link);
         }
       } catch { /* Never render an untrusted authorization URL. */ }
@@ -362,7 +467,7 @@ function githubRender(request, provider) {
   if (!['completed', 'cancelled', 'expired'].includes(request.status))
     githubButton(footer, tr('github.cancel'), () => action('cancel'), 'github-button github-secondary');
   if (request.connected) githubButton(footer, tr('github.disconnect'), () => action('disconnect'), 'github-button github-secondary');
-  if (selecting) renderResourcePicker(card, footer, request, provider);
+  if (selecting) renderResourcePicker(card, footer, request, provider, info.custom);
   if (footer.childElementCount) card.appendChild(footer);
   return card;
 }
@@ -371,15 +476,17 @@ async function githubRefresh() {
   if (!sid || githubRefreshing) return;
   githubRefreshing = true;
   try {
-    const batches = await Promise.all(['github', 'google-calendar', 'gmail', 'linear', 'google-drive', 'notion', 'slack'].map(async provider => {
-      const response = await fetch('/api/connectors/' + provider + '/requests?sessionId=' + encodeURIComponent(sid));
-      if (!response.ok) return [];
-      const data = await response.json();
-      return data.requests.map(request => ({ request, provider }));
-    }));
+    const [github, catalog] = await Promise.all([
+      fetch('/api/connectors/github/requests?sessionId=' + encodeURIComponent(sid)),
+      fetch('/api/connectors?sessionId=' + encodeURIComponent(sid)),
+    ]);
+    const data = catalog.ok ? await catalog.json() : {connectors:[], requests:[]};
+    for (const app of data.connectors) if (app.workspace) workspaceCards.set(app.id,app);
+    const entries = github.ok ? (await github.json()).requests.map(request => ({request,provider:'github'})) : [];
+    entries.push(...(data.requests || []));
     if (sid !== window.lisaActiveSessionId) return;
     if (githubLastSession !== sid) { githubCards.clear(); githubSelections.clear(); githubLastSession = sid; }
-    for (const { request, provider } of batches.flat()) {
+    for (const { request, provider } of entries) {
       const key = provider + ':' + request.id;
       const prior = githubCards.get(key);
       if (prior?.status !== 'completed' && request.status === 'completed') githubHistoryDirty = true;
@@ -416,7 +523,9 @@ if (browseConnectors) {
 function showConnectorCatalog() {
   return loadPanel(tr('connector.browse'), '/api/connectors', data => {
     modalBody.replaceChildren(githubNode('p', tr('connector.readExamples')));
-    for (const app of data.connectors) {
+    // A source this install cannot serve (no OAuth client, no EventKit reader)
+    // is not offered: its example would never reach a connection card.
+    for (const app of data.connectors.filter(a => a.available !== false)) {
       const example = app.example[LISA_LOCALE];
       const row = githubNode('div', '', 'item');
       row.append(githubNode('strong', app.name), githubNode('p', example, 'desc'));

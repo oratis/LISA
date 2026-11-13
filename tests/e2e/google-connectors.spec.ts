@@ -246,11 +246,15 @@ test.describe("Google read-only connections", () => {
   test("Gmail bulk selection respects pagination and keeps manually chosen labels at the limit", async ({
     page,
   }) => {
-    await page.route("**/api/connectors/gmail/requests?*", (route) =>
-      route.fulfill({
-        json: { requests: [{ id: "many", status: "selecting", account, resources: [] }] },
-      }),
-    );
+    // Non-GitHub cards are restored from the catalog response in one request.
+    await page.route("**/api/connectors?*", async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      json.requests = [
+        { provider: "gmail", request: { id: "many", status: "selecting", account, resources: [] } },
+      ];
+      return route.fulfill({ response, json });
+    });
     await page.route("**/api/connectors/gmail/requests/many/resources?*", (route) => {
       const first = new URL(route.request().url()).searchParams.get("page") === "1";
       const resources = Array.from({ length: first ? 30 : 2 }, (_, i) => ({

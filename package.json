@@ -40,6 +40,7 @@
   },
   "files": [
     "dist/",
+    "packaging/eventkit/",
     "contracts/",
     "channels.example.json",
     "completions/",

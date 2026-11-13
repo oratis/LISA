@@ -16,7 +16,15 @@ export async function loopbackAuthorization<T>(
   options: {
     port?: number;
     hostname?: "127.0.0.1" | "localhost";
-    pathname?: "/oauth/connector" | "/oauth/notion" | "/oauth/slack";
+    pathname?:
+      | "/oauth/connector"
+      | "/oauth/notion"
+      | "/oauth/slack"
+      | "/oauth/microsoft"
+      | "/oauth/atlassian"
+      | "/oauth/dropbox"
+      | "/oauth/todoist"
+      | "/oauth/figma";
     /** Error code when a fixed callback port is already taken on either loopback. */
     portInUseCode?: string;
   } = {},

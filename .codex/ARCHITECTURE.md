@@ -47,6 +47,8 @@ Notion 使用 confidential OAuth + state + 预注册 localhost 回调；不假�
 
 Slack 使用注册桌面应用的 PKCE + user OAuth 和轮换令牌，无客户端密钥；四项频道读取 scope 精确匹配，实时 scope 头与刷新响应仅额外允许隐式 `identify`。`slack_read` 固定 Web API 读取所选成员频道的历史/讨论串，禁止私信、共享频道、搜索、文件和写入；不是官方 MCP 透传。默认七天、最多 31 天、100 条/40,000 字符，读取前后检查账号/频道，结果一律不可信。成员列表可省略 `is_member`，但确认和读取的频道详情必须明确为 true。配置、边界及真实验收见 `docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md` 第 11 节。
 
+工作应用连接器在 `src/connectors/workspace/` 实现。9 个云来源使用固定供应商 REST 调用，2 个 Apple 来源通过随包的 EventKit 助手在本机执行。所有来源复用 `ReadonlyConnector`，范围由供应商身份与已确认资源 ID 约束。只有已配置 OAuth 客户端的云来源（Todoist 自行注册公共客户端）和助手可运行时的 Apple 来源会在启动时注册并参与聊天路由；Lisa.app 内嵌运行时不含助手源码，Apple 来源在其中不可用。本机聊天通过 `GET /api/connectors?sessionId=…` 一次恢复非 GitHub 连接卡，GitHub 继续走兼容路由。授权配置及平台前置条件见 [接入方案第 13 节](../docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md)。
+
 `src/agent.ts` 的核心职责：
 
 - 调用统一 Provider 接口并流式输出；
