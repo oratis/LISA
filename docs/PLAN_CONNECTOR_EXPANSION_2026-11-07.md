@@ -340,7 +340,7 @@ Todoist 在首次点击登录时向官方注册仅含 `data:read` 的 PKCE 公�
 }
 ```
 
-Atlassian 会累积同一应用和账号的授权，同时使用 Jira 和 Confluence 时可分别注册客户端。若微软租户返回既有的额外权限，也可按 `outlook-mail`、`outlook-calendar`、`onedrive` 和 `sharepoint` 分别配置客户端。权限不符时连接卡会提示重新配置。
+Atlassian 会累积同一应用和账号的授权，同时使用 Jira 和 Confluence 时可分别注册客户端。微软令牌可附带 `openid`、`profile`、`email` 以及其他微软来源的只读权限；若租户返回超出这些范围的既有权限，可按 `outlook-mail`、`outlook-calendar`、`onedrive` 和 `sharepoint` 分别配置客户端。权限不符时连接卡会提示重新配置。
 
 在供应商后台登记以下本机回调。同一时间登录一个来源，网页回到 localhost 后在原卡片选择资源。微软使用桌面公共客户端和 S256 PKCE；个人账号可把 `tenant` 设为 `consumers`，SharePoint 需要组织租户 GUID。Dropbox 使用 S256 PKCE 和离线 token。[Microsoft 授权码流程](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow) · [Dropbox OAuth](https://developers.dropbox.com/oauth-guide)
 

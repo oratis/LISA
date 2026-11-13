@@ -254,7 +254,9 @@ export class WorkspaceDriver implements ReadonlyDriver<Resource, Resource> {
     signal: AbortSignal,
   ): Promise<unknown> {
     const args = row(input);
-    if (args.operation === "list" && Object.keys(args).length === 1) return { account, resources };
+    // Account and resource names come from the provider too: as untrusted as read data.
+    if (args.operation === "list" && Object.keys(args).length === 1)
+      return { untrusted: true, account, resources };
     if (
       args.operation !== "read" ||
       Object.keys(args).some((k) => !["operation", "resourceId", "from", "to"].includes(k))

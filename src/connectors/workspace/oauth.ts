@@ -4,7 +4,7 @@ import { withFileLock } from "../../soul/lock.js";
 import { lisaHome } from "../../paths.js";
 import { atomicWrite } from "../../fs-utils.js";
 import { loopbackAuthorization } from "../oauth-loopback.js";
-import { workspaceApps, workspaceScopes, type CloudId } from "./catalog.js";
+import { workspaceApps, workspaceIds, workspaceScopes, type CloudId } from "./catalog.js";
 import { fail, identifier, row, type Http } from "./http.js";
 
 export interface AppClient {
@@ -196,12 +196,26 @@ function checkScopes(id: CloudId, raw: unknown, requested: string, refresh: bool
     s
       .split(/[ ,]+/)
       .filter(Boolean)
-      .map((x) => x.replace(/^https:\/\/graph\.microsoft\.com\//, ""));
-  const required = normalize(requested).filter((x) => x !== "offline_access");
+      .map((x) => x.replace(/^https:\/\/graph\.microsoft\.com\//i, "").toLowerCase());
+  const microsoft = workspaceApps[id].vendor === "microsoft";
+  // Microsoft adds OpenID scopes and returns everything already consented to the same app
+  // registration, so a token for one Microsoft source can list another source's read scope.
+  // Anything outside the Microsoft workspace read scopes still fails closed.
+  const ignored = new Set(
+    microsoft ? ["offline_access", "openid", "profile", "email"] : ["offline_access"],
+  );
+  const tolerated = new Set(
+    microsoft
+      ? workspaceIds.flatMap((other) =>
+          workspaceApps[other].vendor === "microsoft" ? normalize(workspaceScopes(other)) : [],
+        )
+      : [],
+  );
+  const required = normalize(requested).filter((x) => !ignored.has(x));
   const granted = normalize(raw);
   if (
     required.some((s) => !granted.includes(s)) ||
-    granted.some((s) => !required.includes(s) && s !== "offline_access")
+    granted.some((s) => !required.includes(s) && !ignored.has(s) && !tolerated.has(s))
   )
     fail("workspace_scope_mismatch");
 }
