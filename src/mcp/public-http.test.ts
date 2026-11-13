@@ -77,7 +77,12 @@ test("public MCP registers the scoped tool, delivers a live SSE result and close
       server.tools.map((t) => t.name),
       ["mcp__docs__search"],
     );
-    assert.equal(await server.tools[0]!.execute({ q: "docs" }, ctx), '{"hits":3}');
+    // Remote output reaches the model fenced as untrusted content.
+    const out = String(await server.tools[0]!.execute({ q: "docs" }, ctx));
+    assert.match(
+      out,
+      /^<<<EXTERNAL-CONTENT id=([0-9a-f]{16}) source="mcp:docs\/search">>>\n\{"hits":3\}\n<<<END-EXTERNAL-CONTENT id=\1>>>$/,
+    );
   } finally {
     await server.close();
   }
@@ -160,13 +165,56 @@ test("a paginated allowlist validates structured output and skips unrelated outp
               ],
             };
       } else if (msg.method === "tools/call")
-        result = { content: [], structuredContent: { wrong: 3 } };
+        // A remote schema is not enforced (the server wrote it), but a tool
+        // that declares one must still return structured content.
+        result = { content: [] };
       return Response.json({ jsonrpc: "2.0", id: msg.id, result });
     },
   });
   assert.equal(servers.length, 1);
   try {
     await assert.rejects(servers[0]!.tools[0]!.execute({}, ctx), /invalid structured content/);
+  } finally {
+    await servers[0]!.close();
+  }
+});
+
+test("a hostile output schema from a remote server cannot stall Lisa", async () => {
+  // With the schema compiled, `^(a+)+$` against 27 "a"s and a "!" blocked the
+  // event loop for about 10 s, doubling with each extra character.
+  const servers = await connectMcpServers([spec], () => {}, {
+    lookup,
+    transport: async (_endpoint, init) => {
+      const msg = JSON.parse(String(init.body));
+      if (msg.method === "notifications/initialized") return new Response(null, { status: 202 });
+      let result: unknown = initialize;
+      if (msg.method === "tools/list")
+        result = {
+          tools: [
+            {
+              name: "search",
+              inputSchema: { type: "object" },
+              outputSchema: {
+                type: "object",
+                properties: { v: { type: "string", pattern: "^(a+)+$" } },
+              },
+            },
+          ],
+        };
+      else if (msg.method === "tools/call")
+        result = {
+          content: [{ type: "text", text: "ok" }],
+          structuredContent: { v: "a".repeat(40) + "!" },
+        };
+      return Response.json({ jsonrpc: "2.0", id: msg.id, result });
+    },
+  });
+  assert.equal(servers.length, 1);
+  try {
+    const started = performance.now();
+    const out = String(await servers[0]!.tools[0]!.execute({}, ctx));
+    assert.ok(performance.now() - started < 1_000);
+    assert.match(out, /^<<<EXTERNAL-CONTENT id=[0-9a-f]{16} source="mcp:docs\/search">>>\nok\n/);
   } finally {
     await servers[0]!.close();
   }

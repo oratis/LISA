@@ -8,6 +8,7 @@ import type { McpServerSpec } from "./spec.js";
 import { remoteFetch } from "./http.js";
 import { mcpHttpTransport } from "./transport.js";
 import type { SafeFetchDependencies } from "../tools/web_fetch.js";
+import { fenceUntrusted } from "../tools/external-fence.js";
 import { childEnv } from "../child-env.js";
 
 export interface ConnectedMcpServer {
@@ -104,10 +105,21 @@ async function connectOne(
           spec.type === "http" &&
           (!/^[a-zA-Z0-9_-]{1,64}$/.test(`mcp__${spec.name}__${tool.name}`) ||
             tool.name.includes("__"))
-        )
+        ) {
+          log(`[mcp] ${spec.name}: skipped tool ${JSON.stringify(tool.name.slice(0, 80))} (name)`);
           continue;
-        const validate = tool.outputSchema ? schemas.getValidator(tool.outputSchema) : undefined;
-        tools.push(mcpToolToLisaTool(spec.name, client, tool, log, validate));
+        }
+        // A remote server's output schema is not compiled. It supplies both the
+        // schema and the content checked against it, so the check proves
+        // nothing about untrusted output, and a hostile pattern such as
+        // `^(a+)+$` would block the event loop (and an unresolvable `$ref`
+        // would drop the whole server). Only the shape is required.
+        const validate = !tool.outputSchema
+          ? undefined
+          : spec.type === "http"
+            ? structuredObject
+            : schemas.getValidator(tool.outputSchema);
+        tools.push(mcpToolToLisaTool(spec.name, client, tool, log, validate, spec.type === "http"));
       }
       cursor = page.nextCursor;
       if (cursor && (cursors.has(cursor) || cursors.size >= 31))
@@ -121,6 +133,21 @@ async function connectOne(
     await close().catch(() => {});
     throw error;
   }
+}
+
+/** For a remote tool that declares an output schema: structured content must be an object. */
+const structuredObject: JsonSchemaValidator<unknown> = (input) =>
+  input !== null && typeof input === "object" && !Array.isArray(input)
+    ? { valid: true, data: input, errorMessage: undefined }
+    : { valid: false, data: undefined, errorMessage: "structured content is not an object" };
+
+/** What a remote server may put in front of the model, per result and per error. */
+const REMOTE_RESULT_MAX_CHARS = 64_000;
+const REMOTE_ERROR_MAX_CHARS = 2_000;
+const REMOTE_DESCRIPTION_MAX_CHARS = 1_000;
+
+function capped(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}\n[truncated at ${max} chars]` : text;
 }
 
 export function mcpToolToLisaTool(
@@ -140,11 +167,22 @@ export function mcpToolToLisaTool(
   },
   log: (msg: string) => void,
   validateOutput?: JsonSchemaValidator<unknown>,
+  /**
+   * A public HTTPS server rather than a local command. Its description is
+   * capped (it goes into every turn's tool list), and its results and errors
+   * reach the model fenced as untrusted content and capped in length.
+   */
+  remote = false,
 ): ToolDefinition {
   const name = `mcp__${serverName}__${mcpTool.name}`;
-  const description = mcpTool.description
-    ? `[mcp:${serverName}] ${mcpTool.description}`
+  const summary = remote
+    ? capped(mcpTool.description ?? "", REMOTE_DESCRIPTION_MAX_CHARS)
+    : mcpTool.description;
+  const description = summary
+    ? `[mcp:${serverName}] ${summary}`
     : `[mcp:${serverName}] ${mcpTool.name}`;
+  const fence = (text: string, max: number) =>
+    fenceUntrusted(capped(text, max), [["source", `mcp:${serverName}/${mcpTool.name}`]]);
   return {
     name,
     description,
@@ -174,11 +212,12 @@ export function mcpToolToLisaTool(
         .join("\n");
       if (result.isError) {
         log(`[mcp] ${name} returned isError`);
-        throw new Error(text || `MCP tool ${name} failed`);
+        const failure = text || `MCP tool ${name} failed`;
+        throw new Error(remote ? fence(failure, REMOTE_ERROR_MAX_CHARS) : failure);
       }
-      return (
-        text || (result.structuredContent ? JSON.stringify(result.structuredContent) : "(empty)")
-      );
+      const out =
+        text || (result.structuredContent ? JSON.stringify(result.structuredContent) : "(empty)");
+      return remote ? fence(out, REMOTE_RESULT_MAX_CHARS) : out;
     },
   };
 }
