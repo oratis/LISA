@@ -20,7 +20,8 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 
 command -v xcodegen >/dev/null || { echo "✗ need xcodegen — run: brew install xcodegen" >&2; exit 1; }
 
-# Action: `build` (default) or `test` (runs the LisaPocketTests logic tests).
+# Action: `build` (default) or `test` (runs the LisaPocketTests logic tests
+# and the LisaPocketUITests simulator UI tests).
 ACTION="build"
 if [ "${1:-}" = "test" ]; then ACTION="test"; shift; fi
 
