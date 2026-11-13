@@ -735,7 +735,7 @@ async function main(): Promise<void> {
         approvalExplicit: args.approvalExplicit,
       });
       logInfo(`[runtime] ${describeRuntimePolicy(policy)}`);
-      await startWebServer({
+      const server = await startWebServer({
         policy,
         port: args.port,
         host: args.host,
@@ -759,7 +759,9 @@ async function main(): Promise<void> {
             `(open http://${args.host}:${args.port}/?token=<value> once per device)`,
         );
       }
-      // Keep alive until SIGINT.
+      // Close the server on SIGTERM/SIGINT so its shutdown hook runs, then exit.
+      const { exitOnSignals } = await import("./web/shutdown.js");
+      exitOnSignals(server, { log: logInfo });
       await new Promise<void>(() => {});
       return;
     }

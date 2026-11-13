@@ -384,6 +384,96 @@ describe("managed agents (Lisa Pocket delegation)", () => {
   });
 });
 
+describe("managed approve keeps a migration window for shipped Pocket builds", () => {
+  test("old deny without an id, new allow with an id, and allow without an id is refused", async () => {
+    const { managedRegistry } = await import("../agents/managed.js");
+    const ran: string[] = [];
+    // A real managed agent that pauses on one mutating tool, then finishes.
+    const startPaused = (label: string) =>
+      managedRegistry.start({
+        task: label,
+        cwd: TMP,
+        systemPrompt: "sys",
+        tools: [
+          {
+            name: "edit",
+            description: "edit a file",
+            inputSchema: { type: "object" as const },
+            execute: async () => {
+              ran.push(label);
+              return "edited";
+            },
+          },
+        ],
+        provider: (() => {
+          let i = 0;
+          const turns = [
+            {
+              content: [{ type: "tool_use", id: "t-" + label, name: "edit", input: {} }],
+              stopReason: "tool_use",
+            },
+            { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
+          ];
+          return {
+            name: "fake",
+            async runTurn() {
+              const t = turns[i++];
+              if (!t) throw new Error("scripted provider drained");
+              return {
+                ...t,
+                usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+              } as never;
+            },
+          };
+        })(),
+      });
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 300 && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+      assert.ok(check(), "condition timed out");
+    };
+    const pendingOf = (id: string) => managedRegistry.get(id)?.view().pending;
+    const srv = await boot();
+    const approve = (id: string, body: unknown) =>
+      request(srv.port, "POST", "/api/agents/managed/" + id + "/approve", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const allowed = startPaused("allowed"),
+      denied = startPaused("denied");
+    try {
+      await until(() => !!pendingOf(allowed.id) && !!pendingOf(denied.id));
+
+      // Allow without an id: refused, and the request stays open.
+      for (const body of [{ allow: true }, { allow: true, approvalId: "" }, { allow: "yes" }]) {
+        const r = await approve(allowed.id, body);
+        assert.equal(r.status, 400, JSON.stringify(body) + " → " + r.text);
+        assert.match(r.text, /approval_id_and_boolean_decision_required/);
+      }
+      assert.ok(pendingOf(allowed.id));
+      const stale = await approve(allowed.id, { allow: true, approvalId: "previous-request" });
+      assert.equal(stale.status, 409, stale.text);
+
+      // New clients: allow names the request that was shown.
+      const ok = await approve(allowed.id, { allow: true, approvalId: pendingOf(allowed.id)!.id });
+      assert.equal(ok.status, 200, ok.text);
+      await until(() => !pendingOf(allowed.id) && ran.includes("allowed"));
+
+      // Shipped Pocket: {"allow": false} with no id still denies the current request.
+      const legacy = await approve(denied.id, { allow: false });
+      assert.equal(legacy.status, 200, legacy.text);
+      await until(() => managedRegistry.get(denied.id)?.view().state === "waiting");
+      assert.equal(pendingOf(denied.id), undefined);
+      assert.deepEqual(ran, ["allowed"], "the denied tool must not run");
+      const nothing = await approve(denied.id, { allow: false });
+      assert.equal(nothing.status, 409, "no request is left to deny");
+    } finally {
+      managedRegistry.cancel(allowed.id);
+      managedRegistry.cancel(denied.id);
+      await srv.close();
+    }
+  });
+});
+
 describe("T-4 /api/sessions ETag revalidation", () => {
   test("etagMatches implements weak comparison over the If-None-Match list", async () => {
     const { etagMatches } = await import("./server.js");

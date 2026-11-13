@@ -10,10 +10,13 @@ import { resolveExpression, expressionText } from "../expressions/catalog.js";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import crypto from "node:crypto";
 import { RelayBroker } from "../remote/broker.js";
 import { RemoteHost } from "../remote/host.js";
+import { FleetError, fleetRoute } from "../remote/fleet/types.js";
+import type { FleetApi } from "../remote/fleet/api.js";
+import { trackShutdown } from "./shutdown.js";
 import { fileURLToPath } from "node:url";
 import { listRoomMusic, toPublicTrack } from "./room-music.js";
 import { runAgent } from "../agent.js";
@@ -602,6 +605,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
   const cloudEdition = isCloud();
   let remoteHost: RemoteHost | undefined;
+  let fleet: FleetApi | undefined;
+  /** Opened on first use, or at startup when an earlier backend left a task ledger. */
+  const openFleet = async (): Promise<FleetApi> => {
+    if (!fleet) {
+      const { FleetApi: Api } = await import("../remote/fleet/api.js");
+      const addr = server.address();
+      if (!server.listening || !addr || typeof addr === "string")
+        throw new FleetError(503, "backend_unavailable");
+      fleet ??= new Api(lisaGlobalHome(), addr.port);
+    }
+    return fleet;
+  };
   let relayBroker: RelayBroker | undefined;
   const remoteAddress = (req: http.IncomingMessage) => {
     const addr = remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
@@ -2712,6 +2727,59 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       );
       return;
     }
+    if (url === "/fleet" || url.startsWith("/api/fleet/") || url.startsWith("/api/agent-host/")) {
+      const method = req.method ?? "";
+      const onMini = url.startsWith("/api/agent-host/");
+      const owner =
+        !cloud &&
+        !accountUid &&
+        isLoopbackAddress(remoteAddr) &&
+        !crossSiteProblem(req, true, null);
+      const send = (status: number, data: unknown) => {
+        res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(data));
+      };
+      if (!remoteHost || cloud || (onMini ? !remoteHost.fleetPeer(req) : !owner)) {
+        send(403, { error: "fleet_access_denied" });
+        return;
+      }
+      if (url === "/fleet" && method === "GET") {
+        const html = await fs.readFile(path.join(ASSETS_DIR, "fleet", "index.html"), "utf8");
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "content-security-policy":
+            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+        });
+        res.end(html);
+        return;
+      }
+      if (onMini && !fleetRoute(method, url)) {
+        send(404, { error: "route_not_found" });
+        return;
+      }
+      if (method === "POST" && req.headers["content-type"]?.split(";")[0] !== "application/json") {
+        send(415, { error: "json_required" });
+        return;
+      }
+      const body = method === "POST" ? await readJsonBody(req, res, 64 * 1024) : {};
+      if (!body) return;
+      try {
+        const api = await openFleet();
+        if (onMini) {
+          // Body parsing yields. The owner may have revoked the grant in the meantime.
+          const peer = remoteHost.fleetPeer(req);
+          if (!peer) throw new FleetError(403, "fleet_access_denied");
+          send(200, api.peer(peer, url, method, body));
+        } else {
+          send(200, await api.owner(remoteHost, url, method, body));
+        }
+      } catch (err) {
+        if (err instanceof FleetError) send(err.status, { error: err.message });
+        else send(503, { error: "fleet_unavailable" });
+      }
+      return;
+    }
     if (url.startsWith("/api/remote/")) {
       if (cloud || !remoteHost || !isLoopbackAddress(remoteAddr)) {
         res.writeHead(403, { "content-type": "application/json" });
@@ -3236,14 +3304,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "cache-control": "no-store",
         "content-security-policy": mainHtmlCsp(cspNonce),
       });
+      // Owner-only entries in the page: the person at this machine, not a
+      // signed-in account, a remote device or a cross-site request.
+      const localOwnerPage =
+        !cloud &&
+        !accountUid &&
+        isLoopbackAddress(remoteAddr) &&
+        !crossSiteProblem(req, true, null);
       res.end(
         renderMainHtml({
           nonce: cspNonce,
-          connectorCatalog:
-            !!githubConnector &&
-            !accountUid &&
-            isLoopbackAddress(remoteAddr) &&
-            !crossSiteProblem(req, true, null),
+          remoteFleet: localOwnerPage,
+          connectorCatalog: !!githubConnector && localOwnerPage,
         }),
       );
       return;
@@ -4039,6 +4111,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       try {
         const saved = saveControlPolicy({ ...loadControlPolicy(), ...payload });
+        // A remote controller can no longer see or cancel its agents. Stop them.
+        if (!saved.remoteControl) fleet?.host.stopRemoteRuns();
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, ...saved }));
       } catch (err) {
@@ -4194,9 +4268,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const action = slash >= 0 ? rest.slice(slash + 1) : "";
       const mBody = await readRequestText(req, res);
       if (mBody === null) return;
-      let payload: { text?: unknown; allow?: unknown } = {};
+      let payload: { text?: unknown; allow?: unknown; approvalId?: unknown } = {};
       try {
-        payload = mBody ? JSON.parse(mBody) : {};
+        const parsed = mBody ? JSON.parse(mBody) : {};
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed;
       } catch {
         /* tolerate empty/none */
       }
@@ -4204,8 +4279,28 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (action === "send" && typeof payload.text === "string")
         ok = managedRegistry.send(id, payload.text);
       else if (action === "cancel") ok = managedRegistry.cancel(id);
-      else if (action === "approve") ok = managedRegistry.decide(id, payload.allow !== false);
-      else {
+      else if (action === "approve") {
+        // Migration window: shipped Pocket builds send only {allow}. A deny without
+        // an id still refuses the session's current request; an allow must name the
+        // request the user saw, so a late tap can never approve a newer one.
+        const raw = payload.approvalId;
+        const approvalId = typeof raw === "string" && raw ? raw : undefined;
+        if (
+          typeof payload.allow !== "boolean" ||
+          (raw !== undefined && raw !== null && typeof raw !== "string") ||
+          (payload.allow && !approvalId)
+        ) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "approval_id_and_boolean_decision_required" }));
+          return;
+        }
+        ok = managedRegistry.decide(id, payload.allow, approvalId);
+        if (!ok) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "stale_approval" }));
+          return;
+        }
+      } else {
         res.writeHead(400, { "content-type": "text/plain" });
         res.end("action must be send|cancel|approve");
         return;
@@ -5465,6 +5560,7 @@ self.addEventListener('fetch', (event) => {
           ".webp": "image/webp",
           ".gif": "image/gif",
           ".js": "application/javascript; charset=utf-8",
+          ".css": "text/css; charset=utf-8",
           ".json": "application/json; charset=utf-8",
           ".txt": "text/plain; charset=utf-8",
         };
@@ -6123,6 +6219,9 @@ self.addEventListener('fetch', (event) => {
   };
   server.on("close", () => {
     remoteHost?.stop();
+    // Stops the Claude processes remote controllers started; exitOnSignals waits for it.
+    const fleetStopped = fleet?.host.shutdown();
+    if (fleetStopped) trackShutdown(server, fleetStopped);
     void githubConnector?.stop();
     for (const service of taskConnectors.values()) void service.stop();
     for (const t of [
@@ -6188,10 +6287,18 @@ self.addEventListener('fetch', (event) => {
   } else if (!cloudEdition) {
     const bound = server.address();
     if (bound && typeof bound === "object") {
+      protectFromSandbox({ path: path.join(lisaGlobalHome(), "fleet") });
+      protectFromSandbox({ path: path.join(lisaGlobalHome(), "remote-link.json") });
       remoteHost = new RemoteHost(lisaGlobalHome(), bound.port);
+      // Before the executor opens nothing runs, so there is nothing to stop.
+      remoteHost.onFleetGrantChange = (id, grant) => fleet?.host.enforceGrant(id, grant);
       void remoteHost
         .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
         .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));
+      // An earlier backend may have left a remote Claude process running. Opening the
+      // ledger now stops it or frees its slot, instead of on the first remote request.
+      if (existsSync(path.join(lisaGlobalHome(), "fleet", "runs.sqlite")))
+        void openFleet().catch(() => logWarn("[fleet] remote task ledger unavailable"));
     }
   }
   // Dream-log retention on startup (then at most hourly, from the passes).

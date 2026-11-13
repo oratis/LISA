@@ -11,9 +11,462 @@
   "x-lisa-compatibility": {
     "missingVersionHeader": "accept-as-legacy-v1",
     "sameMajor": "accept-additive-fields",
-    "higherMajor": "reject-and-require-client-upgrade"
+    "higherMajor": "reject-and-require-client-upgrade",
+    "managedApproval": "An explicit boolean allow is required. Allowing also requires the current approvalId. During the migration window a deny without approvalId, as sent by older clients, still refuses the session's current request."
   },
   "paths": {
+    "/api/agent-host/v1/capabilities": {
+      "get": {
+        "operationId": "getFleetCapabilities",
+        "description": "Requires a verified agent-host v2 grant. Lists the workspace aliases authorized for this device.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetCapabilities"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs": {
+      "get": {
+        "operationId": "getFleetRuns",
+        "description": "Most recent tasks for this controller on this Mac, filtered by workspace grant.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runs"
+                  ],
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "startFleetRun",
+        "description": "Persist the intent before spawning. The operation ID identifies the run. Changing a recorded operation payload returns 409.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}": {
+      "get": {
+        "operationId": "getFleetRun",
+        "description": "Return the latest result and pending permission for this device and run.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "run"
+                  ],
+                  "properties": {
+                    "run": {
+                      "$ref": "#/components/schemas/FleetRun"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/events": {
+      "get": {
+        "operationId": "getFleetRunEvents",
+        "description": "Timeline of one task for this device, read by cursor. Each entry has a per-task sequence number that only grows. The response also carries the current run, so one read is a consistent snapshot plus the entries after the cursor. `gap` reports entries dropped by retention; `reset` reports a cursor that is ahead of this ledger, answered from the oldest retained entry.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "Last sequence number the client holds. Entries after it are returned. Defaults to 0.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size, at most 100. Only accepted together with `after`, in that order.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetRunEvents"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/messages": {
+      "post": {
+        "operationId": "sendFleetMessage",
+        "description": "Send a new turn to the waiting process.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/decisions": {
+      "post": {
+        "operationId": "decideFleetApproval",
+        "description": "Resolve exactly the displayed permission. A stale approval returns 409.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "approvalId",
+                      "allow"
+                    ],
+                    "properties": {
+                      "approvalId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "allow": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelFleetRun",
+        "description": "Stop the process group. Poll the run until the process exits.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetMutation"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/operations/{id}": {
+      "get": {
+        "operationId": "getFleetReceipt",
+        "description": "Use the original host, controller and operation ID after a lost reply. An existing receipt consumes the key even when its status is unknown.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
     "/api/agents/sessions": {
       "get": {
         "operationId": "listAgentSessions",
@@ -3393,6 +3846,340 @@
       }
     },
     "schemas": {
+      "FleetWorkspace": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "FleetCapabilities": {
+        "type": "object",
+        "required": [
+          "version",
+          "hostId",
+          "instanceId",
+          "control",
+          "unavailable",
+          "workspaces"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "instanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "control": {
+            "type": "boolean"
+          },
+          "unavailable": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetWorkspace"
+            }
+          },
+          "features": {
+            "type": "array",
+            "description": "Optional protocol features of this host. `run-events`: the task timeline route. Absent on hosts that predate it.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "FleetRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspaceId",
+          "hostId",
+          "state",
+          "result",
+          "approval",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "approval",
+              "waiting",
+              "cancelling",
+              "completed",
+              "cancelled",
+              "failed",
+              "unknown"
+            ]
+          },
+          "result": {
+            "type": "string"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "tool",
+                  "input",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "tool": {
+                    "enum": [
+                      "Read",
+                      "Edit",
+                      "Write"
+                    ]
+                  },
+                  "input": {
+                    "type": "object"
+                  },
+                  "expiresAt": {
+                    "type": "integer",
+                    "description": "Unix time in milliseconds."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "updatedAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds of the newest timeline entry."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sequence number of the newest timeline entry. A client reads the timeline when this moves past its cursor."
+          }
+        }
+      },
+      "FleetRunEvent": {
+        "type": "object",
+        "description": "One timeline entry. Entries carry display summaries only: a bounded instruction excerpt, the tool and target of a permission request, and a bounded result excerpt. Tool input stays on the run's pending approval. Clients show an unknown `type` by name.",
+        "required": [
+          "seq",
+          "at",
+          "type"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "type": {
+            "type": "string",
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started."
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prompt": {
+            "type": "string",
+            "description": "First 500 characters of the instruction that started the turn."
+          },
+          "approvalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Path relative to the workspace, or the requested path when it lies outside."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "outcome": {
+            "enum": [
+              "allowed",
+              "denied",
+              "expired",
+              "withdrawn",
+              "invalid",
+              "cancelled"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "description": "Last 4,000 characters of the turn's result."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Tool calls the workspace policy refused during the turn."
+          },
+          "by": {
+            "enum": [
+              "controller",
+              "owner",
+              "timeout",
+              "shutdown",
+              "revoked",
+              "policy"
+            ],
+            "description": "revoked: the owner revoked the device or narrowed its grant. policy: remote control was switched off on the host."
+          },
+          "state": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "process": {
+            "enum": [
+              "exited",
+              "stopped"
+            ],
+            "description": "On orphan_released: whether the agent left by an earlier backend had already exited, or this backend stopped it."
+          }
+        }
+      },
+      "FleetRunEvents": {
+        "type": "object",
+        "required": [
+          "run",
+          "events",
+          "firstSeq",
+          "lastSeq",
+          "gap",
+          "reset",
+          "more"
+        ],
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/FleetRun"
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/FleetRunEvent"
+            }
+          },
+          "firstSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Oldest retained sequence number. The host keeps the newest 500 entries of a task."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gap": {
+            "type": "boolean",
+            "description": "Entries between the cursor and `firstSeq` are no longer retained."
+          },
+          "reset": {
+            "type": "boolean",
+            "description": "The cursor was ahead of this ledger. The client discards its copy."
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Further entries exist after this page."
+          }
+        }
+      },
+      "FleetReceipt": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "status",
+          "run"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "unknown"
+            ]
+          },
+          "run": {
+            "$ref": "#/components/schemas/FleetRun"
+          }
+        }
+      },
+      "FleetMutation": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "workspaceId",
+          "hostId"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": [
@@ -3468,6 +4255,10 @@
           },
           "tokens": {
             "$ref": "#/components/schemas/TokenUsage"
+          },
+          "approvalId": {
+            "type": "string",
+            "description": "One-time ID bound to the displayed managed permission. The decision endpoint requires it to allow; a deny without it refuses the current request (kept for older clients)."
           },
           "pendingPermission": {
             "type": "string"

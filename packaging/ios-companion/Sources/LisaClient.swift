@@ -458,7 +458,11 @@ final class LisaClient {
     func managedStart(task: String) async throws { try await fire("/api/agents/managed/start", json: ["task": task]) }
     func managedSend(_ id: String, _ text: String) async throws { try await fire("/api/agents/managed/\(id)/send", json: ["text": text]) }
     func managedCancel(_ id: String) async throws { try await fire("/api/agents/managed/\(id)/cancel") }
-    func managedApprove(_ id: String, allow: Bool) async throws { try await fire("/api/agents/managed/\(id)/approve", json: ["allow": allow]) }
+    func managedApprove(_ id: String, allow: Bool, approvalId: String?) async throws {
+        var body: [String: Any] = ["allow": allow]
+        if let approvalId { body["approvalId"] = approvalId }
+        try await fire("/api/agents/managed/\(id)/approve", json: body)
+    }
 
     // ── control: PTY agents ──
     /// Spawn a fresh real CLI under a PTY (agent = "claude" | "codex"). Returns

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>远程 Mac · LISA</title>
+    <link rel="stylesheet" href="/assets/fleet/fleet.css" />
+    <script defer src="/assets/fleet/fleet.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a href="/">← LISA</a>
+        <h1>远程 Mac</h1>
+      </header>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <section>
+        <div class="heading">
+          <h2>我的机器</h2>
+          <button id="refresh">刷新</button>
+        </div>
+        <div id="hosts" class="grid"></div>
+      </section>
+      <section id="target" hidden>
+        <div class="heading">
+          <h2 id="name"></h2>
+          <small id="fingerprint"></small>
+        </div>
+        <div id="pairing"></div>
+        <div id="work" hidden>
+          <label>工作区<select id="workspace"></select></label>
+          <p id="capability"></p>
+          <div id="runs"></div>
+          <div id="timeline" hidden>
+            <h3>任务经过</h3>
+            <p id="timeline-note"></p>
+            <ol id="timeline-list"></ol>
+          </div>
+          <form id="task-form">
+            <label for="prompt">给 Claude Code 的指令</label>
+            <textarea id="prompt" required maxlength="16000" rows="3"></textarea>
+            <div class="actions">
+              <button id="start" class="primary">启动 Claude Code</button
+              ><button id="follow" type="button">追加指令</button>
+            </div>
+          </form>
+          <button id="retry" hidden>核对收据并重试原操作</button>
+        </div>
+      </section>
+      <details id="local">
+        <summary>配置这台 Mac 作为执行机</summary>
+        <p id="link-status"></p>
+        <button id="connect">启用账号连接</button>
+        <form id="register">
+          <label>工作区别名<input id="alias" required maxlength="64" /></label
+          ><label>本机项目的绝对路径<input id="directory" required /></label
+          ><button>登记目录</button>
+        </form>
+        <div id="local-workspaces"></div>
+        <div id="requests"></div>
+        <div id="devices"></div>
+        <div id="local-runs"></div>
+        <button id="local-refresh">刷新本机配置</button>
+      </details>
+    </main>
+  </body>
+</html>

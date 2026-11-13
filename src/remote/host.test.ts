@@ -302,6 +302,88 @@ async function pairV2(
   return { welcome, code: paired.code };
 }
 
+test("agent-host and Pocket grants cannot cross protocol roles on the encrypted bridge", async () => {
+  const forwarded: string[] = [];
+  const h = await harness((req, res) => {
+    forwarded.push(req.url!);
+    res.end("ok");
+  });
+  try {
+    const nonce = pairingNonce();
+    const first = await h.hello("f0", h.phone, true, {
+      v: 2,
+      commit: pairingCommitment(h.hostKey, h.phone.publicKey, nonce),
+    });
+    h.send("f0", first.cipher.seal({ type: "pair", nonce, role: "agent-host" }));
+    const paired = first.cipher.open((await h.nextFrame("f0")) as never);
+    assert.equal(paired.role, "agent-host");
+    h.host.approve(keyId(h.phone.publicKey), String(paired.code), {
+      control: false,
+      workspaces: [crypto.randomUUID()],
+    });
+    for (const [i, route] of [
+      "/chat",
+      "/api/control/policy",
+      "/api/agents/sessions",
+      "/api/fleet/local",
+      "/events",
+    ].entries()) {
+      const channel = "reject" + i;
+      const p = await h.hello(channel, h.phone, false, { v: 2 });
+      h.send(channel, request(p.cipher, p.welcome.challenge, route));
+      assert.equal(await h.nextFrame(channel), "closed");
+    }
+    const allowed = "/api/agent-host/v1/capabilities",
+      p = await h.hello("caps", h.phone, false, { v: 2 });
+    h.send("caps", request(p.cipher, p.welcome.challenge, allowed));
+    assert.equal((await readBody(h, "caps", p.cipher)).status, 200);
+    const pocket = identity(),
+      old = await pairV2(h, "p0", pocket);
+    h.host.approve(keyId(pocket.publicKey), String(old.code));
+    const phone = await h.hello("p1", pocket, false, { v: 2 });
+    h.send("p1", request(phone.cipher, phone.welcome.challenge, allowed));
+    assert.equal(await h.nextFrame("p1"), "closed");
+    assert.deepEqual(forwarded, [allowed]);
+  } finally {
+    await h.close();
+  }
+});
+
+test("granting, re-granting and revoking an agent-host device tells the executor", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  const calls: [string, unknown][] = [];
+  h.host.onFleetGrantChange = (id, grant) => calls.push([id, grant]);
+  try {
+    const device = keyId(h.phone.publicKey);
+    const pairFleet = async (channel: string) => {
+      const nonce = pairingNonce();
+      const c = await h.hello(channel, h.phone, true, {
+        v: 2,
+        commit: pairingCommitment(h.hostKey, h.phone.publicKey, nonce),
+      });
+      h.send(channel, c.cipher.seal({ type: "pair", nonce, role: "agent-host" }));
+      return String(c.cipher.open((await h.nextFrame(channel)) as never).code);
+    };
+    const wide = { control: true, workspaces: [crypto.randomUUID(), crypto.randomUUID()] };
+    h.host.approve(device, await pairFleet("g0"), wide);
+    const narrow = { control: false, workspaces: [wide.workspaces[0]!] };
+    h.host.approve(device, await pairFleet("g1"), narrow);
+    // A Pocket device never had agent-host rights, so revoking it is not reported.
+    const pocket = identity(),
+      old = await pairV2(h, "p0", pocket);
+    h.host.approve(keyId(pocket.publicKey), String(old.code));
+    h.host.revoke(keyId(pocket.publicKey));
+    h.host.revoke(device);
+    assert.deepEqual(calls, [
+      [device, wide],
+      [device, narrow],
+      [device, undefined],
+    ]);
+  } finally {
+    await h.close();
+  }
+});
+
 test("negotiation on a v2 Mac: v2 phones get a committed code, Pocket 1.3 the flagged v1 code", async () => {
   const h = await harness((_req, res) => res.end("ok"));
   try {
