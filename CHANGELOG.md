@@ -7,6 +7,35 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.31.0] — 2026-11-13
+
+Lisa on your Mac can now start and steer Claude Code in workspaces on your other paired Macs, each one granted separately. Read-only connections grow from seven apps to eighteen, cards let you pick what Lisa may read in one place, and you can browse the connectors and add public HTTPS MCP servers from the chat. Codex sessions show up again with their real titles. This release also fixes a security problem in the local web server, stops the hosted edition from running the idle dream, and corrects how cached tokens are counted for OpenAI-compatible models.
+
+- Security fix for the local web server
+- Claude Code on your other Macs
+- Eighteen read-only connections
+- Connectors and MCP from the chat
+- Codex sessions in Lisa
+- Memory corrections you can trace
+- Also in this release
+- Behaviour changes to note
+- Known limits
+- Updating
+
+[Release notes](docs/RELEASE_v0.31.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.31.0)
+
+## [0.30.3] — 2026-11-07
+
+The Mac account window now guides you through email and verification-code sign-in, then switches to a dedicated account page with live connection status and a clear next step for connecting Lisa Pocket.
+
+[Release notes](docs/RELEASE_v0.30.3.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.30.3)
+
+## [0.30.1] — 2026-11-07
+
+Light mode now has calmer surfaces, stronger text and status contrast, and clearer controls across the website, cloud app, Mac and Lisa Pocket.
+
+[Release notes](docs/RELEASE_v0.30.1.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.30.1)
+
 ## [0.30.0] — 2026-11-07
 
 You can now see, edit and delete what Lisa remembers, forget a topic everywhere it is stored after previewing exactly what will change, and take your Lisa with you as a portable archive. Every reflective "dream" pass leaves a record you can audit and undo. Unattended tasks can do real work under Warden approvals. Lisa's portraits, stickers and Room now move. The desktop app finds Codex again, manages Skills and lets you rename sessions. It also carries the fix for a security problem in the Mac's remote connections from v0.29.0, which v0.29.1 shipped first: if you are still on v0.29.0, update the Mac app. And it documents two features that already shipped inside v0.29 without notes: read-only connections to GitHub, Google Calendar, Gmail and Linear from the chat, and a phone-sized web app.
