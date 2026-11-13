@@ -11,6 +11,7 @@ import { DEFAULT_MUTATING_ACTIONS, DEFAULT_MUTATING_TOOLS } from "./approval.js"
 /** Parsed-args defaults, as src/cli-args.ts produces them. */
 const ARGS: RuntimePolicyArgs = {
   reflect: true,
+  idleMinutes: 60,
   thinking: false,
   compaction: false,
   approval: "auto",
@@ -26,6 +27,7 @@ describe("buildRuntimePolicy — the three surfaces", () => {
       surface: "cli",
       // The REPL drives its own reflection; a server heartbeat isn't running.
       reflection: "manual",
+      idleDream: true,
       compaction: false,
       approval: "auto",
       thinking: false,
@@ -39,6 +41,7 @@ describe("buildRuntimePolicy — the three surfaces", () => {
     assert.deepEqual(p, {
       surface: "local-web",
       reflection: "scheduled",
+      idleDream: true,
       compaction: false,
       approval: "auto",
       thinking: false,
@@ -54,6 +57,8 @@ describe("buildRuntimePolicy — the three surfaces", () => {
       // The heartbeat reflects the process-level chat, which on a multi-tenant
       // server belongs to no signed-in user — an unmetered model call.
       reflection: "manual",
+      // Same reason, and it stalls the one event loop every user shares.
+      idleDream: false,
       compaction: false,
       approval: "auto",
       thinking: false,
@@ -76,6 +81,16 @@ describe("buildRuntimePolicy — flags actually change the policy", () => {
       );
       assert.equal(p.reflection, "off", JSON.stringify(env));
     }
+  });
+
+  test("--no-idle turns the idle dream off; the cloud has none whatever the flag says", () => {
+    const serve = { ...ARGS, subcommand: "serve", serveWeb: true };
+    assert.equal(buildRuntimePolicy(serve, MAC).idleDream, true);
+    assert.equal(buildRuntimePolicy({ ...serve, idleMinutes: 0 }, MAC).idleDream, false);
+    assert.equal(buildRuntimePolicy({ ...serve, idleMinutes: undefined }, MAC).idleDream, false);
+    // deploy/entrypoint.sh passes no --no-idle, so the flag's default (60)
+    // reaches the hosted server; the policy is what keeps the dream off there.
+    assert.equal(buildRuntimePolicy({ ...serve, idleMinutes: 60 }, CLOUD).idleDream, false);
   });
 
   test("--think / --compact / --approval flow through", () => {
@@ -109,7 +124,7 @@ describe("buildRuntimePolicy — flags actually change the policy", () => {
     );
     assert.equal(
       line,
-      "surface=local-web reflection=scheduled approval=auto thinking=off compaction=off " +
+      "surface=local-web reflection=scheduled idle=on approval=auto thinking=off compaction=off " +
         "capabilities=local-owner sandbox=danger-full-access",
     );
   });

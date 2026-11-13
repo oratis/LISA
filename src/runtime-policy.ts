@@ -48,6 +48,11 @@ export type ReflectionMode = "off" | "manual" | "scheduled";
 export interface RuntimePolicy {
   surface: RuntimeSurface;
   reflection: ReflectionMode;
+  /**
+   * Whether the process-level idle "dream" runs: the surface has one and
+   * `--idle` asked for it. How many minutes stays the flag's business.
+   */
+  idleDream: boolean;
   /** Anthropic context-compaction beta on the turn. */
   compaction: boolean;
   approval: ApprovalMode;
@@ -61,6 +66,8 @@ export interface RuntimePolicyArgs {
   subcommand?: string;
   serveWeb?: boolean;
   reflect: boolean;
+  /** `--idle <minutes>`; 0 (`--no-idle`) or omitted ⇒ no idle dream. */
+  idleMinutes?: number;
   thinking: boolean;
   compaction: boolean;
   approval: ApprovalMode;
@@ -88,6 +95,18 @@ function reflectionFor(surface: RuntimeSurface, args: RuntimePolicyArgs): Reflec
   if (surface === "cloud") return "manual";
   // The CLI drives its own reflection from the REPL, not from a server timer.
   return surface === "local-web" ? "scheduled" : "manual";
+}
+
+/**
+ * The idle dream is the same shape of mistake as the scheduled reflection, and
+ * for the same reason is not a cloud feature: it runs a full agent turn on the
+ * process-level `globalChat`, so on a multi-tenant server it is a model call no
+ * account is admitted for or billed, written into the operator's soul, and it
+ * runs on the one event loop every signed-in user is being served from. The
+ * hosted edition's unattended work is the per-account autonomy sweep.
+ */
+function idleDreamFor(surface: RuntimeSurface, args: RuntimePolicyArgs): boolean {
+  return surface !== "cloud" && (args.idleMinutes ?? 0) > 0;
 }
 
 /**
@@ -127,6 +146,7 @@ export function buildRuntimePolicy(
   return {
     surface,
     reflection: reflectionFor(surface, args),
+    idleDream: idleDreamFor(surface, args),
     compaction: args.compaction,
     approval: approvalFor(surface, args, env),
     thinking: args.thinking,
@@ -138,7 +158,8 @@ export function buildRuntimePolicy(
 /** One line for the startup banner / `/health`-adjacent debugging. */
 export function describeRuntimePolicy(p: RuntimePolicy): string {
   return (
-    `surface=${p.surface} reflection=${p.reflection} approval=${p.approval} ` +
+    `surface=${p.surface} reflection=${p.reflection} idle=${p.idleDream ? "on" : "off"} ` +
+    `approval=${p.approval} ` +
     `thinking=${p.thinking ? "on" : "off"} compaction=${p.compaction ? "on" : "off"} ` +
     `capabilities=${p.capabilities} sandbox=${p.sandboxMode}`
   );
