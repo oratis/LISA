@@ -210,6 +210,15 @@ function toAgentSession(i: CodexSessionInfo): AgentSession {
 }
 
 /** Recursively collect rollout-*.jsonl under root. Empty array if absent. */
+/** A CLI-written user message that only carries setup context, not the user's words. */
+function isCliSetupMessage(content: unknown): boolean {
+  if (!Array.isArray(content) || content.length === 0) return false;
+  return content.every((part) => {
+    const text = asRecord(part)?.text;
+    return typeof text === "string" && /^\s*<(user_instructions|environment_context)>/.test(text);
+  });
+}
+
 export async function walkRollouts(root: string): Promise<string[]> {
   const out: string[] = [];
   async function rec(dir: string): Promise<void> {
@@ -277,6 +286,11 @@ function rolloutEntry(line: string, transcript = false): RolloutEntry | undefine
         )
       )
         return undefined;
+      // The CLI (codex-rs) writes the same setup context without that metadata:
+      // the AGENTS.md body and the environment block arrive as plain user
+      // messages. They are not the user's words, and counting them would also
+      // inflate turn numbers and end the "found a user message" scan early.
+      if (isCliSetupMessage(payload.content)) return undefined;
     }
     return { ...payload, timestamp: row.timestamp };
   }

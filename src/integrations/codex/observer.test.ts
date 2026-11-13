@@ -481,3 +481,43 @@ test("owner transcript finds the request before large tool output, skips context
     ],
   );
 });
+
+test("CLI rollouts: AGENTS.md and environment context are not user messages", async () => {
+  const { parseCodexTranscript } = await import("./observer.js");
+  // codex-rs writes setup context as plain user messages, without the desktop
+  // app's content_item_kinds metadata.
+  const user = (text: string) => ({
+    type: "response_item",
+    payload: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+  });
+  const f = await writeRollout("cli/rollout-cli.jsonl", [
+    { type: "session_meta", payload: { id: "cli-1", cwd: "/tmp/project" } },
+    user("<user_instructions>\n\n" + SECRET + "\n\n</user_instructions>"),
+    user("<environment_context>\n  <cwd>/tmp/project</cwd>\n</environment_context>"),
+    user("Fix the failing test"),
+    {
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Done" }],
+      },
+    },
+  ]);
+  const entries = await parseCodexTranscript(f);
+  assert.deepEqual(
+    entries.map((e) => [e.kind, e.text]),
+    [
+      ["user", "Fix the failing test"],
+      ["assistant", "Done"],
+    ],
+  );
+  // A real message that merely mentions the tag later in its text is kept.
+  const g = await writeRollout("cli/rollout-mention.jsonl", [
+    user("Why does my prompt contain <environment_context>?"),
+  ]);
+  assert.deepEqual(
+    (await parseCodexTranscript(g)).map((e) => e.text),
+    ["Why does my prompt contain <environment_context>?"],
+  );
+});
