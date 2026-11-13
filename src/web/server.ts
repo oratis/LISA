@@ -223,6 +223,7 @@ import {
   shouldRenew,
   SESSION_RENEWAL_HEADER,
   SESSION_TTL_MS,
+  sessionId,
   type SessionClaims,
 } from "./sessions-auth.js";
 import {
@@ -235,6 +236,8 @@ import {
   deleteAccount,
   getAccount,
   sessionAccountValid,
+  revokeSession,
+  revokeAccountSessions,
   ensureSeededAccount,
   beginEmailVerification,
   confirmEmailVerification,
@@ -2631,14 +2634,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
 
     if (req.method === "POST" && url === "/api/auth/logout") {
-      // Stateless sessions: logout = drop the credential client-side; here we
-      // just expire the cookie for browsers. (Account-wide revocation is the
-      // sessionVersion bump; per-device logout needs no server state.)
+      // Sign out THIS session only (#493): the presented account session —
+      // Bearer or cookie — is recorded as revoked until it would have expired.
+      // The Mac and the person's other devices share the account, so this is
+      // never the account-wide sessionVersion bump (that is /logout-all).
+      // Browsers also lose the cookie. Any other credential has nothing
+      // server-side to revoke and just gets the cookie cleared.
+      const clearCookie = `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`;
+      const presented = presentedToken(req, url);
+      const claims =
+        presented && sessionSecret && looksLikeSession(presented)
+          ? verifySession(presented, sessionSecret)
+          : null;
+      let revoked = false;
+      if (claims) {
+        try {
+          revoked = await revokeSession(claims.uid, claims.sv, sessionId(claims), claims.exp);
+        } catch (err) {
+          logError(`[accounts] sign-out not recorded: ${(err as Error).message}`);
+          res.writeHead(503, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+            "set-cookie": clearCookie,
+          });
+          res.end(JSON.stringify({ error: "account_store_unavailable" }));
+          return;
+        }
+      }
       res.writeHead(200, {
         "content-type": "application/json",
-        "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        "cache-control": "no-store",
+        "set-cookie": clearCookie,
       });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, revoked }));
       return;
     }
 
@@ -2649,7 +2677,6 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // (/api/auth/refresh and /api/auth/me read them).
     let accountClaims: SessionClaims | null = null;
     let credentialSource: "bearer" | "cookie" | "query" | null = null;
-    let renewedCookie = false;
     if (cloud || !isLoopbackAddress(remoteAddr)) {
       const credential = presentedCredential(req, url);
       const presented = credential?.token ?? null;
@@ -2662,7 +2689,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // account record, so deleted accounts lose access immediately.
       if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
         const claims = verifySession(presented, sessionSecret);
-        if (claims && (await sessionAccountValid(claims.uid, claims.sv))) {
+        if (claims && (await sessionAccountValid(claims.uid, claims.sv, sessionId(claims)))) {
           authed = true;
           accountUid = claims.uid;
           accountClaims = claims;
@@ -2678,7 +2705,6 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 "set-cookie",
                 `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
               );
-              renewedCookie = true;
             }
           }
         }
@@ -2731,10 +2757,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       // Token arrived via query param (first open from a phone): pin it as a
       // cookie so subsequent same-origin fetch/EventSource calls authenticate.
-      // presented is non-null here — isRequestAuthorized returned true for a
-      // non-loopback caller, which requires a matching token. (Skip when the
-      // sliding renewal above already set a fresher cookie.)
-      if (presented && !renewedCookie && !req.headers.cookie?.includes("lisa_token=")) {
+      // Only then (#493): a Bearer client's HTTP stack would otherwise keep
+      // its token in a cookie jar that outlives sign-out and unpairing, and a
+      // cookie client already has its cookie (renewed above when due).
+      if (presented && credential?.source === "query") {
         res.setHeader(
           "set-cookie",
           `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
@@ -2966,6 +2992,34 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.setHeader(SESSION_RENEWAL_HEADER, token);
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
       res.end(JSON.stringify({ token, expiresAt: now + SESSION_TTL_MS }));
+      return;
+    }
+
+    // ── Sign out everywhere (#493) ──────────────────────────────────────────
+    // Bumps the account's session version: every session of this account —
+    // this device, the Mac, every other phone — stops working at once.
+    if (req.method === "POST" && url === "/api/auth/logout-all") {
+      if (!accountUid) {
+        res.writeHead(401, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "unauthorized", reason: "account_session_required" }));
+        return;
+      }
+      try {
+        await revokeAccountSessions(accountUid);
+      } catch (err) {
+        logError(`[accounts] sign-out everywhere failed: ${(err as Error).message}`);
+        res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "account_store_unavailable" }));
+        return;
+      }
+      // The renewal header (if any) carries the old version; drop it.
+      res.removeHeader(SESSION_RENEWAL_HEADER);
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+      });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -6386,7 +6440,7 @@ self.addEventListener('fetch', (event) => {
       if (
         !claims ||
         deletingAccounts.has(claims.uid) ||
-        !(await sessionAccountValid(claims.uid, claims.sv))
+        !(await sessionAccountValid(claims.uid, claims.sv, sessionId(claims)))
       )
         return null;
       return { uid: claims.uid, expiresAt: claims.exp };

@@ -1,9 +1,12 @@
 /**
  * Account-session lifecycle through the real cloud server: sliding renewal for
- * Bearer and cookie clients and the explicit refresh endpoint (#484).
+ * Bearer and cookie clients and the explicit refresh endpoint (#484); signing
+ * out one session, signing out everywhere, and never pinning a Bearer token as
+ * a cookie (#493).
  */
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -192,5 +195,130 @@ describe("POST /api/auth/refresh (#484)", () => {
     const body = (await last!.json()) as { error: string; retryAfterSec: number };
     assert.equal(body.error, "rate_limited");
     assert.ok(body.retryAfterSec > 0);
+  });
+});
+
+/** A token minted before sessions carried a `jti` (#493 keeps these valid). */
+function legacyToken(uid: string, sv: number, iat: number): string {
+  const payload = Buffer.from(
+    JSON.stringify({ uid, iat, exp: iat + SESSION_TTL_MS, sv }),
+    "utf8",
+  ).toString("base64url");
+  const sig = crypto.createHmac("sha256", secret).update(`s1.${payload}`).digest("base64url");
+  return `s1.${payload}.${sig}`;
+}
+
+async function logout(headers: Record<string, string>): Promise<Response> {
+  return fetch(base + "/api/auth/logout", { method: "POST", headers });
+}
+
+async function signedIn(headers: Record<string, string>): Promise<boolean> {
+  const res = await me(headers);
+  if (res.status === 401) return false;
+  assert.equal(res.status, 200);
+  return ((await res.json()) as { signedIn: boolean }).signedIn;
+}
+
+describe("POST /api/auth/logout revokes that session only (#493)", () => {
+  test("a Bearer sign-out kills that token and leaves the account's other sessions", async () => {
+    const { uid, sv } = await account("logout-bearer@example.com");
+    const phone = mintSession(uid, secret, { sv });
+    const mac = mintSession(uid, secret, { sv });
+    assert.ok(verifySession(phone, secret)?.jti, "new tokens carry a jti");
+    assert.equal(await signedIn(bearer(phone)), true);
+
+    const res = await logout(bearer(phone));
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, revoked: true });
+    assert.match(res.headers.get("set-cookie") ?? "", /lisa_token=;\s*Max-Age=0/);
+
+    const after = await me(bearer(phone));
+    assert.equal(after.status, 401);
+    assert.equal(((await after.json()) as { error: string }).error, "unauthorized");
+    assert.equal(await signedIn(bearer(mac)), true, "the Mac stays signed in");
+    // Signing out again is harmless.
+    assert.deepEqual(await (await logout(bearer(phone))).json(), { ok: true, revoked: true });
+  });
+
+  test("a cookie sign-out revokes the cookie's session", async () => {
+    const { uid, sv } = await account("logout-cookie@example.com");
+    const web = mintSession(uid, secret, { sv });
+    const res = await logout(cookie(web));
+    assert.deepEqual(await res.json(), { ok: true, revoked: true });
+    assert.equal(await signedIn(cookie(web)), false);
+    assert.equal(await signedIn(bearer(web)), false, "revoked on every channel");
+  });
+
+  test("a token minted before jti existed is revoked by its issue time", async () => {
+    const { uid, sv } = await account("logout-legacy@example.com");
+    const older = legacyToken(uid, sv, Date.now() - 2 * DAY);
+    const other = legacyToken(uid, sv, Date.now() - DAY);
+    assert.equal(await signedIn(bearer(older)), true, "legacy tokens stay valid");
+    assert.deepEqual(await (await logout(bearer(older))).json(), { ok: true, revoked: true });
+    assert.equal(await signedIn(bearer(older)), false);
+    assert.equal(await signedIn(bearer(other)), true);
+  });
+
+  test("without an account session there is nothing to revoke", async () => {
+    const res = await logout({});
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, revoked: false });
+    assert.match(res.headers.get("set-cookie") ?? "", /lisa_token=;\s*Max-Age=0/);
+    assert.deepEqual(await (await logout(bearer("s1.forged.token"))).json(), {
+      ok: true,
+      revoked: false,
+    });
+  });
+});
+
+describe("POST /api/auth/logout-all (#493)", () => {
+  test("signs out every session of the account", async () => {
+    const { uid, sv } = await account("logout-all@example.com");
+    const phone = mintSession(uid, secret, { sv });
+    const mac = mintSession(uid, secret, { sv });
+    const res = await fetch(base + "/api/auth/logout-all", {
+      method: "POST",
+      headers: bearer(phone),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true });
+    assert.equal(await signedIn(bearer(phone)), false);
+    assert.equal(await signedIn(bearer(mac)), false);
+    // A new sign-in carries the new session version and works.
+    const { acct } = await ensureOtpAccount("logout-all@example.com");
+    assert.equal(acct.sessionVersion, sv + 1);
+    assert.equal(
+      await signedIn(bearer(mintSession(uid, secret, { sv: acct.sessionVersion }))),
+      true,
+    );
+  });
+
+  test("needs an account session", async () => {
+    const res = await fetch(base + "/api/auth/logout-all", { method: "POST" });
+    assert.equal(res.status, 401);
+    assert.equal(((await res.json()) as { error: string }).error, "unauthorized");
+  });
+});
+
+describe("only a ?token= bootstrap is pinned as a cookie (#493)", () => {
+  test("a Bearer request never gets a cookie carrying its token", async () => {
+    const { uid, sv } = await account("no-cookie@example.com");
+    for (const token of [
+      mintSession(uid, secret, { sv }),
+      mintSession(uid, secret, { sv, now: Date.now() - 20 * DAY }), // renewed by header
+    ]) {
+      const res = await me(bearer(token));
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get("set-cookie"), null);
+    }
+  });
+
+  test("a ?token= request is pinned so the browser can continue by cookie", async () => {
+    const { uid, sv } = await account("query-pin@example.com");
+    const token = mintSession(uid, secret, { sv });
+    const res = await fetch(`${base}/?token=${encodeURIComponent(token)}`);
+    assert.equal(res.status, 200);
+    const pinned = /lisa_token=([^;]+)/.exec(res.headers.get("set-cookie") ?? "");
+    assert.equal(decodeURIComponent(pinned?.[1] ?? ""), token);
   });
 });

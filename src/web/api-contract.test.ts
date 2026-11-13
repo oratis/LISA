@@ -338,6 +338,14 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     assert.ok(schemaErrors(refresh, { token: "x" }).length > 0, "expiresAt is required");
   });
 
+  test("sign-out answers match the contract (#493)", () => {
+    assertContract("LogoutResponse", { ok: true, revoked: true });
+    assertContract("LogoutResponse", { ok: true, revoked: false });
+    assertContract("LogoutAllResponse", { ok: true });
+    const logout = contract.components.schemas.LogoutResponse!;
+    assert.ok(schemaErrors(logout, { ok: true }).length > 0, "revoked is required");
+  });
+
   test("reve dream-log fixtures conform (W9)", async () => {
     const os = await import("node:os");
     const nodePath = await import("node:path");

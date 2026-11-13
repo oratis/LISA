@@ -4,13 +4,15 @@
  *
  * After a sign-in (Sign in with Apple, or email+password from accounts.ts) the
  * server mints `s1.<payload>.<mac>` where payload is base64url JSON
- * `{uid, iat, exp, sv}`. Every later request presents it through the existing
- * Bearer/cookie/query token channels — no client protocol change. Verification
- * is pure (secret + clock injected) so it unit-tests offline.
+ * `{uid, iat, exp, sv, jti}`. Every later request presents it through the
+ * existing Bearer/cookie/query token channels — no client protocol change.
+ * Verification is pure (secret + clock injected) so it unit-tests offline.
  *
  * `sv` is the account's session version: bumping it (or deleting the account)
  * invalidates every outstanding session for that uid without any server-side
- * session store. Stateless by design — the single secret lives next to the
+ * session store. Signing out ONE session records its id on the account record
+ * until the token would have expired anyway (accounts.ts `revokeSession`, #493).
+ * Otherwise stateless by design — the single secret lives next to the
  * other credentials in `$lisaHome()` (0600), auto-created on first use so the
  * cloud container needs no extra env to turn accounts on.
  */
@@ -27,6 +29,12 @@ export interface SessionClaims {
   exp: number;
   /** Account session version — must match the account record at verify time. */
   sv: number;
+  /**
+   * Random per-token id, so one session can be signed out without touching
+   * the account's other devices (#493). Tokens minted before it existed have
+   * none; {@link sessionId} falls back to their `iat`.
+   */
+  jti?: string;
 }
 
 /** 30 days — long enough that a phone rarely re-logs, short enough to expire leaks. */
@@ -82,6 +90,7 @@ export function mintSession(
     iat,
     exp: iat + (opts.ttlMs ?? SESSION_TTL_MS),
     sv: opts.sv ?? 0,
+    jti: crypto.randomBytes(12).toString("base64url"),
   };
   const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
   const sig = mac(`${PREFIX}.${payload}`, secret).toString("base64url");
@@ -126,7 +135,16 @@ export function verifySession(
   if (typeof claims.uid !== "string" || !claims.uid) return null;
   if (typeof claims.exp !== "number" || claims.exp <= now) return null;
   if (typeof claims.sv !== "number") return null;
+  if (claims.jti !== undefined && (typeof claims.jti !== "string" || !claims.jti)) return null;
   return claims;
+}
+
+/**
+ * The id one session is signed out by (#493): its `jti`, or for a token
+ * minted before `jti` existed, its issue time.
+ */
+export function sessionId(claims: SessionClaims): string {
+  return claims.jti ?? String(claims.iat);
 }
 
 /**

@@ -3958,6 +3958,51 @@
           }
         }
       }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "signOut",
+        "description": "Signs out the presented account session only (Bearer or cookie); the account's other sessions stay valid. Always clears the lisa_token cookie. Needs no other authentication.",
+        "responses": {
+          "200": {
+            "description": "Signed out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/auth/logout-all": {
+      "post": {
+        "operationId": "signOutEverywhere",
+        "description": "Cloud only; account session required. Ends every session of the account, on every device, and clears the lisa_token cookie.",
+        "responses": {
+          "200": {
+            "description": "All sessions ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutAllResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9287,6 +9332,35 @@
             "type": "integer",
             "minimum": 0,
             "description": "Expiry of the new token, epoch ms."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogoutResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "revoked"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "True when the presented account session is now signed out. False when no account session was presented, or it was already invalid."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogoutAllResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
           }
         },
         "additionalProperties": false
