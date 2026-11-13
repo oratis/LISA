@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { lisaGlobalHome } from "../paths.js";
 import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
+import { logError } from "../log.js";
 import type { AccountRecord } from "../web/accounts.js";
 
 export const FEATURES = [
@@ -171,7 +172,7 @@ export async function mutateAdminState<T>(fn: (s: AdminState) => T): Promise<T> 
       const result = fn(s);
       s.revision++;
       return { next: s as unknown as Record<string, unknown>, result };
-    });
+    }).finally(invalidatePolicy);
   const job = tail
     .catch(() => {})
     .then(async () => {
@@ -183,9 +184,89 @@ export async function mutateAdminState<T>(fn: (s: AdminState) => T): Promise<T> 
       await fs.writeFile(temporary, JSON.stringify(s), { mode: 0o600 });
       await fs.rename(temporary, file());
       return result;
-    });
+    })
+    .finally(invalidatePolicy);
   tail = job;
   return job;
+}
+
+// ── Hot-path policy ─────────────────────────────────────────────────────────
+// Tenant session checks, inference admission and feature switches consult the
+// admin state on every authenticated request. They read a small derived policy
+// cached for POLICY_TTL_MS, so other instances' changes apply within that time
+// and this process's own writes apply immediately. A read or parse failure must
+// not sign every tenant out: the last good policy keeps serving, and before any
+// good read there are no admin restrictions at all. The console itself keeps
+// reading the full document uncached and fails closed.
+export const POLICY_TTL_MS = 5000;
+interface Policy {
+  suspended: ReadonlySet<string>;
+  paused: boolean;
+  features: Readonly<Record<Feature, boolean>>;
+  disabledModels: readonly string[];
+}
+// Keyed by the storage location, which is fixed in production.
+let policyCache: { key: string; value: Policy | null; fetchedAt: number } | null = null;
+let policyLoad: { key: string; promise: Promise<Policy | null> } | null = null;
+let policyGeneration = 0;
+function policyKey(): string {
+  return firestoreEnabled() ? "firestore:lisa-global/admin" : file();
+}
+function invalidatePolicy(): void {
+  policyGeneration++;
+  // Keep the value: it is still the last good one if the next read fails.
+  if (policyCache) policyCache.fetchedAt = -Infinity;
+  policyLoad = null;
+}
+/** Test seam: behave as if the cache TTL had elapsed. */
+export function _expireAdminPolicyForTests(): void {
+  if (policyCache) policyCache.fetchedAt = -Infinity;
+  policyLoad = null;
+}
+async function loadPolicy(key: string, last: Policy | null): Promise<Policy | null> {
+  const generation = policyGeneration;
+  let value: Policy | null;
+  try {
+    const s = await readAdminState();
+    value = {
+      suspended: new Set(
+        Object.entries(s.users)
+          .filter(([, u]) => u.suspended)
+          .map(([uid]) => uid),
+      ),
+      paused: s.settings.paused,
+      features: { ...s.settings.features },
+      disabledModels: s.settings.disabledModels.map((m) => normalizeModelId(m)),
+    };
+  } catch (e) {
+    const why = e instanceof Error ? e.message : "unknown";
+    value = last;
+    logError(
+      last
+        ? `[console] admin state unreadable (${why}); keeping the last good admin policy`
+        : `[console] ADMIN STATE UNREADABLE (${why}) and no good copy yet: suspensions, ` +
+            `feature switches, pause and model blocks are NOT being enforced`,
+    );
+  }
+  // A write by this process during the read makes the result stale at once.
+  policyCache = {
+    key,
+    value,
+    fetchedAt: generation === policyGeneration ? Date.now() : -Infinity,
+  };
+  return value;
+}
+async function adminPolicy(): Promise<Policy | null> {
+  const key = policyKey();
+  const cached = policyCache?.key === key ? policyCache : null;
+  if (cached && Date.now() - cached.fetchedAt < POLICY_TTL_MS) return cached.value;
+  if (policyLoad?.key === key) return policyLoad.promise;
+  const load = { key, promise: loadPolicy(key, cached?.value ?? null) };
+  policyLoad = load;
+  void load.promise.finally(() => {
+    if (policyLoad === load) policyLoad = null;
+  });
+  return load.promise;
 }
 export function roleFor(acct: AccountRecord | null, state: AdminState): Role | null {
   // Apple aliases are not ownership claims on arbitrary email addresses.
@@ -211,21 +292,19 @@ export function requireReason(v: unknown): string {
 }
 export async function adminAccountAllowed(uid: string): Promise<boolean> {
   if (!consoleEnabled()) return true;
-  return !(await readAdminState()).users[uid]?.suspended;
+  return !(await adminPolicy())?.suspended.has(uid);
 }
 export async function inferencePolicy(
   uid: string,
   model?: string,
 ): Promise<{ ok: true } | { ok: false; status: number; body: Record<string, unknown> }> {
   if (!consoleEnabled()) return { ok: true };
-  const state = await readAdminState();
-  if (state.users[uid]?.suspended)
+  const policy = await adminPolicy();
+  if (!policy) return { ok: true };
+  if (policy.suspended.has(uid))
     return { ok: false, status: 403, body: { error: "account_suspended" } };
-  if (state.settings.paused) return { ok: false, status: 503, body: { error: "service_paused" } };
-  if (
-    model &&
-    state.settings.disabledModels.some((m) => normalizeModelId(m) === normalizeModelId(model))
-  )
+  if (policy.paused) return { ok: false, status: 503, body: { error: "service_paused" } };
+  if (model && policy.disabledModels.includes(normalizeModelId(model)))
     return { ok: false, status: 403, body: { error: "model_disabled" } };
   return { ok: true };
 }
@@ -246,5 +325,5 @@ export function routeFeature(method: string, url: string): Feature | null {
 export async function featureAllowed(method: string, url: string): Promise<boolean> {
   if (!consoleEnabled()) return true;
   const feature = routeFeature(method, url);
-  return !feature || (await readAdminState()).settings.features[feature];
+  return !feature || ((await adminPolicy())?.features[feature] ?? true);
 }

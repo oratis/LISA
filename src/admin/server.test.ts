@@ -19,6 +19,7 @@ test("real Cloud server routes the console before tenant auth and enforces opera
     LISA_SOUL_GIT: "0",
     LISA_MAIL_POLL_MINUTES: "0",
     LISA_FIRESTORE: "0",
+    LISA_SWEEP_TOKEN: "console-server-test-sweep",
   });
   delete process.env.LISA_REVIEWER_SEED;
   const { startWebServer } = await import("../web/server.js");
@@ -55,7 +56,39 @@ test("real Cloud server routes the console before tenant auth and enforces opera
     await mutateAdminState((s) => {
       s.settings.features.gateway = false;
       s.settings.features.chat = false;
+      s.settings.features.reflection = false;
     });
+    // Switches apply only past the auth gate: anonymous callers get the gate's
+    // 401, never a policy lookup or a 503 that reveals the switch.
+    for (const [p, headers] of [
+      ["/chat", {}],
+      ["/gw/openai/v1/chat/completions", {}],
+      ["/internal/autonomy/sweep", { authorization: "Bearer wrong" }],
+    ] as const)
+      assert.equal(
+        (
+          await fetch(base + p, {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: "{}",
+          })
+        ).status,
+        401,
+        p,
+      );
+    assert.equal(
+      (
+        await fetch(base + "/internal/autonomy/sweep", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer console-server-test-sweep",
+            "content-type": "application/json",
+          },
+          body: "{}",
+        })
+      ).status,
+      503,
+    );
     assert.equal(
       (
         await fetch(base + "/chat", {

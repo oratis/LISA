@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach } from "node:test";
+import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -13,6 +13,8 @@ import {
   inferencePolicy,
   featureAllowed,
   consoleEnabled,
+  adminAccountAllowed,
+  _expireAdminPolicyForTests,
 } from "./store.js";
 import { handleConsole, consoleSecret, csvValue } from "./http.js";
 import { consoleSnapshot } from "./data.js";
@@ -527,7 +529,7 @@ test("snapshots use real records, distinguish grants/sandbox from sales and reda
     assert.ok(!raw.includes(key), key);
   assert.equal((await request("/console/api/snapshot?days=800", admin)).response.status, 400);
 });
-test("store corruption fails closed without overwriting; concurrent updates preserve all audit entries", async () => {
+test("console fails closed on store corruption without overwriting; concurrent updates preserve all audit entries", async () => {
   await Promise.all(
     Array.from({ length: 8 }, (_, i) =>
       mutateAdminState((s) =>
@@ -545,12 +547,54 @@ test("store corruption fails closed without overwriting; concurrent updates pres
   assert.equal((await readAdminState()).audit.length, 8);
   await fs.writeFile(path.join(home, "admin", "state.json"), "{broken");
   assert.equal((await request("/console/api/me", admin)).response.status, 503);
-  await assert.rejects(inferencePolicy(regular.uid));
-  assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), false);
   assert.equal(await fs.readFile(path.join(home, "admin", "state.json"), "utf8"), "{broken");
   assert.throws(() =>
     parseState({ ...emptyState(), settings: { paused: false, features: {}, disabledModels: [] } }),
   );
+});
+test("tenant hot path caches the admin policy, applies own writes at once and survives an unreadable store", async () => {
+  process.env.LISA_LOG_FORMAT = "text";
+  delete process.env.LISA_LOG_FILE;
+  const logged: string[] = [];
+  const spy = mock.method(console, "error", (m: unknown) => void logged.push(String(m)));
+  try {
+    const file = path.join(home, "admin", "state.json");
+    // Never read successfully yet, and unreadable: no admin restrictions, loudly.
+    const good = await fs.readFile(file, "utf8");
+    await fs.writeFile(file, "{broken");
+    assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), true);
+    assert.equal((await inferencePolicy(regular.uid)).ok, true);
+    assert.equal(await featureAllowed("POST", "/chat"), true);
+    assert.ok(logged.some((m) => /ADMIN STATE UNREADABLE/.test(m)));
+    await fs.writeFile(file, good);
+    _expireAdminPolicyForTests();
+    assert.equal(await adminAccountAllowed(regular.uid), true);
+    // This process's own write applies immediately, despite the cache.
+    await mutateAdminState((s) => {
+      s.users[regular.uid] = { suspended: true, note: "" };
+      s.settings.features.chat = false;
+    });
+    assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), false);
+    assert.equal(await featureAllowed("POST", "/chat"), false);
+    // Another instance's write (the file changes underneath) waits out the TTL.
+    const other = await readAdminState();
+    other.settings.paused = true;
+    await fs.writeFile(file, JSON.stringify(other));
+    assert.notEqual((await inferencePolicy(analyst.uid)).ok, false);
+    _expireAdminPolicyForTests();
+    assert.equal((await inferencePolicy(analyst.uid)).ok, false);
+    // Unreadable after a good read: keep enforcing the last good policy.
+    logged.length = 0;
+    await fs.writeFile(file, "{broken");
+    _expireAdminPolicyForTests();
+    assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), false);
+    assert.equal(await sessionAccountValid(analyst.uid, analyst.sessionVersion), true);
+    assert.equal(await featureAllowed("POST", "/chat"), false);
+    assert.equal((await inferencePolicy(analyst.uid)).ok, false);
+    assert.ok(logged.some((m) => /keeping the last good admin policy/.test(m)));
+  } finally {
+    spy.mock.restore();
+  }
 });
 test("CSV defuses spreadsheet formulas and escapes quotes", () => {
   assert.equal(csvValue("=SUM(A1:A2)"), `"'=SUM(A1:A2)"`);

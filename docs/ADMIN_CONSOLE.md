@@ -23,7 +23,7 @@ Roles: admin (all operations), operator (read/export, ordinary user support,
 credit grants and tickets), analyst (read/export only). Owners cannot be removed
 or suspended from the UI; self-removal/suspension is prevented. Removing roles
 and suspending accounts takes effect on subsequent requests, including existing
-sessions. In-flight requests are not terminated. Session revocation signs the
+sessions (within 5 seconds on other instances). In-flight requests are not terminated. Session revocation signs the
 account out of both the console and app.
 
 ## Modules
@@ -90,7 +90,17 @@ completion record. Never issue a new UUID to retry an uncertain prior grant.
 mode. Mutations serialize in-process in the existing single-instance file
 configuration, and use CAS in Firestore mode. Configuration and audit changes
 are saved atomically, with revision conflicts reported to the UI. Missing state
-initializes an empty console; malformed or unavailable state fails closed.
+initializes an empty console; malformed or unavailable state fails closed in the
+console.
+
+Tenant requests read only a small derived policy (suspended accounts, pause,
+feature switches, disabled models), cached in process for 5 seconds. A write by
+the same process applies immediately; other instances pick it up within the
+TTL. If the state cannot be read or parsed, the last good policy keeps serving
+and the error is logged; before any good read, no console restrictions apply
+(logged as an error) rather than signing every tenant out. Feature switches are
+checked only after tenant authentication; the pause switch is enforced at
+inference admission.
 Account/password/Apple authorization material is never exposed by reports.
 CSV cells are escaped against spreadsheet formula execution. CSP disallows
 inline scripts, external resources, frames and object embeds.

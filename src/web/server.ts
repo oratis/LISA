@@ -1871,11 +1871,6 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       })
     )
       return;
-    if (cloud && !(await featureAllowed(req.method ?? "GET", url))) {
-      res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
-      res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
-      return;
-    }
 
     // ── Sign in with Apple (cloud edition) ───────────────────────────────────
     // Public on purpose: this endpoint *mints* access, so it runs BEFORE the
@@ -2394,6 +2389,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "unauthorized" }));
         return;
       }
+      // The operator "reflection" switch; checked once the scheduler is authenticated.
+      if (!(await featureAllowed("POST", url))) {
+        res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
+        return;
+      }
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
       const maxRuns =
@@ -2614,6 +2615,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         await fs.mkdir(uidHome, { recursive: true });
         homeScope.enterWith(uidHome);
       }
+    }
+
+    // Operator feature switches (cloud console). After the gate on purpose, so
+    // only a caller that already authenticated reaches the admin policy. The
+    // "paused" switch is enforced at inference admission, for every path.
+    if (cloud && !(await featureAllowed(req.method ?? "GET", url))) {
+      res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
+      return;
     }
 
     // Account-owned discovery; the relay carries ciphertext, never local API access.
