@@ -58,11 +58,20 @@ function opts(over: Partial<SubagentOptions>): SubagentOptions {
 
 describe("runSubagent", () => {
   test("returns the final text and maps token usage + stopReason", async () => {
-    const provider = scripted([textTurn("the answer", { inputTokens: 10, outputTokens: 4 })]);
+    const provider = scripted([
+      textTurn("the answer", {
+        inputTokens: 10,
+        outputTokens: 4,
+        cacheReadTokens: 13,
+        cacheWriteTokens: 7,
+      }),
+    ]);
     const r = await runSubagent(opts({ provider }));
     assert.equal(r.text, "the answer");
     assert.equal(r.inputTokens, 10);
     assert.equal(r.outputTokens, 4);
+    assert.equal(r.cacheReadTokens, 13);
+    assert.equal(r.cacheWriteTokens, 7);
     assert.equal(r.stopReason, "end_turn");
     assert.equal(r.toolCallCount, 0);
   });

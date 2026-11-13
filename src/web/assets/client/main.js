@@ -87,6 +87,127 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    "reve.sessionChanged": "The active conversation changed. Select the conversation again to reflect on it.",
+    "reve.dreamLog": "Dream records",
+    "reve.pendingNotes": "{n} reconsideration notes waiting",
+    "reve.corruptDreams": "Some dream records could not be read.",
+    "reve.noDreams": "No recent dream records in this period.",
+    "reve.revert.memory": "Undo memory changes",
+    "reve.revert.kb": "Undo knowledge changes",
+    "reve.revert.skills": "Undo skill changes",
+    "reve.reconsiderLabel": "Ask Lisa to reconsider a change to her own notes",
+    "reve.sendNote": "Send note",
+    "reve.note.pending": "Waiting",
+    "reve.note.claimed": "In review",
+    "reve.note.delivered": "Reviewed",
+    "reve.revertsRecorded": "Recorded undo operations: {n}",
+    "reve.dreamRestored": "Dream changes were reverted.",
+    "reve.noteQueued": "Lisa will see your note during her next reflection.",
+    "reve.dreamConflict": "Later edits prevent this undo. Review the current content.",
+    "reve.queueFull": "Too many notes are waiting. Try again after Lisa has reviewed them.",
+    "reve.dreamsDisabled": "Dream recording is disabled.",
+    "reve.dreamActionError": "Could not apply this action.",
+    "reve.agentRecap": "Agent activity recap",
+    "reve.recapHours": "Last {n} hours",
+    "reve.noRecap": "No agent activity in this period.",
+    "reve.recapUnavailable": "Agent activity is unavailable.",
+    "reve.conversation.reflection": "Conversation reflection",
+    "reve.quiet.time.work": "Quiet-time work",
+    "reve.scheduled.work": "Scheduled work",
+    "reve.a.personal.pursuit": "A personal pursuit",
+    "reve.reviewing.priorities": "Reviewing priorities",
+    "reve.weekly.reflection": "Weekly reflection",
+    "reve.completed": "Completed",
+    "reve.no.change.needed": "No change needed",
+    "reve.paused.by.a.limit": "Paused by a limit",
+    "reve.needs.attention": "Needs attention",
+    "reve.memory.updates": "Memory updates",
+    "reve.corrections.removals": "Corrections & removals",
+    "reve.background.runs": "Background runs",
+    "reve.output.tokens": "Output tokens",
+    "reve.previous.memory.restored": "Previous memory restored",
+    "reve.memory.updated": "Memory updated",
+    "reve.about.you": "About you",
+    "reve.working.memory": "Working memory",
+    "reve.write.not.confirmed": "Write not confirmed",
+    "reve.revision.changeCount": "{n} change(s)",
+    "reve.count.updates": "{n} updates",
+    "reve.some.updates.were.not.applied": "Some updates were not applied",
+    "reve.open.conversation": "Open conversation →",
+    "reve.knowledge.base.information.is.unavailable": "Knowledge base information is unavailable.",
+    "reve.sources": "sources",
+    "reve.wiki.pages": "wiki pages",
+    "reve.worth.tending": "Worth tending",
+    "reve.knowledge.issues": "{n} broken links · {n1} unlinked pages",
+    "reve.knowledge.healthy": "No broken links or unlinked pages in the index.",
+    "reve.knowledge.empty": "Add sources to start building connected knowledge.",
+    "reve.explore.knowledge.base": "Explore knowledge base →",
+    "reve.needs.you": "Needs you",
+    "reve.in.progress": "In progress",
+    "reve.exploring": "Exploring",
+    "reve.in": "in",
+    "reve.out": "out",
+    "reve.hero.eyebrow": "CONTINUITY, WITH CARE",
+    "reve.hero.title": "A little reflection. Better memory.",
+    "reve.hero.description": "See what Lisa learned, what changed, and the conversations behind it.",
+    "reve.proactive.mode.is.on": "Proactive mode is on",
+    "reve.proactive.mode.is.paused": "Proactive mode is paused",
+    "reve.overview.partial": "Some sections could not be loaded. Refresh to try again.",
+    "reve.while.you.were.away": "While you were away",
+    "reve.memory.refined": "Memory, refined",
+    "reve.all.memory": "All memory →",
+    "reve.revisions.caption": "Recent changes with source evidence and a recoverable previous version.",
+    "reve.revisions.empty": "No memory changes in this period. Useful changes will appear here with their sources.",
+    "reve.from.recent.conversations": "From recent conversations",
+    "reve.reflecting": "Reflecting…",
+    "reve.reflect.on.this.conversation": "Reflect on this conversation",
+    "reve.reflections.empty": "Conversation reflections will appear after Lisa has something worth keeping.",
+    "reve.conversation.reflection.is.disabled.for.this.session": "Conversation reflection is disabled for this session.",
+    "reve.connected.knowledge": "Connected knowledge",
+    "reve.on.her.mind": "On her mind",
+    "reve.no.active.pursuits.right.now": "No active pursuits right now.",
+    "reve.kept.close": "Kept close",
+    "reve.memory.capacityCaption": "A small set of useful facts. Details stay in the knowledge base.",
+    "reve.activity.usage": "Activity & usage",
+    "reve.latest.20.runs": "Latest 20 runs",
+    "reve.input": "Input",
+    "reve.output": "Output",
+    "reve.cache.read": "Cache read",
+    "reve.cache.write": "Cache write",
+    "reve.usage.incomplete": "Cache usage was not recorded for {n} runs.",
+    "reve.view.run.history": "View run history",
+    "reve.no.background.runs.recorded.in.this.period": "No background runs recorded in this period.",
+    "reve.history.limits": "Source conversations → reviewed notes → connected knowledge → context for next time. Totals cover up to 2,000 runs and 100 revisions per store; lists show the latest 20 records. Original conversations are preserved.",
+    "reve.updated": "Updated ",
+    "reve.overview.loadError": "Could not load Rêve. Please refresh.",
+    "reve.overview.unavailable": "Your data could not be loaded.",
+    "reve.loading.evidence": "Loading evidence…",
+    "reve.before": "Before",
+    "reve.empty": "(empty)",
+    "reve.after": "After",
+    "reve.user.statement": "User statement",
+    "reve.tool.observation": "Tool observation",
+    "reve.assistant.message": "Assistant message",
+    "reve.open.source.conversation": "Open source conversation",
+    "reve.restore.the.previous.version": "Restore the previous version",
+    "reve.restore.unavailable": "Restore is unavailable if memory has changed since this version, or this device has read-only access.",
+    "reve.detail.loadError": "Could not load this change. Close and reopen to retry.",
+    "reve.source.openError": "The source conversation could not be opened.",
+    "reve.reflecting.on.the.current.conversation": "Reflecting on the current conversation…",
+    "reve.this.conversation.has.already.been.reviewed": "This conversation has already been reviewed.",
+    "reve.reflection.invalid": "The reflection could not be completed. Please try again.",
+    "reve.reflection.complete": "Reflection complete.",
+    "reve.reflection.error": "Reflection is unavailable. Check your model or try again.",
+    "reve.restore.success": "Previous memory restored. The undo is recorded in history.",
+    "reve.restore.conflict": "Memory has newer changes. Refresh before restoring.",
+    "reve.could.not.restore.this.version": "Could not restore this version.",
+    "reve.memory.reflection": "Memory & reflection",
+    "reve.period": "Period",
+    "reve.last.24.hours": "Last 24 hours",
+    "reve.last.7.days": "Last 7 days",
+    "reve.last.30.days": "Last 30 days",
+    "reve.refresh": "Refresh",
+    "reve.loading": "Loading…",
     "expressions.replay": "Replay",
     "expressions.title": "Conversation expressions",
     "expressions.frequency": "Expression frequency",
@@ -138,11 +259,30 @@ const LISA_STRINGS = {
     "connector.gmailDetail": "Read headers and bounded snippets in your selected labels, without full bodies or attachments. This task continues after connecting; a new message cancels unfinished work.",
     "connector.calendarDetail": "Choose primary-calendar availability or event details in selected calendars. No events are created or changed. This task continues after connecting; a new message cancels unfinished work.",
     "connector.driveDetail": "Google grants access to files you pick (including write permission); LISA only reads the files you confirm here. Supports text, Docs, Slides and the first sheet of Sheets. No folders, PDFs or attachments. Connecting automatically continues this task.",
+    "connector.slackDetail": "Slack grants access to channel names and history. LISA reads only channels you confirm here. No DMs, shared channels, files or sending messages. Connecting continues the original task.",
+    "connector.slackAuthorize": "Authorize LISA read-only in Slack, then return here to choose channels.",
+    "connector.scope.slack": "LISA can read history in the selected channels until you disconnect.",
+    "connector.auth.slack": "Sign in to Slack (read only)",
+    "connector.openSlack": "Open Slack authorization",
+    "connector.error.slack_client_not_configured": "Configure a Slack app with PKCE and channel read permissions.",
+    "connector.error.slack_reauthorization_required": "Slack authorization expired or was removed. Reconnect to continue.",
+    "connector.error.slack_read_scope_required": "Slack must grant only the requested channel read permissions.",
+    "connector.error.slack_channel_unavailable": "This channel is unavailable, shared, archived, or you are no longer a member.",
+    "connector.error.slack_resource_mismatch": "Slack returned content outside the selected channel or thread. The result was blocked.",
+    "connector.error.slack_access_denied": "Slack denied access. Check workspace approval and channel membership.",
+    "connector.error.slack_rate_limited": "Slack is limiting requests. Try again later.",
+    "connector.error.slack_callback_port_in_use": "Another Slack sign-in is using the callback port. Finish or cancel it before retrying.",
+    "connector.error.slack_request_failed": "Slack could not complete this request. Retry this task.",
+    "connector.error.slack_response_too_large": "The Slack response exceeds the read limit.",
+    "connector.error.slack_invalid_time_range": "Choose a valid time range of at most 31 days.",
+    "connector.error.slack_invalid_thread": "Choose a valid thread timestamp in the selected channel.",
+    "connector.error.slack_invalid_response": "Slack returned an unexpected response. Retry or reconnect.",
+    "connector.error.slack_unavailable": "Slack is temporarily unavailable. Retry this task.",
     "connector.notionDetail": "Use a Notion connection with Read content only, then choose pages here. LISA reads ordinary blocks in those pages; child pages, databases, synced blocks and attachments are not followed. Connecting automatically continues this task.",
     "connector.driveAuthorize": "Sign in to Google and pick up to 30 supported files, then return here to confirm them.",
     "connector.notionAuthorize": "Authorize LISA read-only on Notion, then return here to choose pages.",
-    "connector.driveSelect": "Only files selected in Google are listed. Confirm files to read; nothing is checked by default. Later Drive tasks use this scope until disconnected. Sign in again to change the file selection.",
-    "connector.notionSelect": "Choose pages to read from those available to this connection. Nothing is checked by default. Later Notion tasks use this scope until disconnected.",
+    "connector.scope.google-drive": "LISA can read the files you confirm here until you disconnect. Open the account menu to pick different files in Google.",
+    "connector.scope.notion": "LISA can read content in the selected pages until you disconnect.",
     "connector.auth.drive": "Sign in to Google and choose files",
     "connector.auth.notion": "Sign in to Notion, read-only",
     "connector.openNotion": "Open Notion authorization",
@@ -173,7 +313,7 @@ const LISA_STRINGS = {
     "connector.auth.linear": "Sign in to Linear (read only)",
     "connector.linearAuthorize": "Authorize read-only access on Linear, then return here to choose teams.",
     "connector.openLinear": "Open Linear authorization",
-    "connector.linearSelect": "Verify the account and select teams. Nothing is selected by default. Later Linear read tasks use this scope until you disconnect.",
+    "connector.scope.linear": "LISA can read issues in the selected teams until you disconnect.",
     "connector.error.linear_reauthorization_required": "Linear authorization expired or was removed. Reconnect to continue.",
     "connector.error.linear_read_scope_required": "Only read permission is supported. Reconnect with read-only access.",
     "connector.error.linear_resource_mismatch": "Linear returned data outside the selected team. The result was blocked.",
@@ -188,8 +328,26 @@ const LISA_STRINGS = {
     "connector.auth.events": "Connect calendar event details",
     "connector.authorizeDetail": "Sign in and authorize on Google, then return here to select the read scope. Cancelling stops this task.",
     "connector.openGoogle": "Open Google authorization",
-    "connector.selectDetail": "Verify the account and select calendars or mail labels to read. Nothing is selected by default. Later read-only tasks use this selection until you disconnect.",
-    "connector.selected": "Selected resources: {n}",
+    "connector.choose.gmail": "Choose mail labels",
+    "connector.choose.google-calendar": "Choose calendars",
+    "connector.choose.github": "Choose repositories",
+    "connector.choose.google-drive": "Choose files",
+    "connector.choose.notion": "Choose pages",
+    "connector.choose.slack": "Choose channels",
+    "connector.choose.linear": "Choose teams",
+    "connector.scope.gmail": "LISA can read message headers and short snippets in the selected labels until you disconnect.",
+    "connector.scope.google-calendar": "LISA can read the selected calendars at the access level you granted until you disconnect.",
+    "connector.accountOptions": "Account options",
+    "connector.connecting": "Connecting…",
+    "connector.selectAll": "Select all",
+    "connector.selectLoaded": "Select all loaded",
+    "connector.fillSelection": "Fill to {n}",
+    "connector.clear": "Clear selection",
+    "connector.count": "{n} of {total} selected",
+    "connector.countLimited": "{n} selected · limit {total}",
+    "connector.loading": "Loading resources…",
+    "connector.empty": "No resources available for this account.",
+    "connector.retryLoad": "Retry loading",
     "connector.load": "Load more",
     "connector.error.google_client_not_configured": "Google desktop sign-in is not configured. Complete local Google connector setup first.",
     "connector.error.google_desktop_client_required": "Google sign-in configuration is unavailable. Use an OAuth client of type Desktop app.",
@@ -227,7 +385,7 @@ const LISA_STRINGS = {
     "github.login": "Sign in to GitHub",
     "github.authorizeDetail": "Complete authorization on GitHub. Cancelling stops this task from continuing.",
     "github.openDevice": "Open GitHub and enter the code above",
-    "github.selectDetail": "Verify your account, then choose repositories LISA may read. None are selected by default. Later read-only tasks use this selection until you disconnect.",
+    "connector.scope.github": "LISA can read the selected repositories until you disconnect.",
     "github.switchAccount": "Sign in with another account",
     "github.private": " · Private",
     "github.load": "Load repositories",
@@ -308,6 +466,127 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    "reve.sessionChanged": "当前会话已切换，请重新选择要回顾的会话。",
+    "reve.dreamLog": "梦境记录",
+    "reve.pendingNotes": "{n} 条重新考虑请求待处理",
+    "reve.corruptDreams": "部分梦境记录暂时无法读取。",
+    "reve.noDreams": "这段时间没有近期梦境记录。",
+    "reve.revert.memory": "撤销记忆修改",
+    "reve.revert.kb": "撤销知识库修改",
+    "reve.revert.skills": "撤销技能修改",
+    "reve.reconsiderLabel": "请 Lisa 重新考虑对自身记录的修改",
+    "reve.sendNote": "提交意见",
+    "reve.note.pending": "待处理",
+    "reve.note.claimed": "正在考虑",
+    "reve.note.delivered": "已回顾",
+    "reve.revertsRecorded": "已记录 {n} 次撤销",
+    "reve.dreamRestored": "已撤销梦境中的选定修改。",
+    "reve.noteQueued": "Lisa 会在下次反思时看到你的意见。",
+    "reve.dreamConflict": "后续修改与本次撤销冲突，请检查当前内容。",
+    "reve.queueFull": "待处理意见已满，请在 Lisa 回顾后重试。",
+    "reve.dreamsDisabled": "当前未启用梦境记录。",
+    "reve.dreamActionError": "暂时无法完成此操作。",
+    "reve.agentRecap": "Agent 活动回顾",
+    "reve.recapHours": "最近 {n} 小时",
+    "reve.noRecap": "这段时间没有 Agent 活动。",
+    "reve.recapUnavailable": "暂时无法读取 Agent 活动。",
+    "reve.conversation.reflection": "会话反思",
+    "reve.quiet.time.work": "空闲整理",
+    "reve.scheduled.work": "定时工作",
+    "reve.a.personal.pursuit": "心愿推进",
+    "reve.reviewing.priorities": "心愿回顾",
+    "reve.weekly.reflection": "每周回顾",
+    "reve.completed": "已完成",
+    "reve.no.change.needed": "无需更新",
+    "reve.paused.by.a.limit": "达到运行限制",
+    "reve.needs.attention": "需要检查",
+    "reve.memory.updates": "记忆更新",
+    "reve.corrections.removals": "纠正与移除",
+    "reve.background.runs": "自主运行",
+    "reve.output.tokens": "输出 token",
+    "reve.previous.memory.restored": "已恢复先前记忆",
+    "reve.memory.updated": "已更新记忆",
+    "reve.about.you": "关于你",
+    "reve.working.memory": "工作记忆",
+    "reve.write.not.confirmed": "写入尚未确认",
+    "reve.revision.changeCount": "{n} 项修改",
+    "reve.count.updates": "{n} 项更新",
+    "reve.some.updates.were.not.applied": "部分修改未写入",
+    "reve.open.conversation": "查看会话 →",
+    "reve.knowledge.base.information.is.unavailable": "暂时无法读取知识库。",
+    "reve.sources": "份来源",
+    "reve.wiki.pages": "页知识",
+    "reve.worth.tending": "待整理",
+    "reve.knowledge.issues": "{n} 个断链 · {n1} 个未关联页面",
+    "reve.knowledge.healthy": "索引中没有断链或未关联页面。",
+    "reve.knowledge.empty": "添加资料，让知识逐步连成网络。",
+    "reve.explore.knowledge.base": "打开知识库 →",
+    "reve.needs.you": "需你协助",
+    "reve.in.progress": "可自主推进",
+    "reve.exploring": "正在关注",
+    "reve.in": "输入",
+    "reve.out": "输出",
+    "reve.hero.eyebrow": "记忆 · 反思 · 生长",
+    "reve.hero.title": "让记忆保持准确",
+    "reve.hero.description": "看看 Lisa 学到了什么、修正了什么，以及这些记忆从何而来。",
+    "reve.proactive.mode.is.on": "自主模式已开启",
+    "reve.proactive.mode.is.paused": "自主模式已暂停",
+    "reve.overview.partial": "部分内容读取失败，可刷新重试。",
+    "reve.while.you.were.away": "你离开时",
+    "reve.memory.refined": "记忆的变化",
+    "reve.all.memory": "全部记忆 →",
+    "reve.revisions.caption": "查看近期修改、原文依据和可恢复的旧版本。",
+    "reve.revisions.empty": "这段时间还没有记忆修改。有用的更新会连同来源一起出现在这里。",
+    "reve.from.recent.conversations": "对话之后的思考",
+    "reve.reflecting": "回顾中…",
+    "reve.reflect.on.this.conversation": "回顾当前对话",
+    "reve.reflections.empty": "会话反思会记录值得保留的收获。",
+    "reve.conversation.reflection.is.disabled.for.this.session": "当前运行未启用会话反思。",
+    "reve.connected.knowledge": "知识的连接",
+    "reve.on.her.mind": "正在关注",
+    "reve.no.active.pursuits.right.now": "暂时没有正在推进的心愿。",
+    "reve.kept.close": "带入下次对话",
+    "reve.memory.capacityCaption": "精简的事实与偏好随对话载入，详细资料留在知识库。",
+    "reve.activity.usage": "运行与消耗",
+    "reve.latest.20.runs": "最近 20 次运行",
+    "reve.input": "输入",
+    "reve.output": "输出",
+    "reve.cache.read": "缓存读取",
+    "reve.cache.write": "缓存写入",
+    "reve.usage.incomplete": "{n} 次记录没有缓存用量，未计入缓存统计。",
+    "reve.view.run.history": "查看运行记录",
+    "reve.no.background.runs.recorded.in.this.period": "这段时间没有自主运行记录。",
+    "reve.history.limits": "原始对话 → 核对记忆 → 连接知识 → 带入下次对话。统计最多覆盖 2,000 次运行、每类记忆 100 个版本；列表显示最近 20 项。原始会话保留。",
+    "reve.updated": "更新于 ",
+    "reve.overview.loadError": "无法加载 Rêve，请刷新重试。",
+    "reve.overview.unavailable": "暂时无法读取内容。",
+    "reve.loading.evidence": "正在读取依据…",
+    "reve.before": "修改前",
+    "reve.empty": "（空）",
+    "reve.after": "修改后",
+    "reve.user.statement": "用户原话",
+    "reve.tool.observation": "工具观察",
+    "reve.assistant.message": "助手消息",
+    "reve.open.source.conversation": "查看来源会话",
+    "reve.restore.the.previous.version": "恢复修改前的版本",
+    "reve.restore.unavailable": "后续已有修改，或当前设备只有查看权限，无法恢复此版本。",
+    "reve.detail.loadError": "无法读取这次修改，收起后重新展开可重试。",
+    "reve.source.openError": "无法打开来源会话。",
+    "reve.reflecting.on.the.current.conversation": "正在回顾当前对话…",
+    "reve.this.conversation.has.already.been.reviewed": "这段对话已经回顾过。",
+    "reve.reflection.invalid": "这次反思未能完成，请重试。",
+    "reve.reflection.complete": "回顾完成。",
+    "reve.reflection.error": "暂时无法完成反思，请检查模型设置或稍后重试。",
+    "reve.restore.success": "已恢复先前记忆，撤销操作也已保存记录。",
+    "reve.restore.conflict": "记忆已有新修改，请刷新后再检查。",
+    "reve.could.not.restore.this.version": "暂时无法恢复此版本。",
+    "reve.memory.reflection": "记忆与反思",
+    "reve.period": "时间范围",
+    "reve.last.24.hours": "最近 24 小时",
+    "reve.last.7.days": "最近 7 天",
+    "reve.last.30.days": "最近 30 天",
+    "reve.refresh": "刷新",
+    "reve.loading": "加载中…",
     "expressions.replay": "重播",
     "expressions.title": "对话表情",
     "expressions.frequency": "表情频率",
@@ -359,11 +638,30 @@ const LISA_STRINGS = {
     "connector.gmailDetail": "仅读取你选定标签中的邮件头与有限摘要，不读取完整正文或附件。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
     "connector.calendarDetail": "选择仅查看主日历忙闲，或读取选定日历的日程详情。不会创建或修改日程。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
     "connector.driveDetail": "Google 授权可读写你选择的文件；LISA 只提供读取，并限制为此卡确认的文件。支持文本、Docs、Slides 和 Sheets 首个工作表，不读取文件夹、PDF 或附件。连接后自动继续原任务。",
+    "connector.slackDetail": "Slack 授予频道名称和历史读取权限；LISA 仅读取你在此确认的频道。不读取私信、共享频道或附件，不发送消息。连接后自动继续原任务。",
+    "connector.slackAuthorize": "请在 Slack 授权 LISA read-only，然后返回此卡选择频道。",
+    "connector.scope.slack": "LISA 可读取勾选频道内的历史消息，直到你断开连接。",
+    "connector.auth.slack": "登录 Slack，只读连接",
+    "connector.openSlack": "打开 Slack 授权页面",
+    "connector.error.slack_client_not_configured": "请先配置启用 PKCE 和频道读取权限的 Slack 应用。",
+    "connector.error.slack_reauthorization_required": "Slack 授权已失效或移除，请重新连接。",
+    "connector.error.slack_read_scope_required": "Slack 必须仅授予请求的频道读取权限。",
+    "connector.error.slack_channel_unavailable": "频道不可用、已共享、已归档，或你已退出该频道。",
+    "connector.error.slack_resource_mismatch": "Slack 返回的内容不属于所选频道或讨论串，已停止返回结果。",
+    "connector.error.slack_access_denied": "Slack 拒绝访问，请检查工作区审批和频道成员身份。",
+    "connector.error.slack_rate_limited": "Slack 请求过于频繁，请稍后重试。",
+    "connector.error.slack_callback_port_in_use": "另一次 Slack 登录正在使用回调端口，请完成或取消后重试。",
+    "connector.error.slack_request_failed": "Slack 未能完成此请求，请重试本条任务。",
+    "connector.error.slack_response_too_large": "Slack 返回的内容超过读取上限。",
+    "connector.error.slack_invalid_time_range": "请选择不超过 31 天的有效时间范围。",
+    "connector.error.slack_invalid_thread": "请提供所选频道中的有效讨论串时间戳。",
+    "connector.error.slack_invalid_response": "Slack 返回了无法识别的响应，请重试或重新连接。",
+    "connector.error.slack_unavailable": "Slack 暂时不可用，请重试本条任务。",
     "connector.notionDetail": "请使用仅有“读取内容”权限的 Notion 连接，再在此卡选择页面。LISA 读取所选页面的普通内容块，不展开子页面、数据库、同步块或附件。连接后自动继续原任务。",
     "connector.driveAuthorize": "请登录 Google 并选择最多 30 个支持的文件，再返回此卡确认。",
     "connector.notionAuthorize": "请在 Notion 授权 LISA read-only，然后返回此卡选择页面。",
-    "connector.driveSelect": "仅列出你在 Google 中选择的文件。请勾选允许读取的文件，默认不勾选。后续 Drive 任务沿用此范围；重新登录可更换文件。",
-    "connector.notionSelect": "从此连接可访问的页面中选择允许读取的页面。默认不勾选；后续 Notion 任务沿用此范围，直到断开连接。",
+    "connector.scope.google-drive": "LISA 可读取勾选的文件，直到你断开连接。展开账号菜单可在 Google 中重新挑选文件。",
+    "connector.scope.notion": "LISA 可读取勾选页面内的内容，直到你断开连接。",
     "connector.auth.drive": "登录 Google 并选择文件",
     "connector.auth.notion": "登录 Notion，只读连接",
     "connector.openNotion": "打开 Notion 授权页面",
@@ -394,7 +692,7 @@ const LISA_STRINGS = {
     "connector.auth.linear": "登录 Linear，只读连接",
     "connector.linearAuthorize": "在 Linear 页面授权只读访问，然后返回这里选择团队。",
     "connector.openLinear": "打开 Linear 授权页面",
-    "connector.linearSelect": "请核对账号并选择允许读取的团队。默认不勾选；后续 Linear 只读任务沿用此范围，直到断开连接。",
+    "connector.scope.linear": "LISA 可读取勾选团队的工作事项，直到你断开连接。",
     "connector.error.linear_reauthorization_required": "Linear 授权已失效或移除，请重新连接。",
     "connector.error.linear_read_scope_required": "仅支持读取权限，请以只读权限重新授权。",
     "connector.error.linear_resource_mismatch": "Linear 返回的资料不属于所选团队，已停止返回结果。",
@@ -409,8 +707,26 @@ const LISA_STRINGS = {
     "connector.auth.events": "连接日历，读取日程详情",
     "connector.authorizeDetail": "在 Google 页面登录并授权，然后回到这里选择读取范围。取消后不会继续任务。",
     "connector.openGoogle": "打开 Google 授权页面",
-    "connector.selectDetail": "请核对账号并选择允许读取的日历或邮件标签。默认不选择任何范围；后续只读任务沿用此选择，直到断开连接。",
-    "connector.selected": "已选 {n} 项",
+    "connector.choose.gmail": "选择可读取的邮件标签",
+    "connector.choose.google-calendar": "选择可读取的日历",
+    "connector.choose.github": "选择可读取的仓库",
+    "connector.choose.google-drive": "选择可读取的文件",
+    "connector.choose.notion": "选择可读取的页面",
+    "connector.choose.slack": "选择可读取的频道",
+    "connector.choose.linear": "选择可读取的团队",
+    "connector.scope.gmail": "LISA 可读取勾选标签内的邮件头和摘要，直到你断开连接。",
+    "connector.scope.google-calendar": "LISA 将按你授予的权限读取勾选的日历，直到你断开连接。",
+    "connector.accountOptions": "账号选项",
+    "connector.connecting": "正在连接…",
+    "connector.selectAll": "全选",
+    "connector.selectLoaded": "全选已加载项",
+    "connector.fillSelection": "选满 {n} 项",
+    "connector.clear": "清空选择",
+    "connector.count": "已选 {n} / {total} 项",
+    "connector.countLimited": "已选 {n} 项 · 最多 {total} 项",
+    "connector.loading": "正在加载…",
+    "connector.empty": "此账号暂无可选资源。",
+    "connector.retryLoad": "重新加载",
     "connector.load": "加载更多",
     "connector.error.google_client_not_configured": "尚未配置 Google 桌面应用登录，请先完成本机 Google 连接设置。",
     "connector.error.google_desktop_client_required": "Google 登录配置无法使用。请使用桌面应用类型的 OAuth 配置。",
@@ -448,7 +764,7 @@ const LISA_STRINGS = {
     "github.login": "登录 GitHub",
     "github.authorizeDetail": "请在 GitHub 页面完成授权；取消后不会继续任务。",
     "github.openDevice": "打开 GitHub，输入上方代码",
-    "github.selectDetail": "确认账号后，选择允许 LISA 读取的仓库。默认不选择任何仓库；后续只读任务沿用此范围，直到断开连接。",
+    "connector.scope.github": "LISA 可读取勾选的仓库，直到你断开连接。",
     "github.switchAccount": "更换账号登录",
     "github.private": " · 私有",
     "github.load": "加载仓库",
@@ -1740,7 +2056,17 @@ async function startupGate() {
   // bare catch+return left a dead UI with no key prompt, no birth, no message).
   let cfg = null;
   for (let i = 0; i < 6 && !cfg; i++) {
-    try { cfg = await fetch('/api/config/status').then(r => r.json()); }
+    try {
+      // Hosted accounts use the service's model. Its operator configuration
+      // is deliberately inaccessible to cloud-chat; a 403 is not a missing key.
+      const edition = await fetch('/api/edition').then(r => r.ok ? r.json() : null);
+      if (edition && edition.edition === 'cloud') cfg = { configured: true };
+      else {
+        const response = await fetch('/api/config/status');
+        if (!response.ok) throw new Error('Configuration status unavailable');
+        cfg = await response.json();
+      }
+    }
     catch (e) { if (i < 5) await lisaSleep(700); }
   }
   if (!cfg) {
@@ -2554,25 +2880,43 @@ document.addEventListener('keydown', function (e) {
   };
 }
 
-// Theme — Nebula (dark, default) vs Calm (light), persisted. The CSS keys off
-// <body data-theme="calm">; the fnbar #fnTheme button toggles, and the
-// moon/sun glyph swap is pure CSS (body[data-theme] show/hide rules).
+// Existing choices survive; new profiles follow the OS, including live changes.
+// The tiny body-start script applies the same preference before the first paint.
 {
-  let theme = 'nebula';
-  try { theme = localStorage.getItem('lisa-theme') === 'calm' ? 'calm' : 'nebula'; } catch (e) {}
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+  const normalize = (t) => t === 'calm' || t === 'nebula' ? t : 'system';
+  let preference = 'system';
+  try { preference = normalize(localStorage.getItem('lisa-theme')); } catch (e) {}
+  let theme;
   const applyTheme = () => {
+    theme = preference === 'system' ? (systemTheme.matches ? 'nebula' : 'calm') : preference;
+    document.documentElement.style.colorScheme = theme === 'calm' ? 'light' : 'dark';
     if (theme === 'calm') document.body.setAttribute('data-theme', 'calm');
     else document.body.removeAttribute('data-theme');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'calm' ? '#f5f6fa' : '#07091a');
+    const picker = document.getElementById('setTheme');
+    if (picker) picker.value = preference;
+    const button = document.getElementById('fnTheme');
+    const label = theme === 'calm' ? 'Switch to dark mode' : 'Switch to light mode';
+    if (button) { button.title = label; button.setAttribute('aria-label', label); }
+    // Keep native window chrome and the offline screen in the same appearance.
+    try { window.webkit?.messageHandlers?.lisa?.postMessage({ type: 'appearance', preference }); } catch (_) {}
   };
   applyTheme();
   window.lisaGetTheme = () => theme;
+  window.lisaGetThemePreference = () => preference;
   window.lisaSetTheme = (t) => {
-    const next = t === 'calm' ? 'calm' : 'nebula';
-    if (next === theme) return;
-    theme = next;
-    try { localStorage.setItem('lisa-theme', theme); } catch (e) {}
+    preference = normalize(t);
+    try { localStorage.setItem('lisa-theme', preference); } catch (e) {}
     applyTheme();
   };
+  systemTheme.addEventListener('change', () => { if (preference === 'system') applyTheme(); });
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'lisa-theme' || event.key === null) {
+      preference = normalize(event.newValue);
+      applyTheme();
+    }
+  });
   const themeBtn = document.getElementById('fnTheme');
   if (themeBtn) themeBtn.addEventListener('click', () => {
     window.lisaSetTheme(theme === 'calm' ? 'nebula' : 'calm');
@@ -5122,6 +5466,7 @@ if ('serviceWorker' in navigator) {
   function loadView(name) {
     // KB builds once, then refreshes its list on every re-show (it changes).
     if (name === 'kb') { if (!loaded.kb) { loaded.kb = true; loadKb(); } else { loadKbList(); } return; }
+    if (name === 'reve' && loaded.reve) { window.LisaReve.refresh(); return; }
     if (loaded[name]) return;
     loaded[name] = true;
     if (name === 'dashboard') loadDashboard();
@@ -5469,25 +5814,7 @@ if ('serviceWorker' in navigator) {
 
   // ── Reve ────────────────────────────────────────────────────────
   function loadReve() {
-    views.reve.innerHTML =
-      '<div class="view-head"><div><h2>Rêve</h2><div class="vh-sub">Reflections from her own time</div></div>' +
-      '<select class="v-sel" id="reveWindow"><option value="120">last 2h</option><option value="480">last 8h</option><option value="1440">last 24h</option></select></div>' +
-      '<div class="view-scroll" id="reveScroll"><div class="view-empty">loading…</div></div>';
-    var sel = document.getElementById('reveWindow');
-    if (sel) sel.addEventListener('change', function () { renderReve(sel.value); });
-    renderReve('120');
-  }
-  function renderReve(mins) {
-    var scroll = document.getElementById('reveScroll');
-    if (!scroll) return;
-    Promise.all([getJSON('/api/island/ping'), getJSON('/api/agents/recap?sinceMinutes=' + encodeURIComponent(mins))]).then(function (res) {
-      var ping = res[0] || {}; var recap = res[1] || {};
-      var html = '';
-      if (ping.last_idle_message_text) html += '<div class="v-card"><h3>' + esc(idleHeaderLabel()) + '</h3><div style="font-size:13px;color:var(--fg);line-height:1.55">' + esc(ping.last_idle_message_text) + '</div></div>';
-      if (ping.current_desire) html += '<div class="v-card"><h3>Currently pursuing</h3><div style="font-size:13px;color:var(--fg)">' + esc(ping.current_desire) + '</div></div>';
-      html += '<div class="v-card"><h3>Recap</h3><pre class="v-pre">' + esc(recap.text || 'No activity in this window.') + '</pre></div>';
-      scroll.innerHTML = html;
-    });
+    window.LisaReve.mount(views.reve);
   }
 
   // ── Sense ───────────────────────────────────────────────────────
@@ -5735,48 +6062,56 @@ if ('serviceWorker' in navigator) {
     var chip = function (ok) { return '<span class="set-chip' + (ok ? ' ok' : '') + '">' + (ok ? 'configured' : 'not set') + '</span>'; };
     var compactOn = (typeof window.lisaGetCompact === 'function') ? window.lisaGetCompact() : false;
     var edName = (edition && edition.edition) ? edition.edition : '—';
-    var sw = function (id, on) {
-      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    var sw = function (id, on, label) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-label="' + esc(label) + '" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
     };
     var html = '';
+    html += '<div class="view-sec-label">Display</div><div class="set-card">';
+    html += '<div class="set-row"><div class="set-main"><label class="set-name" for="setTheme">Appearance</label><div class="set-sub">Choose a look, or follow your device automatically</div></div><select class="set-input set-theme" id="setTheme"><option value="system">System</option><option value="calm">Light · Calm</option><option value="nebula">Dark · Nebula</option></select></div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn, 'Compact mode') + '</div>';
+    html += '</div>';
     // Provider list + one picker, driven by the same table the key gate uses
     // (UX-1 wave 2). Was an Anthropic-and-OpenAI-only pair of inputs, which
     // made every other provider a config.env edit.
     var provs = window.lisaProviderList(status);
-    html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
-    for (var pi = 0; pi < provs.length; pi++) {
-      var pv = provs[pi];
-      if (!pv.configured && pv.custom) continue;
-      html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
-        '</div><div class="set-sub">' + esc(pv.envKey) + '</div></div>' + chip(pv.configured) + '</div>';
+    if (edName !== 'cloud') {
+      html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
+      for (var pi = 0; pi < provs.length; pi++) {
+        var pv = provs[pi];
+        if (!pv.configured) continue;
+        html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
+          '</div></div>' + chip(pv.configured) + '</div>';
+      }
+      html += '<div class="set-form">' +
+        '<select class="set-input" id="setProvider" aria-label="Model provider"></select>' +
+        '<input class="set-input" id="setKey" aria-label="API key" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
+        '<input class="set-input" id="setBaseUrl" aria-label="Provider URL" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
+        '<input class="set-input" id="setModel" aria-label="Model (optional)" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
+        '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
+        '<div class="set-note">Saved on the machine running Lisa. Leave the key blank to keep your existing connection.</div></div>';
+      html += '</div>';
     }
-    html += '<div class="set-form">' +
-      '<select class="set-input" id="setProvider"></select>' +
-      '<input class="set-input" id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
-      '<input class="set-input" id="setBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
-      '<input class="set-input" id="setModel" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
-      '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
-      '<div class="set-note">Saved to ~/.lisa/config.env (0600), on this machine. Accepted from localhost only.</div></div>';
-    html += '</div>';
     html += '<div class="view-sec-label">Automation</div><div class="set-card">';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn) + '</div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn, 'Proactive mode') + '</div>';
     html += '</div>';
     // Reach-out charter controls (docs/POLICY_REACH_OUT.md): filled in by
     // loadReachOut() once /api/reachout/settings answers.
     html += '<div class="view-sec-label">Proactivity</div><div class="set-card" id="setReachOut"><div class="set-row"><div class="set-note">loading…</div></div></div>';
-    html += '<div class="view-sec-label">Display</div><div class="set-card">';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn) + '</div>';
-    html += '</div>';
     html += '<div class="view-sec-label">About</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Edition</div><div class="set-sub">Runtime build</div></div><span class="set-chip">' + esc(edName) + '</span></div>';
     // A discoverable entry point for the shortcut list — "press ?" is only
     // findable if you already know it is there (UX-11).
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Keyboard shortcuts</div><div class="set-sub">⌘K switch · ⌘/ focus · ⌘F find · ? this list</div></div><button class="v-toggle" id="setShortcuts">show</button></div>';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
+    if (edName !== 'cloud') html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
     html += '</div>';
     scroll.innerHTML = html;
     void window.LisaExpressions.mountSettings(scroll);
 
+    var themePicker = document.getElementById('setTheme');
+    if (themePicker) {
+      themePicker.value = window.lisaGetThemePreference();
+      themePicker.addEventListener('change', function () { window.lisaSetTheme(themePicker.value); });
+    }
     var pt = document.getElementById('setProactiveToggle');
     if (pt) {
       pt.addEventListener('click', toggleProactive);
@@ -5875,8 +6210,8 @@ if ('serviceWorker' in navigator) {
     if (!box) return;
     if (!view || !view.settings) { box.innerHTML = '<div class="set-row"><div class="set-note">Proactivity settings are unavailable.</div></div>'; return; }
     var s = view.settings, b = view.budget || {}, q = s.quietHours || {}, src = s.sources || {};
-    var sw = function (id, on) {
-      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    var sw = function (id, on, label) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-label="' + esc(label) + '" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
     };
     var row = function (name, sub, control) {
       return '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(name) + '</div><div class="set-sub">' + esc(sub) + '</div></div>' + control + '</div>';
@@ -5891,12 +6226,12 @@ if ('serviceWorker' in navigator) {
     var times = '<span style="display:flex;gap:6px;align-items:center">' +
       '<input class="set-input" id="roQuietStart" type="time" style="width:auto" aria-label="Quiet hours start" value="' + esc(q.start || '22:00') + '">' +
       '<input class="set-input" id="roQuietEnd" type="time" style="width:auto" aria-label="Quiet hours end" value="' + esc(q.end || '08:00') + '">' +
-      sw('roQuietToggle', !!q.enabled) + '</span>';
+      sw('roQuietToggle', !!q.enabled, 'Quiet hours') + '</span>';
     h += row('Quiet hours', (view.quietNow ? 'Quiet now. ' : '') + 'Pushes wait until the window ends' + (q.tz ? ' (' + q.tz + ')' : '') + '.', times);
     for (var j = 0; j < RO_SOURCES.length; j++) {
-      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false));
+      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false, RO_SOURCES[j][1]));
     }
-    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush));
+    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush, 'Push her own notes'));
     var note = function (text) { return '<div class="set-row"><div class="set-note">' + esc(text) + '</div></div>'; };
     if (view.channelsAvailable && view.channelsAvailable.push === false) {
       h += note('Push is not available here, so everything stays in the app.');
@@ -5941,7 +6276,10 @@ if ('serviceWorker' in navigator) {
     views.settings.innerHTML =
       '<div class="view-head"><div><h2>Settings</h2><div class="vh-sub">Keys · automation · display</div></div></div>' +
       '<div class="view-scroll"><div id="settingsScroll"><div class="view-empty">loading…</div></div></div>';
-    Promise.all([getJSON('/api/config/status'), getJSON('/api/edition')]).then(function (res) { renderSettings(res[0], res[1]); });
+    getJSON('/api/edition').then(function (edition) {
+      if (edition && edition.edition === 'cloud') renderSettings(null, edition);
+      else getJSON('/api/config/status').then(function (status) { renderSettings(status, edition); });
+    });
   }
   // ── Knowledge base view (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
   function kbRenderList(entries, container) {

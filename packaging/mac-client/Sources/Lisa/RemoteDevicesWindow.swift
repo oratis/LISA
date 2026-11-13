@@ -1,163 +1,196 @@
 import AppKit
-import Foundation
+import SwiftUI
 
 @MainActor
-final class RemoteDevicesWindow: NSWindowController {
+final class RemoteDevicesWindow: NSWindowController, NSWindowDelegate {
     static let shared = RemoteDevicesWindow()
-    private let stack = NSStackView()
-    private var refreshTask: Task<Void, Never>?
-    private var message = ""
-
-    private convenience init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "Connect iPhone"
-        window.isReleasedWhenClosed = false
-        self.init(window: window)
-        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
-        stack.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.documentView = stack
-        window.contentView = scroll
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.widthAnchor.constraint(equalTo: scroll.widthAnchor).isActive = true
-        window.center()
+    let model: CloudConnectionModel
+    private let connectionOwner = UUID()
+    init(model: CloudConnectionModel? = nil) {
+        let model = model ?? .shared
+        self.model = model
+        let window = cloudWindow(title: "Connect Lisa Pocket", height: 720)
+        super.init(window: window)
+        window.delegate = self
+        window.contentView = NSHostingView(rootView: CloudDevicesView(model: model) { [weak self] in
+            guard !model.preview else { return }
+            AccountWindowController.shared.show()
+            self?.close()
+        })
     }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     func show() {
+        model.start(owner: connectionOwner)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        refreshTask?.cancel()
-        refreshTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self, self.window?.isVisible == true else { return }
-                await self.refresh()
-                do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
-            }
-        }
     }
+    func windowWillClose(_ notification: Notification) { model.stop(owner: connectionOwner) }
     static func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:5757/api/remote/\(path)")!, timeoutInterval: 15)
-        if let body {
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        }
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200,
-              let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw NSError(domain: "LISARemote", code: 1, userInfo: [NSLocalizedDescriptionKey:
-                "Couldn't update the connection. Check that the backend is up to date and you're signed in."])
-        }
-        return result
-    }
-    private func label(_ text: String, bold: Bool = false) {
-        let field = NSTextField(wrappingLabelWithString: text)
-        field.font = bold ? .boldSystemFont(ofSize: 15) : .systemFont(ofSize: 13)
-        field.translatesAutoresizingMaskIntoConstraints = false
-        field.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true
-        stack.addArrangedSubview(field)
-    }
-    private func button(_ title: String, action: Selector, value: String? = nil) {
-        let button = NSButton(title: title, target: self, action: action)
-        button.bezelStyle = .rounded
-        button.identifier = value.map { NSUserInterfaceItemIdentifier(rawValue: $0) }
-        stack.addArrangedSubview(button)
-    }
-    private func refresh() async {
-        let status: [String: Any]
-        do { status = try await Self.request("status") }
-        catch { status = [:]; message = error.localizedDescription }
-        for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
-        label("Your Mac, wherever you are", bold: true)
-        label("Sign in to the same LISA account in Pocket. On your phone, open Settings → Connect your Mac. Connections are encrypted between your devices.")
-        let enabled = status["enabled"] as? Bool == true
-        let online = status["online"] as? Bool == true
-        label(online ? "Online · ready for Lisa Pocket" : enabled ? "Reconnecting to LISA Cloud…" : "Phone connections are off.")
-        if !message.isEmpty { label(message) }
-        let signedIn = !(BackendController.shared.configEnvValue("LISA_MANAGED_SESSION") ?? "").isEmpty
-        if signedIn {
-            button(enabled ? "Reconnect" : "Enable phone connections", action: #selector(connect))
-            if enabled { button("Turn off phone connections", action: #selector(disconnect)) }
-        } else { button("Sign in to LISA", action: #selector(signIn)) }
-        if enabled {
-            let strict = NSButton(checkboxWithTitle: "Require secure pairing (refuse older Lisa Pocket versions)",
-                                  target: self, action: #selector(toggleSecurePairing(_:)))
-            strict.state = status["requireSecurePairing"] as? Bool == true ? .on : .off
-            stack.addArrangedSubview(strict)
-        }
-        // Never suggest turning strict mode off here: the "older" phone may be a relay
-        // that stripped the secure-pairing fields.
-        if let refused = status["legacyRefused"] as? [String: Any] {
-            label("A pairing request from \(refused["name"] as? String ?? "an iPhone") used the older pairing method, which this Mac refuses. If that iPhone runs Lisa Pocket 1.3 or earlier, update it and try again.")
-        }
-        for pending in status["pending"] as? [[String: Any]] ?? [] {
-            guard let id = pending["id"] as? String, let code = pending["code"] as? String else { continue }
-            let name = pending["name"] as? String ?? "iPhone"
-            if code.isEmpty {
-                // Holds one of ten request slots; anyone on the relay can open one.
-                label("\(name): pairing request waiting for its code", bold: true)
-                label("If you aren't pairing Lisa Pocket right now, clear it.")
-                button("Clear request", action: #selector(dismiss(_:)), value: id)
-                continue
+        do {
+            let (status, result) = try await CloudHTTP.json(URL(string: "http://127.0.0.1:5757/api/remote/\(path)")!, body: body)
+            guard status == 200 else {
+                let text = path == "approve" ? "This request has expired or changed. Start pairing again in Pocket."
+                    : path == "connect" ? "Couldn't connect. Check your internet connection and sign in to Lisa again if needed."
+                    : "Couldn't update the connection. Check that Lisa is running and try again."
+                throw NSError(domain: "LISARemote", code: status, userInfo: [NSLocalizedDescriptionKey: text])
             }
-            // `secure` describes this Mac's side only: pairing v2 (a committed code).
-            let secure = pending["secure"] as? Bool == true
-            let known = pending["known"] as? Bool == true
-            label(known ? "\(name) is pairing with this Mac again" : "\(name) wants to connect", bold: true)
-            label("Compare with the code on your phone: \(code)")
-            if secure {
-                label("This Mac is using secure pairing. If your phone warns about an older pairing method, dismiss this request.")
+            return result
+        } catch let error as NSError where error.domain == "LISARemote" { throw error }
+        catch {
+            throw NSError(domain: "LISARemote", code: 1, userInfo: [NSLocalizedDescriptionKey: "Couldn't reach Lisa on this Mac. Open Lisa and try again."])
+        }
+    }
+}
+
+struct CloudDevicesView: View {
+    @ObservedObject var model: CloudConnectionModel
+    var openAccount: () -> Void
+    @State private var advanced = false
+    @State private var approval: CloudDevice?
+    @State private var removing: CloudDevice?
+    @State private var confirmDisable = false
+    private var signedIn: Bool {
+        model.preview || !(BackendController.shared.configEnvValue("LISA_MANAGED_SESSION") ?? "").isEmpty
+    }
+    private var online: Bool { model.available && model.state.online }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    Button(action: openAccount) { Label("Lisa account", systemImage: "chevron.left") }
+                        .buttonStyle(.borderless).font(.system(size: 12)).foregroundColor(.secondary)
+                    CloudHeader(symbol: "laptopcomputer.and.iphone", eyebrow: "LISA POCKET",
+                                title: "Your Mac. Within reach.",
+                                subtitle: "Start here. Pick up on your iPhone.")
+                    CloudCard {
+                        HStack(alignment: .top, spacing: 14) {
+                            CloudStatusRow(symbol: online ? "checkmark.circle.fill" : "desktopcomputer",
+                                           title: model.title, detail: model.detail,
+                                           color: online ? .green : CloudStyle.accent)
+                            if model.busy || !model.loaded { ProgressView().controlSize(.small) }
+                        }
+                        if !signedIn {
+                            Button("Sign in to connect") { openAccount() }.buttonStyle(CloudPrimaryButton())
+                        } else if model.loaded && !online {
+                            Button(model.state.enabled ? "Reconnect" : "Enable phone connections") {
+                                Task { await model.connect() }
+                            }.buttonStyle(CloudPrimaryButton()).disabled(model.busy)
+                        }
+                        if let notice = model.notice { CloudNoticeView(notice: notice) }
+                        if online {
+                            Divider()
+                            HStack(spacing: 16) {
+                                Label("Local when nearby", systemImage: "wifi")
+                                Label("Cloud when away", systemImage: "cloud")
+                            }.font(.system(size: 11)).foregroundColor(.secondary)
+                        }
+                    }
+                    if let refused = model.state.legacyRefusedName {
+                        CloudNoticeView(notice: CloudNotice(text: "A request from \(refused) used an older pairing method. Update Lisa Pocket and try again.", kind: .warning))
+                    }
+                    ForEach(model.state.pending) { pending in pairingCard(pending) }
+                    if model.state.devices.isEmpty && model.state.pending.isEmpty {
+                        CloudCard {
+                            Text("Connect your iPhone").font(.system(size: 16, weight: .semibold))
+                            CloudStep(number: 1, title: "Open Lisa Pocket", detail: "Sign in with the same Lisa account as this Mac.")
+                            CloudStep(number: 2, title: "Choose this Mac", detail: "In Pocket, open Settings → Connect your Mac.")
+                            CloudStep(number: 3, title: "Compare and approve", detail: "Match the code on both screens, then approve here.")
+                            if online {
+                                HStack(spacing: 8) {
+                                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                                    Text("Ready — your iPhone's request will appear here.")
+                                }.font(.system(size: 12)).foregroundColor(.secondary).padding(.top, 2)
+                            }
+                        }
+                    }
+                    if !model.state.devices.isEmpty {
+                        CloudCard {
+                            HStack {
+                                Text("Authorized devices").font(.system(size: 16, weight: .semibold))
+                                Spacer()
+                                Text(String(model.state.devices.count)).font(.system(size: 12)).foregroundColor(.secondary)
+                            }
+                            ForEach(model.state.devices) { device in
+                                HStack(spacing: 12) {
+                                    CloudStatusRow(symbol: "iphone", title: device.name,
+                                                   detail: device.secure ? "Approved on this Mac" : "Older pairing · update Pocket to pair securely")
+                                    Button("Remove…") { removing = device }.buttonStyle(.borderless).font(.system(size: 12))
+                                }.disabled(model.busy)
+                            }
+                        }
+                    }
+                    Label("Keep this Mac awake and Lisa running to connect from Pocket.", systemImage: "moon.zzz")
+                        .font(.system(size: 12)).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    DisclosureGroup("Connection settings", isExpanded: $advanced) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if model.state.supportsSecurePairing && model.state.enabled {
+                                Toggle("Require secure pairing", isOn: Binding(get: { model.state.requireSecurePairing }, set: { value in
+                                    Task { await model.perform("policy", body: ["requireSecurePairing": value]) }
+                                }))
+                                Text("Only updated versions of Pocket can make new pairing requests. Existing device approvals are kept.")
+                                    .font(.system(size: 11)).foregroundColor(.secondary)
+                            }
+                            if model.state.enabled {
+                                Button("Turn off phone connections…") { confirmDisable = true }
+                            }
+                            Button("Pair with a local QR code…") {
+                                if !model.preview { PairController.shared.showPairing() }
+                            }.buttonStyle(.borderless)
+                            Text("Local QR pairing is available for older Pocket versions on the same Wi-Fi.")
+                                .font(.system(size: 11)).foregroundColor(.secondary)
+                        }.padding(.top, 12).disabled(model.busy)
+                    }.font(.system(size: 12)).foregroundColor(.secondary)
+                }.frame(maxWidth: 500).padding(.horizontal, 28).padding(.top, 44).padding(.bottom, 28)
+                    .frame(maxWidth: .infinity).id("cloud-top")
+            }.onAppear { DispatchQueue.main.async { proxy.scrollTo("cloud-top", anchor: .top) } }
+        }.background(CloudStyle.background).tint(CloudStyle.accent)
+        .alert("Compare the code on your iPhone", isPresented: Binding(get: { approval != nil }, set: { if !$0 { approval = nil } })) {
+            if let device = approval {
+                Button("Codes match — allow") { Task { await model.perform("approve", body: ["id": device.id, "code": device.code]) } }
+                Button("Cancel", role: .cancel) {}
+            }
+        } message: {
+            if let device = approval {
+                Text("Only approve if your phone shows \(device.code). This allows \(device.name) to use this Mac's Lisa and permitted remote controls."
+                     + (device.secure ? " If Pocket warns about an older pairing method, cancel."
+                        : " This request uses an older pairing method: a compromised relay could fake its code. Update Pocket first."))
+            }
+        }
+        .confirmationDialog("Remove this device?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            if let device = removing {
+                Button("Remove \(device.name)", role: .destructive) { Task { await model.perform("revoke", body: ["id": device.id]) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("It will need your approval again to connect to this Mac.") }
+        .confirmationDialog("Turn off phone connections?", isPresented: $confirmDisable, titleVisibility: .visible) {
+            Button("Turn off", role: .destructive) { Task { await model.perform("disconnect", body: [:]) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Pocket will disconnect. You can turn connections back on here at any time.") }
+    }
+
+    private func pairingCard(_ device: CloudDevice) -> some View {
+        CloudCard {
+            Label(device.known ? "\(device.name) is reconnecting" : "\(device.name) wants to connect", systemImage: "iphone.radiowaves.left.and.right")
+                .font(.system(size: 15, weight: .semibold))
+            if device.code.isEmpty {
+                CloudNoticeView(notice: CloudNotice(text: "Waiting for the verification code. If you aren't pairing Pocket, dismiss this request."))
             } else {
-                label("⚠︎ Older pairing method: this request arrived as Lisa Pocket 1.3 or earlier, so a compromised relay could fake its code. Update Lisa Pocket, then pair again.")
+                Text("Check that your iPhone shows this same code.").font(.system(size: 12)).foregroundColor(.secondary)
+                Text(device.code).font(.system(size: 27, weight: .semibold, design: .monospaced)).tracking(3)
+                    .frame(maxWidth: .infinity).padding(.vertical, 17)
+                    .background(CloudStyle.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel("Verification code: \(device.code)").textSelection(.enabled)
+                CloudNoticeView(notice: CloudNotice(text: device.secure
+                    ? "This Mac uses secure pairing. If Pocket warns about an older pairing method, dismiss this request."
+                    : "Older pairing method. A compromised relay could fake this code. Update Lisa Pocket before pairing.",
+                    kind: device.secure ? .information : .warning))
+                Button("Compare codes & approve…") { approval = device }.buttonStyle(CloudPrimaryButton())
             }
-            button(known ? "Codes match" : "Allow this device", action: #selector(approve(_:)),
-                   value: "\(secure ? "v2" : "v1")|\(id)|\(code)")
-            if known { button("Disconnect \(name)", action: #selector(revoke(_:)), value: id) }
-            else { button("Dismiss request", action: #selector(dismiss(_:)), value: id) }
-        }
-        let devices = status["devices"] as? [[String: Any]] ?? []
-        if !devices.isEmpty { label("Authorized devices", bold: true) }
-        for device in devices {
-            guard let id = device["id"] as? String else { continue }
-            let older = device["secure"] as? Bool != true
-            button("Disconnect \(device["name"] as? String ?? "iPhone")\(older ? " (older pairing)" : "")",
-                   action: #selector(revoke(_:)), value: id)
-        }
-        label("Keep this Mac awake and LISA running. Pocket uses your local network when available and cloud relay when you're away.")
-        button("Legacy QR pairing…", action: #selector(legacy))
+            Button(device.code.isEmpty ? "Clear request" : "Dismiss request") {
+                Task { await model.perform("dismiss", body: ["id": device.id]) }
+            }.buttonStyle(.borderless).font(.system(size: 12)).frame(maxWidth: .infinity)
+        }.disabled(model.busy)
     }
-    private func perform(_ path: String, body: [String: Any]) {
-        Task {
-            do { _ = try await Self.request(path, body: body); message = "" }
-            catch { message = error.localizedDescription }
-            await refresh()
-        }
-    }
-    @objc private func connect() {
-        perform("connect", body: [
-            "base": BackendController.shared.configEnvValue("LISA_MANAGED_BASE") ?? "https://cloud.meetlisa.ai",
-            "session": BackendController.shared.configEnvValue("LISA_MANAGED_SESSION") ?? "",
-        ])
-    }
-    @objc private func disconnect() { perform("disconnect", body: [:]) }
-    @objc private func approve(_ sender: NSButton) {
-        let parts = (sender.identifier?.rawValue ?? "").split(separator: "|", maxSplits: 2).map(String.init)
-        guard parts.count == 3 else { return }
-        let alert = NSAlert()
-        alert.messageText = "Does your phone show \(parts[2])?"
-        alert.informativeText = "Only allow it if the codes match. This device can access this Mac's LISA and its permitted remote controls."
-            + (parts[0] == "v2" ? "" : "\n\nThis request uses the older pairing method: a compromised relay could make the codes match. Prefer updating Lisa Pocket first.")
-        if parts[0] != "v2" { alert.alertStyle = .warning }
-        alert.addButton(withTitle: "Codes match — allow"); alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        perform("approve", body: ["id": parts[1], "code": parts[2]])
-    }
-    @objc private func toggleSecurePairing(_ sender: NSButton) {
-        perform("policy", body: ["requireSecurePairing": sender.state == .on])
-    }
-    @objc private func dismiss(_ sender: NSButton) { perform("dismiss", body: ["id": sender.identifier?.rawValue ?? ""]) }
-    @objc private func revoke(_ sender: NSButton) { perform("revoke", body: ["id": sender.identifier?.rawValue ?? ""]) }
-    @objc private func signIn() { AccountWindowController.shared.show() }
-    @objc private func legacy() { PairController.shared.showPairing() }
 }

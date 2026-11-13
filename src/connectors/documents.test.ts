@@ -338,6 +338,35 @@ test("Notion authenticates read-only capabilities and rotates credentials before
     /connector_account_changed/,
   );
 });
+test("Notion picker fills pages with eligible resources across short or archived search results", async () => {
+  const active = Array.from({ length: 31 }, (_, i) => ({ ...page(), id: id(i + 10) }));
+  const f = notionFixture((path, init) => {
+    if (path !== "/v1/search") return;
+    const cursor = (init?.json as { start_cursor?: string }).start_cursor;
+    if (!cursor) {
+      return {
+        object: "list",
+        results: [...active.slice(0, 29), { ...page(), archived: true }],
+        has_more: true,
+        next_cursor: id(98),
+      };
+    }
+    if (cursor === id(98))
+      return { object: "list", results: [], has_more: true, next_cursor: id(99) };
+    assert.equal(cursor, id(99));
+    return { object: "list", results: active.slice(29), has_more: false };
+  });
+  const driver = new NotionReadonlyDriver({ http: f.http });
+  const credentials = access(notionCredential);
+  const first = await driver.resources(credentials, 1, signal());
+  const second = await driver.resources(credentials, 2, signal());
+  assert.equal(first.length, 30);
+  assert.deepEqual(
+    [...first, ...second].map((r) => r.id),
+    active.map((r) => r.id),
+  );
+});
+
 test("Notion content ignores child pages/synced blocks/files and enforces confirmed page scope", async () => {
   const f = notionFixture((path) =>
     path.includes("/children?")

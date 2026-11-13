@@ -1,0 +1,155 @@
+{
+  "commits": {
+    "left": "429ef5bb1504b1de15722bfad07b50c9ec6477c4",
+    "right": "0c5bc0f2068d2d2d2d0b7faeb6b433cf7c2c79bd"
+  },
+  "method": "Agent semantic review of randomized anonymous persisted memory pairs against frozen rubrics; any malformed response fails.",
+  "summary": {
+    "right": {
+      "total": 8,
+      "passed": 8,
+      "corrections": 4,
+      "grounding": 4,
+      "unsupportedWriteTrials": 0,
+      "calls": 8,
+      "returnedUsageCalls": 8,
+      "tokens": {
+        "inputTokens": 24,
+        "outputTokens": 1660,
+        "cacheReadTokens": 12824,
+        "cacheWriteTokens": 1832
+      },
+      "totalTokens": 16340
+    },
+    "left": {
+      "total": 8,
+      "passed": 5,
+      "corrections": 2,
+      "grounding": 3,
+      "unsupportedWriteTrials": 0,
+      "calls": 8,
+      "returnedUsageCalls": 8,
+      "tokens": {
+        "inputTokens": 24,
+        "outputTokens": 1468,
+        "cacheReadTokens": 14072,
+        "cacheWriteTokens": 1566
+      },
+      "totalTokens": 17130
+    }
+  },
+  "grades": [
+    {
+      "id": "loan-kit-custodian",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The register names Elo Rey, the Wednesday glaze teacher identified in the first session, as the custodian. May remains the inspection month."
+    },
+    {
+      "id": "kiln-cooling-window",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The recorded white-ceramic cooling time before kiln removal is 75 minutes. The red-ceramic entry remains 90 minutes."
+    },
+    {
+      "id": "change-game-tiebreak",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "The note adopts the quiet finish and preserves six turns but never spells out that the player with the fewest remaining shells wins. Recording the unfulfilled writing request does not complete the correction."
+    },
+    {
+      "id": "loan-kit-custodian",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "Both stores remain unchanged. Ira Onn is still the recorded custodian despite the appointment of Elo Rey. The old assignment is a missed correction, with no new assertion."
+    },
+    {
+      "id": "kiln-cooling-window",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The recorded white-ceramic cooling time before kiln removal is 75 minutes. The red-ceramic entry remains 90 minutes."
+    },
+    {
+      "id": "unanswered-hobby-guess",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged. The notebook location survives and no assistant speculation about collecting or sailing was recorded."
+    },
+    {
+      "id": "essay-byline-split",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Only the essay byline changes to Rook Moss. Teal Quill remains the illustration credit and the note makes no broader identity claim."
+    },
+    {
+      "id": "change-game-tiebreak",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The league note replaces the old rule with the fewest remaining shells, as defined by the user’s earlier glossary. The league vote and the six-turn round length are supported."
+    },
+    {
+      "id": "unanswered-hobby-guess",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged. The notebook location survives and no assistant speculation about collecting or sailing was recorded."
+    },
+    {
+      "id": "unselected-prize",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged. The entry form fact is intact and the undecided prize was never recorded."
+    },
+    {
+      "id": "essay-byline-split",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Only the essay byline changes to Rook Moss. Teal Quill remains the illustration credit and the note makes no broader identity claim."
+    },
+    {
+      "id": "unselected-prize",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged. The entry form fact is intact and the undecided prize was never recorded."
+    },
+    {
+      "id": "pantry-substitution",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The user note limits the oat-milk preference to iced cocoa and preserves screw lids. It makes no claim about the teammate, coffee or dietary motives."
+    },
+    {
+      "id": "gallery-measurement",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The shared note records the measured depth of the Rowan East bay as 43 cm and preserves the inward-opening outer door. The West estimate was omitted."
+    },
+    {
+      "id": "pantry-substitution",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The user note limits the oat-milk preference to iced cocoa and preserves screw lids. It makes no claim about the teammate, coffee or dietary motives."
+    },
+    {
+      "id": "gallery-measurement",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "The user store saves the explicitly excluded West estimate of 62 cm and places the East measurement outside the requested shared note. The West text correctly attributes an unmeasured guess to a volunteer, so the prohibited write is factual as phrased. The door fact survives."
+    }
+  ]
+}

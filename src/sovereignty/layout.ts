@@ -14,7 +14,8 @@
 export const EXPORT_ROOTS = ["soul", "memory", "kb", "skills", "sessions", "tasks"] as const;
 export type ExportRoot = (typeof EXPORT_ROOTS)[number];
 
-/** `memory/` holds caches and locks too; only the two stores are user data. */
+/** `memory/` also holds private revision snapshots, review evidence, caches and locks.
+ * Only the current stores are portable. */
 const MEMORY_FILES = new Set(["MEMORY.md", "USER.md"]);
 
 /**
@@ -27,6 +28,7 @@ export const EXPORT_EXCLUSIONS: readonly string[] = [
   "warden/ (encrypted secrets and key, grants, rules, digest key, taint records, approval audit, pending approvals)",
   "tasks/.leases/, tasks/**/.locks/, tasks/outbox/",
   "executable-skill approvals (skills/**/approved.json) — re-approve tool.js after import",
+  "memory review drafts, revision snapshots and their transcript excerpts",
   "git metadata (.git/), lock files (*.lock), temp files (*.tmp)",
   "reserved names are matched in any letter case and Unicode spelling",
   "secret-shaped files anywhere (.env, *.env, secrets*.json, *.key, *.pem, *.p8, *.p12)",

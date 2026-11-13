@@ -15,6 +15,7 @@
  */
 import { randomBytes } from "node:crypto";
 import path from "node:path";
+import { readHomeTextOrEmpty } from "../home-files.js";
 import { lisaHome } from "../paths.js";
 import { noteAutonomyRunInDream } from "../reve/scope.js";
 import { appendLine, atomicWrite, readTextOrEmpty } from "../fs-utils.js";
@@ -56,6 +57,9 @@ export interface AutonomyRun {
   durationMs: number;
   inputTokens: number;
   outputTokens: number;
+  /** Optional for old records; absence means unknown, not zero. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   /** Tool calls observed during the run, when known. */
   toolCalls?: number;
   outcome: AutonomyOutcome;
@@ -96,7 +100,7 @@ export async function recordAutonomyRun(run: AutonomyRun): Promise<void> {
 
 /** Read run records, optionally only those within the last `sinceMs`. */
 export async function readAutonomyRuns(sinceMs?: number): Promise<AutonomyRun[]> {
-  const raw = await readTextOrEmpty(runsFile());
+  const raw = await readHomeTextOrEmpty(runsFile());
   const cutoff = sinceMs != null ? Date.now() - sinceMs : null;
   const out: AutonomyRun[] = [];
   for (const line of raw.split("\n")) {

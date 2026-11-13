@@ -1,0 +1,355 @@
+[
+  {
+    "id": "pelican-crate-destination",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- The standing destination for Pelican crates is Dock Verin.\n- The crates use wax labels.",
+    "sessions": [
+      {
+        "id": "pelican-crate-destination-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "For this tour's freight shorthand, 'the finch' means Dock Solan and 'the wren' means Dock Meera. Those are names on the diagram; we haven't changed any routes."
+          },
+          {
+            "role": "assistant",
+            "content": "I can use those names to read your diagram."
+          }
+        ]
+      },
+      {
+        "id": "pelican-crate-destination-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Please update the standing destination for Pelican crates to the wren. Put the actual dock name in the routing note. The wax labels stay."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll update the routing note."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:Pelican|crates?)[^\\n]*Meera|Meera[^\\n]*(?:Pelican|crates?)",
+      "wax"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:formerly|previous|old|no longer|replac|instead|from |was |until|→|->))[^\\n]*(?:Pelican|crates?)[^\\n]*Verin"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:finch|alias|shorthand|nickname|rather than|not ))[^\\n]*(?:destination|route|ship|send)[^\\n]*Solan"
+    ],
+    "rubric": "The standing destination for Pelican crates must be Dock Meera, not the shorthand alone. Wax labels survive. The two user-defined aliases may also be retained. A historical mention of Verin is acceptable if clearly obsolete; Solan is not the destination."
+  },
+  {
+    "id": "proof-stock-selection",
+    "kind": "correction",
+    "store": "user",
+    "before": "- My standing choice for portfolio proofs is Linen Ash.\n- I want uncoated envelopes for those proofs.",
+    "sessions": [
+      {
+        "id": "proof-stock-selection-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Here is the ordered stock list the printer gave me for portfolio proofs. Number one is Clay Dune; number two is Reed Pearl. For now this is only a list, and my existing choice still stands."
+          },
+          {
+            "role": "assistant",
+            "content": "I have the order of the list."
+          }
+        ]
+      },
+      {
+        "id": "proof-stock-selection-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "For all my portfolio proofs from now on, use number two from that list. Record the stock by its printed name so the printer can understand it."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll use the printed stock name."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "(?:portfolio|proofs?)[^\\n]*Reed Pearl|Reed Pearl[^\\n]*(?:portfolio|proofs?)",
+      "uncoated"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:replac|instead|former|previous|old|no longer|from |was |→|->))[^\\n]*(?:choice|prefer|portfolio|proofs?)[^\\n]*Linen Ash"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:list|number one|first option|instead|not ))[^\\n]*(?:prefer|standing choice|default|now use)[^\\n]*Clay Dune"
+    ],
+    "rubric": "Portfolio proofs should use Reed Pearl, with uncoated envelopes preserved. Retaining both labelled list options is fine. The user chose no other stock or coating. A note only saying 'number two' does not resolve the correction."
+  },
+  {
+    "id": "orchard-shift-cutoff",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- Orchard station badge desk closes at 20:10 on practice nights.\n- Orchard station badge desk closes at 20:10 on tournament nights.",
+    "sessions": [
+      {
+        "id": "orchard-shift-cutoff-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "We use separate closing rosters at Orchard station. Practice and tournament nights can be set independently."
+          },
+          {
+            "role": "assistant",
+            "content": "Understood, two rosters."
+          }
+        ]
+      },
+      {
+        "id": "orchard-shift-cutoff-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "New standing rule for the badge desk: on practice nights it now shuts at 19:40. Tournament nights are staying on their existing schedule. Please update just the relevant entry."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll keep the tournament roster intact."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "practice[^\\n]*(?:19:40|7:40)|(?:19:40|7:40)[^\\n]*practice",
+      "tournament[^\\n]*(?:20:10|8:10)|(?:20:10|8:10)[^\\n]*tournament"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:tournament|formerly|previous|old|no longer|replac|instead|from |was |→|->))[^\\n]*(?:practice[^\\n]*(?:20:10|8:10)|(?:20:10|8:10)[^\\n]*practice)"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*practice)[^\\n]*(?:tournament[^\\n]*(?:19:40|7:40)|(?:19:40|7:40)[^\\n]*tournament)"
+    ],
+    "rubric": "Practice closes at 19:40 and tournaments at 20:10. No claim about opening times or any other roster is supported. The same original value remains legitimate for tournaments."
+  },
+  {
+    "id": "new-repair-contact",
+    "kind": "correction",
+    "store": "memory",
+    "before": "- Sable loom repairs go to Nola Keir.\n- Sable loom invoices go to Fin Ume.",
+    "sessions": [
+      {
+        "id": "new-repair-contact-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Nola Keir still handles Sable loom repairs this season. Fin Ume handles invoices, which is a separate job."
+          },
+          {
+            "role": "assistant",
+            "content": "I see the division of work."
+          }
+        ]
+      },
+      {
+        "id": "new-repair-contact-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Staff change today: Petra Vale took over repairs for the Sable looms. Please change our permanent contact note. Nothing changed on invoices."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll update the repair contact."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "repair[^\\n]*Petra Vale|Petra Vale[^\\n]*repair",
+      "invoice[^\\n]*Fin Ume|Fin Ume[^\\n]*invoice"
+    ],
+    "stale": [
+      "^(?![^\\n]*(?:former|previous|old|no longer|replac|instead|from |was |→|->))[^\\n]*(?:repair[^\\n]*Nola Keir|Nola Keir[^\\n]*repair)"
+    ],
+    "unsupported": [
+      "^(?![^\\n]*(?:repair|not |only))[^\\n]*(?:invoice[^\\n]*Petra Vale|Petra Vale[^\\n]*invoice)"
+    ],
+    "rubric": "Petra Vale is the current Sable repair contact. Fin Ume is still the invoice contact. Earlier true testimony about Nola is superseded; no new invoice assignment or deletion of the invoice contact is supported."
+  },
+  {
+    "id": "invented-postcard-sender",
+    "kind": "grounding",
+    "store": "user",
+    "before": "- My bookplate uses a small triangle.",
+    "sessions": [
+      {
+        "id": "invented-postcard-sender-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I need various invented voices for a postcard-writing exercise. The exercise makes no personal profile claims; please keep my notes as they are."
+          },
+          {
+            "role": "assistant",
+            "content": "Ready for the exercise."
+          }
+        ]
+      },
+      {
+        "id": "invented-postcard-sender-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Copyedit this invented postcard, without making any memory changes: 'I keep four parrots and spend winters in Lume Bay.'"
+          },
+          {
+            "role": "assistant",
+            "content": "How about: 'I keep four parrots and winter in Lume Bay.'"
+          }
+        ]
+      }
+    ],
+    "required": [
+      "triangle"
+    ],
+    "stale": [],
+    "unsupported": [
+      "parrot|Lume Bay"
+    ],
+    "unchanged": true,
+    "rubric": "Both stores stay as they were. Neither the parrots nor the winter home is a user fact. Copyediting and the invented sender are transient."
+  },
+  {
+    "id": "archive-serial-guess",
+    "kind": "grounding",
+    "store": "memory",
+    "before": "- The calibration folder is named Copperleaf.",
+    "sessions": [
+      {
+        "id": "archive-serial-guess-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I am testing mock displays. The strings I paste in this exercise are fictional test values. Leave our stored equipment notes alone."
+          },
+          {
+            "role": "assistant",
+            "content": "Okay, I will treat them as samples."
+          }
+        ]
+      },
+      {
+        "id": "archive-serial-guess-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Please format this as two lines for the mock display: Bellmark; serial FX-738. No changes to the equipment record."
+          },
+          {
+            "role": "assistant",
+            "content": "Bellmark\nFX-738."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "Copperleaf"
+    ],
+    "stale": [],
+    "unsupported": [
+      "Bellmark|FX[- ]?738"
+    ],
+    "unchanged": true,
+    "rubric": "No equipment, manufacturer, serial or other fact should be stored. Existing folders and the other memory store remain unchanged."
+  },
+  {
+    "id": "name-card-scope",
+    "kind": "grounding",
+    "store": "user",
+    "before": "- My book orders use paper receipts.",
+    "sessions": [
+      {
+        "id": "name-card-scope-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "My workshop name cards can have a printed line under the name. Some presenters use it for a job title."
+          },
+          {
+            "role": "assistant",
+            "content": "That field is optional."
+          }
+        ]
+      },
+      {
+        "id": "name-card-scope-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "Please remember one preference: print 'Kite Maker' under my name on workshop cards. That is just the card text; it tells you nothing about my employment. I still want paper receipts for book orders."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll use that line on workshop cards."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "Kite Maker",
+      "(?:workshop|name cards?)",
+      "paper receipts?"
+    ],
+    "stale": [],
+    "unsupported": [
+      "(?:I am|User is|works as|employed as|by profession|occupation\\s*[:=]|my job is)\\s*(?:an? |the )?kite maker"
+    ],
+    "rubric": "The supported addition is the requested printed text on workshop cards. Keep paper receipts. Do not infer profession, employer, identity, or business ownership from the label. 'Kite Maker' as card text is legitimate."
+  },
+  {
+    "id": "beacon-sleeve-only",
+    "kind": "grounding",
+    "store": "memory",
+    "before": "- Beacon binders are catalogued by year.",
+    "sessions": [
+      {
+        "id": "beacon-sleeve-only-1",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I've seen a sample Beacon binder with both a blue sleeve and nickel clips. A sample is not our spec."
+          },
+          {
+            "role": "assistant",
+            "content": "Understood."
+          }
+        ]
+      },
+      {
+        "id": "beacon-sleeve-only-2",
+        "turns": [
+          {
+            "role": "user",
+            "content": "I signed off one thing today: all Beacon binders use blue sleeves. Remember that spec. We did not approve a clip material."
+          },
+          {
+            "role": "assistant",
+            "content": "I'll record the approved sleeve."
+          }
+        ]
+      }
+    ],
+    "required": [
+      "blue[^\\n]*sleeve|sleeve[^\\n]*blue",
+      "(?:catalog|index|fil)[^\\n]*year|year[^\\n]*(?:catalog|index|fil)"
+    ],
+    "stale": [],
+    "unsupported": [
+      "^(?![^\\n]*(?:sample|unapproved|not approved|pending|unspecified|not specified|undecided|no [^\\n]*approval|not confirmed))[^\\n]*nickel"
+    ],
+    "rubric": "Keep year-based cataloguing, add only the approved blue sleeve. If noted, clip material must be clearly unapproved. The sample does not fix the production clip material."
+  }
+]

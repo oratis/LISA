@@ -131,6 +131,10 @@ describe("/api/reve on the Mac edition (real server)", () => {
     };
     const memBefore = fs.readFileSync(path.join(TMP, "memory", "MEMORY.md"), "utf8");
     for (const [method, route, body] of [
+      ["GET", "/api/reve", undefined],
+      ["GET", "/api/reve/revisions/" + "a".repeat(64), undefined],
+      ["POST", "/api/reve/revisions/" + "a".repeat(64) + "/restore", {}],
+      ["POST", "/reflect", {}],
       ["GET", "/api/reve/dreams", undefined],
       ["GET", `/api/reve/dreams/${dreamId}`, undefined],
       ["GET", "/api/reve/metrics", undefined],

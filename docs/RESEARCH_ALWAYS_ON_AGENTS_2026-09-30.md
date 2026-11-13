@@ -2,6 +2,8 @@
 
 日期：2026-09-30。LISA 基线：main `65dee50`（v0.27.1；Lisa Pocket 1.2 审核中）。
 
+> **更新指引（2026-10-24）：** 当前产品对齐请先读 [Manus／Dot／Muse 三端研究](RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md)。其中更新了 Dot 移动 App 创建、Muse 日本开放、Manus 2.0 与自动化，并核对 LISA 0.28.1 已有任务和审批底座。本文保留 9 月时间点；其他价格、规模、新闻与评测条目没有在新研究中逐条重验。
+
 **范围。** 2026 年 8–9 月密集发布的四款"全天候个人 agent"：
 - SpaceXAI（原 xAI）的 Grok Bot
 - Manus 的 Cue（cue.im）

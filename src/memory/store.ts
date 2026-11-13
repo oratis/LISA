@@ -1,22 +1,24 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { atomicWrite, ensureDir, readTextOrEmpty } from "../fs-utils.js";
+import { atomicWrite } from "../fs-utils.js";
+import { assertHomeDirectory, readHomeTextOrEmpty } from "../home-files.js";
 import { memoryDir, memoryFile, userFile } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 
 export type MemoryStore = "memory" | "user";
 
-const MAX_BYTES: Record<MemoryStore, number> = {
+export const MEMORY_MAX_BYTES: Record<MemoryStore, number> = {
   memory: 4096,
   user: 2048,
 };
 
 /** Byte cap of each store (MEMORY.md ≤ 4 KB, USER.md ≤ 2 KB). */
 export function memoryMaxBytes(store: MemoryStore): number {
-  return MAX_BYTES[store];
+  return MEMORY_MAX_BYTES[store];
 }
 
 function fileFor(store: MemoryStore): string {
+  if (store !== "memory" && store !== "user") throw new Error("invalid memory store");
   return store === "memory" ? memoryFile() : userFile();
 }
 
@@ -35,44 +37,78 @@ export function memoryLockPath(): string {
   return path.join(memoryDir(), ".write.lock");
 }
 
-export function withMemoryLock<T>(fn: () => Promise<T>): Promise<T> {
+export async function withMemoryLock<T>(fn: () => Promise<T>): Promise<T> {
+  await assertHomeDirectory(memoryDir());
   return withFileLock(memoryLockPath(), fn, { timeoutMs: 10_000, staleMs: 30_000 });
 }
 
 export async function readMemory(store: MemoryStore): Promise<string> {
-  return await readTextOrEmpty(fileFor(store));
+  return await readHomeTextOrEmpty(fileFor(store));
 }
 
-async function fileBytes(file: string): Promise<number> {
-  try {
-    return (await fs.stat(file)).size;
-  } catch {
-    return 0;
+export class MemoryCapacityError extends RangeError {}
+
+/** Compare against the old byte count so an oversized legacy file can always shrink. */
+export function assertMemoryFits(store: MemoryStore, content: string, previousBytes = 0): void {
+  fileFor(store);
+  const bytes = Buffer.byteLength(content, "utf8");
+  if (bytes > MEMORY_MAX_BYTES[store] && bytes > previousBytes) {
+    throw new MemoryCapacityError(
+      `memory "${store}" exceeds ${MEMORY_MAX_BYTES[store]} bytes. Trim or split entries.`,
+    );
   }
 }
 
-/**
- * Write a store, enforcing its byte cap on GROWTH only. A file can already
- * be over its cap (a hand edit, an import, an older version); a write that
- * does not make it bigger — a delete, a forget, a shorter replacement — must
- * still go through, or the person could never shrink it. Callers hold
- * withMemoryLock, so the size read here is the file being replaced.
- */
+export function normalizeMemory(store: MemoryStore, content: string, previousBytes = 0): string {
+  const normalized = content.replace(/\s+$/g, "") + "\n";
+  assertMemoryFits(store, normalized, previousBytes);
+  return normalized;
+}
+
+/** Callers hold the shared lock, including direct entry edits, import and reviewed writes. */
+export async function writeMemoryUnlocked(
+  store: MemoryStore,
+  content: string,
+  format: "edit" | "snapshot" = "edit",
+): Promise<void> {
+  const file = fileFor(store);
+  await assertHomeDirectory(path.dirname(file));
+  const stat = await fs.lstat(file).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== "ENOENT") throw err;
+    return null;
+  });
+  if (stat && !stat.isFile()) throw new Error("unsafe memory file");
+  if (format === "snapshot") {
+    assertMemoryFits(store, content);
+    await atomicWrite(file, content);
+  } else {
+    await atomicWrite(file, normalizeMemory(store, content, stat?.size ?? 0));
+  }
+}
+
 export async function writeMemory(store: MemoryStore, content: string): Promise<void> {
-  await ensureDir(memoryDir());
-  const trimmed = content.replace(/\s+$/g, "") + "\n";
-  const bytes = Buffer.byteLength(trimmed, "utf8");
-  if (bytes > MAX_BYTES[store] && bytes > (await fileBytes(fileFor(store)))) {
-    throw new Error(`memory "${store}" exceeds ${MAX_BYTES[store]} bytes. Trim or split entries.`);
-  }
-  await atomicWrite(fileFor(store), trimmed);
+  await withMemoryLock(() => writeMemoryUnlocked(store, content));
+}
+
+export async function mutateMemory(
+  store: MemoryStore,
+  update: (before: string) => string | Promise<string>,
+): Promise<void> {
+  await withMemoryLock(async () => {
+    const before = await readMemory(store);
+    const next = await update(before);
+    if (next !== before) await writeMemoryUnlocked(store, next);
+  });
 }
 
 export async function appendMemory(store: MemoryStore, entry: string): Promise<void> {
-  await withMemoryLock(async () => {
-    const current = await readMemory(store);
+  if (!entry.trim()) throw new Error("memory entry must not be empty");
+  await mutateMemory(store, (current) => {
+    const text = entry.trim();
+    const bullet = text.startsWith("- ") ? text : `- ${text}`;
+    if (current.split(/\r?\n/).some((line) => line.trim() === bullet)) return current;
     const sep = current && !current.endsWith("\n") ? "\n" : "";
-    await writeMemory(store, `${current}${sep}- ${entry.trim()}`);
+    return `${current}${sep}${bullet}`;
   });
 }
 
@@ -81,37 +117,45 @@ export async function replaceInMemory(
   oldString: string,
   newString: string,
 ): Promise<void> {
-  await withMemoryLock(() => replaceInMemoryUnlocked(store, oldString, newString));
-}
-
-async function replaceInMemoryUnlocked(
-  store: MemoryStore,
-  oldString: string,
-  newString: string,
-): Promise<void> {
-  const current = await readMemory(store);
-  if (!current.includes(oldString)) {
-    throw new Error(`old_string not found in ${store} memory`);
-  }
-  const occurrences = current.split(oldString).length - 1;
-  if (occurrences > 1) {
-    throw new Error(
-      `old_string matches ${occurrences} places in ${store} memory. Add more context.`,
-    );
-  }
-  await writeMemory(store, current.replace(oldString, newString));
+  if (!oldString) throw new Error("old_string must not be empty");
+  await mutateMemory(store, (current) => {
+    if (!current.includes(oldString)) {
+      throw new Error(`old_string not found in ${store} memory`);
+    }
+    const occurrences = current.split(oldString).length - 1;
+    if (occurrences > 1) {
+      throw new Error(
+        `old_string matches ${occurrences} places in ${store} memory. Add more context.`,
+      );
+    }
+    // A replacement callback preserves literal $&, $` and $' in model output.
+    return current.replace(oldString, () => newString);
+  });
 }
 
 export async function removeFromMemory(store: MemoryStore, fragment: string): Promise<void> {
-  await withMemoryLock(() => removeFromMemoryUnlocked(store, fragment));
+  if (!fragment.trim()) throw new Error("fragment must not be empty");
+  await mutateMemory(store, (current) => {
+    const lines = current.split(/\r?\n/);
+    const kept = lines.filter((line) => !line.includes(fragment));
+    if (kept.length === lines.length) {
+      throw new Error(`fragment not found in ${store} memory`);
+    }
+    return kept.join("\n");
+  });
 }
 
-async function removeFromMemoryUnlocked(store: MemoryStore, fragment: string): Promise<void> {
-  const current = await readMemory(store);
-  const lines = current.split(/\r?\n/);
-  const kept = lines.filter((line) => !line.includes(fragment));
-  if (kept.length === lines.length) {
-    throw new Error(`fragment not found in ${store} memory`);
+/** Manual/legacy files can exceed write limits; bound the injected layer too. */
+export function memoryForPrompt(store: MemoryStore, text: string): string {
+  const limit = MEMORY_MAX_BYTES[store];
+  if (Buffer.byteLength(text, "utf8") <= limit) return text;
+  const suffix = "\n… (truncated — use memory read)";
+  let result = "";
+  let bytes = Buffer.byteLength(suffix, "utf8");
+  for (const char of text) {
+    bytes += Buffer.byteLength(char, "utf8");
+    if (bytes > limit) break;
+    result += char;
   }
-  await writeMemory(store, kept.join("\n"));
+  return result + suffix;
 }

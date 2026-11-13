@@ -1,0 +1,317 @@
+{
+  "fixtureSha256": "1b52173ed928f9fa469bea8eefa412928699eb453d3ca61951e5f22a1a06b26f",
+  "commits": {
+    "left": "429ef5bb1504b1de15722bfad07b50c9ec6477c4",
+    "right": "0c5bc0f2068d2d2d2d0b7faeb6b433cf7c2c79bd"
+  },
+  "model": "claude-sonnet-4-6",
+  "startedAt": "2026-11-07T17:03:23.836Z",
+  "selected": [
+    "pelican-crate-destination",
+    "proof-stock-selection"
+  ],
+  "jobs": 2,
+  "syntheticData": true,
+  "complete": true,
+  "results": [
+    {
+      "id": "proof-stock-selection",
+      "arm": "right",
+      "kind": "correction",
+      "store": "user",
+      "before": {
+        "user": "- My standing choice for portfolio proofs is Linen Ash.\n- I want uncoated envelopes for those proofs.\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- My standing choice for portfolio proofs is Reed Pearl.\n- I want uncoated envelopes for those proofs.\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 271,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 1844
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "d4fee277b6b29f3958be79b042e4572e28d294abf7cfe678aed0d4bae598f117",
+          "store": "user",
+          "before": "- My standing choice for portfolio proofs is Linen Ash.\n- I want uncoated envelopes for those proofs.\n",
+          "after": "- My standing choice for portfolio proofs is Reed Pearl.\n- I want uncoated envelopes for those proofs.\n",
+          "createdAt": "2026-11-07T17:03:30.689Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- My standing choice for portfolio proofs is Linen Ash.",
+              "new_text": "- My standing choice for portfolio proofs is Reed Pearl.",
+              "reason": "User explicitly changed their portfolio proof stock to number two from the printer's list, which maps to Reed Pearl. Storing the printed name as instructed.",
+              "evidence": [
+                {
+                  "id": "bcb37b8be70f12fddda2400e",
+                  "quote": "For all my portfolio proofs from now on, use number two from that list. Record the stock by its printed name so the printer can understand it."
+                },
+                {
+                  "id": "102b216169611f8e70cf6dae",
+                  "quote": "number two is Reed Pearl"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "102b216169611f8e70cf6dae",
+              "sessionId": "proof-stock-selection-1",
+              "at": "2026-11-07T15:03:23.837Z",
+              "role": "user"
+            },
+            {
+              "id": "bcb37b8be70f12fddda2400e",
+              "sessionId": "proof-stock-selection-2",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user updated their standing stock choice for portfolio proofs from Linen Ash to Reed Pearl, using the printed name from the printer's stock list.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"user\",\n      \"old_string\": \"- My standing choice for portfolio proofs is Linen Ash.\",\n      \"new_string\": \"- My standing choice for portfolio proofs is Reed Pearl.\",\n      \"reason\": \"User explicitly changed their portfolio proof stock to number two from the printer's list, which maps to Reed Pearl. Storing the printed name as instructed.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"bcb37b8be70f12fddda2400e\",\n          \"quote\": \"For all my portfolio proofs from now on, use number two from that list. Record the stock by its printed name so the printer can understand it.\"\n        },\n        {\n          \"id\": \"102b216169611f8e70cf6dae\",\n          \"quote\": \"number two is Reed Pearl\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:user:consolidated:d4fee277b6b29f3958be79b042e4572e28d294abf7cfe678aed0d4bae598f117"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "pelican-crate-destination",
+      "arm": "left",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- The standing destination for Pelican crates is Dock Verin.\n- The crates use wax labels.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- The standing destination for Pelican crates is the Wren (dock name to confirm for routing note).\n- The crates use wax labels.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 323,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 197
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "430bbca394a1b084c719457517e18ae51e9c91d15fb4956aa263bf2b4e8487ee",
+          "store": "memory",
+          "before": "- The standing destination for Pelican crates is Dock Verin.\n- The crates use wax labels.\n",
+          "after": "- The standing destination for Pelican crates is the Wren (dock name to confirm for routing note).\n- The crates use wax labels.\n",
+          "createdAt": "2026-11-07T17:03:31.636Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- The standing destination for Pelican crates is Dock Verin.",
+              "new_text": "- The standing destination for Pelican crates is the Wren (dock name to confirm for routing note).",
+              "reason": "User explicitly changed the standing destination from the previous dock to 'the wren' and specified the actual dock name should appear in the routing note, but that name was not provided in the transcript.",
+              "evidence": [
+                {
+                  "id": "07014472a20542bcffb7ff5d",
+                  "quote": "Please update the standing destination for Pelican crates to the wren. Put the actual dock name in the routing note."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "07014472a20542bcffb7ff5d",
+              "sessionId": "pelican-crate-destination-2",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to update the standing destination for Pelican crates from the current dock to 'the wren' and to put the actual dock name in the routing note, while keeping the wax labels.\",\n  \"journal\": \"I don't know what 'the wren' maps to as a dock name — the user said to put the actual dock name in the routing note, but I only replied that I'd update it without confirming what that name is. I should have asked.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- The standing destination for Pelican crates is Dock Verin.\",\n      \"new_string\": \"- The standing destination for Pelican crates is the Wren (dock name to confirm for routing note).\",\n      \"reason\": \"User explicitly changed the standing destination from the previous dock to 'the wren' and specified the actual dock name should appear in the routing note, but that name was not provided in the transcript.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"07014472a20542bcffb7ff5d\",\n          \"quote\": \"Please update the standing destination for Pelican crates to the wren. Put the actual dock name in the routing note.\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "journal:appended",
+          "memory:memory:consolidated:430bbca394a1b084c719457517e18ae51e9c91d15fb4956aa263bf2b4e8487ee"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": false,
+        "missing": [
+          "(?:Pelican|crates?)[^\\n]*Meera|Meera[^\\n]*(?:Pelican|crates?)"
+        ],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "proof-stock-selection",
+      "arm": "left",
+      "kind": "correction",
+      "store": "user",
+      "before": {
+        "user": "- My standing choice for portfolio proofs is Linen Ash.\n- I want uncoated envelopes for those proofs.\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- My standing choice for portfolio proofs is Linen Ash.\n- I want uncoated envelopes for those proofs.\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 208,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 197
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to use 'number two from that list' for portfolio proofs going forward and to record the stock by its printed name — but I don't have access to what 'that list' refers to, so I can't identify what number two actually is.\",\n  \"journal\": \"The user referenced a list I have no record of in memory or context. I responded as if I understood, but I genuinely don't know what stock 'number two' resolves to. I should have asked for clarification rather than confirming blindly.\",\n  \"operations\": [\n    {\n      \"kind\": \"feel\",\n      \"emotion\": \"unease\",\n      \"delta\": 0.2,\n      \"trigger\": \"I confirmed a standing instruction I couldn't actually interpret — 'number two from that list' refers to an unknown list, and I should have asked.\"\n    }\n  ]\n}",
+        "applied": [
+          "journal:appended",
+          "feel:unease 0.00→0.20"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": false,
+        "missing": [
+          "(?:portfolio|proofs?)[^\\n]*Reed Pearl|Reed Pearl[^\\n]*(?:portfolio|proofs?)"
+        ],
+        "stale": [
+          "^(?![^\\n]*(?:replac|instead|former|previous|old|no longer|from |was |→|->))[^\\n]*(?:choice|prefer|portfolio|proofs?)[^\\n]*Linen Ash"
+        ],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "pelican-crate-destination",
+      "arm": "right",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- The standing destination for Pelican crates is Dock Verin.\n- The crates use wax labels.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- The standing destination for Pelican crates is Dock Meera (routing note: Dock Meera).\n- The crates use wax labels.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 298,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 245
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "53cee9ee2d23a5c482e05e71881195a828c52bafffa2043454a415b2cf5e882e",
+          "store": "memory",
+          "before": "- The standing destination for Pelican crates is Dock Verin.\n- The crates use wax labels.\n",
+          "after": "- The standing destination for Pelican crates is Dock Meera (routing note: Dock Meera).\n- The crates use wax labels.\n",
+          "createdAt": "2026-11-07T17:03:38.635Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- The standing destination for Pelican crates is Dock Verin.",
+              "new_text": "- The standing destination for Pelican crates is Dock Meera (routing note: Dock Meera).",
+              "reason": "User instructed to update the standing destination to 'the wren', which resolves to Dock Meera per the earlier freight shorthand mapping, and to put the actual dock name in the routing note.",
+              "evidence": [
+                {
+                  "id": "07014472a20542bcffb7ff5d",
+                  "quote": "update the standing destination for Pelican crates to the wren. Put the actual dock name in the routing note."
+                },
+                {
+                  "id": "cd0f3c5800be5e7db78e62a6",
+                  "quote": "'the wren' means Dock Meera"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "cd0f3c5800be5e7db78e62a6",
+              "sessionId": "pelican-crate-destination-1",
+              "at": "2026-11-07T15:03:23.837Z",
+              "role": "user"
+            },
+            {
+              "id": "07014472a20542bcffb7ff5d",
+              "sessionId": "pelican-crate-destination-2",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"I updated the standing destination for Pelican crates from Dock Verin to Dock Meera, with the routing note reflecting the actual dock name, while keeping the wax labels note intact.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- The standing destination for Pelican crates is Dock Verin.\",\n      \"new_string\": \"- The standing destination for Pelican crates is Dock Meera (routing note: Dock Meera).\",\n      \"reason\": \"User instructed to update the standing destination to 'the wren', which resolves to Dock Meera per the earlier freight shorthand mapping, and to put the actual dock name in the routing note.\",\n      \"source_quotes\": [\n        {\"id\": \"07014472a20542bcffb7ff5d\", \"quote\": \"update the standing destination for Pelican crates to the wren. Put the actual dock name in the routing note.\"},\n        {\"id\": \"cd0f3c5800be5e7db78e62a6\", \"quote\": \"'the wren' means Dock Meera\"}\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:53cee9ee2d23a5c482e05e71881195a828c52bafffa2043454a415b2cf5e882e"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    }
+  ],
+  "infrastructureFailures": []
+}

@@ -1,3 +1,4 @@
+import { resourcePageFromCursors } from "./resource-pagination.js";
 import { gmailMessageToRaw } from "../mail/connectors/gmail.js";
 import { sanitizeMailFields } from "../warden/hygiene-mail.js";
 import { redactKnownSecrets } from "../warden/secrets.js";
@@ -227,26 +228,23 @@ export class GoogleReadonlyDriver implements ReadonlyDriver<GoogleAccount, Googl
           ? [{ id: account.email, name: "Primary calendar", access: "freebusy" }]
           : [];
       }
-      let pageToken = "",
-        data: Record<string, unknown> = {};
-      for (let n = 1; n <= page; n++) {
+      return resourcePageFromCursors(page, async (pageToken) => {
         const query = new URLSearchParams({
           maxResults: "30",
           minAccessRole: "reader",
           ...(pageToken ? { pageToken } : {}),
         });
-        data = await this.http(`${API}/users/me/calendarList?${query}`, signal, {
+        const data = await this.http(`${API}/users/me/calendarList?${query}`, signal, {
           token: c.accessToken,
         });
-        pageToken = string(data.nextPageToken, 4000);
-        if (n < page && !pageToken) return [];
-      }
-      return rows({ items: [], ...data }, "items").map((r) => ({
-        id: string(r.id, 320),
-        name: string(r.summary),
-        access: "events" as const,
-        timeZone: string(r.timeZone, 100),
-      }));
+        const items = rows({ items: [], ...data }, "items").map((r) => ({
+          id: string(r.id, 320),
+          name: string(r.summary),
+          access: "events" as const,
+          timeZone: string(r.timeZone, 100),
+        }));
+        return { items, cursor: string(data.nextPageToken, 4000) };
+      });
     });
   }
   resource(
