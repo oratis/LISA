@@ -5873,7 +5873,9 @@ if ('serviceWorker' in navigator) {
         try {
           var response = await fetch('/api/agents/codex/observation', {
             method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ enabled: enabled, showConversations: enabled })
+            // Only the "Show conversations" button asks for transcripts. The plain
+            // toggle must leave a hand-set metadata-only visibility alone.
+            body: JSON.stringify({ enabled: enabled, showConversations: event.currentTarget === conversations })
           });
           if (!response.ok) throw new Error();
           changingCodexObservation = false;

@@ -84,10 +84,15 @@ test("a local owner can discover, show and hide Codex sessions from Control", as
         })
       ).status(),
     ).toBe(403);
-    expect(JSON.parse(await fs.readFile(configFile, "utf8"))).toMatchObject({
+    // The plain toggle only enables Codex. Conversations show because the global
+    // tier defaults to "activity"; no per-agent visibility is written, so a
+    // metadata-only setting elsewhere is never overridden by this button.
+    const enabledConfig = JSON.parse(await fs.readFile(configFile, "utf8"));
+    expect(enabledConfig).toMatchObject({
       ...config,
-      integrations: { ...config.integrations, codex: { enabled: true, visibility: "activity" } },
+      integrations: { ...config.integrations, codex: { enabled: true } },
     });
+    expect(enabledConfig.integrations.codex).not.toHaveProperty("visibility");
 
     await page.locator('.tleaf[data-agent="codex"]').click();
     await expect(page.locator("#asHead b")).toHaveText("November release");
