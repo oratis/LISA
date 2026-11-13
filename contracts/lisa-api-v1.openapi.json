@@ -6262,13 +6262,18 @@
                     "scope"
                   ],
                   "additionalProperties": false
+                },
+                "available": {
+                  "type": "boolean",
+                  "description": "False when this install cannot serve the source: no OAuth client configured, or the Apple EventKit reader cannot run in this build. Such sources are not routed from chat."
                 }
               },
               "required": [
                 "id",
                 "name",
                 "access",
-                "authModes"
+                "authModes",
+                "available"
               ],
               "additionalProperties": false
             }

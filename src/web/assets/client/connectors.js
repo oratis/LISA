@@ -29,6 +29,7 @@ const githubErrors = {
   workspace_inaccessible: tr('workspace.access'),
   workspace_eventkit_platform: tr('workspace.platform'),
   workspace_eventkit_build: tr('workspace.build'),
+  workspace_eventkit_unavailable: tr('workspace.unavailable'),
   workspace_eventkit_access: tr('workspace.systemAccess'),
   slack_client_not_configured: tr('connector.error.slack_client_not_configured'),
   slack_reauthorization_required: tr('connector.error.slack_reauthorization_required'),

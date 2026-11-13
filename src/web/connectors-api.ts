@@ -57,7 +57,12 @@ export async function handleConnectorApi(
         }
       }
       json(200, {
-        connectors: CONNECTOR_CATALOG,
+        // Unavailable sources (no OAuth client, or no EventKit reader in this build) stay
+        // listed so a client can explain why they cannot be connected here.
+        connectors: CONNECTOR_CATALOG.map((c) => ({
+          ...c,
+          available: c.id === "github" || services.has(c.id),
+        })),
         ...(session === null ? {} : { requests, unavailableProviders }),
       });
       return true;

@@ -122,10 +122,11 @@ async function registerTodoist(http: Http, signal: AbortSignal): Promise<AppClie
     { signal, staleMs: 60000 },
   );
 }
-export async function appClient(id: CloudId, http: Http, signal: AbortSignal): Promise<AppClient> {
+/** The configured client, or undefined when Todoist should register its own public client. */
+async function configuredClient(id: CloudId): Promise<AppClient | undefined> {
   try {
     const file = process.env.LISA_WORKSPACE_CLIENTS_FILE;
-    if (!file && id === "todoist") return registerTodoist(http, signal);
+    if (!file && id === "todoist") return undefined;
     if (!file) fail("workspace_client_not_configured");
     const stat = await fs.stat(file);
     if (
@@ -136,7 +137,7 @@ export async function appClient(id: CloudId, http: Http, signal: AbortSignal): P
       fail();
     const all = row(JSON.parse(await fs.readFile(file, "utf8"))),
       vendor = workspaceApps[id].vendor;
-    if (id === "todoist" && !all[id]) return registerTodoist(http, signal);
+    if (id === "todoist" && !all[id]) return undefined;
     const config = row(all[id] ?? all[vendor]);
     if (typeof config.clientId !== "string" || !/^[a-zA-Z0-9._-]{3,256}$/.test(config.clientId))
       fail();
@@ -148,6 +149,18 @@ export async function appClient(id: CloudId, http: Http, signal: AbortSignal): P
     return client;
   } catch {
     fail("workspace_client_not_configured");
+  }
+}
+export async function appClient(id: CloudId, http: Http, signal: AbortSignal): Promise<AppClient> {
+  return (await configuredClient(id)) ?? registerTodoist(http, signal);
+}
+/** Whether a sign-in could start without network access: Todoist always can. */
+export async function workspaceClientConfigured(id: CloudId): Promise<boolean> {
+  try {
+    await configuredClient(id);
+    return true;
+  } catch {
+    return false;
   }
 }
 export function validLogin(id: CloudId, raw: string) {

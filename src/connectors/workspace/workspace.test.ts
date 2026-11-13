@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { WorkspaceDriver, readPeriod } from "./driver.js";
+import { WorkspaceDriver, availableWorkspaceIds, readPeriod } from "./driver.js";
 import { workspaceApps, workspaceIds, workspaceReadIntents, type WorkspaceId } from "./catalog.js";
 import { Reader, type Http } from "./http.js";
+import { eventKitAvailable } from "./eventkit.js";
 import { contents, validId } from "./data.js";
 import {
   appClient,
@@ -252,4 +253,42 @@ test("each source matches a plain English (or Chinese) read request", () => {
     "apple-reminders": "List my Apple Reminders",
   };
   for (const id of workspaceIds) assert.deepEqual(workspaceReadIntents(asks[id]), [id], asks[id]);
+});
+test("only sources with a configured client or a runnable EventKit reader are offered", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-workspace-clients-"));
+  const old = process.env.LISA_WORKSPACE_CLIENTS_FILE;
+  t.after(async () => {
+    if (old) process.env.LISA_WORKSPACE_CLIENTS_FILE = old;
+    else delete process.env.LISA_WORKSPACE_CLIENTS_FILE;
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  delete process.env.LISA_WORKSPACE_CLIENTS_FILE;
+  assert.deepEqual(await availableWorkspaceIds(async () => false), ["todoist"]);
+  const file = path.join(dir, "clients.json");
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      microsoft: { clientId: "client", tenant: "12345678-1234-1234-1234-123456789012" },
+      // Incomplete: Figma needs a client secret.
+      figma: { clientId: "client" },
+    }),
+    { mode: 0o600 },
+  );
+  process.env.LISA_WORKSPACE_CLIENTS_FILE = file;
+  assert.deepEqual(await availableWorkspaceIds(async () => false), [
+    "todoist",
+    "outlook-mail",
+    "outlook-calendar",
+    "onedrive",
+    "sharepoint",
+  ]);
+  assert.deepEqual((await availableWorkspaceIds(async () => true)).slice(-2), [
+    "apple-calendar",
+    "apple-reminders",
+  ]);
+  // A build without the reader source (Lisa.app's embedded runtime) cannot offer Apple sources.
+  assert.equal(
+    await eventKitAvailable({ source: path.join(dir, "missing.swift"), plist: file }),
+    false,
+  );
 });

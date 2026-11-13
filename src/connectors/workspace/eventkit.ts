@@ -21,17 +21,47 @@ async function built(binary: string) {
     throw e;
   }
 }
+// The reader is compiled from this Swift source on first use and cached per source hash.
+// The source ships in the npm package but not in Lisa.app's embedded runtime.
 const source = fileURLToPath(new URL("../../../packaging/eventkit/Reader.swift", import.meta.url));
 const plist = fileURLToPath(new URL("../../../packaging/eventkit/Info.plist", import.meta.url));
-async function executable(signal: AbortSignal) {
+type ReaderFiles = { source: string; plist: string };
+async function binaryPath(files: ReaderFiles = { source, plist }) {
   const hash = createHash("sha256")
-    .update(await fs.readFile(source))
-    .update(await fs.readFile(plist))
+    .update(await fs.readFile(files.source))
+    .update(await fs.readFile(files.plist))
     .digest("hex")
     .slice(0, 20);
-  const dir = path.join(lisaHome(), "connectors", "eventkit-bin");
+  return path.join(lisaHome(), "connectors", "eventkit-bin", "reader-" + process.arch + "-" + hash);
+}
+const supportedMac = () => process.platform === "darwin" && parseInt(os.release()) >= 23;
+/**
+ * Whether the Apple sources can work on this install: macOS 14+, the reader source is
+ * present, and either a reader is already built or a Swift toolchain (Xcode or its Command
+ * Line Tools) can build one. Unavailable sources are neither registered nor routed.
+ */
+export async function eventKitAvailable(files?: ReaderFiles): Promise<boolean> {
+  if (!supportedMac()) return false;
+  try {
+    if (await built(await binaryPath(files))) return true;
+    // xcode-select fails when no developer directory exists, so the xcrun probe that
+    // follows can never open the Command Line Tools install prompt.
+    await exec("/usr/bin/xcode-select", ["-p"], { env: nativeEnv, timeout: 5000 });
+    await exec("/usr/bin/xcrun", ["--find", "swiftc"], { env: nativeEnv, timeout: 10000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function executable(signal: AbortSignal) {
+  let binary: string;
+  try {
+    binary = await binaryPath();
+  } catch {
+    fail("workspace_eventkit_unavailable");
+  }
+  const dir = path.dirname(binary);
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-  const binary = path.join(dir, "reader-" + process.arch + "-" + hash);
   if (await built(binary)) return binary;
   return withFileLock(
     binary + ".lock",
@@ -85,8 +115,7 @@ export type NativeBridge = (
   period?: Period,
 ) => Promise<unknown>;
 export const eventKit: NativeBridge = async (entity, action, key, signal, period) => {
-  if (process.platform !== "darwin" || parseInt(os.release()) < 23)
-    fail("workspace_eventkit_platform");
+  if (!supportedMac()) fail("workspace_eventkit_platform");
   const bin = await executable(signal);
   try {
     const { stdout } = await exec(

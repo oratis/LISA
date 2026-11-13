@@ -45,7 +45,7 @@ import {
   type NotionAccount,
   type NotionResource,
 } from "../connectors/notion-driver.js";
-import { WorkspaceDriver } from "../connectors/workspace/driver.js";
+import { WorkspaceDriver, availableWorkspaceIds } from "../connectors/workspace/driver.js";
 import {
   workspaceReadIntents,
   workspaceIds,
@@ -1060,12 +1060,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       : undefined;
   const taskConnectors = new Map<ConnectorProvider, ConnectorService>();
   if (!cloudEdition && capabilityProfile === "local-owner" && connectorSecrets) {
+    // Only sources that can work here: a configured OAuth client (Todoist needs none) or a
+    // runnable EventKit reader, checked once at startup. Chat routing below skips the rest.
+    const injected = opts.workspaceDrivers ?? {};
+    const ready = workspaceIds.every((id) => injected[id])
+      ? new Set<WorkspaceId>()
+      : new Set(await availableWorkspaceIds());
     for (const provider of workspaceIds) {
+      const driver = injected[provider];
+      if (!driver && !ready.has(provider)) continue;
       taskConnectors.set(
         provider,
         new ReadonlyConnector({
           home: lisaHome(),
-          driver: opts.workspaceDrivers?.[provider] ?? new WorkspaceDriver(provider),
+          driver: driver ?? new WorkspaceDriver(provider),
           secrets: connectorSecrets,
           resume: resumeConnector,
           changed: (sessionId) =>
@@ -5508,7 +5516,7 @@ self.addEventListener('fetch', (event) => {
         let anyTool = false;
         try {
           const requestedProviders: ConnectorProvider[] = [
-            ...workspaceReadIntents(message),
+            ...workspaceReadIntents(message).filter((id) => taskConnectors.has(id)),
             ...googleReadIntents(message),
             ...(isLinearReadRequest(message) ? ["linear" as const] : []),
             ...(isDriveReadRequest(message) ? ["google-drive" as const] : []),

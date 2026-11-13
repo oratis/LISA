@@ -1,7 +1,20 @@
 import { type CredentialAccess, type ReadonlyDriver, ConnectorError } from "../types.js";
 import { redactKnownSecrets } from "../../warden/secrets.js";
-import { workspaceApps, toolName, type WorkspaceId, type CloudId } from "./catalog.js";
-import { authorizeCloud, appClient, refreshCloud, validLogin, type Grant } from "./oauth.js";
+import {
+  workspaceApps,
+  workspaceIds,
+  toolName,
+  type WorkspaceId,
+  type CloudId,
+} from "./catalog.js";
+import {
+  authorizeCloud,
+  appClient,
+  refreshCloud,
+  validLogin,
+  workspaceClientConfigured,
+  type Grant,
+} from "./oauth.js";
 import {
   choices,
   contents,
@@ -12,9 +25,28 @@ import {
   type Period,
 } from "./data.js";
 import { fail, Reader, row, workspaceHttp, type Http } from "./http.js";
-import { eventKit, type NativeBridge } from "./eventkit.js";
+import { eventKit, eventKitAvailable, type NativeBridge } from "./eventkit.js";
 import { userInfo } from "node:os";
 
+const isNative = (id: WorkspaceId) => id === "apple-calendar" || id === "apple-reminders";
+/**
+ * Sources this install can serve: cloud sources whose OAuth client is configured (Todoist
+ * registers its own public client) and Apple sources when the EventKit reader can run.
+ * Others are not registered, so a message naming them stays an ordinary chat.
+ */
+export async function availableWorkspaceIds(
+  nativeReady: () => Promise<boolean> = eventKitAvailable,
+): Promise<WorkspaceId[]> {
+  const native = nativeReady();
+  const ready = await Promise.all(
+    workspaceIds.map(async (id) =>
+      isNative(id)
+        ? await native
+        : id === "todoist" || (await workspaceClientConfigured(id as CloudId)),
+    ),
+  );
+  return workspaceIds.filter((_, i) => ready[i]);
+}
 export function readPeriod(from: unknown, to: unknown): Period {
   const start = from === undefined ? new Date() : new Date(typeof from === "string" ? from : NaN);
   const end =
@@ -59,7 +91,7 @@ export class WorkspaceDriver implements ReadonlyDriver<Resource, Resource> {
     };
   }
   private get native() {
-    return this.id === "apple-calendar" || this.id === "apple-reminders";
+    return isNative(this.id);
   }
   private get cloudId() {
     if (this.native) fail();

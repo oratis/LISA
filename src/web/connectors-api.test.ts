@@ -96,3 +96,40 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal((await post("{}", {}, "linear")).status, 403);
   assert.equal(actions, 5 + workspaceIds.length);
 });
+
+test("the catalog marks sources this install cannot serve, and their routes stay closed", async (t) => {
+  const fake = { list: async () => [] } as unknown as ConnectorService;
+  const services = new Map<ConnectorProvider, ConnectorService>([
+    ["gmail", fake],
+    ["outlook-mail", fake],
+  ]);
+  const server = http.createServer((req, res) => {
+    void handleConnectorApi(req, res, req.url!, services, true).then((handled) => {
+      if (!handled) {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const { connectors } = (await (await fetch(base + "/api/connectors")).json()) as {
+    connectors: Array<{ id: string; available: boolean }>;
+  };
+  const available = new Map(connectors.map((c) => [c.id, c.available]));
+  assert.equal(available.get("github"), true);
+  assert.equal(available.get("gmail"), true);
+  assert.equal(available.get("outlook-mail"), true);
+  assert.equal(available.get("figma"), false);
+  assert.equal(available.get("apple-calendar"), false);
+  const figma = await fetch(base + "/api/connectors/figma/requests/test/authorize", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(figma.status, 404);
+});

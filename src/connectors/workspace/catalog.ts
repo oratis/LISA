@@ -114,7 +114,10 @@ const writeVerb =
 // "what", "find" and "show" are left out, so "What is Figma?" stays an ordinary chat.
 const readVerb =
   /查看|读取|看看|列出|汇总|总结|梳理|只读|安排|待办|日程|查找|\b(?:read|list|summari[sz]e|review|inspect|schedule)\b/i;
-/** Sources a message explicitly asks to read. */
+/**
+ * Sources a message explicitly asks to read. The server further drops sources that are not
+ * available on this install (no OAuth client configured, or no EventKit reader).
+ */
 export function workspaceReadIntents(text: string): WorkspaceId[] {
   if (writeVerb.test(text) || !readVerb.test(text)) return [];
   return workspaceIds.filter((id) => workspaceApps[id].intent.test(text));

@@ -326,9 +326,9 @@ Jira、Confluence 和 Figma 使用官方 REST API。这样可按项目、页面�
 
 ### 配置与使用
 
-Todoist 在首次点击登录时向官方注册仅含 `data:read` 的 PKCE 公共客户端，本机复用该客户端 ID。Apple 两项需要 macOS 14 或以上版本及 Xcode Command Line Tools。首次点击授权时，LISA 在本机编译并签名随包提供的 EventKit 助手，系统会分别询问日历和提醒事项的**完全访问**权限。助手只实现读取，连接卡再限定日历或列表。系统授权、机器和当前 OS 用户在执行时复核。[Todoist OAuth 与动态注册](https://developer.todoist.com/api/v1/) · [Apple EventKit 权限](https://developer.apple.com/documentation/eventkit/accessing-the-event-store)
+Todoist 在首次点击登录时向官方注册仅含 `data:read` 的 PKCE 公共客户端，本机复用该客户端 ID。Apple 两项需要 macOS 14 或以上版本及 Xcode Command Line Tools。首次点击授权时，LISA 在本机编译并签名随包提供的 EventKit 助手，系统会分别询问日历和提醒事项的**完全访问**权限。助手只实现读取，连接卡再限定日历或列表。系统授权、机器和当前 OS 用户在执行时复核。Lisa.app 的内嵌运行时不含助手源码，没有 Swift 工具链的 npm 安装也无法编译助手；这两种情况下 Apple 两项标为不可用，聊天中也不会触发。[Todoist OAuth 与动态注册](https://developer.todoist.com/api/v1/) · [Apple EventKit 权限](https://developer.apple.com/documentation/eventkit/accessing-the-event-store)
 
-其余云服务需要注册 OAuth 应用。在 `~/.lisa/config.env` 设置 `LISA_WORKSPACE_CLIENTS_FILE` 指向本机 JSON 文件的绝对路径，将权限设为 `0600`，重启本机 LISA。只需填写使用的服务。每个连接器的键优先于共享的供应商键，方便管理员为不同权限使用单独的应用。
+其余云服务需要注册 OAuth 应用。在 `~/.lisa/config.env` 设置 `LISA_WORKSPACE_CLIENTS_FILE` 指向本机 JSON 文件的绝对路径，将权限设为 `0600`，重启本机 LISA。只需填写使用的服务；未配置客户端的来源不会注册，聊天中提到它们按普通对话处理，`GET /api/connectors` 以 `available: false` 标出。每个连接器的键优先于共享的供应商键，方便管理员为不同权限使用单独的应用。
 
 ```json
 {
