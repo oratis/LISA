@@ -16,6 +16,20 @@ test.describe("Google read-only connections", () => {
   let home: string, base: string, server: http.Server;
   let reads = 0;
   const account = { sub: "123", email: "fixture@example.com", email_verified: true };
+  const labels = [
+    { id: "INBOX", name: "收件箱" },
+    ...[
+      "已加星标",
+      "工作邮件",
+      "会议",
+      "财务",
+      "收据",
+      "项目更新",
+      "私人邮件",
+      "旅行",
+      "稍后阅读",
+    ].map((name, i) => ({ id: `Label_${i}`, name })),
+  ];
   test.beforeAll(async () => {
     home = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-google-browser-"));
     Object.assign(process.env, {
@@ -70,8 +84,9 @@ test.describe("Google read-only connections", () => {
             };
             return url.includes("/calendarList/") ? calendar : { items: [calendar] };
           }
-          if (url.endsWith("/labels")) return { labels: [{ id: "INBOX", name: "Inbox" }] };
-          if (url.includes("/labels/")) return { id: "INBOX", name: "Inbox" };
+          if (url.endsWith("/labels")) return { labels };
+          if (url.includes("/labels/"))
+            return labels.find((label) => url.endsWith("/" + label.id))!;
           reads++;
           if (url.includes("/events?"))
             return {
@@ -155,11 +170,13 @@ test.describe("Google read-only connections", () => {
   }
   for (const [name, prompt, button, resource] of [
     ["Google Calendar", "查看 Google Calendar 明天日程", "连接日历，读取日程详情", "Work calendar"],
-    ["Gmail", "总结 Gmail 今天邮件", "登录 Google，连接 Gmail", "Inbox"],
+    ["Gmail", "总结 Gmail 今天邮件", "登录 Google，连接 Gmail", "收件箱"],
   ]) {
     test(`${name}: OAuth callback → resource selection → automatic same-chat result → reload`, async ({
       page,
     }) => {
+      await page.setViewportSize({ width: 1440, height: 960 });
+      if (name === "Gmail") await page.emulateMedia({ colorScheme: "dark" });
       await start(page, prompt!);
       const card = page.getByRole("region", { name: `${name} 只读连接` });
       await card.getByRole("button", { name: button!, exact: true }).click();
@@ -178,12 +195,42 @@ test.describe("Google read-only connections", () => {
       const confirm = card.getByRole("button", { name: "只读连接并继续" });
       await expect(confirm).toBeDisabled();
       await expect(card.getByText(account.email, { exact: true })).toBeVisible();
-      await card.getByRole("checkbox", { name: resource!, exact: true }).check();
+      if (name === "Gmail") {
+        const all = card.getByRole("button", { name: "全选", exact: true });
+        const checked = card.getByRole("checkbox", { checked: true });
+        await expect(all).toBeEnabled();
+        await expect(checked).toHaveCount(0);
+        await all.focus();
+        await page.keyboard.press("Space");
+        await expect(checked).toHaveCount(labels.length);
+        await expect(confirm).toBeEnabled();
+        await card.getByRole("button", { name: "清空选择" }).click();
+        await expect(checked).toHaveCount(0);
+        await expect(confirm).toBeDisabled();
+        await all.click();
+        await card.getByRole("checkbox", { name: "财务" }).uncheck();
+        await expect(card.getByText("已选 9 / 10 项")).toBeVisible();
+      } else {
+        await card.getByRole("checkbox", { name: resource!, exact: true }).check();
+      }
       await fs.mkdir(".tmp", { recursive: true });
       await card.screenshot({
         path: `.tmp/${name === "Gmail" ? "gmail" : "calendar"}-connection-card.png`,
       });
+      if (name === "Gmail") {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.emulateMedia({ colorScheme: "light" });
+        await card.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+        await card.screenshot({ path: ".tmp/gmail-connection-card-mobile.png" });
+      }
+      const payload = page.waitForRequest((req) => req.url().endsWith("/confirm"));
       await confirm.click();
+      const { resources } = (await payload).postDataJSON();
+      expect(resources).toEqual(
+        name === "Gmail"
+          ? labels.filter((label) => label.name !== "财务").map((label) => label.id)
+          : [account.email],
+      );
       await expect(card.getByText("原任务已完成", { exact: true })).toBeVisible();
       await expect(
         page.locator("#log .msg").filter({ hasText: "Google 只读任务已自动完成。" }),
@@ -196,6 +243,44 @@ test.describe("Google read-only connections", () => {
       await expect(card.getByRole("button", { name: "断开 LISA 连接" })).toHaveCount(0);
     });
   }
+  test("Gmail bulk selection respects pagination and keeps manually chosen labels at the limit", async ({
+    page,
+  }) => {
+    // Non-GitHub cards are restored from the catalog response in one request.
+    await page.route("**/api/connectors?*", async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      json.requests = [
+        { provider: "gmail", request: { id: "many", status: "selecting", account, resources: [] } },
+      ];
+      return route.fulfill({ response, json });
+    });
+    await page.route("**/api/connectors/gmail/requests/many/resources?*", (route) => {
+      const first = new URL(route.request().url()).searchParams.get("page") === "1";
+      const resources = Array.from({ length: first ? 30 : 2 }, (_, i) => ({
+        id: String((first ? 1 : 31) + i),
+        name: "Label " + ((first ? 1 : 31) + i),
+      }));
+      return route.fulfill({ json: { resources } });
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(base);
+    const card = page.getByRole("region", { name: "Gmail 只读连接" });
+    const checked = card.getByRole("checkbox", { checked: true });
+    await card.getByRole("button", { name: "全选已加载项" }).click();
+    await expect(checked).toHaveCount(30);
+    await card.getByRole("button", { name: "加载更多" }).click();
+    const last = card.getByRole("checkbox", { name: "Label 32", exact: true });
+    await expect(last).toBeDisabled();
+    await card.getByRole("button", { name: "清空选择" }).click();
+    await last.check();
+    await card.getByRole("button", { name: "选满 30 项" }).click();
+    await expect(checked).toHaveCount(30);
+    await expect(last).toBeChecked();
+    await expect(card.getByText("已选 30 项 · 最多 30 项")).toBeVisible();
+    await expect(card.getByRole("button", { name: "只读连接并继续" })).toBeEnabled();
+    expect(await card.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  });
   test("combined sources are explicit and never silently complete a partial task", async ({
     page,
   }) => {

@@ -10,13 +10,17 @@
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro build",
+    "test": "npm run build && playwright test",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^7.3.8"
+    "astro": "^7.4.7"
   },
   "engines": {
     "node": ">=22.19.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
   }
 }

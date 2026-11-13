@@ -71,7 +71,13 @@ export interface ToolContext {
   ) => Promise<{ allow: boolean; reason?: string }> | { allow: boolean; reason?: string };
 }
 
-export type StoredMessage = Anthropic.MessageParam;
+/**
+ * One turn of conversation history. Only the two conversational roles: the
+ * SDK's `MessageParam` also admits a mid-conversation `role: "system"`
+ * message, which LISA never writes — the OpenAI and Gemini translators send
+ * any non-user message as an assistant turn.
+ */
+export type StoredMessage = Anthropic.UserMessageParam | Anthropic.AssistantMessageParam;
 
 export interface SkillFrontmatter {
   name: string;
