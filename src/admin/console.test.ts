@@ -15,6 +15,12 @@ import {
   consoleEnabled,
   adminAccountAllowed,
   _expireAdminPolicyForTests,
+  planArchive,
+  applyArchive,
+  AUDIT_INLINE_MAX,
+  AUDIT_INLINE_MAX_BYTES,
+  type AdminState,
+  type AuditEntry,
 } from "./store.js";
 import { handleConsole, consoleSecret, csvValue } from "./http.js";
 import { consoleSnapshot } from "./data.js";
@@ -595,6 +601,180 @@ test("tenant hot path caches the admin policy, applies own writes at once and su
   } finally {
     spy.mock.restore();
   }
+});
+async function archived(kind: "audit" | "tickets") {
+  const dir = path.join(home, "admin", "archive");
+  const names = (await fs.readdir(dir).catch(() => [] as string[])).filter((n) =>
+    n.startsWith(`${kind}-`),
+  );
+  const out: Record<string, unknown>[] = [];
+  for (const n of names.sort())
+    out.push(...JSON.parse(await fs.readFile(path.join(dir, n), "utf8")).entries);
+  return out;
+}
+const stateFile = () => path.join(home, "admin", "state.json");
+const auditEntry = (i: number, extra: Partial<AuditEntry> = {}): AuditEntry => ({
+  id: `legacy-${i}`,
+  at: 1700000000000 + i,
+  actor: "test",
+  action: "test",
+  target: "test",
+  reason: "test",
+  ...extra,
+});
+const exportAudit = () =>
+  fetch(base + "/console/api/export?days=7&dataset=audit", {
+    headers: { cookie: `lisa_console=${token(admin)}` },
+  });
+const passwordLogin = () =>
+  request("/console/api/login", undefined, {
+    method: "password",
+    email: admin.email,
+    password: "a-password-123",
+  });
+test("login and export never fail on audit capacity; overflow moves to archive records, none lost", async () => {
+  // What the first release could hold (its hard limit was 4,000), plus large entries.
+  const live = await readAdminState();
+  live.audit = [
+    ...Array.from({ length: 4000 }, (_, i) => auditEntry(i)),
+    ...Array.from({ length: 40 }, (_, i) =>
+      auditEntry(4000 + i, { detail: { note: "备".repeat(2000) } }),
+    ),
+  ];
+  await fs.writeFile(stateFile(), JSON.stringify(live));
+  assert.equal((await passwordLogin()).response.status, 200);
+  assert.equal((await exportAudit()).status, 200);
+  const state = await readAdminState();
+  assert.ok(state.audit.length <= AUDIT_INLINE_MAX);
+  assert.ok(Buffer.byteLength(JSON.stringify(state.audit)) <= AUDIT_INLINE_MAX_BYTES);
+  assert.ok((await fs.stat(stateFile())).size < 640 * 1024);
+  const all = [...(await archived("audit")), ...state.audit].map((a) => a.id as string);
+  assert.equal(new Set(all).size, all.length);
+  for (let i = 0; i < 4040; i++) assert.ok(all.includes(`legacy-${i}`), `legacy-${i}`);
+  assert.deepEqual(
+    state.audit.slice(-2).map((a) => a.action),
+    ["login", "export"],
+  );
+});
+test("resolved tickets move to the archive; growth past the document budget is refused, login is not", async () => {
+  const live = await readAdminState();
+  const ticket = (i: number, status: string, note: string) => ({
+    id: `ticket-${i}`,
+    uid: "",
+    title: `工单 ${i}`,
+    note,
+    priority: "normal",
+    status,
+    assignee: "",
+    createdAt: 1700000000000 + i,
+    updatedAt: 1700000000000 + i,
+  });
+  live.tickets = [
+    ...Array.from({ length: 250 }, (_, i) => ticket(i, "resolved", "已处理")),
+    ...Array.from({ length: 60 }, (_, i) => ticket(1000 + i, "open", "长".repeat(3000))),
+  ];
+  await fs.writeFile(stateFile(), JSON.stringify(live));
+  assert.equal((await passwordLogin()).response.status, 200);
+  let state = await readAdminState();
+  assert.equal(state.tickets.length, 60);
+  assert.ok(state.tickets.every((t) => t.status === "open"));
+  const ids = [...(await archived("tickets")), ...state.tickets].map((t) => t.id as string);
+  assert.equal(new Set(ids).size, 310);
+  // 60 large open tickets exceed the main-document budget: no further growth.
+  const create = await request("/console/api/action", admin, {
+    action: "ticket",
+    uid: "",
+    title: "新工单",
+    note: "x",
+    status: "open",
+    priority: "normal",
+    assignee: "",
+    reason: "记录问题",
+    revision: state.revision,
+  });
+  assert.equal(create.response.status, 409);
+  assert.equal(create.body.error, "admin_store_full");
+  assert.equal((await exportAudit()).status, 200);
+  assert.equal((await passwordLogin()).response.status, 200);
+  // Resolving shrinks the document (the ticket is archived), so it is allowed.
+  state = await readAdminState();
+  const resolve = await request("/console/api/action", admin, {
+    action: "ticket",
+    id: "ticket-1000",
+    uid: "",
+    title: "工单 1000",
+    note: "长".repeat(3000),
+    status: "resolved",
+    priority: "normal",
+    assignee: "",
+    reason: "问题已解决",
+    revision: state.revision,
+  });
+  assert.equal(resolve.response.status, 200);
+  state = await readAdminState();
+  assert.ok(!state.tickets.some((t) => t.id === "ticket-1000"));
+  assert.ok((await archived("tickets")).some((t) => t.id === "ticket-1000"));
+});
+test("account notes cannot grow the main document past its budget; clearing one still works", async () => {
+  const live = await readAdminState();
+  for (let i = 0; i < 100; i++)
+    live.users[`seed-${i}`] = { suspended: true, note: "注".repeat(2000) };
+  live.users[regular.uid] = { suspended: false, note: "注".repeat(2000) };
+  await fs.writeFile(stateFile(), JSON.stringify(live));
+  const update = (note: string) =>
+    readAdminState().then((s) =>
+      request("/console/api/action", admin, {
+        action: "user",
+        uid: analyst.uid,
+        suspended: false,
+        note,
+        reason: "更新备注",
+        revision: s.revision,
+      }),
+    );
+  const grow = await update("x");
+  assert.equal(grow.response.status, 409);
+  assert.equal(grow.body.error, "admin_store_full");
+  assert.equal((await passwordLogin()).response.status, 200);
+  const s = await readAdminState();
+  const clear = await request("/console/api/action", admin, {
+    action: "user",
+    uid: regular.uid,
+    suspended: false,
+    note: "",
+    reason: "清理备注",
+    revision: s.revision,
+  });
+  assert.equal(clear.response.status, 200);
+  assert.equal((await readAdminState()).users[regular.uid], undefined);
+});
+test("an archive plan removes only the entries it archived, even after concurrent changes", () => {
+  const s: AdminState = emptyState();
+  s.audit = Array.from({ length: 1001 }, (_, i) => auditEntry(i));
+  s.tickets = Array.from({ length: 201 }, (_, i) => ({
+    id: `t-${i}`,
+    uid: "",
+    title: "t",
+    note: "",
+    priority: "normal",
+    status: "resolved",
+    assignee: "",
+    createdAt: i,
+    updatedAt: i,
+  }));
+  const plan = planArchive(s);
+  assert.equal(plan.audit.size, 501);
+  assert.ok(plan.tickets.size > 0);
+  // Meanwhile: another instance archived a prefix, new entries arrived, and an
+  // archived ticket was reopened.
+  const current = structuredClone(s);
+  current.audit = [...current.audit.slice(100), auditEntry(5000)];
+  current.tickets[0] = { ...current.tickets[0]!, status: "open", updatedAt: 9999 };
+  applyArchive(current, plan);
+  assert.equal(current.audit.length, 501);
+  assert.equal(current.audit.at(-1)?.id, "legacy-5000");
+  assert.equal(current.tickets[0]?.status, "open");
+  assert.equal(planArchive(current).records.length, 0);
 });
 test("CSV defuses spreadsheet formulas and escapes quotes", () => {
   assert.equal(csvValue("=SUM(A1:A2)"), `"'=SUM(A1:A2)"`);

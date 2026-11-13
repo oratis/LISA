@@ -276,13 +276,16 @@ async function change(acct: AccountRecord, role: Role, data: Record<string, unkn
       if (data.suspended && (target.uid === acct.uid || owners().includes(target.email ?? "")))
         throw new ConsoleError("protected_admin", 409);
       if (role !== "admin" && roleFor(target, s)) throw new ConsoleError("forbidden", 403);
-      s.users[target.uid] = { suspended: data.suspended, note: text(data.note, 2000) };
+      const after = { suspended: data.suspended, note: text(data.note, 2000) };
+      // The default needs no record; dropping it keeps the main document small.
+      if (!after.suspended && !after.note) delete s.users[target.uid];
+      else s.users[target.uid] = after;
       appendAudit(s, {
         actor: actor(acct),
         action,
         target: target.uid,
         reason,
-        detail: { before: prior, after: s.users[target.uid] },
+        detail: { before: prior, after },
       });
     } else if (action === "role") {
       if (role !== "admin") throw new ConsoleError("forbidden", 403);
@@ -307,7 +310,9 @@ async function change(acct: AccountRecord, role: Role, data: Record<string, unkn
     } else if (action === "ticket") {
       const id = data.id ? text(data.id, 100) : crypto.randomUUID();
       const old = s.tickets.find((t) => t.id === id);
-      if (!old && s.tickets.length >= 500) throw new ConsoleError("ticket_archive_required", 409);
+      // Resolved tickets move to the archive on write; only open ones count.
+      if (!old && s.tickets.filter((t) => t.status !== "resolved").length >= 500)
+        throw new ConsoleError("ticket_archive_required", 409);
       const uid = text(data.uid, 100);
       if (uid && !target) throw new ConsoleError("account_not_found", 404);
       const title = text(data.title, 200),

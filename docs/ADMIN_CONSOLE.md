@@ -105,11 +105,25 @@ Account/password/Apple authorization material is never exposed by reports.
 CSV cells are escaped against spreadsheet formula execution. CSP disallows
 inline scripts, external resources, frames and object embeds.
 
-Audit records are never silently truncated. At 4,000 audit entries, 2,000 grant
-operation IDs, or 500 tickets, writes stop with an explicit archive-required
-error. Archive under operator control before these limits (and, in Firestore,
-before its document-size limit); this release targets the existing small,
-single-instance service. Do not scale file mode to multiple instances.
+Audit records are never silently truncated, and audit capacity never blocks a
+login or export. Once the main document holds more than 1,000 audit entries or
+128 KiB of them, the oldest entries move into append-only archive records
+(`<global home>/admin/archive/audit-*.json`, or `lisa-admin-archive/audit-*`
+documents in Firestore; at most 500 entries / 512 KiB each) until half the limit
+remains. Each record is written before its entries leave the main document, and
+its name derives from exactly those entries, so a retried or concurrent archive
+can duplicate a record but never lose an entry (readers dedupe by entry id).
+Resolved tickets beyond 200 tickets or 128 KiB move to `tickets-*` records the
+same way. The console lists only the entries still in the main document.
+
+Everything else in the main document (roles, account notes, open tickets, grant
+records) is limited to 512 KiB: a change that would grow it past that is
+refused with `admin_store_full`, while shrinking changes are always accepted.
+Clearing an account note and suspension removes its record. At most 500 open
+tickets and 2,000 grant records are kept; grant records are not archived because
+they back credit idempotency, so new grants stop with
+`operations_archive_required` at that point. Do not scale file mode to multiple
+instances.
 
 ## Validation and release
 

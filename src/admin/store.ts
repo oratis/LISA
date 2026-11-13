@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { lisaGlobalHome } from "../paths.js";
-import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
+import { firestoreEnabled, getDoc, setDoc, casUpdate } from "../cloud/firestore.js";
 import { logError } from "../log.js";
 import type { AccountRecord } from "../web/accounts.js";
 
@@ -150,9 +150,11 @@ export function parseState(v: unknown): AdminState {
   return v as unknown as AdminState;
 }
 const file = () => path.join(lisaGlobalHome(), "admin", "state.json");
+const MAIN_DOC = "lisa-global/admin";
+const ARCHIVE_COLLECTION = "lisa-admin-archive";
 export async function readAdminState(): Promise<AdminState> {
   if (firestoreEnabled()) {
-    const doc = await getDoc("lisa-global/admin");
+    const doc = await getDoc(MAIN_DOC);
     return doc ? parseState(doc.data) : emptyState();
   }
   try {
@@ -162,22 +164,189 @@ export async function readAdminState(): Promise<AdminState> {
     throw new ConsoleError("admin_store_unavailable", 503);
   }
 }
+// ── Capacity ────────────────────────────────────────────────────────────────
+// The main document is read on every console request and, in Firestore mode,
+// is one document capped at 1 MiB. Audit history and resolved tickets move out
+// to append-only archive records (one file under admin/archive/, or one
+// lisa-admin-archive document, per record) so the main document stays small
+// while nothing is dropped. Everything else (roles, account notes, open
+// tickets, grant records) is refused growth past CORE_MAX_BYTES instead.
+// Grant records are not archived: they back credit idempotency.
+const KiB = 1024;
+export const AUDIT_INLINE_MAX = 1000;
+export const AUDIT_INLINE_MAX_BYTES = 128 * KiB;
+export const TICKETS_INLINE_MAX = 200;
+export const TICKETS_INLINE_MAX_BYTES = 128 * KiB;
+export const CORE_MAX_BYTES = 512 * KiB;
+const ARCHIVE_RECORD_MAX = 500;
+const ARCHIVE_RECORD_MAX_BYTES = 512 * KiB;
+type Ticket = AdminState["tickets"][number];
+export interface ArchiveRecord {
+  name: string;
+  kind: "audit" | "tickets";
+  entries: (AuditEntry | Ticket)[];
+}
+export interface ArchivePlan {
+  records: ArchiveRecord[];
+  audit: Set<string>;
+  tickets: Set<string>;
+}
+const bytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
+const auditKey = (a: AuditEntry) => `${a.id}\u0000${a.at}`;
+// A ticket leaves only in the exact resolved version that was archived.
+const ticketKey = (t: Ticket) => `${t.id}\u0000${t.updatedAt}\u0000${t.status}`;
+/**
+ * How many of the oldest `items` to move out once they (with `fixed` entries
+ * that stay) exceed the limits, so that what remains fits in half of them.
+ */
+function overflow<T>(
+  items: T[],
+  maxCount: number,
+  maxBytes: number,
+  fixed: unknown[] = [],
+): number {
+  const sizes = items.map(bytes);
+  let count = fixed.length + items.length;
+  let total = fixed.reduce<number>((a, e) => a + bytes(e), 0) + sizes.reduce((a, b) => a + b, 0);
+  if (count <= maxCount && total <= maxBytes) return 0;
+  let n = 0;
+  while (n < items.length && (count > maxCount / 2 || total > maxBytes / 2)) {
+    total -= sizes[n++]!;
+    count--;
+  }
+  return n;
+}
+function records<T extends AuditEntry | Ticket>(
+  kind: ArchiveRecord["kind"],
+  entries: T[],
+  key: (e: T) => string,
+): ArchiveRecord[] {
+  const out: ArchiveRecord[] = [];
+  let chunk: T[] = [];
+  let size = 0;
+  const flush = () => {
+    if (!chunk.length) return;
+    const first = chunk[0]!;
+    const at = "updatedAt" in first ? first.updatedAt : first.at;
+    const digest = crypto
+      .createHash("sha256")
+      .update(chunk.map(key).join("\n"))
+      .digest("hex")
+      .slice(0, 16);
+    // Sorts chronologically; the same entries always get the same name.
+    out.push({ name: `${kind}-${String(at).padStart(13, "0")}-${digest}`, kind, entries: chunk });
+    chunk = [];
+    size = 0;
+  };
+  for (const e of entries) {
+    const n = bytes(e);
+    if (chunk.length >= ARCHIVE_RECORD_MAX || size + n > ARCHIVE_RECORD_MAX_BYTES) flush();
+    chunk.push(e);
+    size += n;
+  }
+  flush();
+  return out;
+}
+/** What to move out of `s`: the oldest audit entries and oldest resolved tickets. */
+export function planArchive(s: AdminState): ArchivePlan {
+  const audit = s.audit.slice(0, overflow(s.audit, AUDIT_INLINE_MAX, AUDIT_INLINE_MAX_BYTES));
+  const resolved = s.tickets
+    .filter((t) => t.status === "resolved")
+    .sort((a, b) => a.updatedAt - b.updatedAt);
+  const open = s.tickets.filter((t) => t.status !== "resolved");
+  const tickets = resolved.slice(
+    0,
+    overflow(resolved, TICKETS_INLINE_MAX, TICKETS_INLINE_MAX_BYTES, open),
+  );
+  return {
+    records: [...records("audit", audit, auditKey), ...records("tickets", tickets, ticketKey)],
+    audit: new Set(audit.map(auditKey)),
+    tickets: new Set(tickets.map(ticketKey)),
+  };
+}
+/** Remove exactly the archived entries; anything added or changed since stays. */
+export function applyArchive(s: AdminState, plan: ArchivePlan): void {
+  s.audit = s.audit.filter((a) => !plan.audit.has(auditKey(a)));
+  s.tickets = s.tickets.filter((t) => !plan.tickets.has(ticketKey(t)));
+}
+const coreBytes = (s: AdminState) => bytes({ ...s, audit: [] });
+/** Refuse a change that grows the non-audit part past its budget. */
+function checkCapacity(s: AdminState, plan: ArchivePlan, before: number): void {
+  const after = coreBytes({
+    ...s,
+    tickets: s.tickets.filter((t) => !plan.tickets.has(ticketKey(t))),
+  });
+  if (after > CORE_MAX_BYTES && after > before) throw new ConsoleError("admin_store_full", 409);
+}
+async function writeArchiveRecord(r: ArchiveRecord): Promise<void> {
+  const data = { schema: 1, kind: r.kind, archivedAt: Date.now(), entries: r.entries };
+  if (firestoreEnabled()) {
+    // Idempotent: a record's name is derived from exactly the entries it holds.
+    await setDoc(`${ARCHIVE_COLLECTION}/${r.name}`, data);
+    return;
+  }
+  const dir = path.join(path.dirname(file()), "archive");
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  const temporary = path.join(dir, `${r.name}.${crypto.randomUUID()}.tmp`);
+  await fs.writeFile(temporary, JSON.stringify(data), { mode: 0o600 });
+  await fs.rename(temporary, path.join(dir, `${r.name}.json`));
+}
+/** Firestore: archive records first, then remove exactly those entries by CAS. */
+async function archiveFirestore(): Promise<void> {
+  const doc = await getDoc(MAIN_DOC);
+  if (!doc) return;
+  const plan = planArchive(parseState(doc.data));
+  if (!plan.records.length) return;
+  for (const r of plan.records) await writeArchiveRecord(r);
+  await casUpdate(MAIN_DOC, (current) => {
+    if (!current) return { next: null, result: undefined };
+    const s = parseState(current);
+    const size = s.audit.length + s.tickets.length;
+    applyArchive(s, plan);
+    if (s.audit.length + s.tickets.length === size) return { next: null, result: undefined };
+    s.revision++;
+    return { next: s as unknown as Record<string, unknown>, result: undefined };
+  });
+}
+
 // File mode is supported only by the existing single-instance deployment.
 // Serialize mutations in-process (GCS FUSE does not support hard-link locks).
 let tail: Promise<unknown> = Promise.resolve();
 export async function mutateAdminState<T>(fn: (s: AdminState) => T): Promise<T> {
-  if (firestoreEnabled())
-    return casUpdate("lisa-global/admin", (current) => {
+  if (firestoreEnabled()) {
+    let archive = false;
+    const result = await casUpdate(MAIN_DOC, (current) => {
       const s = current ? parseState(current) : emptyState();
+      const before = coreBytes(s);
       const result = fn(s);
+      const plan = planArchive(s);
+      checkCapacity(s, plan, before);
+      archive = plan.records.length > 0;
       s.revision++;
       return { next: s as unknown as Record<string, unknown>, result };
     }).finally(invalidatePolicy);
+    // The change is committed; archiving is housekeeping and retried next time.
+    if (archive)
+      await archiveFirestore().catch((e: unknown) =>
+        logError(`[console] admin archive failed: ${e instanceof Error ? e.message : "unknown"}`),
+      );
+    return result;
+  }
   const job = tail
     .catch(() => {})
     .then(async () => {
       const s = await readAdminState();
+      const before = coreBytes(s);
       const result = fn(s);
+      const plan = planArchive(s);
+      checkCapacity(s, plan, before);
+      try {
+        for (const r of plan.records) await writeArchiveRecord(r);
+        applyArchive(s, plan);
+      } catch (e) {
+        // Keep everything inline and retry on the next write; never block it.
+        logError(`[console] admin archive failed: ${e instanceof Error ? e.message : "unknown"}`);
+      }
       s.revision++;
       await fs.mkdir(path.dirname(file()), { recursive: true, mode: 0o700 });
       const temporary = `${file()}.${crypto.randomUUID()}.tmp`;
@@ -281,9 +450,9 @@ export function roleFor(acct: AccountRecord | null, state: AdminState): Role | n
   return owners().includes(email) ? "admin" : (state.roles[email] ?? null);
 }
 export function appendAudit(s: AdminState, entry: Omit<AuditEntry, "id" | "at">): void {
+  // Atomic with the mutation. Older entries move to archive records on write
+  // (planArchive), so history is never discarded and never blocks a write.
   s.audit.push({ id: crypto.randomUUID(), at: Date.now(), ...entry });
-  // Atomic with the mutation. Never silently discard security history.
-  if (s.audit.length > 4000) throw new ConsoleError("audit_archive_required", 409);
 }
 export function requireReason(v: unknown): string {
   if (typeof v !== "string" || v.trim().length < 3 || v.length > 500)
