@@ -105,9 +105,9 @@ function exists(id: number): boolean {
   try {
     process.kill(id, 0);
     return true;
-  } catch {
-    // ESRCH: gone. EPERM: another user's process, so not one this backend launched.
-    return false;
+  } catch (err) {
+    // Only ESRCH confirms absence. An inaccessible process or group still holds the slot.
+    return (err as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 /** `ps` reports start times to the second; the launch is recorded right after spawn. */
@@ -242,7 +242,7 @@ export class FleetHostService {
     signalGroup(o.pgid, "SIGTERM");
     if (!(await gone(this.stopGraceMs))) {
       signalGroup(o.pgid, "SIGKILL");
-      await gone(1000);
+      if (!(await gone(1000))) return; // Keep the slot for the owner to verify.
     }
     // Nobody awaits this in production, so it must not reject. If the ledger is
     // closed or busy, the next backend finds the group gone and frees the slot.
