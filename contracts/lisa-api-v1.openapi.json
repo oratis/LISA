@@ -2087,7 +2087,7 @@
     "/api/connectors": {
       "get": {
         "operationId": "listConnectorCatalog",
-        "description": "Local loopback owner only. Restores cards for the specified local chat; cloud and paired remote clients are denied.",
+        "description": "Local loopback owner only. Lists reviewed apps and editable example read requests. No account or credential access.",
         "responses": {
           "200": {
             "description": "Local owner response. Credentials are never included.",
@@ -3582,6 +3582,10 @@
           },
           "project": {
             "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Optional source title on the local owner’s roster."
           },
           "cwd": {
             "type": "string"
@@ -6233,6 +6237,15 @@
                 "access": {
                   "const": "read"
                 },
+                "example": {
+                  "type": "object",
+                  "properties": {
+                    "en": { "type": "string" },
+                    "zh-CN": { "type": "string" }
+                  },
+                  "required": ["en", "zh-CN"],
+                  "additionalProperties": false
+                },
                 "authModes": {
                   "type": "array",
                   "items": {
@@ -6273,6 +6286,7 @@
                 "name",
                 "access",
                 "authModes",
+                "example",
                 "available"
               ],
               "additionalProperties": false

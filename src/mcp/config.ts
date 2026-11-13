@@ -1,24 +1,27 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { logWarn } from "../log.js";
 import { lisaGlobalHome } from "../paths.js";
+import { withFileLock } from "../soul/lock.js";
+import { writeJsonAtomic } from "../warden/store.js";
 import { pathExists } from "../fs-utils.js";
-
-export interface McpServerSpec {
-  name: string;
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-  enabled?: boolean;
-  alwaysLoad?: boolean;
-}
+import {
+  parseMcpServers,
+  parseMcpServer,
+  type McpServerConfig,
+  type McpServerSpec,
+} from "./spec.js";
+export type { McpServerSpec } from "./spec.js";
 
 export interface McpConfig {
-  mcpServers: Record<string, Omit<McpServerSpec, "name">>;
+  mcpServers: Record<string, McpServerConfig>;
 }
 
 const CONFIG_PATH = path.join(lisaGlobalHome(), "mcp.json");
 
-export async function loadMcpConfig(): Promise<McpServerSpec[]> {
+export async function loadMcpConfig(
+  warn: (message: string) => void = logWarn,
+): Promise<McpServerSpec[]> {
   if (!(await pathExists(CONFIG_PATH))) return [];
   const raw = await fs.readFile(CONFIG_PATH, "utf8");
   let config: McpConfig;
@@ -27,49 +30,43 @@ export async function loadMcpConfig(): Promise<McpServerSpec[]> {
   } catch (err) {
     throw new Error(`failed to parse ${CONFIG_PATH}: ${(err as Error).message}`, { cause: err });
   }
-  const servers = config.mcpServers ?? {};
-  return Object.entries(servers).map(([name, spec]) => ({
-    name,
-    command: spec.command,
-    args: spec.args ?? [],
-    env: spec.env,
-    enabled: spec.enabled ?? true,
-    alwaysLoad: spec.alwaysLoad ?? false,
-  }));
+  return parseMcpServers(config.mcpServers, warn);
 }
 
 export const MCP_CONFIG_PATH = CONFIG_PATH;
 
 /** Add or replace a server in mcp.json (upsert by name). Returns the spec. */
-export async function saveMcpServer(
-  name: string,
-  spec: Omit<McpServerSpec, "name">,
-): Promise<void> {
-  let config: McpConfig = { mcpServers: {} };
-  if (await pathExists(CONFIG_PATH)) {
+export async function saveMcpServer(name: string, spec: McpServerConfig): Promise<void> {
+  parseMcpServer(name, spec);
+  await withFileLock(CONFIG_PATH + ".lock", async () => {
+    let config: McpConfig;
     try {
       config = JSON.parse(await fs.readFile(CONFIG_PATH, "utf8")) as McpConfig;
-    } catch {
-      // start fresh on a corrupt file rather than lose the add
+    } catch (error) {
+      if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== "ENOENT")
+        throw error;
+      // Preserve the existing add-on-corrupt behavior.
+      config = { mcpServers: {} };
     }
-  }
-  if (!config.mcpServers) config.mcpServers = {};
-  config.mcpServers[name] = spec;
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+    config.mcpServers = { ...config.mcpServers, [name]: spec };
+    await writeJsonAtomic(CONFIG_PATH, config);
+  });
 }
 
 /** Remove a server from mcp.json. Returns false if it wasn't there. */
 export async function deleteMcpServer(name: string): Promise<boolean> {
-  if (!(await pathExists(CONFIG_PATH))) return false;
-  let config: McpConfig;
-  try {
-    config = JSON.parse(await fs.readFile(CONFIG_PATH, "utf8")) as McpConfig;
-  } catch {
-    return false;
-  }
-  if (!config.mcpServers || !(name in config.mcpServers)) return false;
-  delete config.mcpServers[name];
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
-  return true;
+  return withFileLock(CONFIG_PATH + ".lock", async () => {
+    let config: McpConfig;
+    try {
+      config = JSON.parse(await fs.readFile(CONFIG_PATH, "utf8")) as McpConfig;
+    } catch (error) {
+      if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === "ENOENT")
+        return false;
+      throw error;
+    }
+    if (!config.mcpServers || !Object.hasOwn(config.mcpServers, name)) return false;
+    delete config.mcpServers[name];
+    await writeJsonAtomic(CONFIG_PATH, config);
+    return true;
+  });
 }

@@ -37,6 +37,7 @@
 import type http from "node:http";
 import { findPreset } from "../providers/registry.js";
 import type { ProviderUsage } from "../providers/types.js";
+import { openaiUsage } from "../providers/usage.js";
 import type { AccountRecord } from "./accounts.js";
 import { admitInference, type InferenceAdmission } from "../billing/admission.js";
 import {
@@ -327,7 +328,9 @@ export function foldUsage(
     return isObject(usage) ? mergeUsage(acc, anthropicCounts(usage)) : acc;
   }
   const usage = obj.usage as Record<string, unknown> | undefined | null;
-  if (usage && typeof usage === "object") return mergeUsage(acc, openaiCounts(usage));
+  // The same conversion the chat provider uses (providers/usage.ts): the
+  // cached prefix is split out of prompt_tokens, not counted on top of it.
+  if (usage && typeof usage === "object") return mergeUsage(acc, openaiUsage(usage));
   return acc;
 }
 
@@ -341,23 +344,6 @@ function anthropicCounts(usage: Record<string, unknown>): ProviderUsage {
     cacheReadTokens: num(usage.cache_read_input_tokens),
     cacheWriteTokens: num(usage.cache_creation_input_tokens),
     ...(oneHour > 0 ? { cacheWrite1hTokens: oneHour } : {}),
-  };
-}
-
-/**
- * OpenAI-compatible `usage` → counters. `prompt_tokens` includes the cached
- * prompt (`prompt_tokens_details.cached_tokens`), which is billed at the cache
- * rate instead — the split the OpenAI provider makes for chat.
- */
-function openaiCounts(usage: Record<string, unknown>): ProviderUsage {
-  const prompt = num(usage.prompt_tokens);
-  const details = isObject(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {};
-  const cached = Math.min(num(details.cached_tokens), prompt);
-  return {
-    inputTokens: prompt - cached,
-    outputTokens: num(usage.completion_tokens),
-    cacheReadTokens: cached,
-    cacheWriteTokens: 0,
   };
 }
 

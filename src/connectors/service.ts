@@ -387,22 +387,20 @@ export class ReadonlyConnector<A, R> {
         ),
     };
   }
-  private async staged(id: string) {
-    return this.state(async (s) => {
-      const r = this.find(s, id);
-      if (r.status !== "selecting" || !r.stagedSecret || !r.account || r.expiresAt <= this.now())
-        throw new ConnectorError("request_not_selecting");
-      const token = await this.options.secrets.get(r.stagedSecret);
-      if (!token) throw new ConnectorError(this.options.driver.reauthorizationCode);
-      return {
-        credentials: this.credentials(r.stagedSecret),
-        account: r.account,
-        secret: r.stagedSecret,
-      };
-    }, false);
+  /** Read the staged grant inside the caller's state lock. */
+  private async staged(r: Request<A, R>) {
+    if (r.status !== "selecting" || !r.stagedSecret || !r.account || r.expiresAt <= this.now())
+      throw new ConnectorError("request_not_selecting");
+    const token = await this.options.secrets.get(r.stagedSecret);
+    if (!token) throw new ConnectorError(this.options.driver.reauthorizationCode);
+    return {
+      credentials: this.credentials(r.stagedSecret),
+      account: r.account,
+      secret: r.stagedSecret,
+    };
   }
   async resources(id: string, page: number, signal: AbortSignal) {
-    const { credentials } = await this.staged(id);
+    const { credentials } = await this.state((s) => this.staged(this.find(s, id)), false);
     return this.options.driver.resources(credentials, page, signal);
   }
   async confirm(id: string, names: unknown, signal: AbortSignal) {
@@ -413,12 +411,13 @@ export class ReadonlyConnector<A, R> {
       !names.every(this.options.driver.validResourceName)
     )
       throw new ConnectorError("invalid_resources");
-    const done = await this.state((s) => {
+    const staged = await this.state(async (s) => {
       const r = this.find(s, id);
-      return ["ready", "resuming", "completed"].includes(r.status);
+      if (["ready", "resuming", "completed"].includes(r.status)) return;
+      return this.staged(r);
     }, false);
-    if (done) return; // double click / replay never widens an existing grant
-    const { credentials, account, secret } = await this.staged(id);
+    if (!staged) return; // double click / replay never widens an existing grant
+    const { credentials, account, secret } = staged;
     const actual = await this.options.driver.account(credentials, signal);
     if (this.options.driver.accountId(actual) !== this.options.driver.accountId(account))
       throw new ConnectorError("connector_account_changed");

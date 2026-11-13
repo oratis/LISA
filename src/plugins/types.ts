@@ -1,3 +1,4 @@
+import type { McpServerSpec } from "../mcp/spec.js";
 import type { Skill } from "../types.js";
 
 export interface PluginManifest {
@@ -25,13 +26,7 @@ export interface SubagentDefinition {
 }
 
 export interface HookSpec {
-  event:
-    | "PreToolUse"
-    | "PostToolUse"
-    | "Stop"
-    | "SessionStart"
-    | "SessionEnd"
-    | "UserPromptSubmit";
+  event: "PreToolUse" | "PostToolUse" | "Stop" | "SessionStart" | "SessionEnd" | "UserPromptSubmit";
   matcher?: string;
   command: string;
   timeout_ms?: number;
@@ -44,5 +39,5 @@ export interface LoadedPlugin {
   agents: SubagentDefinition[];
   skills: Skill[];
   hooks: HookSpec[];
-  mcpServers: { name: string; command: string; args?: string[]; env?: Record<string, string> }[];
+  mcpServers: McpServerSpec[];
 }

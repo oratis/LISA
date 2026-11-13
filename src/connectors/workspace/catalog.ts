@@ -2,6 +2,10 @@
 export const workspaceApps = {
   todoist: {
     name: "Todoist",
+    example: {
+      en: "Summarize the active tasks in my selected Todoist projects.",
+      "zh-CN": "总结我选定的 Todoist 项目中进行中的任务。",
+    },
     vendor: "todoist",
     scope: "data:read",
     unit: "project",
@@ -10,6 +14,10 @@ export const workspaceApps = {
   },
   "outlook-mail": {
     name: "Outlook Mail",
+    example: {
+      en: "Summarize recent messages in my selected Outlook Mail folders.",
+      "zh-CN": "总结我选定的 Outlook 邮箱文件夹中的近期邮件。",
+    },
     vendor: "microsoft",
     scope: "Mail.ReadBasic",
     unit: "mailFolder",
@@ -18,6 +26,10 @@ export const workspaceApps = {
   },
   "outlook-calendar": {
     name: "Outlook Calendar",
+    example: {
+      en: "List upcoming events in my selected Outlook calendars.",
+      "zh-CN": "列出我选定的 Outlook 日历中即将到来的日程。",
+    },
     vendor: "microsoft",
     scope: "Calendars.ReadBasic",
     unit: "calendar",
@@ -26,6 +38,10 @@ export const workspaceApps = {
   },
   onedrive: {
     name: "OneDrive",
+    example: {
+      en: "Summarize the text in my selected OneDrive files.",
+      "zh-CN": "总结我选定的 OneDrive 文件中的文本。",
+    },
     vendor: "microsoft",
     scope: "Files.Read",
     unit: "file",
@@ -34,6 +50,10 @@ export const workspaceApps = {
   },
   sharepoint: {
     name: "SharePoint",
+    example: {
+      en: "Summarize the text in my selected SharePoint files.",
+      "zh-CN": "总结我选定的 SharePoint 文件中的文本。",
+    },
     vendor: "microsoft",
     scope: "Sites.Selected",
     unit: "siteFile",
@@ -42,6 +62,10 @@ export const workspaceApps = {
   },
   jira: {
     name: "Jira",
+    example: {
+      en: "Review open issues in my selected Jira projects.",
+      "zh-CN": "查看我选定的 Jira 项目中的未完成工单。",
+    },
     vendor: "atlassian",
     scope: "read:jira-work",
     unit: "project",
@@ -50,6 +74,10 @@ export const workspaceApps = {
   },
   confluence: {
     name: "Confluence",
+    example: {
+      en: "Summarize my selected Confluence pages.",
+      "zh-CN": "总结我选定的 Confluence 页面。",
+    },
     vendor: "atlassian",
     scope: "read:page:confluence",
     unit: "page",
@@ -58,6 +86,10 @@ export const workspaceApps = {
   },
   figma: {
     name: "Figma",
+    example: {
+      en: "Review the frames in my selected Figma design.",
+      "zh-CN": "查看我选定的 Figma 设计中的画框。",
+    },
     vendor: "figma",
     scope: "file_content:read",
     unit: "design",
@@ -66,6 +98,10 @@ export const workspaceApps = {
   },
   dropbox: {
     name: "Dropbox",
+    example: {
+      en: "Summarize the text in my selected Dropbox files.",
+      "zh-CN": "总结我选定的 Dropbox 文件中的文本。",
+    },
     vendor: "dropbox",
     scope: "files.metadata.read files.content.read",
     unit: "file",
@@ -74,6 +110,10 @@ export const workspaceApps = {
   },
   "apple-calendar": {
     name: "Apple Calendar",
+    example: {
+      en: "List upcoming events in my selected Apple Calendar calendars.",
+      "zh-CN": "列出我选定的苹果日历中即将到来的日程。",
+    },
     vendor: "apple",
     scope: "events",
     unit: "calendar",
@@ -82,6 +122,10 @@ export const workspaceApps = {
   },
   "apple-reminders": {
     name: "Apple Reminders",
+    example: {
+      en: "List open items in my selected Apple Reminders lists.",
+      "zh-CN": "列出我选定的苹果提醒事项列表中未完成的事项。",
+    },
     vendor: "apple",
     scope: "reminders",
     unit: "reminderList",

@@ -58,7 +58,11 @@ import {
   type SlackAccount,
   type SlackResource,
 } from "../connectors/slack-driver.js";
-import { CONNECTOR_CATALOG, type ConnectorProvider } from "../connectors/catalog.js";
+import {
+  CONNECTOR_CATALOG,
+  connectorCatalogReply,
+  type ConnectorProvider,
+} from "../connectors/catalog.js";
 import type { ReadonlyDriver } from "../connectors/types.js";
 import { handleConnectorApi } from "./connectors-api.js";
 import { GitHubConnector, isGitHubReadRequest } from "../connectors/github.js";
@@ -88,7 +92,11 @@ import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
 import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
-import { reflectOnSession, ReflectionInterruptedError } from "../reflect.js";
+import {
+  durableReflectionSummary,
+  reflectOnSession,
+  ReflectionInterruptedError,
+} from "../reflect.js";
 import { reflectWithUsage } from "./reflect-request.js";
 import {
   DEFAULT_REFLECT_DEBOUNCE_MS,
@@ -145,6 +153,8 @@ import { agentSessionsResponse, applyApiVersionHeader } from "./api-contract.js"
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
+import { CodexTitles, codexTitleKey } from "../integrations/codex/titles.js";
+import { codexObservationStatus, setCodexObservation } from "../integrations/codex/observation.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
 import { setCurrentHub } from "../integrations/current-hub.js";
 import { advise, dismissSuggestion, formatDigest } from "../advisor/engine.js";
@@ -257,7 +267,14 @@ import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
 import { handleMemoryApi } from "./memory-api.js";
 import { handleReveApi } from "./reve-api.js";
-import { createWebWarden, handleWardenApi, wardenTrust, crossSiteProblem } from "./warden-api.js";
+import {
+  createWebWarden,
+  handleWardenApi,
+  wardenTrust,
+  crossSiteProblem,
+  isLoopbackHostHeader,
+  loopbackTrustProblem,
+} from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
 import {
@@ -308,7 +325,11 @@ import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
 import { resolveClientIp } from "./client-ip.js";
-import { selectWebModelContextForTurn, webContextBudgetTokens } from "./context-budget.js";
+import {
+  selectWebModelContextForTurn,
+  webContextBudgetTokens,
+  type ContextAnchor,
+} from "./context-budget.js";
 import {
   configuredPublicOrigin,
   requireCloudPublicOrigin,
@@ -590,8 +611,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const cloudEdition = isCloud();
   let remoteHost: RemoteHost | undefined;
   let relayBroker: RelayBroker | undefined;
-  const remoteAddress = (req: http.IncomingMessage) =>
-    remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
+  const remoteAddress = (req: http.IncomingMessage) => {
+    const addr = remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
+    // A loopback socket stands for the person at this machine only when the
+    // request also names this machine. A tunnel or reverse proxy forwarding a
+    // public hostname, or a DNS-rebinding page, connects from loopback too:
+    // label it remote, so it needs the web token like any LAN caller (and
+    // gets in with it) instead of inheriting the owner's tokenless trust.
+    return isLoopbackAddress(addr) && !isLoopbackHostHeader(req.headers.host)
+      ? "forwarded-host"
+      : addr;
+  };
   // Security-sensitive outbound links never derive their origin from Host or
   // forwarding headers. Cloud startup fails until its canonical HTTPS origin
   // is configured; local mode has a deterministic loopback fallback.
@@ -607,6 +637,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       subcommand: "serve",
       serveWeb: true,
       reflect: opts.reflect,
+      idleMinutes: opts.idleMinutes,
       thinking: opts.thinking,
       compaction: false,
       approval: "auto",
@@ -733,6 +764,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     chain: Promise<void>;
     prompt?: { fp: string; text: string };
     reflectionSummary?: string;
+    /** Where the last turn's model context started (see context-budget.ts). */
+    contextAnchor?: ContextAnchor;
     activity: TenantActivityState<AdvisorCardState>;
     connectorRevision?: number;
   }
@@ -1159,7 +1192,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Codex/OpenCode/… as adapters land) and merges their sessions into one
   // normalized stream. Privacy: structural metadata only (see types.ts +
   // each adapter). Replaces the single-purpose ClaudeCodeWatcher wiring.
-  const orchestratorCfg = await loadOrchestratorConfig(path.join(lisaHome(), "agents.json"));
+  const agentsConfigFile = path.join(lisaHome(), "agents.json");
+  const orchestratorCfg = await loadOrchestratorConfig(agentsConfigFile);
+  let codexConfig = orchestratorCfg.integrations.codex;
+  const codexTitles = new CodexTitles();
+  const codexShowsActivity = () =>
+    ["activity", "intent"].includes(codexConfig?.visibility ?? orchestratorCfg.visibility);
   const hub = new OrchestratorHub(orchestratorCfg, {
     log: (msg) => logInfo(msg),
   });
@@ -1597,7 +1635,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // away]" note. Without this the guard is asymmetric — the scheduler blocks
   // reflect-during-dream, but a dream could still start mid-reflect.
   let idleWatcher: ReturnType<typeof getIdleWatcher> | null = null;
-  if (opts.idleMinutes && opts.idleMinutes > 0) {
+  // `policy.idleDream` is false on the hosted edition whatever the flag says:
+  // the dream runs on the process-level chat, which there is nobody's.
+  if (policy.idleDream && opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     idleWatcher = watcher;
     watcher.on("idle", async () => {
@@ -1750,17 +1790,28 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               // Advance the marker only on success, so a failed reflect retries next
               // tick instead of silently dropping the conversation.
               ctx.activity.lastReflectedUserCount = snapshotUserCount;
-              await ctx.session.appendReflection(r.summary);
-              ctx.reflectionSummary = r.summary;
+              const summary = durableReflectionSummary(r);
+              if (summary === null) {
+                // Unparseable even after reflectOnSession's own retry. The marker
+                // above still advances: holding it back would repeat two model
+                // calls a minute for as long as the output stays unparseable, and
+                // nothing is lost by moving on — a malformed pass is not
+                // checkpointed, so the next user message reflects this stretch
+                // again. What must not happen is storing the placeholder.
+                logError("[reflect] unparseable output after retry — summary left unchanged");
+                return;
+              }
+              await ctx.session.appendReflection(summary);
+              ctx.reflectionSummary = summary;
               broadcast({
                 type: "reflect_done",
-                summary: r.summary,
+                summary,
                 at: new Date().toISOString(),
               });
               // The summary and applied lines are distilled conversation content —
               // log counts, not text.
               logInfo(
-                `[reflect] ${decision.reason} → summary updated (${r.summary.length} chars, ${r.applied.length} applied)`,
+                `[reflect] ${decision.reason} → summary updated (${summary.length} chars, ${r.applied.length} applied)`,
               );
             } catch (err) {
               logError(`[reflect] failed: ${(err as Error).message}`);
@@ -2579,6 +2630,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         authed = false;
         accountRequired = true;
       }
+      if (!authed && remoteAddr === "forwarded-host") {
+        // A loopback connection naming a foreign Host without a valid token: a
+        // DNS-rebinding page, or a tunnel or proxy set up without one. Same
+        // answer the owner-only routes have always given it.
+        res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "untrusted_host" }));
+        return;
+      }
       if (!authed) {
         // Browsers hitting the cloud edition get the login page (still 401 —
         // correct semantics, human-usable body). API callers get structured
@@ -2629,6 +2688,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const uidHome = homeForUid(accountUid);
         await fs.mkdir(uidHome, { recursive: true });
         homeScope.enterWith(uidHome);
+      }
+    } else {
+      // Loopback on the Mac edition: no credential was asked for, so the only
+      // thing between another site's page and every route below is what the
+      // browser says about the request. One gate here instead of a guard each
+      // route has to remember — most did not, including /chat, which drives
+      // the full local tool set. See loopbackTrustProblem for what is refused.
+      const problem = loopbackTrustProblem(req);
+      if (problem) {
+        res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: problem }));
+        return;
       }
     }
 
@@ -3171,7 +3242,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "cache-control": "no-store",
         "content-security-policy": mainHtmlCsp(cspNonce),
       });
-      res.end(renderMainHtml({ nonce: cspNonce }));
+      res.end(
+        renderMainHtml({
+          nonce: cspNonce,
+          connectorCatalog:
+            !!githubConnector &&
+            !accountUid &&
+            isLoopbackAddress(remoteAddr) &&
+            !crossSiteProblem(req, true, null),
+        }),
+      );
       return;
     }
 
@@ -3898,8 +3978,53 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Remote-control policy: GET (any authed caller) reports it; POST sets it,
     // but only from localhost (the Mac owner) — like the API-key save.
     if (req.method === "GET" && url === "/api/control/policy") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(loadControlPolicy()));
+      const local =
+        !cloud &&
+        !accountUid &&
+        isLoopbackAddress(remoteAddr) &&
+        !crossSiteProblem(req, true, null);
+      if (local) await hubStarted;
+      const codexObservation = local
+        ? await codexObservationStatus(hub, codexConfig?.home, codexShowsActivity())
+        : undefined;
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ ...loadControlPolicy(), codexObservation }));
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/agents/codex/observation") {
+      if (
+        cloud ||
+        accountUid ||
+        !isLoopbackAddress(remoteAddr) ||
+        crossSiteProblem(req, true, null)
+      ) {
+        res.writeHead(403);
+        res.end("local_owner_required");
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      if (typeof body.enabled !== "boolean") {
+        res.writeHead(400);
+        res.end("enabled must be a boolean");
+        return;
+      }
+      await hubStarted;
+      try {
+        const entry = await setCodexObservation(
+          agentsConfigFile,
+          hub,
+          body.enabled,
+          body.showConversations === true,
+        );
+        codexConfig = entry;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ enabled: entry.enabled }));
+      } catch {
+        res.writeHead(409);
+        res.end("Could not update Codex observation. Check agents.json and its permissions.");
+      }
       return;
     }
     if (req.method === "POST" && url === "/api/control/policy") {
@@ -4305,8 +4430,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Mark idle claude sessions as adoptable: not currently live (no running
       // owner ⇒ `claude --resume` is safe) and not already a LISA-controlled row.
       const live = liveClaudeSessionIds();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(agentSessionsResponse(hub.list(), live)));
+      const roster = agentSessionsResponse(hub.list(), live);
+      if (
+        !cloud &&
+        !accountUid &&
+        isLoopbackAddress(remoteAddr) &&
+        !crossSiteProblem(req, true, null)
+      ) {
+        const codexSessions = roster.sessions.filter((s) => s.agent === "codex");
+        if (codexSessions.length && codexShowsActivity()) {
+          const titles = await codexTitles.read(codexConfig?.home);
+          for (const session of codexSessions)
+            session.displayName = titles.get(codexTitleKey(session.sessionId));
+        }
+      }
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(roster));
       return;
     }
 
@@ -4349,7 +4488,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // callers keep the structural surfaces.
     if (req.method === "GET" && url.startsWith("/api/agents/transcript")) {
       const tRemote = remoteAddress(req);
-      if (!isLoopbackAddress(tRemote)) {
+      if (cloud || accountUid || !isLoopbackAddress(tRemote) || crossSiteProblem(req, true, null)) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
@@ -4369,7 +4508,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       let entries: unknown[] = [];
-      if (session.activity && session.jsonlPath) {
+      const readable = agent === "codex" ? codexShowsActivity() : !!session.activity;
+      if (readable && session.jsonlPath) {
         if (agent === "claude-code") {
           const { parseSessionTranscript } = await import("../integrations/claude-code/parser.js");
           entries = await parseSessionTranscript(session.jsonlPath);
@@ -4379,7 +4519,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ entries }));
+      res.end(
+        JSON.stringify({
+          entries,
+          ...(agent === "codex" && !readable ? { metadataOnly: true } : {}),
+        }),
+      );
       return;
     }
 
@@ -5441,12 +5586,17 @@ self.addEventListener('fetch', (event) => {
         !accountUid &&
         isLoopbackAddress(remoteAddr) &&
         !crossSiteProblem(req, true, null);
-      const connectorRevision = connectorOwner
-        ? (chat.connectorRevision = (chat.connectorRevision ?? 0) + 1)
-        : 0;
+      const catalogReply =
+        connectorOwner && !files?.length
+          ? connectorCatalogReply(message, req.headers["accept-language"])
+          : undefined;
+      const connectorRevision =
+        connectorOwner && !catalogReply
+          ? (chat.connectorRevision = (chat.connectorRevision ?? 0) + 1)
+          : 0;
       // A new explicit user instruction takes precedence over a queued continuation.
       let connectorFailure: string | undefined;
-      if (connectorOwner) {
+      if (connectorOwner && !catalogReply) {
         try {
           await githubConnector.cancelSession(chat.session.id);
           for (const service of taskConnectors.values())
@@ -5515,6 +5665,18 @@ self.addEventListener('fetch', (event) => {
         let anyText = false;
         let anyTool = false;
         try {
+          if (catalogReply) {
+            for (const entry of [
+              { role: "user", content: message },
+              { role: "assistant", content: catalogReply },
+            ] as const) {
+              await chat.session.appendMessage(entry);
+              chat.history.push(entry);
+            }
+            send({ type: "text", text: catalogReply });
+            send({ type: "done" });
+            return;
+          }
           const requestedProviders: ConnectorProvider[] = [
             ...workspaceReadIntents(message).filter((id) => taskConnectors.has(id)),
             ...googleReadIntents(message),
@@ -5608,7 +5770,11 @@ self.addEventListener('fetch', (event) => {
             files,
             budgetTokens: webContextBudgetTokens(),
             latestReflection: chat.reflectionSummary,
+            // Start where the previous turn's window started while that still
+            // fits, so a long chat keeps a cacheable prefix between turns.
+            anchor: chat.contextAnchor,
           });
+          chat.contextAnchor = modelContext.anchor;
           if (modelContext.omittedMessages > 0) {
             logInfo(
               `[context] omitted ${modelContext.omittedMessages} older message(s); ` +
@@ -5650,6 +5816,9 @@ self.addEventListener('fetch', (event) => {
             model: activeModel,
             thinking: policy.thinking,
             compaction: policy.compaction,
+            // Independent lookups in one model turn overlap instead of queueing.
+            // Local edition only: hosted turns are metered call by call.
+            parallelTools: !cloud,
             // Approval gating on the web surface (T-7). undefined under
             // "auto", so that path is byte-identical to before. Under "warden"
             // the turn's Warden session decides; webApproval stays as the
@@ -5890,7 +6059,10 @@ self.addEventListener('fetch', (event) => {
             }),
           permit ? (usage) => permit.settle("reflect", usage) : undefined,
         );
-        if (chat.session.id === sessionId) chat.reflectionSummary = r.summary;
+        // A malformed pass is reported to the caller as-is, but its placeholder
+        // text must not become the summary the next turn's prompt is built from.
+        const summary = durableReflectionSummary(r);
+        if (chat.session.id === sessionId && summary !== null) chat.reflectionSummary = summary;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(r));
       } catch (err) {

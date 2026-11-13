@@ -1,18 +1,9 @@
 import crypto from "node:crypto";
 import type { ToolDefinition } from "../../types.js";
 import { appendSocialAudit } from "./audit.js";
-import {
-  claimApprovedSocialDraft,
-  completeSocialDraftPublish,
-} from "./drafts.js";
-import {
-  discoverSocialConnectors,
-  socialMcpToolName,
-} from "./manifest.js";
-import type {
-  DiscoveredSocialConnector,
-  SocialPublishOutcome,
-} from "./types.js";
+import { claimApprovedSocialDraft, completeSocialDraftPublish } from "./drafts.js";
+import { discoverSocialConnectors, socialMcpToolName } from "./manifest.js";
+import type { DiscoveredSocialConnector, SocialPublishOutcome } from "./types.js";
 import { socialPublishingPaused } from "./policy.js";
 
 export interface SocialRunnerOptions {
@@ -42,11 +33,28 @@ async function invokeValue(
 ): Promise<unknown> {
   const tool = tools.find((candidate) => candidate.name === name);
   if (!tool) throw new Error(`connector tool "${name}" is not loaded`);
-  const output = await tool.execute(input, {
-    cwd: process.cwd(),
-    signal,
-    log: () => {},
-  });
+  let output: unknown;
+  try {
+    output = await tool.execute(input, {
+      cwd: process.cwd(),
+      signal,
+      log: () => {},
+    });
+  } catch (err) {
+    // An MCP tool that reports isError now throws with its own text. Social
+    // connectors report a failure as {"ok":false,"error":…}: read that back,
+    // so the outcome and the audit log keep the connector's error, not the
+    // raw JSON string.
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      const reported = JSON.parse(message) as unknown;
+      if (reported && typeof reported === "object" && (reported as { ok?: unknown }).ok === false)
+        return reported;
+    } catch {
+      // Not a connector result: surface the error as it is.
+    }
+    throw err;
+  }
   return parsedValue(output);
 }
 
@@ -67,7 +75,7 @@ export async function listSocialConnectorAccounts(
 ): Promise<Record<string, unknown[]>> {
   const result: Record<string, unknown[]> = {};
   const signal = new AbortController().signal;
-  for (const connector of connectors ?? await discoverSocialConnectors()) {
+  for (const connector of connectors ?? (await discoverSocialConnectors())) {
     if (!connector.manifest) continue;
     const name = socialMcpToolName(connector.manifest, "listAccounts");
     if (!name) continue;
@@ -96,7 +104,7 @@ export async function publishApprovedSocialDraft(
   }
   const now = opts.now ?? Date.now;
   const draft = await claimApprovedSocialDraft(id, digest, now());
-  const connectors = opts.connectors ?? await discoverSocialConnectors();
+  const connectors = opts.connectors ?? (await discoverSocialConnectors());
   const signal = opts.signal ?? new AbortController().signal;
   const outcomes: SocialPublishOutcome[] = [];
   for (const target of draft.targets) {
@@ -142,9 +150,7 @@ export async function publishApprovedSocialDraft(
         targetKey,
         ok: true,
         platformPostId:
-          typeof result.platformPostId === "string"
-            ? result.platformPostId
-            : undefined,
+          typeof result.platformPostId === "string" ? result.platformPostId : undefined,
         url: typeof result.url === "string" ? result.url : undefined,
         attempts: 1,
         completedAt: new Date(now()).toISOString(),
