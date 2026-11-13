@@ -457,7 +457,8 @@ export async function handleConsole(
         uid: acct.uid,
         email: acct.email,
         role,
-        owners: owners(),
+        // Analysts only read reports; they have no use for the protected owners.
+        owners: role === "analyst" ? [] : owners(),
         environment: process.env.K_SERVICE ? "PRODUCTION" : "LOCAL TEST",
       });
       return true;

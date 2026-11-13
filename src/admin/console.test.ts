@@ -131,6 +131,14 @@ test("console requires a separate admin session; no loopback, bearer or query-to
   assert.match(html.headers.get("content-security-policy")!, /script-src 'self'/);
   assert.match(html.headers.get("cache-control")!, /no-store/);
 });
+test("/me lists the protected owners to admins and operators, never to analysts", async () => {
+  assert.deepEqual((await request("/console/api/me", admin)).body.owners, ["owner@example.com"]);
+  assert.deepEqual((await request("/console/api/me", operator)).body.owners, ["owner@example.com"]);
+  const me = await request("/console/api/me", analyst);
+  assert.equal(me.response.status, 200);
+  assert.deepEqual(me.body.owners, []);
+  assert.ok(!JSON.stringify(me.body).includes("owner@example.com"));
+});
 test("unverified and Apple email aliases cannot acquire administrator privileges", async () => {
   const unverified = await createEmailAccount("unverified@example.com", "a-password-123");
   const apple = await upsertAppleAccount("test-apple", "owner@example.com");
