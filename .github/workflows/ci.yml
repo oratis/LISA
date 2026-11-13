@@ -216,7 +216,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.website == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -230,11 +230,22 @@ jobs:
         working-directory: website
         run: npm ci
 
-      # `npm run build` triggers the `prebuild` lifecycle hook, which snapshots
-      # the mood list and symlinks src/web/assets — do not call astro directly.
-      - name: Build
+      - name: Install mobile browsers
         working-directory: website
-        run: npm run build
+        run: npx playwright install --with-deps chromium webkit
+
+      # Tests build the static site first, including the prebuild asset hook.
+      - name: Build and test responsive website
+        working-directory: website
+        run: npm test
+
+      - name: Website browser report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: website-playwright-report
+          path: website/playwright-report/
+          retention-days: 7
 
       - name: Pages exist
         working-directory: website

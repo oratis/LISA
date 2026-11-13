@@ -207,13 +207,13 @@ npm link</code></pre>
   /* Readable prose width; panels stay full-width */
   .section > p, .section > .checklist { max-width: 74ch; }
   .section > h2 { margin-top: .2rem; }
-  section[id] { scroll-margin-top: 84px; }
+  section[id] { scroll-margin-top: 1rem; }
 
   /* On-this-page chips */
   .toc { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.8rem; }
   .toc a {
     font-family: var(--mono); font-size: .76rem; color: var(--muted);
-    border: 1px solid var(--border); border-radius: 999px; padding: .34rem .8rem;
+    border: 1px solid var(--border); border-radius: 999px; padding: .5rem .85rem; min-height: 44px; display: inline-flex; align-items: center;
     transition: color .15s, border-color .15s;
   }
   .toc a:hover { color: var(--accent); border-color: var(--border-lit); }
@@ -281,5 +281,7 @@ npm link</code></pre>
 
   @media (max-width: 720px) {
     .method-grid { grid-template-columns: 1fr; }
+    .lead-card, .ios-card { padding: 1.2rem; }
+    .method-h { flex-wrap: wrap; }
   }
 </style>
