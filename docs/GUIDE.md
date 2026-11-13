@@ -260,7 +260,8 @@ lisa status                  One-shot snapshot: identity, mood, recent commits
 lisa doctor                  Health check (config, network, git, providers)
 lisa monitor                 TUI live dashboard (mood + soul commits + events)
 lisa agents                  Snapshot of agent sessions across all observers
-lisa pair [--host H]         Show a QR to pair a phone (Lisa Pocket) via a running serve
+lisa pair [--host H] [--port N] [--name L]
+                             Show a QR to pair a phone (Lisa Pocket) via a running serve
 lisa autonomy [days]         Digest of self-driven runs (idle / heartbeat / examen / desire / reflect)
 lisa model <list|install|use|health>
                              Local models (Ollama / LM Studio / llama.cpp) +
