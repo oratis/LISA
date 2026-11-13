@@ -154,7 +154,12 @@ import {
   CTRL_BODY_LIMIT,
   RICH_BODY_LIMIT,
 } from "./http-body.js";
-import { agentSessionsResponse, applyApiVersionHeader } from "./api-contract.js";
+import {
+  agentSessionsResponse,
+  applyApiVersionHeader,
+  isVersionedApiSurface,
+} from "./api-contract.js";
+import { enforceErrorShape, errorBody, errorMessage } from "./error-shape.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
@@ -1915,6 +1920,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
+    // #485/#487: every error on the client-facing surfaces leaves as
+    // {error, message} JSON, whichever route wrote it (see error-shape.ts).
+    if (isVersionedApiSurface(url)) enforceErrorShape(req, res);
     // T-10: every response — HTML shell, JSON, SSE, assets, 404s — carries the
     // baseline hardening headers. Set before any route so writeHead() merges
     // them in rather than a route having to remember.
@@ -2008,21 +2016,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/auth/apple") {
       const cfg = appleSignInConfig();
       if (!cloud || !cfg.enabled) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("apple sign-in not available");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       if (!sessionSecret) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end("cloud sign-in misconfigured (no session secret)");
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       const payload = await readJsonBody(req, res);
       if (!payload) return; // 413 already sent
       const idToken = typeof payload.identityToken === "string" ? payload.identityToken : "";
       if (!idToken) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("identityToken required");
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("identity_token_required")));
         return;
       }
       // Web tokens (Apple JS popup on the login page, B8b) carry the Services
@@ -2031,8 +2039,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const client = payload.client === "web" ? ("web" as const) : ("native" as const);
       const audience = audienceForClient(cfg, client);
       if (!audience) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("apple sign-in not available for this client");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       // Replay guard (#261): the client mints a raw nonce, sends SHA-256 of it
@@ -2052,8 +2060,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           ...(nonce ? { expectedNonce: nonce } : {}),
         });
         if (!subAllowed(id.sub, cfg)) {
-          res.writeHead(403, { "content-type": "text/plain" });
-          res.end("this Apple ID is not allowed on this LISA Cloud instance");
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify(errorBody("sign_in_not_allowed")));
           return;
         }
         // B1: mint a per-uid account session (no longer the shared LISA_WEB_TOKEN).
@@ -2100,8 +2108,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid }));
       } catch (e) {
         const msg = e instanceof AppleAuthError ? e.message : "verification failed";
-        res.writeHead(401, { "content-type": "text/plain" });
-        res.end(`apple sign-in rejected: ${msg}`);
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_rejected", { reason: `apple: ${msg}` })));
       }
       return;
     }
@@ -2114,13 +2122,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/auth/google") {
       const gcfg = googleSignInConfig();
       if (!cloud || !gcfg.enabled) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("google sign-in not available");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       if (!sessionSecret) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end("cloud sign-in misconfigured (no session secret)");
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
@@ -2166,8 +2174,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           return;
         }
         const msg = e instanceof GoogleAuthError ? e.message : "verification failed";
-        res.writeHead(401, { "content-type": "text/plain" });
-        res.end(`google sign-in rejected: ${msg}`);
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_rejected", { reason: `google: ${msg}` })));
       }
       return;
     }
@@ -2293,8 +2301,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // posture as /api/auth/apple. 404 outside the cloud edition.
     if (req.method === "POST" && (url === "/api/auth/register" || url === "/api/auth/login")) {
       if (!cloud || !sessionSecret) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("accounts not available on this edition");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("accounts_unavailable")));
         return;
       }
       // Per-IP cap (#260). /register had no throttle at all — the per-email one
@@ -2377,8 +2385,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           res.end(JSON.stringify({ error: e.code }));
           return;
         }
-        res.writeHead(500, { "content-type": "text/plain" });
-        res.end("account operation failed");
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("account_operation_failed")));
       }
       return;
     }
@@ -2393,8 +2401,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       (url === "/api/auth/otp/request" || url === "/api/auth/otp/verify")
     ) {
       if (!cloud || !sessionSecret) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("accounts not available on this edition");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("accounts_unavailable")));
         return;
       }
       // Same coarse per-IP backstop as register/login (#260): the real guards
@@ -2489,8 +2497,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           res.end(JSON.stringify({ error: e.code }));
           return;
         }
-        res.writeHead(500, { "content-type": "text/plain" });
-        res.end("account operation failed");
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("account_operation_failed")));
       }
       return;
     }
@@ -3437,11 +3445,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     };
     const denyRemote = (need: "control" | "adoptExternal"): boolean => {
       if (remoteControlAllowed(need)) return false;
-      res.writeHead(403, { "content-type": "text/plain" });
+      res.writeHead(403, { "content-type": "application/json" });
       res.end(
-        need === "adoptExternal"
-          ? "adopting external sessions from a remote device is disabled — enable remoteAdoptExternal on the Mac (POST /api/control/policy from localhost)"
-          : "remote control is disabled — enable remoteControl on the Mac (POST /api/control/policy from localhost)",
+        JSON.stringify(
+          errorBody(need === "adoptExternal" ? "remote_adopt_disabled" : "remote_control_disabled"),
+        ),
       );
       return true;
     };
@@ -3567,8 +3575,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         remote === "::ffff:127.0.0.1" ||
         remote.startsWith("127.");
       if (!isLoopback) {
-        res.writeHead(403, { "content-type": "text/plain" });
-        res.end("screen-advisor config only accepted from localhost");
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("local_owner_required")));
         return;
       }
       const saBody = await readRequestText(req, res);
@@ -4251,8 +4259,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
     if (req.method === "POST" && url === "/api/control/policy") {
       if (!isLoopbackAddress(remoteAddr)) {
-        res.writeHead(403, { "content-type": "text/plain" });
-        res.end("control policy can only be changed from the Mac (localhost)");
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("local_owner_required")));
         return;
       }
       const cpBody = await readRequestText(req, res);
@@ -5514,8 +5522,8 @@ self.addEventListener('fetch', (event) => {
         remote === "::ffff:127.0.0.1" ||
         remote.startsWith("127.");
       if (!isLoopback) {
-        res.writeHead(403, { "content-type": "text/plain" });
-        res.end("config save only accepted from localhost");
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("local_owner_required")));
         return;
       }
       const body = await readRequestText(req, res);
@@ -5773,7 +5781,7 @@ self.addEventListener('fetch', (event) => {
         }
       } catch (err) {
         res.writeHead(400, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
+        res.end(JSON.stringify(errorBody("bad_request", { reason: (err as Error).message })));
         return;
       }
       // Cloud setup may call AI; do it only after an explicit chat request,
@@ -5876,6 +5884,19 @@ self.addEventListener('fetch', (event) => {
       const send = (event: object) => {
         if (res.writableEnded || res.destroyed) return;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+      };
+      // A failed turn's `error` event (#485/#487): a contract code plus a
+      // message. On a Mac the detail is the owner's own (their key, their
+      // provider account) and is shown as is. A hosted user gets a sentence
+      // they can act on; the provider's raw error (which can name keys,
+      // quotas or internal hosts) goes to the log only.
+      const sendTurnError = (code: "provider_error" | "turn_failed", detail: string) => {
+        if (cloud) {
+          logError(`[chat] ${code} for ${redactId(accountUid ?? "shared")}: ${detail}`);
+          send({ type: "error", code, message: errorMessage(code) });
+        } else {
+          send({ type: "error", code, message: detail || errorMessage(code) });
+        }
       };
       // Keep-alive (T-11): a long tool call or a thinking model can leave this
       // stream silent well past a proxy's idle timeout, and a reconnect drops
@@ -6121,7 +6142,7 @@ self.addEventListener('fetch', (event) => {
                 send({ type: "soul_reload", message: ev.message ?? "" });
               if (ev.type === "error") {
                 errorSent = true;
-                send({ type: "error", message: ev.message ?? "" });
+                sendTurnError("provider_error", ev.message ?? "");
               }
             },
             // Same plugin hook wiring as the CLI turn — PreToolUse can block,
@@ -6228,7 +6249,7 @@ self.addEventListener('fetch', (event) => {
               logError(`[billing] failed chat turn not settled: ${(settleErr as Error).message}`);
             }
           }
-          if (!errorSent) send({ type: "error", message: (err as Error).message });
+          if (!errorSent) sendTurnError("turn_failed", (err as Error).message);
         } finally {
           moodBus.off("mood", onMood);
           stopChatHeartbeat();

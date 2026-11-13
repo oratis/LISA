@@ -112,11 +112,25 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     return 1;
   }
   if (!res.ok) {
-    console.error(`pair failed (${res.status}): ${(await res.text().catch(() => "")).trim()}`);
+    // Error bodies are {error, message} JSON; older servers sent plain text.
+    const text = (await res.text().catch(() => "")).trim();
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text) as { message?: unknown; error?: unknown };
+      detail = String(parsed.message ?? parsed.error ?? text);
+    } catch {
+      /* plain text */
+    }
+    console.error(`pair failed (${res.status}): ${detail}`);
     return 1;
   }
 
-  const body = (await res.json().catch(() => ({}))) as { token?: string; id?: string; port?: number; boundHost?: string };
+  const body = (await res.json().catch(() => ({}))) as {
+    token?: string;
+    id?: string;
+    port?: number;
+    boundHost?: string;
+  };
   if (!body.token) {
     console.error("server returned no token");
     return 1;
@@ -135,7 +149,9 @@ export async function runPairCommand(argv: string[]): Promise<number> {
   console.log(`  Host:  ${host}`);
   console.log(`  Port:  ${effPort}`);
   console.log(`  Token: ${body.token}\n`);
-  console.log(`Paired device "${name}" (id ${body.id ?? "?"}). Revoke it later from the app or POST /api/devices/revoke.`);
+  console.log(
+    `Paired device "${name}" (id ${body.id ?? "?"}). Revoke it later from the app or POST /api/devices/revoke.`,
+  );
   // The QR is minted over loopback, but the phone connects over the LAN. If the
   // server is bound loopback-only the phone can't reach it however good the QR is —
   // call that out loudly instead of a generic note. (boundHost may be absent on an
@@ -144,7 +160,9 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     console.log(`\n⚠️  LISA is only listening on localhost, so this iPhone can't reach it yet.`);
     console.log(`   Restart it on your network (in a separate terminal, leave it running):`);
     console.log(`     lisa serve --web --host 0.0.0.0`);
-    console.log(`   …then run \`lisa pair\` again. (A Tailscale tailnet name as --host works too.)`);
+    console.log(
+      `   …then run \`lisa pair\` again. (A Tailscale tailnet name as --host works too.)`,
+    );
   } else {
     console.log(`Keep this phone on the same Wi-Fi (or tailnet) as your Mac.`);
   }

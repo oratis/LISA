@@ -1,0 +1,480 @@
+{
+  "$comment": "Error codes shared by the LISA server and its clients. scripts/generate-api-contract.mjs turns this file into src/web/error-codes.generated.ts and the Swift LisaErrorCode enum in packaging/ios-companion/Sources/APIContract.generated.swift. Run `npm run generate:api-contract` after editing it.",
+  "version": 1,
+  "shape": {
+    "http": "Every non-2xx response on /api/*, /chat and /events has a JSON body {\"error\": \"<code>\", \"message\": \"<one sentence a person can act on>\"}. Route-specific fields such as reason, retryAfterSec, resetAt, tier, suggestion and ok:false stay alongside them.",
+    "sse": "A chat turn that fails after the stream opened sends {\"type\": \"error\", \"code\": \"<code>\", \"message\": \"...\"}.",
+    "codes": "error is a stable snake_case code. A response whose route gives no specific code uses the generic code for its HTTP status (fallbackByStatus). Clients must treat a code they don't know as unknown and fall back to the HTTP status and message.",
+    "message": "Written for the person using the app. It may differ between server versions and editions; never parse it."
+  },
+  "fallbackByStatus": {
+    "400": "bad_request",
+    "401": "unauthorized",
+    "402": "payment_required",
+    "403": "forbidden",
+    "404": "not_found",
+    "405": "method_not_allowed",
+    "408": "request_timeout",
+    "409": "conflict",
+    "410": "gone",
+    "413": "payload_too_large",
+    "415": "unsupported_media_type",
+    "416": "range_not_satisfiable",
+    "422": "unprocessable",
+    "429": "rate_limited",
+    "500": "internal_error",
+    "501": "not_implemented",
+    "502": "bad_gateway",
+    "503": "service_unavailable",
+    "504": "gateway_timeout",
+    "default": "request_failed"
+  },
+  "codes": [
+    {
+      "code": "unauthorized",
+      "http": [401],
+      "when": "No valid credential: the session is missing, expired, signed out or revoked. reason says which (token_missing, token_mismatch, account_session_required, server_not_configured). Sign in again.",
+      "message": "Your session has ended. Sign in again to continue."
+    },
+    {
+      "code": "account_session_required",
+      "http": [403],
+      "when": "The route needs a signed-in LISA account, not a shared or device token.",
+      "message": "Sign in to your Lisa account to do this."
+    },
+    {
+      "code": "quota_exhausted",
+      "http": [402],
+      "when": "The account's free allowance for the current window is used up. resetAt (epoch ms) and tier are included. Buying credits helps.",
+      "message": "You've used your free allowance for now. Add credits to keep going, or wait for it to reset."
+    },
+    {
+      "code": "premium_requires_balance",
+      "http": [402],
+      "when": "The selected model needs a paid balance. Buying credits or choosing another model helps.",
+      "message": "This model needs credits on your account. Add credits or choose another model."
+    },
+    {
+      "code": "service_paused",
+      "http": [402, 503],
+      "when": "LISA Cloud stopped new AI requests for everyone: an operator pause, the global daily cap, or the cap counter being unreadable. Buying credits does not help.",
+      "message": "LISA Cloud has paused new requests for now. Please try again later."
+    },
+    {
+      "code": "account_suspended",
+      "http": [403],
+      "when": "An operator suspended this account.",
+      "message": "This account is suspended. Contact Lisa support for help."
+    },
+    {
+      "code": "model_disabled",
+      "http": [403],
+      "when": "An operator turned this model off.",
+      "message": "This model isn't available right now. Choose another model."
+    },
+    {
+      "code": "capability_denied",
+      "http": [403],
+      "when": "Hosted Lisa refuses machine-level routes (push, dispatch, mail, devices and similar). profile names the capability profile.",
+      "message": "Hosted Lisa can't do this. Connect your Mac to use it."
+    },
+    {
+      "code": "remote_control_disabled",
+      "http": [403],
+      "when": "The Mac's control policy has remoteControl off, so a phone or other remote device can't drive its agents.",
+      "message": "Remote control is turned off on your Mac. Turn it on in Lisa on the Mac, then try again."
+    },
+    {
+      "code": "remote_adopt_disabled",
+      "http": [403],
+      "when": "The Mac's control policy has remoteAdoptExternal off, so a remote device can't take over sessions started outside Lisa.",
+      "message": "Taking over outside sessions from another device is turned off on your Mac. Turn it on in Lisa on the Mac, then try again."
+    },
+    {
+      "code": "local_owner_required",
+      "http": [403],
+      "when": "Only the person at the Mac (a localhost request) may do this.",
+      "message": "Only someone at the Mac can do this. Do it in Lisa on the Mac."
+    },
+    {
+      "code": "untrusted_host",
+      "http": [403],
+      "when": "A loopback request named a foreign Host header without a valid token (a tunnel or proxy without a token, or DNS rebinding).",
+      "message": "Your Mac doesn't trust this address. Connect with its access token or pairing code instead."
+    },
+    {
+      "code": "forbidden",
+      "http": [403],
+      "when": "Generic code for a 403 without a specific one.",
+      "message": "You don't have permission to do that."
+    },
+    {
+      "code": "turn_in_progress",
+      "http": [409, 429],
+      "when": "Another turn is still running for this account or agent. retryAfterSec is included where known.",
+      "message": "Lisa is still answering your last message. Wait for it to finish, then try again."
+    },
+    {
+      "code": "rate_limited",
+      "http": [429],
+      "when": "Too many requests from this account or address. retryAfterSec says when to retry.",
+      "message": "Too many requests in a short time. Wait a moment, then try again."
+    },
+    {
+      "code": "otp_cooldown",
+      "http": [429],
+      "when": "A sign-in code was just sent to this address. retryAfterSec says when another can be requested.",
+      "message": "A code was just sent. Check your inbox, or wait a moment before asking for another."
+    },
+    {
+      "code": "otp_daily_cap",
+      "http": [429],
+      "when": "Too many sign-in codes were sent to this address today. retryAfterSec is included.",
+      "message": "Too many codes were sent to this address today. Try again tomorrow."
+    },
+    {
+      "code": "feature_temporarily_disabled",
+      "http": [503],
+      "when": "An operator switched this feature off on LISA Cloud.",
+      "message": "This feature is turned off for now. Try again later."
+    },
+    {
+      "code": "billing_state_unavailable",
+      "http": [503],
+      "when": "Balance or quota storage could not be read; nothing was charged.",
+      "message": "Lisa couldn't check your balance just now. Try again in a moment."
+    },
+    {
+      "code": "account_store_unavailable",
+      "http": [503],
+      "when": "The account directory could not be read or written.",
+      "message": "Lisa couldn't reach your account just now. Try again in a moment."
+    },
+    {
+      "code": "account_deletion_in_progress",
+      "http": [409],
+      "when": "This account is being deleted.",
+      "message": "This account is being deleted."
+    },
+    {
+      "code": "unknown_session",
+      "http": [404],
+      "when": "The conversation named in the request no longer exists.",
+      "message": "That conversation no longer exists. Start a new one."
+    },
+    {
+      "code": "malformed_jws",
+      "http": [400],
+      "when": "POST /api/billing/iap: the signed transaction could not be read. Body has ok:false.",
+      "message": "Lisa couldn't read this purchase. Restore purchases and try again."
+    },
+    {
+      "code": "unbound_transaction",
+      "http": [400],
+      "when": "POST /api/billing/iap: the purchase carries no appAccountToken for a LISA account. Body has ok:false.",
+      "message": "This purchase isn't linked to your Lisa account. Restore purchases while signed in."
+    },
+    {
+      "code": "wrong_account",
+      "http": [400],
+      "when": "POST /api/billing/iap: the purchase belongs to a different LISA account. Body has ok:false.",
+      "message": "This purchase belongs to a different Lisa account. Sign in to that account to use it."
+    },
+    {
+      "code": "bad_chain",
+      "http": [400],
+      "when": "POST /api/billing/iap: Apple's certificate chain did not verify. Body has ok:false.",
+      "message": "Lisa couldn't verify this purchase with Apple. Try again later."
+    },
+    {
+      "code": "bad_signature",
+      "http": [400],
+      "when": "POST /api/billing/iap: the transaction signature did not verify. Body has ok:false.",
+      "message": "Lisa couldn't verify this purchase with Apple. Try again later."
+    },
+    {
+      "code": "wrong_bundle",
+      "http": [400],
+      "when": "POST /api/billing/iap: the purchase was made in a different app. Body has ok:false.",
+      "message": "This purchase wasn't made in Lisa. Buy credits from Lisa itself."
+    },
+    {
+      "code": "unknown_product",
+      "http": [400],
+      "when": "POST /api/billing/iap: the product id is not one LISA sells. Body has ok:false.",
+      "message": "Lisa doesn't sell this item anymore. Update the app and try again."
+    },
+    {
+      "code": "sandbox_rejected",
+      "http": [400],
+      "when": "POST /api/billing/iap: a sandbox (test) purchase reached LISA Cloud from an account that may not use one. Body has ok:false.",
+      "message": "Test purchases can't add credits. Buy credits from the App Store version of Lisa."
+    },
+    {
+      "code": "unknown_transaction",
+      "http": [400],
+      "when": "POST /api/billing/iap: Apple has no record of this transaction. Body has ok:false.",
+      "message": "Apple has no record of this purchase. Restore purchases and try again."
+    },
+    {
+      "code": "root_unavailable",
+      "http": [400],
+      "when": "POST /api/billing/iap: Apple's root certificate could not be loaded, so nothing could be verified. Body has ok:false.",
+      "message": "Lisa couldn't verify purchases just now. Try again later."
+    },
+    {
+      "code": "verification_failed",
+      "http": [400],
+      "when": "POST /api/billing/iap: verification failed for another reason. Body has ok:false.",
+      "message": "Lisa couldn't verify this purchase. Try again later."
+    },
+    {
+      "code": "sign_in_rejected",
+      "http": [401],
+      "when": "Sign in with Apple or Google: the identity token did not verify. reason carries the detail.",
+      "message": "Lisa couldn't verify that sign-in. Try again."
+    },
+    {
+      "code": "sign_in_unavailable",
+      "http": [404, 503],
+      "when": "This sign-in method is off or not set up on this server.",
+      "message": "This sign-in method isn't available here. Choose another way to sign in."
+    },
+    {
+      "code": "sign_in_not_allowed",
+      "http": [403],
+      "when": "This server only admits listed Apple IDs.",
+      "message": "This Apple ID can't sign in to this Lisa server."
+    },
+    {
+      "code": "identity_token_required",
+      "http": [400],
+      "when": "POST /api/auth/apple without identityToken.",
+      "message": "Sign-in didn't finish. Try again."
+    },
+    {
+      "code": "id_token_required",
+      "http": [400],
+      "when": "POST /api/auth/google without idToken.",
+      "message": "Sign-in didn't finish. Try again."
+    },
+    {
+      "code": "nonce_required",
+      "http": [400],
+      "when": "POST /api/auth/apple without the replay nonce this server requires.",
+      "message": "Update Lisa, then sign in again."
+    },
+    {
+      "code": "accounts_unavailable",
+      "http": [404],
+      "when": "Email accounts and codes exist only on LISA Cloud.",
+      "message": "Accounts aren't available on this Lisa server."
+    },
+    {
+      "code": "account_operation_failed",
+      "http": [500],
+      "when": "Creating or signing in to the account failed on the server.",
+      "message": "Lisa couldn't finish signing you in. Try again in a moment."
+    },
+    {
+      "code": "bad_credentials",
+      "http": [401],
+      "when": "Email and password do not match.",
+      "message": "That email and password don't match. Try again, or sign in with a code instead."
+    },
+    {
+      "code": "throttled",
+      "http": [429],
+      "when": "Too many failed password attempts for this address; locked for 15 minutes.",
+      "message": "Too many sign-in attempts. Wait 15 minutes, or sign in with a code instead."
+    },
+    {
+      "code": "invalid_email",
+      "http": [400],
+      "when": "The address is not a valid email address.",
+      "message": "Enter a valid email address."
+    },
+    {
+      "code": "weak_password",
+      "http": [400],
+      "when": "The password is shorter than 8 or longer than 256 characters.",
+      "message": "Use a password of at least 8 characters."
+    },
+    {
+      "code": "email_taken",
+      "http": [409],
+      "when": "Registering an address that already has an account.",
+      "message": "An account already uses this email. Sign in instead."
+    },
+    {
+      "code": "disposable_email",
+      "http": [400],
+      "when": "Registering with a throwaway-mail domain.",
+      "message": "Use an email address you keep, not a temporary one."
+    },
+    {
+      "code": "turnstile_failed",
+      "http": [403],
+      "when": "The anti-abuse check on registration failed.",
+      "message": "The security check didn't pass. Try again."
+    },
+    {
+      "code": "email_typo",
+      "http": [400],
+      "when": "The address looks mistyped; suggestion holds the likely fix.",
+      "message": "That email address looks mistyped. Check it and try again."
+    },
+    {
+      "code": "undeliverable_email",
+      "http": [400],
+      "when": "Mail cannot be delivered to the address's domain.",
+      "message": "Mail can't be delivered to that address. Check it and try again."
+    },
+    {
+      "code": "bad_code",
+      "http": [401],
+      "when": "The sign-in code is wrong.",
+      "message": "That code isn't right. Check it and try again."
+    },
+    {
+      "code": "expired",
+      "http": [401],
+      "when": "The sign-in code has expired.",
+      "message": "That code has expired. Ask for a new one."
+    },
+    {
+      "code": "no_pending",
+      "http": [401],
+      "when": "No sign-in code is outstanding for this address.",
+      "message": "Ask for a sign-in code first."
+    },
+    {
+      "code": "too_many_attempts",
+      "http": [429],
+      "when": "Too many wrong sign-in codes; the code is used up.",
+      "message": "Too many wrong codes. Ask for a new one."
+    },
+    {
+      "code": "email_account_required",
+      "http": [400],
+      "when": "Only email accounts have an address to verify.",
+      "message": "Only email accounts need verifying."
+    },
+    {
+      "code": "provider_error",
+      "http": [],
+      "sse": true,
+      "when": "Chat stream: the AI model provider failed. On LISA Cloud the message is generic and the detail is only logged; on a Mac (the owner's own key) the message is the provider's detail.",
+      "message": "Lisa couldn't answer right now. Try again in a moment."
+    },
+    {
+      "code": "turn_failed",
+      "http": [],
+      "sse": true,
+      "when": "Chat stream: the turn failed for a reason other than the model provider. On LISA Cloud the message is generic; on a Mac it carries the detail.",
+      "message": "Lisa couldn't finish that reply. Try again in a moment."
+    },
+    {
+      "code": "bad_request",
+      "http": [400],
+      "when": "Generic code for a 400 without a specific one.",
+      "message": "Lisa couldn't understand that request. Update the app and try again."
+    },
+    {
+      "code": "payment_required",
+      "http": [402],
+      "when": "Generic code for a 402 without a specific one.",
+      "message": "This needs credits on your account."
+    },
+    {
+      "code": "not_found",
+      "http": [404],
+      "when": "Generic code for a 404 without a specific one, including routes this server doesn't have.",
+      "message": "That isn't available on this Lisa server."
+    },
+    {
+      "code": "method_not_allowed",
+      "http": [405],
+      "when": "Generic code for a 405.",
+      "message": "That isn't available on this Lisa server."
+    },
+    {
+      "code": "request_timeout",
+      "http": [408],
+      "when": "Generic code for a 408.",
+      "message": "The request took too long. Try again."
+    },
+    {
+      "code": "conflict",
+      "http": [409],
+      "when": "Generic code for a 409 without a specific one.",
+      "message": "That changed in the meantime. Refresh and try again."
+    },
+    {
+      "code": "gone",
+      "http": [410],
+      "when": "Generic code for a 410.",
+      "message": "That is no longer available."
+    },
+    {
+      "code": "payload_too_large",
+      "http": [413],
+      "when": "The request body is over the route's limit; limitBytes is included.",
+      "message": "That's too large to send. Try a smaller file or message."
+    },
+    {
+      "code": "unsupported_media_type",
+      "http": [415],
+      "when": "The request was not sent as application/json.",
+      "message": "Lisa couldn't read that request. Update the app and try again."
+    },
+    {
+      "code": "range_not_satisfiable",
+      "http": [416],
+      "when": "Generic code for a 416.",
+      "message": "That part of the file isn't available."
+    },
+    {
+      "code": "unprocessable",
+      "http": [422],
+      "when": "Generic code for a 422.",
+      "message": "Lisa couldn't process that request. Check it and try again."
+    },
+    {
+      "code": "internal_error",
+      "http": [500],
+      "when": "Generic code for a 500.",
+      "message": "Something went wrong on the server. Try again in a moment."
+    },
+    {
+      "code": "not_implemented",
+      "http": [501],
+      "when": "Generic code for a 501.",
+      "message": "This Lisa server can't do that yet. Update Lisa and try again."
+    },
+    {
+      "code": "bad_gateway",
+      "http": [502],
+      "when": "Generic code for a 502.",
+      "message": "Lisa couldn't reach a service it relies on. Try again in a moment."
+    },
+    {
+      "code": "service_unavailable",
+      "http": [503],
+      "when": "Generic code for a 503 without a specific one.",
+      "message": "Lisa is temporarily unavailable. Try again in a moment."
+    },
+    {
+      "code": "gateway_timeout",
+      "http": [504],
+      "when": "Generic code for a 504.",
+      "message": "A service Lisa relies on took too long. Try again in a moment."
+    },
+    {
+      "code": "request_failed",
+      "http": [],
+      "when": "Generic code for any other non-2xx status.",
+      "message": "The request didn't work. Try again in a moment."
+    }
+  ]
+}

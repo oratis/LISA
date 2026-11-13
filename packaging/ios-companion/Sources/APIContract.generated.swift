@@ -5,3 +5,160 @@ enum LisaAPIContract {
     static let supportedMajorVersion = 1
     static let versionHeader = "X-Lisa-API-Version"
 }
+
+/// The `error` code of a LISA error body, or the `code` of a chat `error`
+/// event (contracts/lisa-error-codes.json). Servers add codes over time: map
+/// any code not listed here to `.unknown` and fall back to the HTTP status
+/// and the server's `message`.
+enum LisaErrorCode: String {
+    /// HTTP 401. Your session has ended. Sign in again to continue.
+    case unauthorized
+    /// HTTP 403. Sign in to your Lisa account to do this.
+    case accountSessionRequired = "account_session_required"
+    /// HTTP 402. You've used your free allowance for now. Add credits to keep going, or wait for it to reset.
+    case quotaExhausted = "quota_exhausted"
+    /// HTTP 402. This model needs credits on your account. Add credits or choose another model.
+    case premiumRequiresBalance = "premium_requires_balance"
+    /// HTTP 402, 503. LISA Cloud has paused new requests for now. Please try again later.
+    case servicePaused = "service_paused"
+    /// HTTP 403. This account is suspended. Contact Lisa support for help.
+    case accountSuspended = "account_suspended"
+    /// HTTP 403. This model isn't available right now. Choose another model.
+    case modelDisabled = "model_disabled"
+    /// HTTP 403. Hosted Lisa can't do this. Connect your Mac to use it.
+    case capabilityDenied = "capability_denied"
+    /// HTTP 403. Remote control is turned off on your Mac. Turn it on in Lisa on the Mac, then try again.
+    case remoteControlDisabled = "remote_control_disabled"
+    /// HTTP 403. Taking over outside sessions from another device is turned off on your Mac. Turn it on in Lisa on the Mac, then try again.
+    case remoteAdoptDisabled = "remote_adopt_disabled"
+    /// HTTP 403. Only someone at the Mac can do this. Do it in Lisa on the Mac.
+    case localOwnerRequired = "local_owner_required"
+    /// HTTP 403. Your Mac doesn't trust this address. Connect with its access token or pairing code instead.
+    case untrustedHost = "untrusted_host"
+    /// HTTP 403. You don't have permission to do that.
+    case forbidden
+    /// HTTP 409, 429. Lisa is still answering your last message. Wait for it to finish, then try again.
+    case turnInProgress = "turn_in_progress"
+    /// HTTP 429. Too many requests in a short time. Wait a moment, then try again.
+    case rateLimited = "rate_limited"
+    /// HTTP 429. A code was just sent. Check your inbox, or wait a moment before asking for another.
+    case otpCooldown = "otp_cooldown"
+    /// HTTP 429. Too many codes were sent to this address today. Try again tomorrow.
+    case otpDailyCap = "otp_daily_cap"
+    /// HTTP 503. This feature is turned off for now. Try again later.
+    case featureTemporarilyDisabled = "feature_temporarily_disabled"
+    /// HTTP 503. Lisa couldn't check your balance just now. Try again in a moment.
+    case billingStateUnavailable = "billing_state_unavailable"
+    /// HTTP 503. Lisa couldn't reach your account just now. Try again in a moment.
+    case accountStoreUnavailable = "account_store_unavailable"
+    /// HTTP 409. This account is being deleted.
+    case accountDeletionInProgress = "account_deletion_in_progress"
+    /// HTTP 404. That conversation no longer exists. Start a new one.
+    case unknownSession = "unknown_session"
+    /// HTTP 400. Lisa couldn't read this purchase. Restore purchases and try again.
+    case malformedJws = "malformed_jws"
+    /// HTTP 400. This purchase isn't linked to your Lisa account. Restore purchases while signed in.
+    case unboundTransaction = "unbound_transaction"
+    /// HTTP 400. This purchase belongs to a different Lisa account. Sign in to that account to use it.
+    case wrongAccount = "wrong_account"
+    /// HTTP 400. Lisa couldn't verify this purchase with Apple. Try again later.
+    case badChain = "bad_chain"
+    /// HTTP 400. Lisa couldn't verify this purchase with Apple. Try again later.
+    case badSignature = "bad_signature"
+    /// HTTP 400. This purchase wasn't made in Lisa. Buy credits from Lisa itself.
+    case wrongBundle = "wrong_bundle"
+    /// HTTP 400. Lisa doesn't sell this item anymore. Update the app and try again.
+    case unknownProduct = "unknown_product"
+    /// HTTP 400. Test purchases can't add credits. Buy credits from the App Store version of Lisa.
+    case sandboxRejected = "sandbox_rejected"
+    /// HTTP 400. Apple has no record of this purchase. Restore purchases and try again.
+    case unknownTransaction = "unknown_transaction"
+    /// HTTP 400. Lisa couldn't verify purchases just now. Try again later.
+    case rootUnavailable = "root_unavailable"
+    /// HTTP 400. Lisa couldn't verify this purchase. Try again later.
+    case verificationFailed = "verification_failed"
+    /// HTTP 401. Lisa couldn't verify that sign-in. Try again.
+    case signInRejected = "sign_in_rejected"
+    /// HTTP 404, 503. This sign-in method isn't available here. Choose another way to sign in.
+    case signInUnavailable = "sign_in_unavailable"
+    /// HTTP 403. This Apple ID can't sign in to this Lisa server.
+    case signInNotAllowed = "sign_in_not_allowed"
+    /// HTTP 400. Sign-in didn't finish. Try again.
+    case identityTokenRequired = "identity_token_required"
+    /// HTTP 400. Sign-in didn't finish. Try again.
+    case idTokenRequired = "id_token_required"
+    /// HTTP 400. Update Lisa, then sign in again.
+    case nonceRequired = "nonce_required"
+    /// HTTP 404. Accounts aren't available on this Lisa server.
+    case accountsUnavailable = "accounts_unavailable"
+    /// HTTP 500. Lisa couldn't finish signing you in. Try again in a moment.
+    case accountOperationFailed = "account_operation_failed"
+    /// HTTP 401. That email and password don't match. Try again, or sign in with a code instead.
+    case badCredentials = "bad_credentials"
+    /// HTTP 429. Too many sign-in attempts. Wait 15 minutes, or sign in with a code instead.
+    case throttled
+    /// HTTP 400. Enter a valid email address.
+    case invalidEmail = "invalid_email"
+    /// HTTP 400. Use a password of at least 8 characters.
+    case weakPassword = "weak_password"
+    /// HTTP 409. An account already uses this email. Sign in instead.
+    case emailTaken = "email_taken"
+    /// HTTP 400. Use an email address you keep, not a temporary one.
+    case disposableEmail = "disposable_email"
+    /// HTTP 403. The security check didn't pass. Try again.
+    case turnstileFailed = "turnstile_failed"
+    /// HTTP 400. That email address looks mistyped. Check it and try again.
+    case emailTypo = "email_typo"
+    /// HTTP 400. Mail can't be delivered to that address. Check it and try again.
+    case undeliverableEmail = "undeliverable_email"
+    /// HTTP 401. That code isn't right. Check it and try again.
+    case badCode = "bad_code"
+    /// HTTP 401. That code has expired. Ask for a new one.
+    case expired
+    /// HTTP 401. Ask for a sign-in code first.
+    case noPending = "no_pending"
+    /// HTTP 429. Too many wrong codes. Ask for a new one.
+    case tooManyAttempts = "too_many_attempts"
+    /// HTTP 400. Only email accounts need verifying.
+    case emailAccountRequired = "email_account_required"
+    /// Chat stream. Lisa couldn't answer right now. Try again in a moment.
+    case providerError = "provider_error"
+    /// Chat stream. Lisa couldn't finish that reply. Try again in a moment.
+    case turnFailed = "turn_failed"
+    /// HTTP 400. Lisa couldn't understand that request. Update the app and try again.
+    case badRequest = "bad_request"
+    /// HTTP 402. This needs credits on your account.
+    case paymentRequired = "payment_required"
+    /// HTTP 404. That isn't available on this Lisa server.
+    case notFound = "not_found"
+    /// HTTP 405. That isn't available on this Lisa server.
+    case methodNotAllowed = "method_not_allowed"
+    /// HTTP 408. The request took too long. Try again.
+    case requestTimeout = "request_timeout"
+    /// HTTP 409. That changed in the meantime. Refresh and try again.
+    case conflict
+    /// HTTP 410. That is no longer available.
+    case gone
+    /// HTTP 413. That's too large to send. Try a smaller file or message.
+    case payloadTooLarge = "payload_too_large"
+    /// HTTP 415. Lisa couldn't read that request. Update the app and try again.
+    case unsupportedMediaType = "unsupported_media_type"
+    /// HTTP 416. That part of the file isn't available.
+    case rangeNotSatisfiable = "range_not_satisfiable"
+    /// HTTP 422. Lisa couldn't process that request. Check it and try again.
+    case unprocessable
+    /// HTTP 500. Something went wrong on the server. Try again in a moment.
+    case internalError = "internal_error"
+    /// HTTP 501. This Lisa server can't do that yet. Update Lisa and try again.
+    case notImplemented = "not_implemented"
+    /// HTTP 502. Lisa couldn't reach a service it relies on. Try again in a moment.
+    case badGateway = "bad_gateway"
+    /// HTTP 503. Lisa is temporarily unavailable. Try again in a moment.
+    case serviceUnavailable = "service_unavailable"
+    /// HTTP 504. A service Lisa relies on took too long. Try again in a moment.
+    case gatewayTimeout = "gateway_timeout"
+    /// Any other non-2xx status. The request didn't work. Try again in a moment.
+    case requestFailed = "request_failed"
+    /// A code this build doesn't know.
+    case unknown
+}

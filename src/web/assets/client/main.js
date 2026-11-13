@@ -1894,7 +1894,7 @@ cfgForm.addEventListener('submit', async (ev) => {
       body: JSON.stringify(lisaProviderSaveBody(provider, key, model, baseUrl)),
     });
     if (!res.ok) {
-      const txt = await res.text().catch(() => '');
+      const txt = errorText(await res.text().catch(() => ''));
       cfgError.textContent = tr('gate.saveFailed') + 'HTTP ' + res.status + (txt ? ' — ' + txt.slice(0, 120) : '');
       cfgSaveBtn.disabled = false;
       return;
@@ -2433,6 +2433,16 @@ const modalClose = document.getElementById('modalClose');
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
+// Error bodies are {error, message} JSON (contracts/lisa-error-codes.json);
+// show the message. Plain text from an older server passes through as is.
+function errorText(t) {
+  try {
+    const j = JSON.parse(t);
+    if (j && typeof j.message === 'string' && j.message) return j.message;
+    if (j && typeof j.error === 'string') return j.error;
+  } catch (_) { /* plain text */ }
+  return t;
+}
 let modalRevision = 0;
 function openModal(title, html) {
   modalRevision++;
@@ -2685,7 +2695,7 @@ async function selectPlan(plan) {
       body: JSON.stringify({ plan: plan }),
     });
     if (!res.ok) {
-      const t = await res.text().catch(function () { return ''; });
+      const t = errorText(await res.text().catch(function () { return ''; }));
       modalBody.insertAdjacentHTML('afterbegin', '<div class="empty" style="color:var(--err-color)">select failed: ' + escapeHtml(String(res.status) + (t ? ' — ' + t : '')) + '</div>');
       return;
     }
@@ -4354,6 +4364,7 @@ if ('serviceWorker' in navigator) {
       }).then(function (r) {
         if (!r.ok) {
           return r.text().then(function (t) {
+            t = errorText(t);
             if (errEl) errEl.textContent = t || ('failed (' + r.status + ')');
             if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
           });
@@ -5206,7 +5217,7 @@ if ('serviceWorker' in navigator) {
       if (startEl) { startEl.disabled = true; startEl.textContent = 'Checking…'; }
       fetch('/api/mail/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) {
-          if (!r.ok) { return r.text().then(function (t) { if (errEl) errEl.textContent = t || ('failed (' + r.status + ')'); if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } }); }
+          if (!r.ok) { return r.text().then(function (t) { t = errorText(t); if (errEl) errEl.textContent = t || ('failed (' + r.status + ')'); if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } }); }
           closeModal();
           if (window.refreshMail) window.refreshMail();
         })
@@ -5255,7 +5266,7 @@ if ('serviceWorker' in navigator) {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ agent: 'claude', resumeSessionId: sid, cwd: cwd || '' }),
       }).then(function (r) {
-        if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
+        if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(errorText(t)) + '</pre>'); }); }
         if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
       }).catch(function () {});
     }
@@ -5833,7 +5844,7 @@ if ('serviceWorker' in navigator) {
       headers: body ? { 'content-type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
     }).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error(String(r.status) + (t ? ' ' + t : '')); });
+      if (!r.ok) return r.text().then(function (t) { t = errorText(t); throw new Error(String(r.status) + (t ? ' ' + t : '')); });
       return r.json().catch(function () { return {}; });
     });
   }
@@ -5901,7 +5912,7 @@ if ('serviceWorker' in navigator) {
           else if (act === 'deny') afterAct(sdAction('managed', id, 'approve', { allow: false, approvalId: s.activity.approvalId }));
           else if (act === 'cancel') afterAct(sdAction(fam, id, 'cancel', null));
           else if (act === 'send') doSend();
-          else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t); }); }));
+          else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(errorText(t)); }); }));
           else if (act === 'output') {
             var out = document.getElementById('sdOut');
             if (out) { out.style.display = 'block'; out.textContent = 'loading…'; }
@@ -6373,7 +6384,7 @@ if ('serviceWorker' in navigator) {
       if (msg) { msg.style.color = ''; msg.textContent = 'Saving…'; }
       saveBtn.disabled = true;
       fetch('/api/config/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(window.lisaProviderSaveBody(pv, key, model, base)) })
-        .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t || ('failed (' + r.status + ')')); }); return r.json(); })
+        .then(function (r) { if (!r.ok) return r.text().then(function (t) { t = errorText(t); throw new Error(t || ('failed (' + r.status + ')')); }); return r.json(); })
         .then(function () { return getJSON('/api/config/status').catch(function () { return null; }); })
         .then(function (after) {
           // Same guard as the gate: say so when this backend dropped the key
