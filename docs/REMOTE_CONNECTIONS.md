@@ -239,6 +239,18 @@ revocation, replay rejection and loopback privilege preservation. Pocket tests c
 cross-language Node/CryptoKit ciphertext, LAN URL constraints, saved key pinning,
 failed-LAN fallback, network-change reprobes and no mutation replay after uncertain delivery.
 
+`src/remote/e2e-flow.test.ts` runs the whole Pocket → cloud relay → Mac path in `npm test`.
+It starts the hosted edition with its relay broker (`LISA_RELAY_ENABLED=1`) in a child
+process, a Mac backend with a scripted model in the test process, and a Node phone that
+follows `RemoteMacTransport.swift` (`tests/fixtures/remote/phone.ts`). One scenario covers:
+same-account discovery (another account lists nothing and cannot reach the Mac); pairing v2
+from commitment to the Mac's approval; through the tunnel, a REST read with its API version
+header, a streamed chat, an `/events` stream, and a cancelled chat that aborts the Mac's turn;
+revocation, which closes the open stream and refuses the next request; and, once the relay
+process is killed, an authenticated LAN `/link` request served while the revoked phone stays
+refused. The LAN step dials the Mac's saved LAN port over loopback, so it does not depend on
+the host having a network interface. Waits are bounded, and the file runs in a few seconds.
+
 Pairing v2 tests:
 
 - **Relay probe** (`src/remote/host.test.ts`). A relay substitutes both keys against the
