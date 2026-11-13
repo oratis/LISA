@@ -50,10 +50,11 @@ describe("mcp config — load/save/delete", () => {
       alwaysLoad: true,
     });
     const [s] = await mod.loadMcpConfig();
-    assert.deepEqual(s!.args, ["mcp-server-git"]);
-    assert.deepEqual(s!.env, { TOKEN: "x" });
-    assert.equal(s!.enabled, false);
-    assert.equal(s!.alwaysLoad, true);
+    assert.ok(s && s.type !== "http");
+    assert.deepEqual(s.args, ["mcp-server-git"]);
+    assert.deepEqual(s.env, { TOKEN: "x" });
+    assert.equal(s.enabled, false);
+    assert.equal(s.alwaysLoad, true);
   });
 
   test("save upserts by name", async () => {
@@ -61,14 +62,60 @@ describe("mcp config — load/save/delete", () => {
     await mod.saveMcpServer("a", { command: "two" });
     const all = await mod.loadMcpConfig();
     assert.equal(all.length, 1);
-    assert.equal(all[0]!.command, "two");
+    assert.ok(all[0] && all[0].type !== "http");
+    assert.equal(all[0].command, "two");
+  });
+
+  test("concurrent config updates keep stdio and HTTP entries and restrict file permissions", async () => {
+    await Promise.all([
+      mod.saveMcpServer("stdio", { command: "x" }),
+      mod.saveMcpServer("docs", {
+        type: "http",
+        url: "https://example.org/mcp",
+        allowedTools: ["search"],
+      }),
+    ]);
+    const entries = await mod.loadMcpConfig();
+    assert.equal(entries.length, 2);
+    const http = entries.find((spec) => spec.type === "http");
+    assert.ok(http && http.type === "http");
+    assert.deepEqual(http.allowedTools, ["search"]);
+    assert.equal(fs.statSync(mod.MCP_CONFIG_PATH).mode & 0o777, 0o600);
+  });
+
+  test("an invalid remote entry never runs as stdio or disables other servers", async () => {
+    fs.writeFileSync(
+      mod.MCP_CONFIG_PATH,
+      JSON.stringify({
+        mcpServers: {
+          mixed: { command: "sh", url: "https://example.org/mcp" },
+          private: { type: "http", url: "https://127.0.0.1/mcp" },
+          plain: { url: "http://example.org/mcp" },
+          credential: { url: "https://user:secret@example.org/mcp" },
+          token: { url: "https://example.org/mcp?token=secret" },
+          headers: { url: "https://example.org/mcp", headers: { Authorization: "secret" } },
+          valid: { command: "x" },
+          docs: { url: "https://example.org/mcp" },
+        },
+      }),
+    );
+    const warnings: string[] = [];
+    assert.deepEqual(
+      (await mod.loadMcpConfig((s) => warnings.push(s))).map((s) => s.name),
+      ["valid", "docs"],
+    );
+    assert.equal(warnings.length, 6);
+    assert.doesNotMatch(warnings.join(" "), /secret/);
   });
 
   test("delete removes a server and reports presence", async () => {
     await mod.saveMcpServer("a", { command: "x" });
     await mod.saveMcpServer("b", { command: "y" });
     assert.equal(await mod.deleteMcpServer("a"), true);
-    assert.deepEqual((await mod.loadMcpConfig()).map((s) => s.name), ["b"]);
+    assert.deepEqual(
+      (await mod.loadMcpConfig()).map((s) => s.name),
+      ["b"],
+    );
     assert.equal(await mod.deleteMcpServer("a"), false, "second delete reports not-present");
   });
 
@@ -85,6 +132,9 @@ describe("mcp config — load/save/delete", () => {
     fs.writeFileSync(path.join(home, "mcp.json"), "{ corrupt");
     await mod.saveMcpServer("fresh", { command: "ok" });
     const all = await mod.loadMcpConfig();
-    assert.deepEqual(all.map((s) => s.name), ["fresh"]);
+    assert.deepEqual(
+      all.map((s) => s.name),
+      ["fresh"],
+    );
   });
 });

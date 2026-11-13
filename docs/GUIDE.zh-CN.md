@@ -586,11 +586,20 @@ LISA_IDLE_COMMITMENT_AWARE=1          # 选择加入：空闲时先看你即将�
 ```json
 {
   "mcpServers": {
+    "mslearn": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp",
+      "allowedTools": ["microsoft_docs_search"]
+    },
     "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] },
     "github":     { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..." } }
   }
 }
 ```
+
+在本机聊天中点 **＋ → 浏览应用连接器**，或发送 `/connectors` 查看内置应用。发送 `/connectors Gmail` 可按名称或示例任务筛选。点击示例会把文字加入草稿，发送后进入该应用的只读连接流程。
+
+自定义 MCP 在本机 LISA 下次启动时加载，插件的 `.mcp.json` 也支持相同配置。HTTP 条目通过公网 HTTPS 443 端口连接免登录的 Streamable HTTP 服务，支持工具发现、工具调用及其 JSON / SSE 响应。带自定义请求头、查询串或重定向的端点会被拒绝。请选择信任的服务，每次调用的参数都会发送给该端点。`allowedTools` 按工具名精确选择，空数组表示不加载工具，省略则加载所有兼容工具。上例仅启用微软公开文档检索。[Microsoft Learn MCP 官方说明](https://learn.microsoft.com/en-us/training/support/mcp)
 
 ### `~/.lisa/heartbeat.json`
 
