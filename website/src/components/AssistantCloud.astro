@@ -89,15 +89,21 @@ const c = zh ? {
   </header>
   <section class="section">
     <h2>{c.compare}</h2>
-    <div class="comparison" tabindex="0" role="region" aria-label={c.compare}>
-      <table><thead><tr>{c.cols.map((col) => <th scope="col">{col}</th>)}</tr></thead><tbody>{c.rows.map(([label, mac, cloud]) => <tr><th scope="row">{label}</th><td>{mac}</td><td>{cloud}</td></tr>)}</tbody></table>
+    <div class="comparison">
+      <table role="table" aria-label={c.compare}>
+        <thead role="rowgroup"><tr role="row">{c.cols.map((col) => <th role="columnheader" scope="col">{col}</th>)}</tr></thead>
+        <tbody role="rowgroup">{c.rows.map(([label, mac, cloud]) => <tr role="row"><th role="rowheader" scope="row">{label}</th><td role="cell"><span class="cell-label" aria-hidden="true">{c.cols[1]}</span>{mac}</td><td role="cell"><span class="cell-label" aria-hidden="true">{c.cols[2]}</span>{cloud}</td></tr>)}</tbody>
+      </table>
     </div>
   </section>
   <section class="section" id="pricing">
     <h2>{c.pricing}</h2>
     <ul>{c.pricingItems.map((text) => <li>{text}</li>)}</ul>
-    <div class="comparison" tabindex="0" role="region" aria-label={c.packCols[0]}>
-      <table class="packs"><thead><tr>{c.packCols.map((col) => <th scope="col">{col}</th>)}</tr></thead><tbody>{c.packs.map(([price, credit, daily]) => <tr><th scope="row">{price}</th><td>{credit}</td><td>{daily}</td></tr>)}</tbody></table>
+    <div class="comparison">
+      <table class="packs" role="table" aria-label={c.packCols[0]}>
+        <thead role="rowgroup"><tr role="row">{c.packCols.map((col) => <th role="columnheader" scope="col">{col}</th>)}</tr></thead>
+        <tbody role="rowgroup">{c.packs.map(([price, credit, daily]) => <tr role="row"><th role="rowheader" scope="row"><span class="cell-label" aria-hidden="true">{c.packCols[0]}</span>{price}</th><td role="cell"><span class="cell-label" aria-hidden="true">{c.packCols[1]}</span>{credit}</td><td role="cell"><span class="cell-label" aria-hidden="true">{c.packCols[2]}</span>{daily}</td></tr>)}</tbody>
+      </table>
     </div>
     <p class="note">{c.packNote}</p>
   </section>
@@ -114,11 +120,26 @@ const c = zh ? {
   .actions { margin:1.5rem 0; }
   .section { margin-top:3.5rem; }
   .comparison { overflow-x:auto; margin-top:1.3rem; }
-  table { width:100%; min-width:640px; border-collapse:collapse; }
-  table.packs { min-width:0; max-width:640px; }
+  table { width:100%; border-collapse:collapse; }
+  table.packs { max-width:640px; }
   th,td { border:1px solid var(--border); padding:1rem; text-align:left; vertical-align:top; line-height:1.55; }
   thead { background:var(--panel); }
   td,li { color:var(--muted); }
   ul { max-width:80ch; padding-left:1.3rem; }
   li { margin:1rem 0; line-height:1.7; }
+  .cell-label { display:none; }
+  @media(max-width:640px) {
+    h1 { font-size:clamp(2rem,9vw,3rem); line-height:1.15; }
+    .lede { font-size:1rem; }
+    .comparison { overflow:visible; }
+    table,tbody { display:block; }
+    /* Keep table semantics and column headers available to assistive tech. */
+    thead { position:absolute; width:1px; height:1px; padding:0; margin:-1px; clip-path:inset(50%); overflow:hidden; white-space:nowrap; }
+    tbody { display:grid; gap:.85rem; }
+    tbody tr { display:grid; background:var(--panel); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+    th,td { border:0; padding:.85rem 1rem; }
+    tbody th { background:var(--bg-elev); font-weight:600; }
+    td + td { border-top:1px solid var(--border); }
+    .cell-label { display:block; color:var(--accent); font-size:.78rem; font-weight:600; margin-bottom:.3rem; }
+  }
 </style>
