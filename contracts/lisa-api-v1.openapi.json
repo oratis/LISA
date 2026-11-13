@@ -12,7 +12,7 @@
     "missingVersionHeader": "accept-as-legacy-v1",
     "sameMajor": "accept-additive-fields",
     "higherMajor": "reject-and-require-client-upgrade",
-    "managedApproval": "Explicit boolean allow and the current approvalId are required. Older clients must upgrade to resolve these prompts."
+    "managedApproval": "An explicit boolean allow is required. Allowing also requires the current approvalId. During the migration window a deny without approvalId, as sent by older clients, still refuses the session's current request."
   },
   "paths": {
     "/api/agent-host/v1/capabilities": {
@@ -4248,7 +4248,7 @@
           },
           "approvalId": {
             "type": "string",
-            "description": "One-time ID bound to the displayed managed permission. Required together with an explicit boolean allow on the decision endpoint."
+            "description": "One-time ID bound to the displayed managed permission. The decision endpoint requires it to allow; a deny without it refuses the current request (kept for older clients)."
           },
           "pendingPermission": {
             "type": "string"

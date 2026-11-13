@@ -4126,12 +4126,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         ok = managedRegistry.send(id, payload.text);
       else if (action === "cancel") ok = managedRegistry.cancel(id);
       else if (action === "approve") {
-        if (typeof payload?.allow !== "boolean" || typeof payload.approvalId !== "string") {
+        // Migration window: shipped Pocket builds send only {allow}. A deny without
+        // an id still refuses the session's current request; an allow must name the
+        // request the user saw, so a late tap can never approve a newer one.
+        const raw = payload.approvalId;
+        const approvalId = typeof raw === "string" && raw ? raw : undefined;
+        if (
+          typeof payload.allow !== "boolean" ||
+          (raw !== undefined && raw !== null && typeof raw !== "string") ||
+          (payload.allow && !approvalId)
+        ) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "approval_id_and_boolean_decision_required" }));
           return;
         }
-        ok = managedRegistry.decide(id, payload.allow, payload.approvalId);
+        ok = managedRegistry.decide(id, payload.allow, approvalId);
         if (!ok) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "stale_approval" }));

@@ -120,9 +120,14 @@ export class ManagedAgent {
     this.wake?.();
   }
 
-  /** Resolve a pending approve/deny. Returns false if nothing is pending. */
-  decide(allow: boolean, approvalId: string): boolean {
-    if (!this.pending || this.pending.id !== approvalId) return false;
+  /**
+   * Resolve a pending approve/deny. Returns false if nothing is pending or the
+   * id names another request. Only a deny may leave the id out: shipped Pocket
+   * builds send none, and refusing the current request is always safe.
+   */
+  decide(allow: boolean, approvalId?: string): boolean {
+    if (!this.pending) return false;
+    if (approvalId === undefined ? allow : this.pending.id !== approvalId) return false;
     const p = this.pending;
     p.resolve(allow);
     this.setState("working", "running");
@@ -267,7 +272,7 @@ export class ManagedRegistry extends EventEmitter {
     return true;
   }
 
-  decide(id: string, allow: boolean, approvalId: string): boolean {
+  decide(id: string, allow: boolean, approvalId?: string): boolean {
     return this.agents.get(id)?.decide(allow, approvalId) ?? false;
   }
 
