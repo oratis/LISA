@@ -83,7 +83,8 @@ function json(res: http.ServerResponse, status: number, value: unknown): void {
   res.end(JSON.stringify(value));
 }
 
-function isLoopbackHostHeader(host: string | undefined): boolean {
+/** Does this Host header name this machine (localhost, 127.x, [::1], 0.0.0.0)? */
+export function isLoopbackHostHeader(host: string | undefined): boolean {
   if (!host) return false;
   let name = host.trim().toLowerCase();
   if (name.startsWith("[")) name = name.slice(0, name.indexOf("]") + 1);
@@ -149,11 +150,11 @@ export function crossSiteProblem(
  *  - State-changing methods: `crossSiteProblem` in full. Requiring JSON is not
  *    enough on its own, because most routes parse the body themselves and a
  *    cross-site `text/plain` form post is a "simple" request no preflight stops.
- *  - Reads from another site are refused unless they are a navigation.
- *    Following a link into Lisa (docs, an OAuth return, the Mac app's offline
- *    placeholder) is a cross-site navigation and must keep working; another
- *    site's script or subresource fetching an API route has no such excuse,
- *    and some reads cost a model call.
+ *  - Reads from another site are refused unless they are a top-level
+ *    navigation. Following a link into Lisa (docs, an OAuth return, the Mac
+ *    app's offline placeholder) is a cross-site navigation and must keep
+ *    working; another site's script, subresource or iframe fetching a route
+ *    has no such excuse, and some reads cost a model call.
  *
  * A caller with no browser metadata at all (the CLI, the native apps, curl)
  * is unaffected: a page cannot make its browser omit these headers.
@@ -169,11 +170,14 @@ export function loopbackTrustProblem(
   if (!isLoopbackHostHeader(req.headers.host)) return "untrusted_host";
   const site = req.headers["sec-fetch-site"];
   const mode = req.headers["sec-fetch-mode"];
-  if (
-    typeof site === "string" &&
-    site.toLowerCase() === "cross-site" &&
-    !(typeof mode === "string" && mode.toLowerCase() === "navigate")
-  ) {
+  const dest = req.headers["sec-fetch-dest"];
+  // A top-level navigation only: a hidden iframe is a navigation too, and it
+  // would let another site fire any GET route without seeing the answer.
+  const navigation =
+    typeof mode === "string" &&
+    mode.toLowerCase() === "navigate" &&
+    (typeof dest !== "string" || dest.toLowerCase() === "document");
+  if (typeof site === "string" && site.toLowerCase() === "cross-site" && !navigation) {
     return "cross_site_request";
   }
   return null;

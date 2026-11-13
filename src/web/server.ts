@@ -259,6 +259,7 @@ import {
   handleWardenApi,
   wardenTrust,
   crossSiteProblem,
+  isLoopbackHostHeader,
   loopbackTrustProblem,
 } from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
@@ -594,8 +595,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const cloudEdition = isCloud();
   let remoteHost: RemoteHost | undefined;
   let relayBroker: RelayBroker | undefined;
-  const remoteAddress = (req: http.IncomingMessage) =>
-    remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
+  const remoteAddress = (req: http.IncomingMessage) => {
+    const addr = remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
+    // A loopback socket stands for the person at this machine only when the
+    // request also names this machine. A tunnel or reverse proxy forwarding a
+    // public hostname, or a DNS-rebinding page, connects from loopback too:
+    // label it remote, so it needs the web token like any LAN caller (and
+    // gets in with it) instead of inheriting the owner's tokenless trust.
+    return isLoopbackAddress(addr) && !isLoopbackHostHeader(req.headers.host)
+      ? "forwarded-host"
+      : addr;
+  };
   // Security-sensitive outbound links never derive their origin from Host or
   // forwarding headers. Cloud startup fails until its canonical HTTPS origin
   // is configured; local mode has a deterministic loopback fallback.
@@ -2577,6 +2587,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (authed && cloud && !accountUid && !cloudLegacyTokenAllowed()) {
         authed = false;
         accountRequired = true;
+      }
+      if (!authed && remoteAddr === "forwarded-host") {
+        // A loopback connection naming a foreign Host without a valid token: a
+        // DNS-rebinding page, or a tunnel or proxy set up without one. Same
+        // answer the owner-only routes have always given it.
+        res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "untrusted_host" }));
+        return;
       }
       if (!authed) {
         // Browsers hitting the cloud edition get the login page (still 401 —

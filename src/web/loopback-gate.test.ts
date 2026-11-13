@@ -23,9 +23,12 @@ process.env.CLAUDE_HOME = path.join(TMP, "claude");
 process.env.LISA_SOUL_GIT = "0";
 process.env.LISA_MAIL_POLL_MINUTES = "0";
 process.env.LISA_LOG_FORMAT = "text";
+// A token is configured, as it is for anyone who reaches Lisa through a
+// tunnel or from another device: those callers must still get in with it.
+const TOKEN = "loopback-gate-test-token";
+process.env.LISA_WEB_TOKEN = TOKEN;
 for (const k of [
   "LISA_EDITION",
-  "LISA_WEB_TOKEN",
   "LISA_PUBLIC_ORIGIN",
   "LISA_LOG_FILE",
   "K_SERVICE",
@@ -138,6 +141,9 @@ describe("loopback trust gate (real server, Mac edition)", () => {
 
   test("a DNS-rebinding request is refused on reads as well as writes", async () => {
     // To its own browser a rebound page is same-origin; only Host gives it away.
+    // It connects from loopback but names another host, so it is treated as a
+    // remote caller — and it cannot present the token (its cookies belong to
+    // evil.example, not to this machine).
     const rebound = {
       host: `evil.example:${port}`,
       origin: `http://evil.example:${port}`,
@@ -156,8 +162,31 @@ describe("loopback trust gate (real server, Mac edition)", () => {
       assert.equal(r.status, 403, `${method} ${route}`);
       if (method !== "HEAD") assert.equal(r.error, "untrusted_host", `${method} ${route}`);
     }
-    // A tunnel that forwards a public hostname looks the same from here.
-    assert.equal((await send("GET", "/api/soul", { host: "lisa.example.com" })).status, 403);
+  });
+
+  test("a tunnel or reverse proxy needs the token, and gets in with it", async () => {
+    // tailscale serve / cloudflared pointed at the port: loopback socket,
+    // public hostname. Without a token it is refused; with one it is a remote
+    // caller like any other device, not the owner at the machine.
+    const tunnel = { host: "lisa.example.com" };
+    const bare = await send("GET", "/api/soul", tunnel);
+    assert.equal(bare.status, 403);
+    assert.equal(bare.error, "untrusted_host");
+    const authed = { ...tunnel, authorization: `Bearer ${TOKEN}` };
+    assert.equal((await send("GET", "/api/soul", authed)).status, 200);
+    const chat = await send(
+      "POST",
+      "/chat",
+      { ...authed, "content-type": "application/json" },
+      "{}",
+    );
+    assert.equal(chat.status, 400, "reaches /chat's own validation");
+    // Owner-only routes still tell the two apart: a forwarded caller is remote.
+    assert.equal((await send("GET", "/api/remote/status", authed)).status, 403);
+    assert.equal(
+      (await send("GET", "/api/soul", { ...tunnel, authorization: "Bearer wrong" })).status,
+      403,
+    );
   });
 
   test("another site may navigate here but not fetch an API route", async () => {
@@ -173,8 +202,20 @@ describe("loopback trust gate (real server, Mac edition)", () => {
       403,
     );
     // Clicking a link into Lisa, or an OAuth provider redirecting back.
-    const nav = await send("GET", "/", { ...crossSite, "sec-fetch-mode": "navigate" });
+    const nav = await send("GET", "/", {
+      ...crossSite,
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
+    });
     assert.equal(nav.status, 200);
+    // A hidden iframe is a navigation too, but not a top-level one.
+    const framed = await send("GET", "/api/soul", {
+      ...crossSite,
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "iframe",
+    });
+    assert.equal(framed.status, 403);
+    assert.equal(framed.error, "cross_site_request");
   });
 
   test("the CLI, the native apps and curl send no browser metadata and are unaffected", async () => {
@@ -231,6 +272,18 @@ describe("loopbackTrustProblem", () => {
         null,
       ),
       null,
+    );
+    assert.equal(
+      loopbackTrustProblem(
+        fake("GET", {
+          ...local,
+          "sec-fetch-site": "cross-site",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "iframe",
+        }),
+        null,
+      ),
+      "cross_site_request",
     );
     // Another port on this machine is same-site; a read from it is not refused
     // (it cannot see the answer), only a write is.
