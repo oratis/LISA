@@ -37,3 +37,20 @@ test("directory replies distinguish catalog lookup from a data request", () => {
   assert.match(connectorCatalogReply("/connectors foobar")!, /No matching/);
   assert.equal(connectorCatalogReply("/connectors\nSend mail"), undefined);
 });
+
+test("the directory only offers sources this install can serve", () => {
+  const builtIns = new Set([
+    "github",
+    "google-calendar",
+    "gmail",
+    "linear",
+    "google-drive",
+    "slack",
+    "notion",
+  ]);
+  const onlyBuiltIns = (id: string) => builtIns.has(id);
+  const reply = connectorCatalogReply("/connectors", "en", onlyBuiltIns)!;
+  assert.match(reply, /GitHub/);
+  assert.doesNotMatch(reply, /Jira|Dropbox|Apple Reminders/);
+  assert.match(connectorCatalogReply("/connectors jira", "en", onlyBuiltIns)!, /No matching/);
+});

@@ -171,7 +171,14 @@ test.describe("Slack read-only connector", () => {
     await page.locator("#plusBtn").click();
     await page.getByRole("button", { name: "浏览应用连接器", exact: true }).click();
     const panel = page.locator("#modalBody");
-    await expect(panel.getByRole("button")).toHaveCount(7);
+    // Every source this install can serve, and no other (workspace sources
+    // without a configured OAuth client are not offered).
+    const catalog = (await (await page.request.get(base + "/api/connectors")).json()) as {
+      connectors: Array<{ available?: boolean }>;
+    };
+    const offered = catalog.connectors.filter((c) => c.available !== false).length;
+    expect(offered).toBeGreaterThanOrEqual(7);
+    await expect(panel.getByRole("button")).toHaveCount(offered);
     await panel.getByRole("button", { name: "Slack · 将示例加入草稿" }).click();
     await expect(draft).toHaveValue(/只返回数量。\n总结我选定的 Slack/);
     const card = page.getByRole("region", { name: "Slack 只读连接" });

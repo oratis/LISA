@@ -523,7 +523,9 @@ if (browseConnectors) {
 function showConnectorCatalog() {
   return loadPanel(tr('connector.browse'), '/api/connectors', data => {
     modalBody.replaceChildren(githubNode('p', tr('connector.readExamples')));
-    for (const app of data.connectors) {
+    // A source this install cannot serve (no OAuth client, no EventKit reader)
+    // is not offered: its example would never reach a connection card.
+    for (const app of data.connectors.filter(a => a.available !== false)) {
       const example = app.example[LISA_LOCALE];
       const row = githubNode('div', '', 'item');
       row.append(githubNode('strong', app.name), githubNode('p', example, 'desc'));

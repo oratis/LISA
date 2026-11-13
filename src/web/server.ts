@@ -5588,7 +5588,11 @@ self.addEventListener('fetch', (event) => {
         !crossSiteProblem(req, true, null);
       const catalogReply =
         connectorOwner && !files?.length
-          ? connectorCatalogReply(message, req.headers["accept-language"])
+          ? connectorCatalogReply(
+              message,
+              req.headers["accept-language"],
+              (id) => id === "github" || taskConnectors.has(id),
+            )
           : undefined;
       const connectorRevision =
         connectorOwner && !catalogReply
