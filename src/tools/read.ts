@@ -12,6 +12,7 @@ const DEFAULT_LIMIT = 2000;
 
 export const readTool: ToolDefinition<ReadInput, string> = {
   name: "read",
+  concurrencySafe: true,
   description:
     "Read a text file from the local filesystem. Path may be absolute or relative to the current working directory. " +
     "Returns up to `limit` lines starting at `offset` (1-indexed). Default reads first 2000 lines. " +
@@ -43,9 +44,10 @@ export const readTool: ToolDefinition<ReadInput, string> = {
     const numbered = slice
       .map((line, i) => `${String(offset + i).padStart(5, " ")}\t${line}`)
       .join("\n");
-    const more = offset - 1 + slice.length < lines.length
-      ? `\n[... ${lines.length - (offset - 1 + slice.length)} more lines ...]`
-      : "";
+    const more =
+      offset - 1 + slice.length < lines.length
+        ? `\n[... ${lines.length - (offset - 1 + slice.length)} more lines ...]`
+        : "";
     return numbered + more;
   },
 };

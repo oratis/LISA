@@ -90,7 +90,9 @@ export function mainHtmlCsp(nonce: string): string {
  * page is byte-identical to the pre-CSP version, which is what the tests and
  * any non-HTTP consumer want.
  */
-export function renderMainHtml(opts: { nonce?: string; remoteFleet?: boolean } = {}): string {
+export function renderMainHtml(
+  opts: { nonce?: string; remoteFleet?: boolean; connectorCatalog?: boolean } = {},
+): string {
   const nonceAttr = opts.nonce ? ` nonce="${opts.nonce}"` : "";
   return `<!doctype html>
 <html lang="en"><head>
@@ -250,9 +252,10 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
            ＋ menu, so it must not be a keyboard Tab stop. -->
       <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple tabindex="-1">
       <div class="plus-wrap">
-        <button type="button" id="plusBtn" title="Attach or screenshot" aria-label="Attach or screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button type="button" id="plusBtn" title="Chat options" aria-label="Chat options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <div class="plus-menu" id="plusMenu">
           <button type="button" id="pmAttach"><span class="g">📎</span> Attach file</button>
+          ${opts.connectorCatalog ? '<button type="button" id="pmConnectors">Browse app connectors</button>' : ""}
           <button type="button" id="pmShot"><span class="g">📷</span> Screenshot</button>
         </div>
       </div>
