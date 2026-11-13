@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -50,6 +51,8 @@ interface Orphan {
 export interface FleetHostOptions {
   /** `kill(id, 0)`: whether a process exists, or a process group for a negative id. */
   exists?: (id: number) => boolean;
+  /** When the process with this id started (ms since the epoch), or undefined if unknown. */
+  startedAt?: (pid: number) => number | undefined;
   /** How long a leftover agent gets between SIGTERM and SIGKILL. */
   stopGraceMs?: number;
 }
@@ -107,6 +110,26 @@ function exists(id: number): boolean {
     return false;
   }
 }
+/** `ps` reports start times to the second; the launch is recorded right after spawn. */
+const LAUNCH_TOLERANCE_MS = 10_000;
+
+/** When a process started, from `ps` (macOS and Linux), or undefined if unknown. */
+function processStartedAt(pid: number): number | undefined {
+  try {
+    const out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+      env: { ...process.env, LC_ALL: "C" },
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+    const at = Date.parse(out);
+    return Number.isFinite(at) ? at : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function signalGroup(pgid: number, signal: NodeJS.Signals) {
   try {
     process.kill(-pgid, signal);
@@ -131,6 +154,7 @@ export class FleetHostService {
   private drained!: () => void;
   private readonly stopped = new Promise<void>((resolve) => (this.drained = resolve));
   private readonly exists: (id: number) => boolean;
+  private readonly startedAt: (pid: number) => number | undefined;
   private readonly stopGraceMs: number;
   /** Settles once agents left running by an earlier backend have been dealt with. */
   readonly recovered: Promise<void>;
@@ -140,6 +164,7 @@ export class FleetHostService {
     options: FleetHostOptions = {},
   ) {
     this.exists = options.exists ?? exists;
+    this.startedAt = options.startedAt ?? processStartedAt;
     this.stopGraceMs = options.stopGraceMs ?? 1500;
     const dir = path.join(home, "fleet");
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -183,11 +208,23 @@ export class FleetHostService {
         if (!pgid || typeof r.started !== "number") continue;
         if (backend && backend !== process.pid && this.exists(backend)) continue;
         const orphan = { id, pgid, started: r.started };
-        if (this.groupAlive(orphan)) live.push(orphan);
-        else this.releaseOrphan(id, "exited");
+        if (!this.groupAlive(orphan)) this.releaseOrphan(id, "exited");
+        else if (this.launchedAsRecorded(orphan)) live.push(orphan);
+        // Otherwise the group id now belongs to something started at another
+        // time: ids are reused within a boot. It is not ours to signal, so the
+        // owner checks the machine instead, as before (ownerStop).
       }
     });
     this.recovered = Promise.all(live.map((o) => this.stopOrphan(o))).then(() => undefined);
+  }
+  /**
+   * Whether the group's leader is the agent this ledger launched: it started
+   * within a few seconds of the recorded launch. Checked before any signal, so
+   * a reused id never gets an unrelated process group killed.
+   */
+  private launchedAsRecorded(o: Orphan) {
+    const at = this.startedAt(o.pgid);
+    return at !== undefined && Math.abs(at - o.started) <= LAUNCH_TOLERANCE_MS;
   }
   /** Whether the agent's process group survives. A reboot since its launch means it cannot. */
   private groupAlive(o: Orphan) {

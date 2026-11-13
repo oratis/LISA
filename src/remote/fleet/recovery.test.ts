@@ -130,6 +130,25 @@ test("a restarted backend frees the slot of an agent that already exited", async
   }
 });
 
+test("a reused process-group id is never signalled; the owner checks the machine", async () => {
+  // Process ids are reused within a boot. If the recorded group now belongs to
+  // something that started at another time, killing it would hit an unrelated
+  // process group of the same user.
+  const child = agent();
+  const f = fixture(child);
+  try {
+    f.start(f.first);
+    const restarted = f.open({ startedAt: () => Date.now() - 60 * 60_000 });
+    await restarted.recovered;
+    assert.ok(alive(child), "a group started at another time must not be signalled");
+    // The slot stays taken, as it did before recovery existed: the owner releases it.
+    assert.throws(() => f.start(restarted), /host_busy/);
+  } finally {
+    reap(child);
+    f.close();
+  }
+});
+
 test("a restarted backend stops an agent that is still running, then frees its slot", async () => {
   const child = agent();
   const f = fixture(child);
