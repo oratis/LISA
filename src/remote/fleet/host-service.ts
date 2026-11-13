@@ -77,6 +77,17 @@ const MAX_EVENTS = 500,
 function inside(parent: string, entry: string) {
   return entry === parent || entry.startsWith(parent.endsWith("/") ? parent : parent + "/");
 }
+/**
+ * Mac volumes are normally case- and normalization-insensitive: /Users/me/Project
+ * and /users/me/project are one directory. Boundary checks compare folded paths,
+ * which errs toward refusing on the rare case-sensitive volume.
+ */
+function fold(p: string) {
+  return p.normalize("NFC").toLowerCase();
+}
+function within(parent: string, entry: string) {
+  return inside(fold(parent), fold(entry));
+}
 /** Workspace-relative when inside the workspace, so a card never needs the host's layout. */
 function target(root: string, value: unknown): string {
   if (typeof value !== "string") return "";
@@ -255,33 +266,34 @@ export class FleetHostService {
     if (!path.isAbsolute(value)) throw new FleetError(400, "absolute_directory_required");
     let root: string;
     try {
-      root = fs.realpathSync(value);
+      // The native call also returns each component's on-disk spelling.
+      root = fs.realpathSync.native(value);
     } catch {
       throw new FleetError(400, "directory_unavailable");
     }
     const label = requiredText(name, 64).trim();
-    const userHome = fs.realpathSync(os.homedir());
-    const protectedHome = fs.realpathSync(this.home);
+    const userHome = fs.realpathSync.native(os.homedir());
+    const protectedHome = fs.realpathSync.native(this.home);
     // Exclude system roots, home itself, dot directories, and any overlap with the control plane.
     if (
       root.split("/").filter(Boolean).length < 3 ||
       root.split("/").some((s) => s.startsWith(".")) ||
-      inside(root, userHome) ||
-      inside(root, protectedHome) ||
-      inside(protectedHome, root) ||
+      within(root, userHome) ||
+      within(root, protectedHome) ||
+      within(protectedHome, root) ||
       ["/System", "/Library", "/usr", "/bin", "/sbin", "/etc", "/private/etc", "/opt"].some((p) =>
-        inside(p, root),
+        within(p, root),
       )
     )
       throw new FleetError(400, "choose_project_directory");
     const workspaces = this.workspaces();
-    const existing = workspaces.find((w) => w.root === root);
+    const existing = workspaces.find((w) => fold(w.root) === fold(root));
     const token = inode(root);
     if (existing && existing.inode !== token) throw new FleetError(409, "workspace_replaced");
     if (
       !existing &&
       (workspaces.length >= 32 ||
-        workspaces.some((w) => inside(root, w.root) || inside(w.root, root)))
+        workspaces.some((w) => within(root, w.root) || within(w.root, root)))
     )
       throw new FleetError(409, "workspace_overlap_or_limit");
     const id = existing?.id ?? crypto.randomUUID();
@@ -416,7 +428,7 @@ export class FleetHostService {
         let valid = false;
         try {
           valid =
-            fs.realpathSync(workspace.root) === workspace.root &&
+            fs.realpathSync.native(workspace.root) === workspace.root &&
             inode(workspace.root) === workspace.inode;
         } catch {
           /* moved */

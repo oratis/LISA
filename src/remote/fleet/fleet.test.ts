@@ -93,6 +93,47 @@ test("operation receipts outlive a backend, reject changed payloads, and never r
   }
 });
 
+test("workspace registration compares real paths without regard to case", () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-case-")));
+  const home = path.join(dir, "Lisa-Home"),
+    project = path.join(dir, "Project");
+  fs.mkdirSync(project);
+  const runner: ClaudeRunner = {
+    reason: () => null,
+    start: (_, e) => ({ send() {}, decide() {}, cancel: () => e.exit("") }),
+  };
+  const svc = new FleetHostService(home, runner);
+  // Each path is created first. On a case-insensitive volume it lands inside the
+  // existing directory; on a case-sensitive one it is a sibling, refused anyway.
+  const make = (...parts: string[]) => {
+    const p = path.join(dir, ...parts);
+    fs.mkdirSync(p, { recursive: true });
+    return p;
+  };
+  try {
+    const ws = svc.register("Project", project);
+    assert.throws(
+      () => svc.register("Nested", make("PROJECT", "src")),
+      /workspace_overlap_or_limit/,
+    );
+    assert.throws(
+      () => svc.register("Home", make("LISA-HOME", "work")),
+      /choose_project_directory/,
+    );
+    if (fs.existsSync(path.join(dir, "project"))) {
+      // The same directory spelled another way is the same workspace, stored as on disk.
+      assert.equal(svc.register("Renamed", path.join(dir, "project")).id, ws.id);
+      assert.deepEqual(
+        svc.workspaces().map((w) => [w.name, w.root]),
+        [["Renamed", project]],
+      );
+    }
+  } finally {
+    void svc.shutdown();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 interface MacListing {
   scope: string;
   hosts: { id: string; name: string; online: boolean; paired: boolean }[];
