@@ -59,8 +59,31 @@ export function remoteFetch(
             await res.body?.cancel();
             return new Response(null, { status: res.status, headers: res.headers });
           }
-          // Linear closes request SSE after the result; buffering applies one byte/time budget
-          // to JSON and SSE alike. Unsolicited GET streams are disabled by the client below.
+          // Deliver SSE replies as they arrive. A server may keep the POST stream
+          // open after the JSON-RPC result. Bound its lifetime and bytes independently.
+          if (
+            res.body &&
+            res.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ===
+              "text/event-stream"
+          ) {
+            let bytes = 0;
+            const limited = new TransformStream<Uint8Array, Uint8Array>({
+              transform(chunk, controller) {
+                bytes += chunk.byteLength;
+                if (bytes > 1_000_000) throw new ConnectorError("mcp_response_too_large");
+                controller.enqueue(chunk);
+              },
+            });
+            const streamSignal = AbortSignal.any([
+              signal,
+              ...(init.signal ? [init.signal] : []),
+              AbortSignal.timeout(30_000),
+            ]);
+            return new Response(res.body.pipeThrough(limited, { signal: streamSignal }), {
+              status: res.status,
+              headers: res.headers,
+            });
+          }
           const body = await readResponseTextCapped(res, 1_000_000);
           if (body.truncated) throw new ConnectorError("mcp_response_too_large");
           return new Response(body.text, { status: res.status, headers: res.headers });

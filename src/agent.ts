@@ -134,7 +134,31 @@ export interface RunAgentOptions {
   onCallUsage?: (usage: ProviderUsage) => void;
   /** When set, the system prompt is rebuilt between turns if its source state changed. */
   hotReload?: PromptHotReload;
+  /**
+   * Run the calls of one model turn that are `concurrencySafe` at the same time
+   * instead of one after another. The model asks for several reads, fetches or
+   * sub-agents in one turn precisely because they are independent; run in
+   * sequence, a turn costs the SUM of their latencies rather than the slowest.
+   *
+   * What does not change: results go back in call order, `tool_call_start` /
+   * `tool_call_end` still alternate one call at a time in call order, the
+   * pre-tool hooks fire in call order and so do the post-tool hooks (a later
+   * call's pre hook may run before an earlier call's post hook), and a call
+   * that is not `concurrencySafe` waits for every earlier call to finish and
+   * runs alone. A parallel call's start event is sent when its result is
+   * collected, which is why only quick lookups are marked safe.
+   *
+   * Ignored whenever `approval` is set: a human answering a prompt, or Warden
+   * deciding with the taint of the calls before it, needs them one at a time.
+   * Ignored under `costCapMicroUSD` too, where sub-agents share one budget.
+   * Off by default, so unattended runs with their own ordering assumptions
+   * (the Task Engine's replay ledger) are untouched unless they opt in.
+   */
+  parallelTools?: boolean;
 }
+
+/** At most this many calls of one turn run at once. */
+const MAX_PARALLEL_TOOL_CALLS = 8;
 
 export interface RunAgentResult {
   finalText: string;
@@ -510,143 +534,150 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
     );
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const call of toolUses) {
-      onEvent?.({
-        type: "tool_call_start",
-        toolName: call.name,
-        toolInput: call.input,
+    /** How a call ended, before it is reported. */
+    type Outcome = { content: string; isError?: boolean; shown: string };
+    const start = (call: Anthropic.ToolUseBlock): void => {
+      onEvent?.({ type: "tool_call_start", toolName: call.name, toolInput: call.input });
+    };
+    const report = (call: Anthropic.ToolUseBlock, o: Outcome): void => {
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: call.id,
+        content: o.content,
+        ...(o.isError ? { is_error: true } : {}),
       });
+      onEvent?.({
+        type: "tool_call_end",
+        toolName: call.name,
+        ...(o.isError ? { isError: true } : {}),
+        toolResult: o.shown,
+      });
+    };
+    /**
+     * Everything that decides whether a call runs at all: registration,
+     * approval, the pre-tool hook, input validation. Returns the tool to run,
+     * or the outcome that settles the call without running it.
+     */
+    const gate = async (
+      call: Anthropic.ToolUseBlock,
+    ): Promise<{ tool: ToolDefinition } | { settled: Outcome }> => {
       const tool = toolMap.get(call.name);
       if (!tool) {
-        const errMsg = `tool "${call.name}" is not registered`;
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: call.id,
-          content: errMsg,
-          is_error: true,
-        });
-        onEvent?.({
-          type: "tool_call_end",
-          toolName: call.name,
-          isError: true,
-          toolResult: "unregistered",
-        });
-        continue;
+        return {
+          settled: {
+            content: `tool "${call.name}" is not registered`,
+            isError: true,
+            shown: "unregistered",
+          },
+        };
       }
-
       if (opts.approval) {
         const decision = await opts.approval(call.name, call.input);
         if (!decision.allow) {
           const reason = decision.reason ?? "user denied";
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: call.id,
-            content: `[denied] ${reason}`,
-            is_error: true,
-          });
-          onEvent?.({
-            type: "tool_call_end",
-            toolName: call.name,
-            isError: true,
-            toolResult: reason,
-          });
-          continue;
+          return { settled: { content: `[denied] ${reason}`, isError: true, shown: reason } };
         }
       }
-
       if (opts.preToolHook) {
         const hook = await opts.preToolHook(call.name, call.input);
         if (hook?.block) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: call.id,
-            content: `[hook blocked] ${hook.block}`,
-            is_error: true,
-          });
-          onEvent?.({
-            type: "tool_call_end",
-            toolName: call.name,
-            isError: true,
-            toolResult: hook.block,
-          });
-          continue;
+          return {
+            settled: { content: `[hook blocked] ${hook.block}`, isError: true, shown: hook.block },
+          };
         }
         if (hook?.cachedResult != null) {
           // Answered from a recorded result: the tool is NOT executed (and so
           // postToolHook, which reports executions, is not called either).
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: call.id,
-            content: hook.cachedResult,
-          });
-          onEvent?.({
-            type: "tool_call_end",
-            toolName: call.name,
-            toolResult: hook.cachedResult.slice(0, 240),
-          });
-          continue;
+          return {
+            settled: { content: hook.cachedResult, shown: hook.cachedResult.slice(0, 240) },
+          };
         }
       }
-
       // FOUNDATIONS §2.3 — validate the model's input against the tool's schema
       // before running it. Malformed input never reaches execute(); the model
       // gets a friendly error to correct on the next turn.
       const valid = validateToolInput(tool.inputSchema, call.input);
       if (!valid.ok) {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: call.id,
-          content: `[invalid input] ${valid.error}`,
-          is_error: true,
-        });
-        onEvent?.({
-          type: "tool_call_end",
-          toolName: call.name,
-          isError: true,
-          toolResult: valid.error ?? "invalid input",
+        return {
+          settled: {
+            content: `[invalid input] ${valid.error}`,
+            isError: true,
+            shown: valid.error ?? "invalid input",
+          },
+        };
+      }
+      return { tool };
+    };
+    /** Run the tool. Never rejects: a failure is a result the model reads. */
+    const execute = async (
+      tool: ToolDefinition,
+      call: Anthropic.ToolUseBlock,
+    ): Promise<{ text: string; failed: boolean }> => {
+      try {
+        const raw = await tool.execute(call.input, toolCtx);
+        return {
+          text:
+            tool.renderResultForModel?.(raw) ??
+            (typeof raw === "string" ? raw : JSON.stringify(raw)),
+          failed: false,
+        };
+      } catch (err) {
+        return { text: err instanceof Error ? err.message : String(err), failed: true };
+      }
+    };
+    /** The post-tool hook, then the outcome as the model and the UI see it. */
+    const settle = async (
+      call: Anthropic.ToolUseBlock,
+      ran: { text: string; failed: boolean },
+    ): Promise<Outcome> => {
+      let text = ran.text;
+      if (opts.postToolHook) {
+        const hook = await opts.postToolHook(call.name, call.input, text, ran.failed);
+        if (hook?.rewriteResult != null) text = hook.rewriteResult;
+      }
+      return ran.failed
+        ? { content: text, isError: true, shown: text }
+        : { content: text, shown: text.slice(0, 240) };
+    };
+
+    // Calls launched ahead and not yet reported, in call order. Reporting is
+    // always in call order and one call at a time, so everything downstream —
+    // the result order the provider requires, a UI that pairs each start with
+    // the next end, Warden reading tool_call_end — sees the same sequence it
+    // would from a strictly serial run; only the waiting overlaps.
+    const ahead: Array<{
+      call: Anthropic.ToolUseBlock;
+      outcome: Outcome | Promise<{ text: string; failed: boolean }>;
+    }> = [];
+    const drain = async (): Promise<void> => {
+      for (const { call, outcome } of ahead.splice(0)) {
+        start(call);
+        report(call, outcome instanceof Promise ? await settle(call, await outcome) : outcome);
+      }
+    };
+    // Not under a USD cap either: the task tool hands each sub-agent "what is
+    // left", which is only true of one sub-agent at a time.
+    const parallel = opts.parallelTools === true && !opts.approval && !costCap;
+    for (const call of toolUses) {
+      if (parallel && toolMap.get(call.name)?.concurrencySafe === true) {
+        if (ahead.length >= MAX_PARALLEL_TOOL_CALLS) await drain();
+        const gated = await gate(call);
+        ahead.push({
+          call,
+          outcome: "settled" in gated ? gated.settled : execute(gated.tool, call),
         });
         continue;
       }
-
-      try {
-        const raw = await tool.execute(call.input, toolCtx);
-        let text =
-          tool.renderResultForModel?.(raw) ?? (typeof raw === "string" ? raw : JSON.stringify(raw));
-        if (opts.postToolHook) {
-          const hook = await opts.postToolHook(call.name, call.input, text, false);
-          if (hook?.rewriteResult != null) text = hook.rewriteResult;
-        }
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: call.id,
-          content: text,
-        });
-        onEvent?.({
-          type: "tool_call_end",
-          toolName: call.name,
-          toolResult: text.slice(0, 240),
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        let content = message;
-        if (opts.postToolHook) {
-          const hook = await opts.postToolHook(call.name, call.input, message, true);
-          if (hook?.rewriteResult != null) content = hook.rewriteResult;
-        }
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: call.id,
-          content,
-          is_error: true,
-        });
-        onEvent?.({
-          type: "tool_call_end",
-          toolName: call.name,
-          isError: true,
-          toolResult: content,
-        });
-      }
+      // Anything else runs alone, after every call before it has finished.
+      await drain();
+      start(call);
+      const gated = await gate(call);
+      report(
+        call,
+        "settled" in gated ? gated.settled : await settle(call, await execute(gated.tool, call)),
+      );
     }
+    await drain();
     const toolMessage: StoredMessage = { role: "user", content: toolResults };
     messages.push(toolMessage);
     await onMessagePersist?.(toolMessage);

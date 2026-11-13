@@ -2,7 +2,7 @@ import { runAgent } from "../agent.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, type PromptSnapshot } from "../prompt.js";
-import { reflectOnSession } from "../reflect.js";
+import { durableReflectionSummary, reflectOnSession } from "../reflect.js";
 import { SessionStore } from "../sessions/store.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import type { StoredMessage, ToolDefinition } from "../types.js";
@@ -185,7 +185,9 @@ export class ChannelRouter {
           sessionId: ctx.session.id,
           model: this.opts.model,
         });
-        await ctx.session.appendReflection(r.summary);
+        // The placeholder a malformed pass returns is not a summary to resume from.
+        const summary = durableReflectionSummary(r);
+        if (summary !== null) await ctx.session.appendReflection(summary);
         console.error(`[reflection ${ctx.key}] ${r.summary}`);
       } catch (err) {
         console.error(`[reflection ${ctx.key}] failed: ${(err as Error).message}`);

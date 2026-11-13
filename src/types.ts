@@ -17,6 +17,17 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
     idempotentHint?: boolean;
     openWorldHint?: boolean;
   };
+  /**
+   * This call may run at the same time as other `concurrencySafe` calls from
+   * the same model turn: it changes nothing another such call reads. Set only
+   * on our own tools that look things up or fetch them, and only when a call
+   * is quick (its start event is sent when its result is collected); it is a
+   * scheduling fact about a tool we
+   * wrote, unlike `annotations.readOnlyHint`, which an MCP server asserts
+   * about itself. Unset ⇒ the call runs alone, in order. See
+   * `RunAgentOptions.parallelTools`.
+   */
+  concurrencySafe?: boolean;
   execute(input: TInput, ctx: ToolContext): Promise<TOutput>;
   renderResultForModel?(result: TOutput): string;
 }

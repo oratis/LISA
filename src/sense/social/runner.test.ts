@@ -33,28 +33,37 @@ function fake(name: string, output: Record<string, unknown>): ToolDefinition {
     name,
     description: name,
     inputSchema: { type: "object", properties: {} },
-    async execute() { return JSON.stringify(output); },
+    async execute() {
+      return JSON.stringify(output);
+    },
   };
 }
 
 test("runner alone consumes approval and invokes hidden validate/publish tools", async () => {
-  const draft = await createSocialDraft({
-    targets: [{
-      connectorId: "bluesky-official",
-      accountId: "did:plc:test",
-      platform: "bluesky",
-    }],
-    canonical: { text: "hello", media: [] },
-  }, 1000);
+  const draft = await createSocialDraft(
+    {
+      targets: [
+        {
+          connectorId: "bluesky-official",
+          accountId: "did:plc:test",
+          platform: "bluesky",
+        },
+      ],
+      canonical: { text: "hello", media: [] },
+    },
+    1000,
+  );
   const requested = await requestSocialDraftApproval(draft.id, 1, 2000);
   await approveSocialDraft(draft.id, requested.digest, 3000);
   let now = 4000;
   const finished = await publishApprovedSocialDraft(draft.id, requested.digest, {
-    connectors: [{
-      plugin: "test",
-      manifestPath: "/test",
-      manifest: bundledConnectorManifest("bluesky"),
-    }],
+    connectors: [
+      {
+        plugin: "test",
+        manifestPath: "/test",
+        manifest: bundledConnectorManifest("bluesky"),
+      },
+    ],
     connectorTools: [
       fake("mcp__bluesky__social_draft_validate", { ok: true, errors: [] }),
       fake("mcp__bluesky__social_publish", {
@@ -66,21 +75,20 @@ test("runner alone consumes approval and invokes hidden validate/publish tools",
   });
   assert.equal(finished.state, "published");
   assert.equal(finished.outcomes?.[0]?.platformPostId, "at://post");
-  const audit = fs.readFileSync(
-    path.join(home, "sense", "social", "audit.jsonl"),
-    "utf8",
-  );
+  const audit = fs.readFileSync(path.join(home, "sense", "social", "audit.jsonl"), "utf8");
   assert.doesNotMatch(audit, /hello/);
   assert.match(audit, /at:\/\/post/);
 });
 
 test("pause switch blocks before an approval is consumed", async () => {
   const draft = await createSocialDraft({
-    targets: [{
-      connectorId: "mastodon-official",
-      accountId: "account",
-      platform: "mastodon",
-    }],
+    targets: [
+      {
+        connectorId: "mastodon-official",
+        accountId: "account",
+        platform: "mastodon",
+      },
+    ],
     canonical: { text: "paused", media: [] },
   });
   const requested = await requestSocialDraftApproval(draft.id, 1);
@@ -94,4 +102,42 @@ test("pause switch blocks before an approval is consumed", async () => {
     /publishing is paused/,
   );
   assert.equal((await getSocialDraft(draft.id))?.state, "approved");
+});
+
+test("a connector failure reported through MCP isError keeps its own error text", async () => {
+  // An MCP tool that reports isError throws with its text, which for a social
+  // connector is {"ok":false,"error":…}. The outcome must carry the error, not
+  // the raw JSON.
+  const draft = await createSocialDraft(
+    {
+      targets: [
+        { connectorId: "bluesky-official", accountId: "did:plc:test", platform: "bluesky" },
+      ],
+      canonical: { text: "hello", media: [] },
+    },
+    1000,
+  );
+  const requested = await requestSocialDraftApproval(draft.id, 1, 2000);
+  await approveSocialDraft(draft.id, requested.digest, 3000);
+  let now = 4000;
+  const failing: ToolDefinition = {
+    name: "mcp__bluesky__social_publish",
+    description: "publish",
+    inputSchema: { type: "object", properties: {} },
+    async execute() {
+      throw new Error(JSON.stringify({ ok: false, error: "rate limited by the platform" }));
+    },
+  };
+  const finished = await publishApprovedSocialDraft(draft.id, requested.digest, {
+    connectors: [
+      { plugin: "test", manifestPath: "/test", manifest: bundledConnectorManifest("bluesky") },
+    ],
+    connectorTools: [
+      fake("mcp__bluesky__social_draft_validate", { ok: true, errors: [] }),
+      failing,
+    ],
+    now: () => now++,
+  });
+  assert.equal(finished.outcomes?.[0]?.ok, false);
+  assert.equal(finished.outcomes?.[0]?.error, "rate limited by the platform");
 });

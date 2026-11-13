@@ -265,6 +265,35 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     }
   });
 
+  test("the idle dream never starts on the cloud surface, whatever --idle says", async () => {
+    // deploy/entrypoint.sh passes no --no-idle, so the hosted server is handed
+    // the flag's default of 60 minutes. The dream runs on the process-level
+    // chat, which there belongs to no account: nobody is admitted or billed
+    // for it, and it stalls the event loop every signed-in user shares.
+    const { getIdleWatcher } = await import("../idle/watcher.js");
+    const dreamHandlers = () => getIdleWatcher(60 * 60_000).listenerCount("idle");
+    const before = dreamHandlers();
+
+    const cloud = buildRuntimePolicy({ ...base, idleMinutes: 60 }, { LISA_EDITION: "cloud" });
+    assert.equal(cloud.idleDream, false);
+    const hosted = await boot({ policy: cloud, idleMinutes: 60 });
+    try {
+      assert.equal(dreamHandlers(), before, "cloud policy must not arm the idle dream");
+    } finally {
+      await hosted.close();
+    }
+
+    // The same options on the Mac edition do arm it — the gate is the policy.
+    const mac = buildRuntimePolicy({ ...base, idleMinutes: 60 }, { LISA_EDITION: "mac" });
+    assert.equal(mac.idleDream, true);
+    const local = await boot({ policy: mac, idleMinutes: 60 });
+    try {
+      assert.equal(dreamHandlers(), before + 1);
+    } finally {
+      await local.close();
+    }
+  });
+
   test("a competing reflection gets a stable conflict without leaking its lock path", async () => {
     const { withFileLock } = await import("../soul/lock.js");
     const { reflectionsDir } = await import("../paths.js");
