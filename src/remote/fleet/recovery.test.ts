@@ -199,6 +199,36 @@ test("an agent that ignores SIGTERM is killed once the grace period ends", async
   }
 });
 
+test("an unconfirmed process-group exit keeps the executor reserved for the owner", async (t) => {
+  const f = fixture();
+  try {
+    const id = f.start(f.first);
+    const pgid = 710001;
+    const started = Date.now();
+    f.ledger("UPDATE runs SET pgid=?,started=? WHERE id=?", pgid, started, id);
+    const signals: Array<string | number> = [];
+    t.mock.method(process, "kill", (pid: number, signal: string | number) => {
+      assert.equal(pid, -pgid);
+      if (signal === 0) throw Object.assign(new Error("permission denied"), { code: "EPERM" });
+      signals.push(signal);
+      return true;
+    });
+    const restarted = f.open({
+      startedAt: () => started,
+      stopGraceMs: 0,
+    });
+    await restarted.recovered;
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.equal(f.page(restarted, id).events.at(-1)?.type, "outcome_unknown");
+    assert.equal(restarted.ownerRuns()[0]?.state, "unknown");
+    assert.throws(() => f.start(restarted), /host_busy/);
+    restarted.ownerStop(id, true);
+    f.start(restarted);
+  } finally {
+    f.close();
+  }
+});
+
 test("a group id that predates a reboot, or a run another live backend owns, is left alone", async () => {
   const child = agent(),
     sibling = agent();
