@@ -592,8 +592,34 @@ test(
         });
         await until(view, (r) => r.state === "cancelled");
       }
+      // Switching remote control off, or revoking the device, stops what it left
+      // running on the Mac instead of only hiding it from the controller.
+      const active = async () =>
+        (await api<{ runs: { id: string }[] }>(m.port, "/api/fleet/local")).runs;
+      const hold = async () => {
+        const op = { ...start, operationId: crypto.randomUUID(), text: "fleet-hold" };
+        await remote(0, "/runs", "POST", op);
+        await until(active, (runs) => runs.some((r) => r.id === op.operationId));
+        return op.operationId;
+      };
+      const halted = await hold();
+      await api(m.port, "/api/control/policy", { remoteControl: false });
+      await until(active, (runs) => runs.length === 0);
+      await api(m.port, "/api/control/policy", { remoteControl: true });
+      assert.equal((await remote(0, "/runs/" + halted)).run.state, "cancelled");
+      const orphaned = await hold();
       const device = (await api<OwnerView>(m.port, "/api/fleet/local")).link.devices[0]!;
       await api(m.port, "/api/remote/revoke", { id: device.id });
+      await until(active, (runs) => runs.length === 0);
+      const after = new DatabaseSync(path.join(dir, "mac-1", "fleet", "runs.sqlite"));
+      try {
+        assert.equal(
+          after.prepare("SELECT state FROM runs WHERE id=?").get(orphaned)?.state,
+          "cancelled",
+        );
+      } finally {
+        after.close();
+      }
       await assert.rejects(remote(0, "/runs"), /workspace_grant_required/);
       await assert.rejects(remote(0, "/runs/" + id + "/events"), /workspace_grant_required/);
       assert.equal((await remote<{ control: boolean }>(2, "/capabilities")).control, false);

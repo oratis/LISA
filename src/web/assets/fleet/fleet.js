@@ -49,6 +49,8 @@
     owner: "执行机所有者",
     timeout: "一小时时限",
     shutdown: "执行机后端退出",
+    revoked: "授权已撤销或收窄",
+    policy: "执行机关闭了远程控制",
   };
   const reasons = {
     claude_exited: "Claude Code 进程异常退出",

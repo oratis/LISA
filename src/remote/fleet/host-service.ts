@@ -10,7 +10,15 @@ import {
   type ClaudeRunner,
   type ClaudeSession,
 } from "./claude.js";
-import { digest, FleetError, HOST_API, requiredText, uuid, type FleetPeer } from "./types.js";
+import {
+  digest,
+  FleetError,
+  HOST_API,
+  requiredText,
+  uuid,
+  type FleetGrant,
+  type FleetPeer,
+} from "./types.js";
 
 interface Workspace {
   id: string;
@@ -589,7 +597,27 @@ export class FleetHostService {
     }
     return this.read(peer, HOST_API + "/operations/" + op);
   }
-  private stopRun(id: string, by: "controller" | "owner" | "timeout" | "shutdown") {
+  /**
+   * The owner revoked a device, narrowed its workspaces or took away control. Its
+   * agents outside what it may still control stop now, instead of running on
+   * where the device can no longer see or cancel them.
+   */
+  enforceGrant(deviceId: string, grant: FleetGrant | undefined) {
+    for (const id of [...this.sessions.keys()]) {
+      const r = this.db.prepare("SELECT device,workspace FROM runs WHERE id=?").get(id);
+      if (r?.device !== deviceId) continue;
+      if (!grant?.control || !grant.workspaces.includes(String(r.workspace)))
+        this.stopRun(id, "revoked");
+    }
+  }
+  /** Remote control was switched off on this Mac. No remote agent keeps running. */
+  stopRemoteRuns() {
+    for (const id of [...this.sessions.keys()]) this.stopRun(id, "policy");
+  }
+  private stopRun(
+    id: string,
+    by: "controller" | "owner" | "timeout" | "shutdown" | "revoked" | "policy",
+  ) {
     this.tx(() => {
       this.closePending(id, "cancelled");
       const applied = this.db

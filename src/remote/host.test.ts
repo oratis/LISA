@@ -349,6 +349,41 @@ test("agent-host and Pocket grants cannot cross protocol roles on the encrypted 
   }
 });
 
+test("granting, re-granting and revoking an agent-host device tells the executor", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  const calls: [string, unknown][] = [];
+  h.host.onFleetGrantChange = (id, grant) => calls.push([id, grant]);
+  try {
+    const device = keyId(h.phone.publicKey);
+    const pairFleet = async (channel: string) => {
+      const nonce = pairingNonce();
+      const c = await h.hello(channel, h.phone, true, {
+        v: 2,
+        commit: pairingCommitment(h.hostKey, h.phone.publicKey, nonce),
+      });
+      h.send(channel, c.cipher.seal({ type: "pair", nonce, role: "agent-host" }));
+      return String(c.cipher.open((await h.nextFrame(channel)) as never).code);
+    };
+    const wide = { control: true, workspaces: [crypto.randomUUID(), crypto.randomUUID()] };
+    h.host.approve(device, await pairFleet("g0"), wide);
+    const narrow = { control: false, workspaces: [wide.workspaces[0]!] };
+    h.host.approve(device, await pairFleet("g1"), narrow);
+    // A Pocket device never had agent-host rights, so revoking it is not reported.
+    const pocket = identity(),
+      old = await pairV2(h, "p0", pocket);
+    h.host.approve(keyId(pocket.publicKey), String(old.code));
+    h.host.revoke(keyId(pocket.publicKey));
+    h.host.revoke(device);
+    assert.deepEqual(calls, [
+      [device, wide],
+      [device, narrow],
+      [device, undefined],
+    ]);
+  } finally {
+    await h.close();
+  }
+});
+
 test("negotiation on a v2 Mac: v2 phones get a committed code, Pocket 1.3 the flagged v1 code", async () => {
   const h = await harness((_req, res) => res.end("ok"));
   try {

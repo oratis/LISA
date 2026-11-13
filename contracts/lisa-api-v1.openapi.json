@@ -4069,8 +4069,11 @@
               "controller",
               "owner",
               "timeout",
-              "shutdown"
-            ]
+              "shutdown",
+              "revoked",
+              "policy"
+            ],
+            "description": "revoked: the owner revoked the device or narrowed its grant. policy: remote control was switched off on the host."
           },
           "state": {
             "type": "string"

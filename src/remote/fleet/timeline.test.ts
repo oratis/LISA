@@ -358,3 +358,58 @@ test("the remote allow-list accepts one spelling of the timeline cursor", () => 
     false,
   );
 });
+
+test("revoking a device, narrowing its grant or switching remote control off stops its agents", () => {
+  const f = fixture();
+  try {
+    const startRun = () => {
+      const b = f.body({ text: "Work" });
+      f.svc.mutate(f.peer, HOST_API + "/runs", b);
+      return b.operationId;
+    };
+    const ending = (id: string) =>
+      f
+        .page(id)
+        .events.slice(-2)
+        .map((e) => [e.type, e.by ?? e.state]);
+    const ws = f.peer.workspaces[0]!;
+    const other = crypto.randomUUID();
+
+    const kept = startRun();
+    // The same grant again, or another device's change, leaves the agent alone.
+    f.svc.enforceGrant(f.peer.deviceId, { workspaces: [ws], control: true });
+    f.svc.enforceGrant("c".repeat(32), undefined);
+    assert.equal(f.page(kept).run.state, "running");
+    // Re-granted without this workspace.
+    f.svc.enforceGrant(f.peer.deviceId, { workspaces: [other], control: true });
+    assert.deepEqual(ending(kept), [
+      ["cancel_requested", "revoked"],
+      ["run_ended", "cancelled"],
+    ]);
+
+    // Re-granted for observation only.
+    const observed = startRun();
+    f.svc.enforceGrant(f.peer.deviceId, { workspaces: [ws], control: false });
+    assert.equal(f.page(observed).run.state, "cancelled");
+
+    // Revoked.
+    const revoked = startRun();
+    f.svc.enforceGrant(f.peer.deviceId, undefined);
+    assert.deepEqual(ending(revoked), [
+      ["cancel_requested", "revoked"],
+      ["run_ended", "cancelled"],
+    ]);
+
+    // Remote control switched off on the Mac.
+    const policy = startRun();
+    f.svc.stopRemoteRuns();
+    assert.deepEqual(ending(policy), [
+      ["cancel_requested", "policy"],
+      ["run_ended", "cancelled"],
+    ]);
+    // The slot is free again.
+    startRun();
+  } finally {
+    f.close();
+  }
+});

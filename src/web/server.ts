@@ -3966,6 +3966,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       try {
         const saved = saveControlPolicy({ ...loadControlPolicy(), ...payload });
+        // A remote controller can no longer see or cancel its agents. Stop them.
+        if (!saved.remoteControl) fleet?.host.stopRemoteRuns();
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, ...saved }));
       } catch (err) {
@@ -6085,6 +6087,8 @@ self.addEventListener('fetch', (event) => {
       protectFromSandbox({ path: path.join(lisaGlobalHome(), "fleet") });
       protectFromSandbox({ path: path.join(lisaGlobalHome(), "remote-link.json") });
       remoteHost = new RemoteHost(lisaGlobalHome(), bound.port);
+      // Before the executor opens nothing runs, so there is nothing to stop.
+      remoteHost.onFleetGrantChange = (id, grant) => fleet?.host.enforceGrant(id, grant);
       void remoteHost
         .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
         .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));

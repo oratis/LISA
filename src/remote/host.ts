@@ -141,6 +141,11 @@ export class RemoteHost {
   /** Last v1 pairing refused by requireSecurePairing, so the Mac can explain it. */
   private legacyRefused?: { name: string; at: number };
   private readonly file: string;
+  /**
+   * Told when an agent-host device loses its grant or gets a new one, so the
+   * executor stops that device's agents outside what it may still control.
+   */
+  onFleetGrantChange?: (deviceId: string, grant: FleetGrant | undefined) => void;
   constructor(
     private readonly home: string,
     private readonly backendPort: number,
@@ -194,6 +199,9 @@ export class RemoteHost {
     if (!me.signedIn || !me.uid) throw new Error("sign_in_required");
     if (generation !== this.generation) throw new Error("connection_cancelled");
     if (this.stored?.uid !== me.uid || this.stored.base !== base) {
+      // A different account starts with no grants. Agents its devices started stop.
+      for (const g of this.stored?.grants ?? [])
+        if (g.fleet) this.onFleetGrantChange?.(g.id, undefined);
       this.stored = {
         version: 1,
         enabled: true,
@@ -282,6 +290,7 @@ export class RemoteHost {
     ];
     this.save();
     this.pending.delete(id);
+    if (fleet) this.onFleetGrantChange?.(id, fleet);
   }
   /** Owner policy. requireSecurePairing refuses new v1 pairings; existing grants stay. */
   setPolicy(policy: Record<string, unknown>): void {
@@ -306,8 +315,10 @@ export class RemoteHost {
     if (pending) this.dismissed.set(id, pending.expiresAt);
     this.pending.delete(id);
     if (this.stored) {
+      const revoked = this.stored.grants.find((g) => g.id === id);
       this.stored.grants = this.stored.grants.filter((g) => g.id !== id);
       this.save();
+      if (revoked?.fleet) this.onFleetGrantChange?.(id, undefined);
     }
     for (const [key, channel] of this.channels) if (channel.deviceId === id) this.closeChannel(key);
   }
