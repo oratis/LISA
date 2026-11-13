@@ -78,7 +78,7 @@ export const workspaceApps = {
     scope: "events",
     unit: "calendar",
     hint: "Calendar ID",
-    intent: /(?:apple|macOS|苹果).{0,10}(?:日历|日程|calendar)|iCal\b/i,
+    intent: /(?:apple|macOS|苹果).{0,10}(?:日历|日程|calendar)|\biCal\b/i,
   },
   "apple-reminders": {
     name: "Apple Reminders",
@@ -108,19 +108,15 @@ export function workspaceScopes(id: WorkspaceId) {
       return app.scope;
   }
 }
-export function workspaceReadIntents(text: string) {
-  if (
-    /删除|创建|更新|修改|清空|标记|发送|回复|邀请|写入|上传|移动到|归档|\b(?:send|reply|create|delete|write|edit|update|invite|archive|upload|move|assign|mark|close)\b/i.test(
-      text,
-    )
-  )
-    return [];
-  if (
-    !/查看|读取|看看|列出|汇总|总结|梳理|只读|安排|待办|日程|查找|read|list|summari[sz]e|review|inspect|show|schedule|what|find/i.test(
-      text,
-    )
-  )
-    return [];
+const writeVerb =
+  /删除|创建|更新|修改|清空|标记|发送|回复|邀请|写入|上传|移动到|归档|\b(?:send|reply|create|delete|write|edit|update|invite|archive|upload|move|assign|mark|close)\b/i;
+// Whole English words only: "already" must not read as "read". Question words such as
+// "what", "find" and "show" are left out, so "What is Figma?" stays an ordinary chat.
+const readVerb =
+  /查看|读取|看看|列出|汇总|总结|梳理|只读|安排|待办|日程|查找|\b(?:read|list|summari[sz]e|review|inspect|schedule)\b/i;
+/** Sources a message explicitly asks to read. */
+export function workspaceReadIntents(text: string): WorkspaceId[] {
+  if (writeVerb.test(text) || !readVerb.test(text)) return [];
   return workspaceIds.filter((id) => workspaceApps[id].intent.test(text));
 }
 export function toolName(id: WorkspaceId) {

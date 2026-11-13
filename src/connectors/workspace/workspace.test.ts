@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { WorkspaceDriver, readPeriod } from "./driver.js";
-import { workspaceApps, workspaceIds, workspaceReadIntents } from "./catalog.js";
+import { workspaceApps, workspaceIds, workspaceReadIntents, type WorkspaceId } from "./catalog.js";
 import { Reader, type Http } from "./http.js";
 import { contents, validId } from "./data.js";
 import {
@@ -223,4 +223,33 @@ test("Figma node selection cannot import other nodes from a multi-node response"
     nodes: { "12:34": { document: { id: "9:9", name: "moved" } } },
   }));
   await assert.rejects(contents("figma", wrong, "fileKey|12:34", p), /resource_changed/);
+});
+
+test("ordinary chat that only names a source is not a read request", () => {
+  for (const text of [
+    "What is Figma?",
+    "I already use Dropbox",
+    "what's the difference between Jira and Confluence",
+    "Show me what Figma can do",
+    "Can you find a Dropbox alternative?",
+    "Review the musical I saw last night",
+    "Figma 是什么？",
+  ])
+    assert.deepEqual(workspaceReadIntents(text), [], text);
+});
+test("each source matches a plain English (or Chinese) read request", () => {
+  const asks: Record<WorkspaceId, string> = {
+    todoist: "List my Todoist tasks for today",
+    "outlook-mail": "Summarize my Outlook inbox",
+    "outlook-calendar": "Read my Outlook calendar for next week",
+    onedrive: "Review the notes in my OneDrive",
+    sharepoint: "Read the SharePoint project plan",
+    jira: "List my open Jira issues",
+    confluence: "Summarize the Confluence onboarding page",
+    figma: "Inspect the Figma design for the login screen",
+    dropbox: "Read the contract in Dropbox",
+    "apple-calendar": "查看我的苹果日历",
+    "apple-reminders": "List my Apple Reminders",
+  };
+  for (const id of workspaceIds) assert.deepEqual(workspaceReadIntents(asks[id]), [id], asks[id]);
 });
