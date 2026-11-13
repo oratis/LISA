@@ -1,3 +1,5 @@
+import { handleConsole } from "../admin/http.js";
+import { featureAllowed } from "../admin/store.js";
 import { expressionTurn } from "../expressions/turn.js";
 import {
   parseExpressionPreferences,
@@ -1913,6 +1915,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // for EVERY request and loopback is not a free pass (the container must never
     // trust its own/proxy loopback). Mac edition: loopback = the local owner.
     const cloud = isCloud();
+    if (
+      await handleConsole(req, res, {
+        secret: cloud ? sessionSecret : null,
+        clientIp: clientIp(req, remoteAddr),
+      })
+    )
+      return;
 
     // ── Sign in with Apple (cloud edition) ───────────────────────────────────
     // Public on purpose: this endpoint *mints* access, so it runs BEFORE the
@@ -2431,6 +2440,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "unauthorized" }));
         return;
       }
+      // The operator "reflection" switch; checked once the scheduler is authenticated.
+      if (!(await featureAllowed("POST", url))) {
+        res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
+        return;
+      }
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
       const maxRuns =
@@ -2450,13 +2465,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
         );
         // Cloud tasks ride the same sweep (LISA_CLOUD_TASKS=1 only; default off).
-        const tasks = cloudTasksEnabled()
-          ? await sweepUserTasks({
-              runnerFor: (uid) => taskHost.runnerFor(uid),
-              beginAccountWork: (uid) => beginAccountWork(uid, () => {}),
-              ...(maxRuns !== undefined ? { maxRuns } : {}),
-            })
-          : undefined;
+        const tasks =
+          cloudTasksEnabled() && (await featureAllowed("POST", "/api/tasks"))
+            ? await sweepUserTasks({
+                runnerFor: (uid) => taskHost.runnerFor(uid),
+                beginAccountWork: (uid) => beginAccountWork(uid, () => {}),
+                ...(maxRuns !== undefined ? { maxRuns } : {}),
+              })
+            : undefined;
         if (tasks)
           logInfo(`[sweep] tasks: ${tasks.scanned} tenant(s) with tasks, ${tasks.ran} run(s)`);
         res.writeHead(200, { "content-type": "application/json" });
@@ -2670,6 +2686,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: problem }));
         return;
       }
+    }
+
+    // Operator feature switches (cloud console). After the gate on purpose, so
+    // only a caller that already authenticated reaches the admin policy. The
+    // "paused" switch is enforced at inference admission, for every path.
+    if (cloud && !(await featureAllowed(req.method ?? "GET", url))) {
+      res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
+      return;
     }
 
     // Account-owned discovery; the relay carries ciphertext, never local API access.
@@ -5478,6 +5503,17 @@ self.addEventListener('fetch', (event) => {
         }
         message = parsed.message;
         files = parsed.files;
+        if (
+          cloud &&
+          Array.isArray(files) &&
+          files.length &&
+          !(await featureAllowed("POST", "/api/uploads"))
+        ) {
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
+          return;
+        }
+
         // F6 — an explicit session target (Mac edition only; validated and
         // resolved after the lease below). Optional: old clients omit it.
         if (typeof parsed.sessionId === "string" && /^[A-Za-z0-9_-]+$/.test(parsed.sessionId)) {

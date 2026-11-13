@@ -1,3 +1,4 @@
+import { inferencePolicy } from "../admin/store.js";
 /**
  * Account admission for duration-priced media provider calls.
  */
@@ -78,6 +79,8 @@ export async function admitMedia(
   acct: AccountRecord,
   deps: MediaAdmissionDependencies = DEFAULT_DEPS,
 ): Promise<MediaAdmission> {
+  const policy = await inferencePolicy(acct.uid);
+  if (!policy.ok) return policy;
   const limits = deps.limits(acct.uid);
   if (!limits.ok) return limits;
 

@@ -27,7 +27,14 @@ import crypto, { X509Certificate } from "node:crypto";
 import { lisaGlobalHome, homeScope, homeForUid } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { creditPurchase, clawbackPurchase, readBalance } from "./quota.js";
-import { casUpdate, firestoreEnabled, getDoc, setDoc, FirestoreError } from "../cloud/firestore.js";
+import {
+  casUpdate,
+  firestoreEnabled,
+  getDoc,
+  setDoc,
+  FirestoreError,
+  listCollection,
+} from "../cloud/firestore.js";
 
 export class IapError extends Error {
   constructor(
@@ -815,4 +822,20 @@ export async function refundTransaction(
     }
   }
   return { uid: entry.uid, microUSD: entry.microUSD };
+}
+
+/** Operator-only read of the authoritative transaction index; no state repair. */
+export async function listPaymentTransactions(): Promise<{
+  rows: TxIndexEntry[];
+  truncated: boolean;
+}> {
+  if (!firestoreEnabled()) return { rows: readTxIndex(), truncated: false };
+  const rows: TxIndexEntry[] = [];
+  let token: string | undefined;
+  do {
+    const page = await listCollection("lisa-txindex", token);
+    rows.push(...page.rows.map(parseTxEntry));
+    token = page.nextPageToken;
+  } while (token && rows.length < 10000);
+  return { rows, truncated: !!token };
 }

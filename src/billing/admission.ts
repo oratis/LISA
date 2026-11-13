@@ -1,3 +1,4 @@
+import { inferencePolicy } from "../admin/store.js";
 /**
  * One admission boundary for every account-funded inference request.
  *
@@ -99,6 +100,8 @@ export async function admitInference(
   model: string,
   deps: AdmissionDependencies = DEFAULT_DEPS,
 ): Promise<InferenceAdmission> {
+  const policy = await inferencePolicy(acct.uid, model);
+  if (!policy.ok) return policy;
   const limits = deps.preflight(acct.uid);
   if (!limits.ok) return limits;
 

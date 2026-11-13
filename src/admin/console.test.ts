@@ -1,0 +1,885 @@
+import { test, beforeEach, afterEach, mock } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import http from "node:http";
+import {
+  emptyState,
+  parseState,
+  roleFor,
+  mutateAdminState,
+  readAdminState,
+  inferencePolicy,
+  featureAllowed,
+  consoleEnabled,
+  adminAccountAllowed,
+  _expireAdminPolicyForTests,
+  planArchive,
+  applyArchive,
+  AUDIT_INLINE_MAX,
+  AUDIT_INLINE_MAX_BYTES,
+  type AdminState,
+  type AuditEntry,
+} from "./store.js";
+import { handleConsole, consoleSecret, csvValue } from "./http.js";
+import { consoleSnapshot } from "./data.js";
+import { mintSession } from "../web/sessions-auth.js";
+import {
+  ensureSeededAccount,
+  createEmailAccount,
+  upsertAppleAccount,
+  sessionAccountValid,
+  getAccount,
+  getAccountByEmail,
+} from "../web/accounts.js";
+import { homeScope, homeForUid } from "../paths.js";
+import { readBalance } from "../billing/quota.js";
+import type { AccountRecord } from "../web/accounts.js";
+
+let home: string;
+let server: http.Server;
+let base: string;
+let admin: AccountRecord, regular: AccountRecord, analyst: AccountRecord, operator: AccountRecord;
+let savedEnv: NodeJS.ProcessEnv;
+const secret = "unit-test-session-secret";
+const token = (acct: AccountRecord, sv = acct.sessionVersion) =>
+  mintSession(acct.uid, consoleSecret(secret), { sv, ttlMs: 3600000 });
+async function request(
+  url: string,
+  acct?: AccountRecord,
+  payload?: unknown,
+  headers: Record<string, string> = {},
+) {
+  const response = await fetch(base + url, {
+    method: payload === undefined ? "GET" : "POST",
+    headers: {
+      ...(acct ? { cookie: `lisa_console=${token(acct)}` } : {}),
+      ...(payload !== undefined
+        ? {
+            "content-type": "application/json",
+            "x-lisa-console": "1",
+            origin: "https://meetlisa.ai",
+          }
+        : {}),
+      ...headers,
+    },
+    ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+  });
+  return { response, body: (await response.json()) as Record<string, unknown> };
+}
+beforeEach(async () => {
+  savedEnv = { ...process.env };
+  home = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-console-test-"));
+  process.env.LISA_HOME = home;
+  process.env.LISA_CONSOLE_ENABLED = "1";
+  process.env.LISA_ADMIN_EMAILS = "owner@example.com";
+  process.env.LISA_EDITION = "cloud";
+  process.env.LISA_FIRESTORE = "0";
+  process.env.LISA_MODEL = "gemini-2.5-flash";
+  admin = await ensureSeededAccount("owner@example.com", "a-password-123");
+  regular = await ensureSeededAccount("member@example.com", "a-password-123");
+  analyst = await ensureSeededAccount("analyst@example.com", "a-password-123");
+  operator = await ensureSeededAccount("operator@example.com", "a-password-123");
+  await mutateAdminState((s) => {
+    s.roles[analyst.email!] = "analyst";
+    s.roles[operator.email!] = "operator";
+  });
+  server = http.createServer((req, res) => {
+    handleConsole(req, res, { secret, clientIp: "test-" + home })
+      .then((handled) => {
+        if (!handled) {
+          res.writeHead(404);
+          res.end("{}");
+        }
+      })
+      .catch(() => {
+        res.writeHead(500);
+        res.end("{}");
+      });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  base = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
+});
+afterEach(async () => {
+  server.closeAllConnections();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  process.env = savedEnv;
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("console requires a separate admin session; no loopback, bearer or query-token bypass", async () => {
+  for (const headers of [
+    {},
+    { authorization: "Bearer shared-secret" },
+    { cookie: `lisa_token=${mintSession(admin.uid, secret)}` },
+    { cookie: `lisa_console=${mintSession(admin.uid, secret)}` },
+  ]) {
+    const r = await request(
+      "/console/api/snapshot?token=" + token(admin),
+      undefined,
+      undefined,
+      headers,
+    );
+    assert.equal(r.response.status, 401);
+  }
+  assert.equal((await request("/console/api/me", regular)).response.status, 403);
+  assert.equal((await request("/console/api/me", admin)).body.role, "admin");
+  assert.equal((await request("/console/api/me", analyst)).body.role, "analyst");
+  const html = await fetch(base + "/console");
+  assert.equal(html.status, 200);
+  assert.match(html.headers.get("content-security-policy")!, /script-src 'self'/);
+  assert.match(html.headers.get("cache-control")!, /no-store/);
+});
+test("/me lists the protected owners to admins and operators, never to analysts", async () => {
+  assert.deepEqual((await request("/console/api/me", admin)).body.owners, ["owner@example.com"]);
+  assert.deepEqual((await request("/console/api/me", operator)).body.owners, ["owner@example.com"]);
+  const me = await request("/console/api/me", analyst);
+  assert.equal(me.response.status, 200);
+  assert.deepEqual(me.body.owners, []);
+  assert.ok(!JSON.stringify(me.body).includes("owner@example.com"));
+});
+test("unverified and Apple email aliases cannot acquire administrator privileges", async () => {
+  const unverified = await createEmailAccount("unverified@example.com", "a-password-123");
+  const apple = await upsertAppleAccount("test-apple", "owner@example.com");
+  const state = emptyState();
+  state.roles[unverified.email!] = "admin";
+  assert.equal(roleFor(unverified, state), null);
+  assert.equal(roleFor(apple, state), null);
+  assert.equal((await request("/console/api/me", apple)).response.status, 403);
+});
+test("login does not reveal a session token and cookie is secured and path scoped", async () => {
+  const r = await request("/console/api/login", undefined, {
+    method: "password",
+    email: admin.email,
+    password: "a-password-123",
+  });
+  assert.equal(r.response.status, 200);
+  assert.equal(r.body.token, undefined);
+  const c = r.response.headers.get("set-cookie")!;
+  assert.match(c, /HttpOnly/);
+  assert.match(c, /SameSite=Strict/);
+  assert.match(c, /Path=\/console/);
+  assert.match(c, /Secure/);
+  const records = (await readAdminState()).audit;
+  assert.equal(records.at(-1)?.action, "login");
+  assert.ok(!JSON.stringify(records).includes("a-password-123"));
+});
+test("login answers an address without a role exactly like a wrong code or password", async () => {
+  process.env.RESEND_API_KEY = "test-resend-key";
+  const realFetch = globalThis.fetch;
+  const mailed = new Map<string, string>();
+  const spy = mock.method(
+    globalThis,
+    "fetch",
+    (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).startsWith("https://api.resend.com/")) {
+        const mail = JSON.parse(String(init?.body)) as { to: string[]; subject: string };
+        mailed.set(mail.to[0]!, /\d{6}/.exec(mail.subject)![0]);
+        return Promise.resolve(new Response('{"id":"test"}', { status: 200 }));
+      }
+      return realFetch(input, init);
+    },
+  );
+  try {
+    const login = (payload: Record<string, unknown>) =>
+      request("/console/api/login", undefined, payload);
+    const outsider = "outsider@example.com";
+    const role = await login({ method: "request-code", email: admin.email });
+    const none = await login({ method: "request-code", email: outsider });
+    assert.equal(none.response.status, role.response.status);
+    assert.deepEqual(none.body, role.body);
+    assert.equal(role.response.status, 200);
+    // A wrong code, and the RIGHT code for an address without a role: same answer.
+    const wrong = await login({ method: "verify-code", email: admin.email, code: "000000" });
+    const roleless = await login({
+      method: "verify-code",
+      email: outsider,
+      code: mailed.get(outsider),
+    });
+    for (const r of [wrong, roleless]) {
+      assert.equal(r.response.status, 401);
+      assert.deepEqual(r.body, { error: "invalid_code" });
+    }
+    assert.equal(await getAccountByEmail(outsider), null);
+    // An existing account without a role, with its correct password, fails like a
+    // wrong password does.
+    const badPassword = await login({ method: "password", email: admin.email, password: "nope" });
+    const memberPassword = await login({
+      method: "password",
+      email: regular.email,
+      password: "a-password-123",
+    });
+    for (const r of [badPassword, memberPassword]) {
+      assert.equal(r.response.status, 401);
+      assert.deepEqual(r.body, { error: "invalid_credentials" });
+    }
+    // The role holder's real code still signs in.
+    const ok = await login({
+      method: "verify-code",
+      email: admin.email,
+      code: mailed.get(admin.email!),
+    });
+    assert.equal(ok.response.status, 200);
+  } finally {
+    spy.mock.restore();
+  }
+});
+test("mutations reject cross-origin, missing custom header, stale version and read-only role", async () => {
+  const state = await readAdminState();
+  const payload = {
+    action: "settings",
+    revision: state.revision,
+    paused: true,
+    features: state.settings.features,
+    reason: "维护测试",
+  };
+  assert.equal(
+    (await request("/console/api/action", admin, payload, { origin: "https://evil.test" })).response
+      .status,
+    403,
+  );
+  assert.equal(
+    (await request("/console/api/action", admin, payload, { "x-lisa-console": "" })).response
+      .status,
+    403,
+  );
+  assert.equal((await request("/console/api/action", analyst, payload)).response.status, 403);
+  assert.equal((await request("/console/api/action", operator, payload)).response.status, 403);
+  assert.equal(
+    (await request("/console/api/action", admin, { ...payload, revision: 0 })).response.status,
+    409,
+  );
+  assert.equal((await request("/console/api/action", admin, payload)).response.status, 200);
+  assert.equal((await readAdminState()).settings.paused, true);
+  assert.equal((await inferencePolicy(regular.uid)).ok, false);
+});
+test("bounded request body rejects oversize authenticated payload", async () => {
+  const r = await request("/console/api/action", admin, {
+    action: "ticket",
+    reason: "a".repeat(17000),
+  });
+  assert.equal(r.response.status, 413);
+});
+test("grant retries and concurrent duplicate requests credit exactly once; conflicting amount is rejected", async () => {
+  const before = await homeScope.run(homeForUid(regular.uid), readBalance);
+  const payload = {
+    action: "credit",
+    uid: regular.uid,
+    id: "test-grant-id-0000001",
+    microUSD: 5000000,
+    reason: "客户服务补偿",
+  };
+  const attempts = await Promise.all([
+    request("/console/api/action", admin, payload),
+    request("/console/api/action", admin, payload),
+  ]);
+  assert.ok(attempts.every((r) => r.response.status === 200));
+  assert.equal((await request("/console/api/action", admin, payload)).response.status, 200);
+  assert.equal(
+    (await request("/console/api/action", admin, { ...payload, microUSD: 6000000 })).response
+      .status,
+    409,
+  );
+  const after = await homeScope.run(homeForUid(regular.uid), readBalance);
+  assert.equal(after.paidMicroUSD - before.paidMicroUSD, 5000000);
+  assert.equal(after.purchases.filter((p) => p.transactionId === "admin:" + payload.id).length, 1);
+  const s = await readAdminState();
+  assert.equal(s.operations[payload.id]?.status, "completed");
+  assert.equal(s.audit.filter((a) => a.action === "credit_completed").length, 1);
+});
+test("grant recovers after credit succeeds but final audit update is interrupted", async () => {
+  const payload = {
+    action: "credit",
+    uid: regular.uid,
+    id: "test-grant-id-0000002",
+    microUSD: 2000000,
+    reason: "恢复补偿操作",
+  };
+  assert.equal((await request("/console/api/action", admin, payload)).response.status, 200);
+  const balance = await homeScope.run(homeForUid(regular.uid), readBalance);
+  await mutateAdminState((s) => {
+    s.operations[payload.id]!.status = "pending";
+  });
+  assert.equal((await request("/console/api/action", admin, payload)).response.status, 200);
+  assert.equal(
+    (await homeScope.run(homeForUid(regular.uid), readBalance)).paidMicroUSD,
+    balance.paidMicroUSD,
+  );
+});
+test("nobody can grant credit to their own account", async () => {
+  for (const acct of [admin, operator]) {
+    const r = await request("/console/api/action", acct, {
+      action: "credit",
+      uid: acct.uid,
+      id: `self-grant-${acct.uid}`.slice(0, 80).padEnd(16, "0"),
+      microUSD: 1000000,
+      reason: "给自己补偿",
+    });
+    assert.equal(r.response.status, 403);
+    assert.equal(r.body.error, "self_grant_forbidden");
+  }
+  assert.deepEqual((await readAdminState()).operations, {});
+});
+test("operator grants are capped per grant and per rolling 24 hours; retries are not re-counted", async () => {
+  const grant = (id: string, microUSD: number) =>
+    request("/console/api/action", operator, {
+      action: "credit",
+      uid: regular.uid,
+      id: `operator-grant-${id}`.padEnd(16, "0"),
+      microUSD,
+      reason: "客户服务补偿",
+    });
+  const over = await grant("over", 50000001);
+  assert.equal(over.response.status, 403);
+  assert.equal(over.body.error, "grant_limit_exceeded");
+  for (const id of ["a", "b", "c", "d"])
+    assert.equal((await grant(id, 50000000)).response.status, 200, id);
+  const before = await homeScope.run(homeForUid(regular.uid), readBalance);
+  const daily = await grant("e", 10000);
+  assert.equal(daily.response.status, 403);
+  assert.equal(daily.body.error, "daily_grant_limit_exceeded");
+  // A repeated idempotency key at the daily limit is neither refused nor counted.
+  assert.equal((await grant("a", 50000000)).response.status, 200);
+  const after = await homeScope.run(homeForUid(regular.uid), readBalance);
+  assert.equal(after.paidMicroUSD, before.paidMicroUSD);
+  // Another operator's grants do not count against this one.
+  const other = await ensureSeededAccount("operator2@example.com", "a-password-123");
+  await mutateAdminState((s) => {
+    s.roles[other.email!] = "operator";
+  });
+  const second = await request("/console/api/action", other, {
+    action: "credit",
+    uid: regular.uid,
+    id: "operator-two-grant-1",
+    microUSD: 50000000,
+    reason: "客户服务补偿",
+  });
+  assert.equal(second.response.status, 200);
+});
+test("admin grants allow $1,000 each and $5,000 per rolling 24 hours, including legacy records", async () => {
+  const now = Date.now();
+  await mutateAdminState((s) => {
+    // Inside the window: 4,990 by this admin. Outside it or by others: ignored.
+    s.operations["seed-inside-window-1"] = {
+      uid: regular.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "completed",
+      at: now - 60 * 60 * 1000,
+      actor: admin.email!,
+    };
+    s.operations["seed-inside-window-2"] = {
+      uid: analyst.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "pending",
+      at: now - 23 * 60 * 60 * 1000,
+      actor: admin.email!,
+    };
+    s.operations["seed-outside-window"] = {
+      uid: regular.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "completed",
+      at: now - 25 * 60 * 60 * 1000,
+      actor: admin.email!,
+    };
+    s.operations["seed-other-operator"] = {
+      uid: regular.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "completed",
+      at: now - 60 * 60 * 1000,
+      actor: operator.email!,
+    };
+    // Written by the first console release: no at/actor, only the audit entry.
+    for (const [id, microUSD] of [
+      ["seed-legacy-record-1", 1000000000],
+      ["seed-legacy-record-2", 1000000000],
+      ["seed-legacy-record-3", 990000000],
+    ] as const) {
+      s.operations[id] = { uid: regular.uid, microUSD, reason: "seed", status: "completed" };
+      s.audit.push({
+        id: id,
+        at: now - 2 * 60 * 60 * 1000,
+        actor: admin.email!,
+        action: "credit_requested",
+        target: regular.uid,
+        reason: "seed",
+        detail: { id, microUSD },
+      });
+    }
+  });
+  const grant = (id: string, microUSD: number) =>
+    request("/console/api/action", admin, {
+      action: "credit",
+      uid: regular.uid,
+      id: `admin-grant-${id}`.padEnd(16, "0"),
+      microUSD,
+      reason: "客户服务补偿",
+    });
+  assert.equal((await grant("too-big", 1000000001)).response.status, 400);
+  assert.equal((await grant("fits", 10000000)).response.status, 200);
+  const refused = await grant("over", 10000);
+  assert.equal(refused.response.status, 403);
+  assert.equal(refused.body.error, "daily_grant_limit_exceeded");
+});
+test("suspension affects existing sessions, protected owner cannot be suspended, session revocation persists", async () => {
+  let s = await readAdminState();
+  assert.equal(
+    (
+      await request("/console/api/action", admin, {
+        action: "user",
+        uid: admin.uid,
+        suspended: true,
+        note: "",
+        reason: "测试保护账户",
+        revision: s.revision,
+      })
+    ).response.status,
+    409,
+  );
+  assert.equal(
+    (
+      await request("/console/api/action", admin, {
+        action: "user",
+        uid: regular.uid,
+        suspended: true,
+        note: "support",
+        reason: "暂停异常账户",
+        revision: s.revision,
+      })
+    ).response.status,
+    200,
+  );
+  assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), false);
+  assert.equal((await inferencePolicy(regular.uid)).ok, false);
+  s = await readAdminState();
+  await request("/console/api/action", admin, {
+    action: "user",
+    uid: regular.uid,
+    suspended: false,
+    note: "",
+    reason: "恢复正常账户",
+    revision: s.revision,
+  });
+  assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), true);
+  await request("/console/api/action", admin, {
+    action: "revoke_sessions",
+    uid: regular.uid,
+    reason: "退出所有设备",
+  });
+  assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), false);
+  assert.equal((await getAccount(regular.uid))!.sessionVersion, regular.sessionVersion + 1);
+});
+test("role changes take effect for existing sessions and cannot overwrite owner", async () => {
+  const s = await readAdminState();
+  assert.equal(
+    (
+      await request("/console/api/action", admin, {
+        action: "role",
+        email: admin.email,
+        role: "none",
+        reason: "测试保护权限",
+        revision: s.revision,
+      })
+    ).response.status,
+    409,
+  );
+  assert.equal(
+    (
+      await request("/console/api/action", admin, {
+        action: "role",
+        email: analyst.email,
+        role: "none",
+        reason: "撤销临时权限",
+        revision: s.revision,
+      })
+    ).response.status,
+    200,
+  );
+  assert.equal((await request("/console/api/me", analyst)).response.status, 403);
+});
+test("feature switches match real endpoints, and never disable payment fulfillment", async () => {
+  await mutateAdminState((s) => {
+    for (const key of Object.keys(s.settings.features))
+      s.settings.features[key as keyof typeof s.settings.features] = false;
+    s.settings.disabledModels = ["gemini-2.5-flash"];
+  });
+  for (const p of [
+    "/chat",
+    "/gw/openai/v1/chat/completions",
+    "/api/voice/transcribe",
+    "/api/uploads",
+    "/api/kb/add",
+    "/api/tasks",
+    "/reflect",
+    "/internal/autonomy/sweep",
+    "/api/connectors/google/status",
+    "/api/billing/stripe/checkout",
+  ])
+    assert.equal(await featureAllowed("POST", p), false, p);
+  for (const p of [
+    "/api/billing/iap",
+    "/api/billing/stripe/webhook",
+    "/api/billing/asn",
+    "/console/api/me",
+  ])
+    assert.equal(await featureAllowed("POST", p), true, p);
+  assert.equal((await inferencePolicy(regular.uid, "gemini-2.5-flash")).ok, false);
+});
+test("snapshots use real records, distinguish grants/sandbox from sales and redact credentials/content", async () => {
+  const now = Date.now(),
+    at = new Date(now - 1000).toISOString(),
+    bill = path.join(homeForUid(regular.uid), "billing");
+  await fs.mkdir(bill, { recursive: true });
+  await fs.writeFile(
+    path.join(bill, "usage.jsonl"),
+    JSON.stringify({
+      at,
+      source: "chat",
+      model: "gemini-2.5-flash",
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 5,
+      microUSD: 500,
+      pricesVersion: 3,
+    }) + "\n",
+  );
+  await fs.writeFile(
+    path.join(home, "iap-transactions.json"),
+    JSON.stringify([
+      {
+        transactionId: "12345678",
+        uid: regular.uid,
+        productId: "credits.5",
+        microUSD: 5000000,
+        at: now - 1000,
+        status: "credited",
+      },
+      {
+        transactionId: "admin:grant-123",
+        uid: regular.uid,
+        productId: "admin.grant",
+        microUSD: 3000000,
+        at: now - 1000,
+        status: "credited",
+      },
+      {
+        transactionId: "sandbox:123",
+        uid: regular.uid,
+        productId: "credits.5",
+        microUSD: 5000000,
+        at: now - 1000,
+        status: "credited",
+      },
+      {
+        transactionId: "22345678",
+        uid: regular.uid,
+        productId: "credits.5",
+        microUSD: 5000000,
+        at: now - 1000,
+        status: "refunded",
+      },
+    ]),
+  );
+  const result = await consoleSnapshot(7, now);
+  assert.equal(result.summary.active, 1);
+  assert.equal(result.summary.turns, 1);
+  assert.equal(result.summary.tokens, 125);
+  assert.equal(result.summary.faceMicroUSD, 500);
+  assert.equal(result.summary.creditMicroUSD, 5000000);
+  assert.equal(result.summary.grantMicroUSD, 3000000);
+  assert.equal(result.summary.paidUsers, 1);
+  const raw = JSON.stringify(result);
+  for (const key of [
+    "scrypt",
+    "keyHex",
+    "saltHex",
+    "session-secret",
+    "password",
+    "appleAuthorization",
+  ])
+    assert.ok(!raw.includes(key), key);
+  assert.equal((await request("/console/api/snapshot?days=800", admin)).response.status, 400);
+});
+test("console fails closed on store corruption without overwriting; concurrent updates preserve all audit entries", async () => {
+  await Promise.all(
+    Array.from({ length: 8 }, (_, i) =>
+      mutateAdminState((s) =>
+        s.audit.push({
+          id: String(i),
+          at: Date.now(),
+          actor: "test",
+          action: "test",
+          target: "test",
+          reason: "test",
+        }),
+      ),
+    ),
+  );
+  assert.equal((await readAdminState()).audit.length, 8);
+  await fs.writeFile(path.join(home, "admin", "state.json"), "{broken");
+  assert.equal((await request("/console/api/me", admin)).response.status, 503);
+  assert.equal(await fs.readFile(path.join(home, "admin", "state.json"), "utf8"), "{broken");
+  assert.throws(() =>
+    parseState({ ...emptyState(), settings: { paused: false, features: {}, disabledModels: [] } }),
+  );
+});
+test("tenant hot path caches the admin policy, applies own writes at once and survives an unreadable store", async () => {
+  process.env.LISA_LOG_FORMAT = "text";
+  delete process.env.LISA_LOG_FILE;
+  const logged: string[] = [];
+  const spy = mock.method(console, "error", (m: unknown) => void logged.push(String(m)));
+  try {
+    const file = path.join(home, "admin", "state.json");
+    // Never read successfully yet, and unreadable: no admin restrictions, loudly.
+    const good = await fs.readFile(file, "utf8");
+    await fs.writeFile(file, "{broken");
+    assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), true);
+    assert.equal((await inferencePolicy(regular.uid)).ok, true);
+    assert.equal(await featureAllowed("POST", "/chat"), true);
+    assert.ok(logged.some((m) => /ADMIN STATE UNREADABLE/.test(m)));
+    await fs.writeFile(file, good);
+    _expireAdminPolicyForTests();
+    assert.equal(await adminAccountAllowed(regular.uid), true);
+    // This process's own write applies immediately, despite the cache.
+    await mutateAdminState((s) => {
+      s.users[regular.uid] = { suspended: true, note: "" };
+      s.settings.features.chat = false;
+    });
+    assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), false);
+    assert.equal(await featureAllowed("POST", "/chat"), false);
+    // Another instance's write (the file changes underneath) waits out the TTL.
+    const other = await readAdminState();
+    other.settings.paused = true;
+    await fs.writeFile(file, JSON.stringify(other));
+    assert.notEqual((await inferencePolicy(analyst.uid)).ok, false);
+    _expireAdminPolicyForTests();
+    assert.equal((await inferencePolicy(analyst.uid)).ok, false);
+    // Unreadable after a good read: keep enforcing the last good policy.
+    logged.length = 0;
+    await fs.writeFile(file, "{broken");
+    _expireAdminPolicyForTests();
+    assert.equal(await sessionAccountValid(regular.uid, regular.sessionVersion), false);
+    assert.equal(await sessionAccountValid(analyst.uid, analyst.sessionVersion), true);
+    assert.equal(await featureAllowed("POST", "/chat"), false);
+    assert.equal((await inferencePolicy(analyst.uid)).ok, false);
+    assert.ok(logged.some((m) => /keeping the last good admin policy/.test(m)));
+  } finally {
+    spy.mock.restore();
+  }
+});
+async function archived(kind: "audit" | "tickets") {
+  const dir = path.join(home, "admin", "archive");
+  const names = (await fs.readdir(dir).catch(() => [] as string[])).filter((n) =>
+    n.startsWith(`${kind}-`),
+  );
+  const out: Record<string, unknown>[] = [];
+  for (const n of names.sort())
+    out.push(...JSON.parse(await fs.readFile(path.join(dir, n), "utf8")).entries);
+  return out;
+}
+const stateFile = () => path.join(home, "admin", "state.json");
+const auditEntry = (i: number, extra: Partial<AuditEntry> = {}): AuditEntry => ({
+  id: `legacy-${i}`,
+  at: 1700000000000 + i,
+  actor: "test",
+  action: "test",
+  target: "test",
+  reason: "test",
+  ...extra,
+});
+const exportAudit = () =>
+  fetch(base + "/console/api/export?days=7&dataset=audit", {
+    headers: { cookie: `lisa_console=${token(admin)}` },
+  });
+const passwordLogin = () =>
+  request("/console/api/login", undefined, {
+    method: "password",
+    email: admin.email,
+    password: "a-password-123",
+  });
+test("login and export never fail on audit capacity; overflow moves to archive records, none lost", async () => {
+  // What the first release could hold (its hard limit was 4,000), plus large entries.
+  const live = await readAdminState();
+  live.audit = [
+    ...Array.from({ length: 4000 }, (_, i) => auditEntry(i)),
+    ...Array.from({ length: 40 }, (_, i) =>
+      auditEntry(4000 + i, { detail: { note: "备".repeat(2000) } }),
+    ),
+  ];
+  await fs.writeFile(stateFile(), JSON.stringify(live));
+  assert.equal((await passwordLogin()).response.status, 200);
+  assert.equal((await exportAudit()).status, 200);
+  const state = await readAdminState();
+  assert.ok(state.audit.length <= AUDIT_INLINE_MAX);
+  assert.ok(Buffer.byteLength(JSON.stringify(state.audit)) <= AUDIT_INLINE_MAX_BYTES);
+  assert.ok((await fs.stat(stateFile())).size < 640 * 1024);
+  const all = [...(await archived("audit")), ...state.audit].map((a) => a.id as string);
+  assert.equal(new Set(all).size, all.length);
+  for (let i = 0; i < 4040; i++) assert.ok(all.includes(`legacy-${i}`), `legacy-${i}`);
+  assert.deepEqual(
+    state.audit.slice(-2).map((a) => a.action),
+    ["login", "export"],
+  );
+});
+test("resolved tickets move to the archive; growth past the document budget is refused, login is not", async () => {
+  const live = await readAdminState();
+  const ticket = (i: number, status: string, note: string) => ({
+    id: `ticket-${i}`,
+    uid: "",
+    title: `工单 ${i}`,
+    note,
+    priority: "normal",
+    status,
+    assignee: "",
+    createdAt: 1700000000000 + i,
+    updatedAt: 1700000000000 + i,
+  });
+  live.tickets = [
+    ...Array.from({ length: 250 }, (_, i) => ticket(i, "resolved", "已处理")),
+    ...Array.from({ length: 60 }, (_, i) => ticket(1000 + i, "open", "长".repeat(3000))),
+  ];
+  await fs.writeFile(stateFile(), JSON.stringify(live));
+  assert.equal((await passwordLogin()).response.status, 200);
+  let state = await readAdminState();
+  assert.equal(state.tickets.length, 60);
+  assert.ok(state.tickets.every((t) => t.status === "open"));
+  const ids = [...(await archived("tickets")), ...state.tickets].map((t) => t.id as string);
+  assert.equal(new Set(ids).size, 310);
+  // 60 large open tickets exceed the main-document budget: no further growth.
+  const create = await request("/console/api/action", admin, {
+    action: "ticket",
+    uid: "",
+    title: "新工单",
+    note: "x",
+    status: "open",
+    priority: "normal",
+    assignee: "",
+    reason: "记录问题",
+    revision: state.revision,
+  });
+  assert.equal(create.response.status, 409);
+  assert.equal(create.body.error, "admin_store_full");
+  assert.equal((await exportAudit()).status, 200);
+  assert.equal((await passwordLogin()).response.status, 200);
+  // Resolving shrinks the document (the ticket is archived), so it is allowed.
+  state = await readAdminState();
+  const resolve = await request("/console/api/action", admin, {
+    action: "ticket",
+    id: "ticket-1000",
+    uid: "",
+    title: "工单 1000",
+    note: "长".repeat(3000),
+    status: "resolved",
+    priority: "normal",
+    assignee: "",
+    reason: "问题已解决",
+    revision: state.revision,
+  });
+  assert.equal(resolve.response.status, 200);
+  state = await readAdminState();
+  assert.ok(!state.tickets.some((t) => t.id === "ticket-1000"));
+  assert.ok((await archived("tickets")).some((t) => t.id === "ticket-1000"));
+});
+test("account notes cannot grow the main document past its budget; clearing one still works", async () => {
+  const live = await readAdminState();
+  for (let i = 0; i < 100; i++)
+    live.users[`seed-${i}`] = { suspended: true, note: "注".repeat(2000) };
+  live.users[regular.uid] = { suspended: false, note: "注".repeat(2000) };
+  await fs.writeFile(stateFile(), JSON.stringify(live));
+  const update = (note: string) =>
+    readAdminState().then((s) =>
+      request("/console/api/action", admin, {
+        action: "user",
+        uid: analyst.uid,
+        suspended: false,
+        note,
+        reason: "更新备注",
+        revision: s.revision,
+      }),
+    );
+  const grow = await update("x");
+  assert.equal(grow.response.status, 409);
+  assert.equal(grow.body.error, "admin_store_full");
+  assert.equal((await passwordLogin()).response.status, 200);
+  const s = await readAdminState();
+  const clear = await request("/console/api/action", admin, {
+    action: "user",
+    uid: regular.uid,
+    suspended: false,
+    note: "",
+    reason: "清理备注",
+    revision: s.revision,
+  });
+  assert.equal(clear.response.status, 200);
+  assert.equal((await readAdminState()).users[regular.uid], undefined);
+});
+test("an archive plan removes only the entries it archived, even after concurrent changes", () => {
+  const s: AdminState = emptyState();
+  s.audit = Array.from({ length: 1001 }, (_, i) => auditEntry(i));
+  s.tickets = Array.from({ length: 201 }, (_, i) => ({
+    id: `t-${i}`,
+    uid: "",
+    title: "t",
+    note: "",
+    priority: "normal",
+    status: "resolved",
+    assignee: "",
+    createdAt: i,
+    updatedAt: i,
+  }));
+  const plan = planArchive(s);
+  assert.equal(plan.audit.size, 501);
+  assert.ok(plan.tickets.size > 0);
+  // Meanwhile: another instance archived a prefix, new entries arrived, and an
+  // archived ticket was reopened.
+  const current = structuredClone(s);
+  current.audit = [...current.audit.slice(100), auditEntry(5000)];
+  current.tickets[0] = { ...current.tickets[0]!, status: "open", updatedAt: 9999 };
+  applyArchive(current, plan);
+  assert.equal(current.audit.length, 501);
+  assert.equal(current.audit.at(-1)?.id, "legacy-5000");
+  assert.equal(current.tickets[0]?.status, "open");
+  assert.equal(planArchive(current).records.length, 0);
+});
+test("CSV defuses spreadsheet formulas and escapes quotes", () => {
+  assert.equal(csvValue("=SUM(A1:A2)"), `"'=SUM(A1:A2)"`);
+  assert.equal(csvValue(" \t+cmd"), `"' \t+cmd"`);
+  assert.equal(csvValue('a"b'), `"a""b"`);
+});
+test("console is opt-in and does not change normal editions when disabled", async () => {
+  delete process.env.LISA_CONSOLE_ENABLED;
+  assert.equal(consoleEnabled(), false);
+  assert.equal((await request("/console/api/me", admin)).response.status, 404);
+  assert.equal((await inferencePolicy(regular.uid)).ok, true);
+});
+
+test("bounded usage detail keeps complete totals and distinct active users", async () => {
+  const now = Date.now();
+  for (const [index, acct] of [regular, analyst].entries()) {
+    const dir = path.join(homeForUid(acct.uid), "billing");
+    await fs.mkdir(dir, { recursive: true });
+    const rows = Array.from({ length: 1500 }, (_, i) => ({
+      at: new Date(now - (i + index * 2000 + 1) * 1000).toISOString(),
+      source: "chat",
+      model: "gemini-2.5-flash",
+      inputTokens: 10,
+      outputTokens: 2,
+      microUSD: 100,
+    }));
+    await fs.writeFile(
+      path.join(dir, "usage.jsonl"),
+      rows.map((r) => JSON.stringify(r)).join("\n"),
+    );
+  }
+  const report = await consoleSnapshot(7, now);
+  assert.equal(report.summary.turns, 3000);
+  assert.equal(report.summary.active, 2);
+  assert.equal(report.summary.faceMicroUSD, 300000);
+  assert.equal(report.usage.length, 1000);
+  assert.equal(report.usageTruncated, true);
+  assert.ok(report.usage.every((u) => u.uid === regular.uid));
+});
