@@ -44,7 +44,12 @@ If the relay refuses the Mac's account session (403, for example once the sessio
 expired), phone connections stay on: the Mac keeps retrying with backoff, LAN devices
 keep working, and the status reports `sign_in_required` (and `sessionExpired` once the
 session's expiry has passed) until you sign in again. **Reconnect** checks the account
-first; if the cloud cannot be reached, the running LAN listener and retry loop are kept. Mac sign-out confirms this shutdown before clearing the account. Signing out in Pocket
+first; if the cloud cannot be reached, the running LAN listener and retry loop are kept.
+
+The Mac renews its account session itself: on start and every 6 hours, once the session
+in `~/.lisa/config.env` is past half-life, it calls `POST /api/auth/refresh`, saves the
+new token there and moves the relay onto it. A signed-out (cleared) session is never
+renewed, and a server without the endpoint (404) is ignored. Mac sign-out confirms this shutdown before clearing the account. Signing out in Pocket
 removes its saved account-based Mac profile. Changing the Mac's account resets its
 device keys and grants; devices must be approved again.
 
@@ -91,6 +96,12 @@ The production Worker and local `src/remote/broker.ts` verify the account before
 rechecks account validity/expiry. Discovery and forwarding are namespaced by authenticated
 account, never by a caller-supplied uid. Account deletion closes its live relay sockets.
 Only online hosts are listed; existing saved Mac profiles remain on the phone when offline.
+
+Tapping **Cancel** in Pocket during pairing sends a sealed `{type:"cancel"}` on the pairing
+channel. The Mac withdraws that request, so its code can no longer be approved; the phone
+can pair again later. A request from an allowed phone whose clock is more than five
+minutes off is answered with a sealed `400 {"error":"clock_skew","message":…,"serverTime":…}`
+before the channel closes, instead of a silent close; nothing is run.
 
 The Mac registers its name and public X25519 key. Its ID is the first 16 bytes of
 SHA-256(raw public key), lowercase hex. A client hello includes its persistent public key,

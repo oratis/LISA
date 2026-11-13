@@ -14,6 +14,7 @@ import { createReadStream, existsSync } from "node:fs";
 import crypto from "node:crypto";
 import { RelayBroker } from "../remote/broker.js";
 import { RemoteHost } from "../remote/host.js";
+import { startSessionRenewal } from "../remote/session-renewal.js";
 import { FleetError, fleetRoute } from "../remote/fleet/types.js";
 import type { FleetApi } from "../remote/fleet/api.js";
 import { trackShutdown } from "./shutdown.js";
@@ -6350,6 +6351,10 @@ self.addEventListener('fetch', (event) => {
       void remoteHost
         .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
         .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));
+      // Renew the Mac's account session past half-life (it is not renewed by use), so
+      // the relay route and managed models outlive the 30-day session.
+      const stopRenewal = startSessionRenewal((token) => remoteHost?.setSession(token));
+      server.on("close", stopRenewal);
       // An earlier backend may have left a remote Claude process running. Opening the
       // ledger now stops it or frees its slot, instead of on the first remote request.
       if (existsSync(path.join(lisaGlobalHome(), "fleet", "runs.sqlite")))

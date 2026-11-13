@@ -247,6 +247,34 @@ export class RemoteHost {
     await this.startLan();
     this.openRelay(this.generation);
   }
+  /**
+   * A renewed session for the same account (see session-renewal.ts): use it from now
+   * on and move the relay onto it before the old one expires. A host that is not
+   * running a session (never connected, or turned off) ignores it; restore() and
+   * connect() read the saved session when they start.
+   */
+  setSession(session: string): void {
+    if (!session || !this.session || session === this.session || !this.stored?.enabled) return;
+    try {
+      const claims = JSON.parse(Buffer.from(session.split(".")[1] ?? "", "base64url").toString());
+      if (claims.uid !== this.stored.uid) return;
+    } catch {
+      return;
+    }
+    this.session = session;
+    if (this.error === "sign_in_required" && !this.sessionExpired()) this.error = "";
+    const old = this.relay;
+    if (!old) return; // restore() is still starting LAN; it opens the relay with this session.
+    // Retire the current socket (its handlers check this.relay) and reconnect now.
+    this.relay = undefined;
+    clearTimeout(this.reconnect);
+    clearInterval(this.heartbeat);
+    old.terminate();
+    this.online = false;
+    for (const id of this.channels.keys()) if (id.startsWith("cloud:")) this.closeChannel(id);
+    this.failures = 0;
+    this.openRelay(this.generation);
+  }
   /** The session's own expiry has passed: only signing in again brings the relay back. */
   private sessionExpired(): boolean {
     const exp = this.session ? sessionExpiry(this.session) : undefined;
@@ -544,7 +572,7 @@ export class RemoteHost {
       }
     });
     ws.on("error", () => {
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || this.relay !== ws) return;
       this.error = failure || "relay_unreachable";
     });
     ws.on("unexpected-response", (_request, response) => {
@@ -553,12 +581,13 @@ export class RemoteHost {
       // keeps being retried; only the owner turns them off, and signing in again
       // (connect) replaces the session. LAN devices keep working meanwhile.
       failure = response.statusCode === 403 ? "sign_in_required" : "relay_unavailable";
-      if (generation === this.generation) this.error = failure;
+      if (generation === this.generation && this.relay === ws) this.error = failure;
       response.resume();
       ws.terminate();
     });
     ws.on("close", () => {
-      if (generation !== this.generation) return;
+      // A newer socket replaced this one (setSession) or the host stopped.
+      if (generation !== this.generation || this.relay !== ws) return;
       this.online = false;
       clearInterval(this.heartbeat);
       for (const id of this.channels.keys()) if (id.startsWith("cloud:")) this.closeChannel(id);
@@ -604,8 +633,17 @@ export class RemoteHost {
         this.hello(c, frame, fromCloud);
         return;
       }
-      if (c.used) throw new Error();
       const message = c.cipher.open(frame as unknown as SealedFrame);
+      if (message.type === "cancel") {
+        // The phone's user tapped Cancel. Only the holder of this device key can seal
+        // this, so its request goes: the Mac can no longer approve a code the user
+        // never confirmed. Not dismissed, so the phone can pair again later; grants
+        // are untouched.
+        this.pending.delete(c.deviceId!);
+        this.closeChannel(id);
+        return;
+      }
+      if (c.used) throw new Error();
       if (message.type === "pair") {
         this.reveal(c, message);
         return;
@@ -617,11 +655,18 @@ export class RemoteHost {
         typeof message.id !== "string" ||
         !/^[a-f0-9-]{36}$/i.test(message.id) ||
         typeof message.expiresAt !== "number" ||
-        !Number.isFinite(message.expiresAt) ||
-        message.expiresAt < Date.now() - CLOCK_SKEW ||
-        message.expiresAt > Date.now() + REQUEST_TTL + CLOCK_SKEW
+        !Number.isFinite(message.expiresAt)
       )
         throw new Error();
+      if (
+        message.expiresAt < Date.now() - CLOCK_SKEW ||
+        message.expiresAt > Date.now() + REQUEST_TTL + CLOCK_SKEW
+      ) {
+        // An allowed phone whose clock is off: say so instead of a silent close,
+        // which Pocket can only report as "interrupted". Nothing was run.
+        this.refuseSkew(id, c);
+        return;
+      }
       for (const [key, expiry] of this.requests) if (expiry < Date.now()) this.requests.delete(key);
       if (this.requests.has(message.id) || this.requests.size >= 10_000) throw new Error();
       this.requests.set(message.id, Date.now() + REQUEST_TTL + 2 * CLOCK_SKEW);
@@ -634,6 +679,26 @@ export class RemoteHost {
     } catch {
       this.closeChannel(id);
     }
+  }
+  /** A complete, sealed HTTP-style answer to a request outside the clock window, then close. */
+  private refuseSkew(id: string, c: Channel): void {
+    c.used = true;
+    const body = JSON.stringify({
+      error: "clock_skew",
+      message:
+        "This iPhone's clock is off by more than five minutes. Turn on Set Automatically in Settings → General → Date & Time.",
+      serverTime: Date.now(),
+    });
+    c.send(
+      c.cipher!.seal({
+        type: "headers",
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    c.send(c.cipher!.seal({ type: "chunk", body: Buffer.from(body).toString("base64") }));
+    c.send(c.cipher!.seal({ type: "end" }));
+    this.closeChannel(id);
   }
   private hello(c: Channel, frame: Record<string, unknown>, fromCloud: boolean): void {
     const stored = this.stored!;
@@ -869,6 +934,7 @@ export class RemoteHost {
     clearTimeout(this.reconnect);
     clearInterval(this.heartbeat);
     this.relay?.terminate();
+    this.relay = undefined;
     for (const id of this.channels.keys()) this.closeChannel(id);
     this.pending.clear();
     for (const ws of this.lanSockets?.clients ?? []) ws.terminate();

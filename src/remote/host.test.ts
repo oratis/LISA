@@ -46,8 +46,9 @@ async function harness(backend: http.RequestListener) {
   const uplinks: WebSocket[] = [];
   const nextUplink: Array<(ws: WebSocket) => void> = [];
   /** forbid: answer the Mac's relay upgrade 403, as a relay does for a refused session. */
-  const control = { forbid: false, forbidden: 0 };
+  const control = { forbid: false, forbidden: 0, sessions: [] as string[] };
   cloud.on("upgrade", (req, socket, head) => {
+    control.sessions.push(req.headers.authorization ?? "");
     if (control.forbid) {
       control.forbidden++;
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
@@ -281,7 +282,11 @@ test("a dismissed pairing request stays dismissed while the phone keeps polling"
 });
 
 test("phone clock skew within five minutes is tolerated; far-off expiries are refused", async () => {
-  const h = await harness((_req, res) => res.end("ok"));
+  let served = 0;
+  const h = await harness((_req, res) => {
+    served++;
+    res.end("ok");
+  });
   try {
     const { welcome } = await h.hello("s0");
     h.host.approve(keyId(h.phone.publicKey), welcome.code as string);
@@ -290,15 +295,26 @@ test("phone clock skew within five minutes is tolerated; far-off expiries are re
       ["s1", -3 * 60_000, true],
       ["s2", 4 * 60_000, true],
       ["s3", 30 * 60_000, false],
+      ["s4", -30 * 60_000, false],
     ] as const) {
       const c = await h.hello(channel);
       h.send(
         channel,
         request(c.cipher, c.welcome.challenge, "/api/x", "GET", Date.now() + skew + 60_000),
       );
-      if (ok) assert.equal((await readBody(h, channel, c.cipher)).body.toString(), "ok");
-      else assert.equal(await h.nextFrame(channel), "closed");
+      const reply = await readBody(h, channel, c.cipher);
+      if (ok) assert.equal(reply.body.toString(), "ok");
+      else {
+        // Refused with a reason Pocket can show, not a silent close; nothing ran.
+        assert.equal(reply.status, 400);
+        const body = JSON.parse(reply.body.toString());
+        assert.equal(body.error, "clock_skew");
+        assert.match(body.message, /Set Automatically/);
+        assert.ok(Math.abs(body.serverTime - Date.now()) < 5000);
+        assert.equal(await h.nextFrame(channel), "closed");
+      }
     }
+    assert.equal(served, 2, "a skewed request never reaches the Mac's API");
   } finally {
     await h.close();
   }
@@ -875,6 +891,77 @@ test("restore with an expired session starts LAN and says the owner must sign in
     fresh.stop();
   } finally {
     restored.stop();
+    await h.close();
+  }
+});
+
+test("a phone that cancels pairing withdraws its request; it can pair again later", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const id = keyId(h.phone.publicKey);
+    // Cancel after the codes were shown (after `pair`): the Mac can no longer approve it.
+    const nonce = pairingNonce();
+    const commit = pairingCommitment(h.hostKey, h.phone.publicKey, nonce);
+    const shown = await h.hello("p1", h.phone, true, { v: 2, commit });
+    h.send("p1", shown.cipher.seal({ type: "pair", nonce }));
+    const paired = shown.cipher.open((await h.nextFrame("p1")) as never);
+    assert.deepEqual(
+      h.host.status().pending.map((p) => [p.id, p.code]),
+      [[id, paired.code]],
+    );
+    h.send("p1", shown.cipher.seal({ type: "cancel" }));
+    assert.equal(await h.nextFrame("p1"), "closed");
+    assert.deepEqual(h.host.status().pending, []);
+    // What POST /api/remote/approve runs (it answers 409): no grant from the old code.
+    assert.throws(() => h.host.approve(id, String(paired.code)), /pairing_expired/);
+    assert.deepEqual(h.host.status().devices, []);
+    // Cancel before `pair` (waiting for the phone): withdrawn too.
+    const other = identity();
+    const waiting = await h.hello("p2", other, true, {
+      v: 2,
+      commit: pairingCommitment(h.hostKey, other.publicKey, pairingNonce()),
+    });
+    assert.equal(typeof waiting.welcome.nonce, "string");
+    assert.equal(h.host.status().pending.length, 1);
+    h.send("p2", waiting.cipher.seal({ type: "cancel" }));
+    assert.equal(await h.nextFrame("p2"), "closed");
+    assert.deepEqual(h.host.status().pending, []);
+    // Not dismissed: the same phone can start over and be approved.
+    const again = await pairV2(h, "p3");
+    assert.ok(again.code);
+    h.host.approve(id, again.code);
+    assert.deepEqual(
+      h.host.status().devices.map((d) => d.id),
+      [id],
+    );
+  } finally {
+    await h.close();
+  }
+});
+
+test("a renewed session moves the relay onto the new token; another account's is ignored", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  const token = (uid: string) =>
+    `s1.${Buffer.from(JSON.stringify({ uid, iat: Date.now(), exp: Date.now() + 30 * 86_400_000 })).toString("base64url")}.mac`;
+  try {
+    await until(() => h.host.status().online, 5000, "the first registration");
+    h.host.setSession(token("mallory"));
+    await new Promise((r) => setTimeout(r, 200));
+    assert.deepEqual(h.control.sessions, ["Bearer alice"], "a different account never reconnects");
+    const fresh = token("alice");
+    h.host.setSession(fresh);
+    await until(
+      () => h.control.sessions.length === 2 && h.host.status().online,
+      5000,
+      "the relay on the renewed session",
+    );
+    assert.equal(h.control.sessions[1], `Bearer ${fresh}`);
+    assert.equal(h.ws.readyState === WebSocket.OPEN, false, "the old uplink is retired");
+    // Only one uplink: the retired socket's close must not schedule another reconnect.
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(h.control.sessions.length, 2);
+    assert.deepEqual([h.host.status().error, h.host.status().sessionExpired], ["", false]);
+  } finally {
     await h.close();
   }
 });
