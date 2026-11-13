@@ -80,7 +80,7 @@ function fixture(start?: ClaudeRunner["start"]) {
     page: (id: string, query = "", from = svc, as = peer) =>
       from.read(as, HOST_API + "/runs/" + id + "/events" + query) as Page,
     close() {
-      for (const s of services) s.shutdown();
+      for (const s of services) void s.shutdown();
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };

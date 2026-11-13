@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { setTimeout as wait } from "node:timers/promises";
 import {
   type Approval,
   type ApprovalOutcome,
@@ -27,6 +28,22 @@ interface RunRow {
   result: string;
   pending: string | null;
   created: number;
+  /** Process group of the run's agent and when it was launched, once it has one. */
+  pgid: number | null;
+  started: number | null;
+  /** The backend process that launched it. */
+  backend: number | null;
+}
+interface Orphan {
+  id: string;
+  pgid: number;
+  started: number;
+}
+export interface FleetHostOptions {
+  /** `kill(id, 0)`: whether a process exists, or a process group for a negative id. */
+  exists?: (id: number) => boolean;
+  /** How long a leftover agent gets between SIGTERM and SIGKILL. */
+  stopGraceMs?: number;
 }
 type Body = Record<string, unknown>;
 type EventType =
@@ -40,6 +57,7 @@ type EventType =
   | "run_ended"
   | "outcome_unknown"
   | "owner_released"
+  | "orphan_released"
   | "history_started";
 const ACTIVE = "('running','waiting','approval','cancelling')";
 // Timeline bounds. A long run drops its oldest entries and reports the gap.
@@ -57,6 +75,26 @@ function target(root: string, value: unknown): string {
   const file = path.resolve(root, value);
   return (inside(root, file) ? path.relative(root, file) || "." : file).slice(0, 512);
 }
+/** A usable process or group id. Never 0 or 1: kill(0) and kill(-1) reach far more than one run. */
+function processId(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 1 ? value : undefined;
+}
+function exists(id: number): boolean {
+  try {
+    process.kill(id, 0);
+    return true;
+  } catch {
+    // ESRCH: gone. EPERM: another user's process, so not one this backend launched.
+    return false;
+  }
+}
+function signalGroup(pgid: number, signal: NodeJS.Signals) {
+  try {
+    process.kill(-pgid, signal);
+  } catch {
+    /* already gone */
+  }
+}
 function inode(root: string) {
   const st = fs.statSync(root, { bigint: true });
   if (!st.isDirectory()) throw new FleetError(400, "directory_required");
@@ -71,18 +109,38 @@ export class FleetHostService {
   private readonly turns = new Map<string, number>();
   private closing = false;
   private closed = false;
+  private drained!: () => void;
+  private readonly stopped = new Promise<void>((resolve) => (this.drained = resolve));
+  private readonly exists: (id: number) => boolean;
+  private readonly stopGraceMs: number;
+  /** Settles once agents left running by an earlier backend have been dealt with. */
+  readonly recovered: Promise<void>;
   constructor(
     private readonly home: string,
     private readonly runner: ClaudeRunner,
+    options: FleetHostOptions = {},
   ) {
+    this.exists = options.exists ?? exists;
+    this.stopGraceMs = options.stopGraceMs ?? 1500;
     const dir = path.join(home, "fleet");
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(path.join(dir, "runs.sqlite"));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;
       CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT,root TEXT UNIQUE,inode TEXT);
-      CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,host TEXT,device TEXT,workspace TEXT,epoch TEXT,state TEXT,result TEXT,pending TEXT,created INTEGER);
+      CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,host TEXT,device TEXT,workspace TEXT,epoch TEXT,state TEXT,result TEXT,pending TEXT,created INTEGER,pgid INTEGER,started INTEGER,backend INTEGER);
       CREATE TABLE IF NOT EXISTS ops(host TEXT,device TEXT,id TEXT,hash TEXT,run TEXT,action TEXT,at INTEGER,status TEXT,PRIMARY KEY(host,device,id));
       CREATE TABLE IF NOT EXISTS events(run TEXT NOT NULL,seq INTEGER NOT NULL,at INTEGER NOT NULL,type TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run,seq)) WITHOUT ROWID;`);
+    // A ledger from before process tracking gains the columns. Its runs record no
+    // process group, so after a restart they still wait for the owner to check.
+    const columns = new Set(
+      this.db
+        .prepare("PRAGMA table_info(runs)")
+        .all()
+        .map((c) => String(c.name)),
+    );
+    for (const column of ["pgid", "started", "backend"])
+      if (!columns.has(column)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${column} INTEGER`);
+    const live: Orphan[] = [];
     this.tx(() => {
       // A run recorded before the timeline existed starts from its verifiable state.
       for (const r of this.db
@@ -91,14 +149,60 @@ export class FleetHostService {
         this.record(String(r.id), "history_started", { state: r.state });
       // An earlier backend owned these processes. Say so once and never relaunch.
       for (const r of this.db
-        .prepare(`SELECT id FROM runs WHERE epoch!=? AND state IN ${ACTIVE}`)
+        .prepare(`SELECT id,pgid,started,backend FROM runs WHERE epoch!=? AND state IN ${ACTIVE}`)
         .all(this.epoch)) {
+        const id = String(r.id);
         const last = this.db
           .prepare("SELECT type FROM events WHERE run=? ORDER BY seq DESC LIMIT 1")
-          .get(String(r.id));
-        if (last?.type !== "outcome_unknown") this.record(String(r.id), "outcome_unknown");
+          .get(id);
+        if (last?.type !== "outcome_unknown") this.record(id, "outcome_unknown");
+        // The agent's slot is freed only when this backend can tell what became of it.
+        // Without a recorded group, or while another live backend on this ledger owns
+        // the run, the owner checks the machine instead (ownerStop).
+        const pgid = processId(r.pgid),
+          backend = processId(r.backend);
+        if (!pgid || typeof r.started !== "number") continue;
+        if (backend && backend !== process.pid && this.exists(backend)) continue;
+        const orphan = { id, pgid, started: r.started };
+        if (this.groupAlive(orphan)) live.push(orphan);
+        else this.releaseOrphan(id, "exited");
       }
     });
+    this.recovered = Promise.all(live.map((o) => this.stopOrphan(o))).then(() => undefined);
+  }
+  /** Whether the agent's process group survives. A reboot since its launch means it cannot. */
+  private groupAlive(o: Orphan) {
+    return Date.now() - os.uptime() * 1000 < o.started && this.exists(-o.pgid);
+  }
+  private async stopOrphan(o: Orphan) {
+    const gone = async (ms: number) => {
+      const end = Date.now() + ms;
+      while (this.groupAlive(o)) {
+        if (Date.now() >= end) return false;
+        await wait(50);
+      }
+      return true;
+    };
+    signalGroup(o.pgid, "SIGTERM");
+    if (!(await gone(this.stopGraceMs))) {
+      signalGroup(o.pgid, "SIGKILL");
+      await gone(1000);
+    }
+    // Nobody awaits this in production, so it must not reject. If the ledger is
+    // closed or busy, the next backend finds the group gone and frees the slot.
+    try {
+      if (!this.closed) this.tx(() => this.releaseOrphan(o.id, "stopped"));
+    } catch {
+      /* retried on the next start */
+    }
+  }
+  /** Free the slot of a run whose agent outlived its backend. The outcome stays unknown. */
+  private releaseOrphan(id: string, how: "exited" | "stopped") {
+    // The owner may have released it in the meantime.
+    if (!this.db.prepare(`SELECT 1 FROM runs WHERE id=? AND state IN ${ACTIVE}`).get(id)) return;
+    this.closePending(id, "cancelled");
+    this.db.prepare("UPDATE runs SET state='unknown',pending=NULL WHERE id=?").run(id);
+    this.record(id, "orphan_released", { process: how });
   }
   /** A state change and the timeline entry describing it commit together. */
   private tx<T>(fn: () => T): T {
@@ -324,8 +428,10 @@ export class FleetHostService {
         )
           throw new FleetError(409, "host_busy");
         this.db
-          .prepare("INSERT INTO runs VALUES(?,?,?,?,?,'running','',NULL,?)")
-          .run(runId, peer.hostId, peer.deviceId, workspaceId, this.epoch, Date.now());
+          .prepare(
+            "INSERT INTO runs(id,host,device,workspace,epoch,state,result,pending,created,backend) VALUES(?,?,?,?,?,'running','',NULL,?,?)",
+          )
+          .run(runId, peer.hostId, peer.deviceId, workspaceId, this.epoch, Date.now(), process.pid);
         this.record(runId, "turn_started", { turn: 1, prompt: text!.slice(0, PROMPT_EXCERPT) });
       } else {
         const r = this.getRun(peer, runId);
@@ -361,6 +467,7 @@ export class FleetHostService {
         let blocked = 0;
         this.turns.set(runId, 1);
         const turn = () => this.turns.get(runId) ?? 0;
+        const launched = Date.now();
         const session = this.runner.start(workspace.root, {
           approval: (a, closed) =>
             this.tx(() => {
@@ -437,6 +544,10 @@ export class FleetHostService {
           },
         });
         this.sessions.set(runId, session);
+        // A later backend uses this to stop or release the agent if this one dies first.
+        const pgid = processId(session.pid);
+        if (pgid)
+          this.db.prepare("UPDATE runs SET pgid=?,started=? WHERE id=?").run(pgid, launched, runId);
         const timer = setTimeout(() => this.stopRun(runId, "timeout"), 60 * 60_000);
         timer.unref();
         this.timers.set(runId, timer);
@@ -519,11 +630,14 @@ export class FleetHostService {
     if (this.closing && !this.closed && !this.sessions.size) {
       this.closed = true;
       this.db.close();
+      this.drained();
     }
   }
-  shutdown() {
+  /** Stop every agent. Settles once their processes have exited and the ledger is closed. */
+  shutdown(): Promise<void> {
     this.closing = true;
     for (const id of this.sessions.keys()) this.stopRun(id, "shutdown");
     this.finishShutdown();
+    return this.stopped;
   }
 }

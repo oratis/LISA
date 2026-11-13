@@ -6,6 +6,7 @@ import path from "node:path";
 import { execFileSync, fork, type ChildProcess } from "node:child_process";
 import http from "node:http";
 import { once } from "node:events";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { setTimeout as wait } from "node:timers/promises";
@@ -73,7 +74,7 @@ test("operation receipts outlive a backend, reject changed payloads, and never r
         /run_not_found/,
       );
     } finally {
-      second.shutdown();
+      void second.shutdown();
     }
     events.result("done", false);
     fs.renameSync(root, root + "-old");
@@ -87,7 +88,7 @@ test("operation receipts outlive a backend, reject changed payloads, and never r
       /workspace_replaced/,
     );
   } finally {
-    svc.shutdown();
+    void svc.shutdown();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -398,6 +399,14 @@ test(
       const pending = await until(run, (r) => !!r.approval || r.state === "failed");
       assert.ok(pending.approval, "expected approval; got " + JSON.stringify(pending));
       assert.equal(fs.existsSync(path.join(dir, "project-1", "approved.txt")), false);
+      // The executor records the agent's process group, so a later backend can stop it.
+      const ledger = new DatabaseSync(path.join(dir, "mac-1", "fleet", "runs.sqlite"));
+      try {
+        const row = ledger.prepare("SELECT pgid,started FROM runs WHERE id=?").get(id);
+        assert.ok(Number(row?.pgid) > 1 && Number(row?.started) > 0, JSON.stringify(row));
+      } finally {
+        ledger.close();
+      }
       // The controller's cursor before it loses the connection.
       const seen = (await remote<Timeline>(0, "/runs/" + id + "/events")).lastSeq;
       await api(m.port, "/api/remote/disconnect", {});

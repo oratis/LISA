@@ -8,12 +8,13 @@ import { resolveExpression, expressionText } from "../expressions/catalog.js";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import crypto from "node:crypto";
 import { RelayBroker } from "../remote/broker.js";
 import { RemoteHost } from "../remote/host.js";
 import { FleetError, fleetRoute } from "../remote/fleet/types.js";
 import type { FleetApi } from "../remote/fleet/api.js";
+import { trackShutdown } from "./shutdown.js";
 import { fileURLToPath } from "node:url";
 import { listRoomMusic, toPublicTrack } from "./room-music.js";
 import { runAgent } from "../agent.js";
@@ -582,6 +583,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const cloudEdition = isCloud();
   let remoteHost: RemoteHost | undefined;
   let fleet: FleetApi | undefined;
+  /** Opened on first use, or at startup when an earlier backend left a task ledger. */
+  const openFleet = async (): Promise<FleetApi> => {
+    if (!fleet) {
+      const { FleetApi: Api } = await import("../remote/fleet/api.js");
+      const addr = server.address();
+      if (!server.listening || !addr || typeof addr === "string")
+        throw new FleetError(503, "backend_unavailable");
+      fleet ??= new Api(lisaGlobalHome(), addr.port);
+    }
+    return fleet;
+  };
   let relayBroker: RelayBroker | undefined;
   const remoteAddress = (req: http.IncomingMessage) =>
     remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
@@ -2657,19 +2669,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const body = method === "POST" ? await readJsonBody(req, res, 64 * 1024) : {};
       if (!body) return;
       try {
-        if (!fleet) {
-          const { FleetApi: Api } = await import("../remote/fleet/api.js");
-          const addr = server.address();
-          if (!addr || typeof addr === "string") throw new FleetError(503, "backend_unavailable");
-          fleet ??= new Api(lisaGlobalHome(), addr.port);
-        }
+        const api = await openFleet();
         if (onMini) {
           // Body parsing yields. The owner may have revoked the grant in the meantime.
           const peer = remoteHost.fleetPeer(req);
           if (!peer) throw new FleetError(403, "fleet_access_denied");
-          send(200, fleet.peer(peer, url, method, body));
+          send(200, api.peer(peer, url, method, body));
         } else {
-          send(200, await fleet.owner(remoteHost, url, method, body));
+          send(200, await api.owner(remoteHost, url, method, body));
         }
       } catch (err) {
         if (err instanceof FleetError) send(err.status, { error: err.message });
@@ -6007,7 +6014,9 @@ self.addEventListener('fetch', (event) => {
   };
   server.on("close", () => {
     remoteHost?.stop();
-    fleet?.host.shutdown();
+    // Stops the Claude processes remote controllers started; exitOnSignals waits for it.
+    const fleetStopped = fleet?.host.shutdown();
+    if (fleetStopped) trackShutdown(server, fleetStopped);
     void githubConnector?.stop();
     for (const service of taskConnectors.values()) void service.stop();
     for (const t of [
@@ -6079,6 +6088,10 @@ self.addEventListener('fetch', (event) => {
       void remoteHost
         .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
         .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));
+      // An earlier backend may have left a remote Claude process running. Opening the
+      // ledger now stops it or frees its slot, instead of on the first remote request.
+      if (existsSync(path.join(lisaGlobalHome(), "fleet", "runs.sqlite")))
+        void openFleet().catch(() => logWarn("[fleet] remote task ledger unavailable"));
     }
   }
   // Dream-log retention on startup (then at most hourly, from the passes).

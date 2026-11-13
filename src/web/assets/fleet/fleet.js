@@ -87,6 +87,12 @@
         return ["执行机后端曾重启，结果待核实。原操作不会重新执行。"];
       case "owner_released":
         return ["执行机所有者确认旧进程已退出，已释放执行位。"];
+      case "orphan_released":
+        return [
+          e.process === "stopped"
+            ? "执行机后端重启后停止了上一后端留下的 Claude 进程，已释放执行位。结果待核实。"
+            : "执行机后端重启时旧 Claude 进程已退出，已释放执行位。结果待核实。",
+        ];
       case "history_started":
         return ["此任务早于任务经过功能，记录从「" + (phase[e.state] || e.state) + "」开始。"];
       default:

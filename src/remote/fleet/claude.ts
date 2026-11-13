@@ -27,6 +27,8 @@ export interface ClaudeEvents {
   exit(error: string): void;
 }
 export interface ClaudeSession {
+  /** Process group of the launched agent, so a later backend can find it again. */
+  readonly pid?: number;
   send(text: string): void;
   decide(id: string, allow: boolean): void;
   cancel(): void;
@@ -329,6 +331,8 @@ export class LocalClaude implements ClaudeRunner {
       events.exit(failure || (code === 0 ? "" : "claude_exited"));
     });
     return {
+      // Detached, so the child leads its own process group: pid and group id match.
+      pid: proc.pid,
       send(text) {
         write({
           type: "user",
