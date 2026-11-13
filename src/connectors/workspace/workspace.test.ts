@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { WorkspaceDriver, availableWorkspaceIds, readPeriod } from "./driver.js";
 import { workspaceApps, workspaceIds, workspaceReadIntents, type WorkspaceId } from "./catalog.js";
-import { Reader, type Http } from "./http.js";
+import { Reader, createWorkspaceHttp, type Http } from "./http.js";
 import { eventKitAvailable } from "./eventkit.js";
 import { contents, validId } from "./data.js";
 import {
@@ -290,5 +290,54 @@ test("only sources with a configured client or a runnable EventKit reader are of
   assert.equal(
     await eventKitAvailable({ source: path.join(dir, "missing.swift"), plist: file }),
     false,
+  );
+});
+test("a token endpoint's invalid_grant asks for sign-in whatever its status", async () => {
+  const lookup = async () => [{ address: "93.184.216.34", family: 4 as const }];
+  const answer = (status: number, body: unknown) =>
+    createWorkspaceHttp({
+      lookup,
+      transport: async () => new Response(JSON.stringify(body), { status }),
+    });
+  const token = new URL("https://auth.atlassian.com/oauth/token");
+  const post = { method: "POST" };
+  // Atlassian rejects a reused rotating refresh token with 403.
+  for (const [status, error] of [
+    [403, "invalid_grant"],
+    [401, "invalid_grant"],
+    [400, "invalid_grant"],
+    [403, "unauthorized_client"],
+    [400, "invalid_refresh_token"],
+  ] as const)
+    await assert.rejects(
+      answer(status, { error })(token, post, signal()),
+      /workspace_reauthorize/,
+      status + " " + error,
+    );
+  await assert.rejects(
+    answer(400, { error: "invalid_scope" })(token, post, signal()),
+    /workspace_scope_mismatch/,
+  );
+  await assert.rejects(
+    answer(403, { error: "access_denied" })(token, post, signal()),
+    /workspace_request_failed/,
+  );
+  // Outside token endpoints the status alone still decides.
+  await assert.rejects(
+    answer(403, { error: "invalid_grant" })(
+      new URL("https://api.atlassian.com/ex/jira/site/rest/api/3/myself"),
+      {},
+      signal(),
+    ),
+    /workspace_inaccessible/,
+  );
+  const atlassian: Grant = {
+    ...original,
+    provider: "jira",
+    client: { clientId: "client", clientSecret: "secret" },
+  };
+  await assert.rejects(
+    refreshCloud(atlassian, answer(403, { error: "invalid_grant" }), signal()),
+    /workspace_reauthorize/,
   );
 });

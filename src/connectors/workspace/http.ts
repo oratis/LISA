@@ -4,6 +4,8 @@ import {
   resolvePublicAddresses,
   readResponseTextCapped,
   withDeadline,
+  type DnsLookupAll,
+  type PinnedTransport,
 } from "../../tools/web_fetch.js";
 
 export type Row = Record<string, unknown>;
@@ -36,54 +38,65 @@ export type Http = (
   signal: AbortSignal,
   text?: boolean,
 ) => Promise<unknown>;
-export const workspaceHttp: Http = async (url, init, signal, text) => {
-  try {
-    return await withDeadline(signal, 30000, async (deadline) => {
-      if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash)
-        fail("workspace_invalid_endpoint");
-      const [ip] = await resolvePublicAddresses(url.hostname);
-      deadline!.throwIfAborted();
-      const response = await pinnedTransport(
-        url.href,
-        { ...init, redirect: "manual", signal: deadline },
-        ip!,
-      );
-      if (!response.ok) {
-        if (
-          response.status === 400 &&
-          /^\/(?:[^/]+\/oauth2\/v2\.0\/token|oauth(?:2)?\/(?:access_token|token)|v1\/oauth\/(?:refresh|token))$/.test(
-            url.pathname,
-          )
-        ) {
-          const body = await readResponseTextCapped(response, 8192);
-          if (!body.truncated) {
+// Token endpoints of every supported provider (Microsoft, Atlassian, Todoist, Dropbox, Figma).
+const tokenPath =
+  /^\/(?:[^/]+\/oauth2\/v2\.0\/token|oauth(?:2)?\/(?:access_token|token)|v1\/oauth\/(?:refresh|token))$/;
+/** Lookup and transport are injectable only so tests can exercise this exact error mapping. */
+export function createWorkspaceHttp(
+  deps: { lookup?: DnsLookupAll; transport?: PinnedTransport } = {},
+): Http {
+  const transport = deps.transport ?? pinnedTransport;
+  return async (url, init, signal, text) => {
+    try {
+      return await withDeadline(signal, 30000, async (deadline) => {
+        if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash)
+          fail("workspace_invalid_endpoint");
+        const [ip] = await resolvePublicAddresses(url.hostname, deps.lookup);
+        deadline!.throwIfAborted();
+        const response = await transport(
+          url.href,
+          { ...init, redirect: "manual", signal: deadline },
+          ip!,
+        );
+        if (!response.ok) {
+          // A dead refresh token must drop the connection, whatever status carries it:
+          // Atlassian answers a reused rotating refresh token with 403 invalid_grant.
+          if ([400, 401, 403].includes(response.status) && tokenPath.test(url.pathname)) {
+            const body = await readResponseTextCapped(response, 8192);
             let code: unknown;
-            try {
-              code = row(JSON.parse(body.text)).error;
-            } catch {
-              /* Some providers return plain-text errors. */
+            if (!body.truncated) {
+              try {
+                code = row(JSON.parse(body.text)).error;
+              } catch {
+                /* Some providers return plain-text errors. */
+              }
             }
-            if (code === "invalid_grant" || code === "invalid_refresh_token")
+            if (
+              code === "invalid_grant" ||
+              code === "invalid_refresh_token" ||
+              code === "unauthorized_client"
+            )
               fail("workspace_reauthorize");
             if (code === "invalid_scope") fail("workspace_scope_mismatch");
+            fail(response.status === 401 ? "workspace_reauthorize" : "workspace_request_failed");
           }
+          await response.body?.cancel();
+          if (response.status === 401) fail("workspace_reauthorize");
+          if (response.status === 429) fail("workspace_rate_limited");
+          if (response.status === 403 || response.status === 404) fail("workspace_inaccessible");
           fail("workspace_request_failed");
         }
-        await response.body?.cancel();
-        if (response.status === 401) fail("workspace_reauthorize");
-        if (response.status === 429) fail("workspace_rate_limited");
-        if (response.status === 403 || response.status === 404) fail("workspace_inaccessible");
-        fail("workspace_request_failed");
-      }
-      const body = await readResponseTextCapped(response, 1_000_000);
-      if (body.truncated) fail("workspace_response_too_large");
-      return text ? body.text : JSON.parse(body.text);
-    });
-  } catch (error) {
-    if (error instanceof ConnectorError) throw error;
-    fail(signal.aborted ? "request_cancelled" : "workspace_request_failed");
-  }
-};
+        const body = await readResponseTextCapped(response, 1_000_000);
+        if (body.truncated) fail("workspace_response_too_large");
+        return text ? body.text : JSON.parse(body.text);
+      });
+    } catch (error) {
+      if (error instanceof ConnectorError) throw error;
+      fail(signal.aborted ? "request_cancelled" : "workspace_request_failed");
+    }
+  };
+}
+export const workspaceHttp: Http = createWorkspaceHttp();
 
 export const apiOrigins = {
   microsoft: "https://graph.microsoft.com",
