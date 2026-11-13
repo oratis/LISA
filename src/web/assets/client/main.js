@@ -454,6 +454,17 @@ const LISA_STRINGS = {
     'copied': 'Copied',
     'copyPath': 'Copy the full path',
     'pair.noExpiry': 'This pairing link carries a device token that does not expire — anyone who gets it can reach this Lisa. Revoke the device in Settings when you are done with it.',
+    'control.tools': '{n} tool calls',
+    'control.upgrade': 'Show conversations',
+    'control.metadata': 'Only session metadata is enabled. Open Control and choose Show conversations to read messages here.',
+    'control.enable': 'Show Codex sessions',
+    'control.disable': 'Stop showing Codex sessions',
+    'control.found': 'Show recent sessions and read their conversations on this computer.',
+    'control.window': 'Shows up to 10 Codex sessions updated in the last 30 minutes.',
+    'control.missing': 'Start a local Codex session to see it here.',
+    'control.empty': 'No recent agent sessions.',
+    'control.loadError': 'Could not load sessions. Reopen Control to retry.',
+    'control.saveError': 'Could not save the setting. Check agents.json and its permissions, then try again.',
     'sense.noConnector': 'Nothing is published — no social connector is installed.',
     'kbd.switchPlaceholder': 'Switch session…',
     'kbd.noSessions': 'No sessions match.',
@@ -833,6 +844,17 @@ const LISA_STRINGS = {
     'copied': '已复制',
     'copyPath': '复制完整路径',
     'pair.noExpiry': '这个配对链接里的设备令牌不会过期 —— 拿到它的人就能连上这个 Lisa。用完之后请在 Settings 里吊销该设备。',
+    'control.tools': '{n} 次工具调用',
+    'control.upgrade': '显示对话内容',
+    'control.metadata': '当前只显示会话信息。打开 Control，选择「显示对话内容」即可查看消息。',
+    'control.enable': '显示 Codex 会话',
+    'control.disable': '停止显示 Codex 会话',
+    'control.found': '已检测到本机 Codex 会话，开启后可在此查看近期对话。',
+    'control.window': '显示最近 30 分钟内更新的 Codex 会话，最多 10 个。',
+    'control.missing': '在本机启动一个 Codex 会话后，即可在这里连接。',
+    'control.empty': '暂无近期的智能体会话。',
+    'control.loadError': '会话加载失败，请重新打开 Control 重试。',
+    'control.saveError': '保存失败。请检查 agents.json 的格式和文件权限，再试一次。',
     'sense.noConnector': '没有发布任何内容 —— 尚未安装社交连接器。',
     'kbd.switchPlaceholder': '切换会话…',
     'kbd.noSessions': '没有匹配的会话。',
@@ -3606,6 +3628,7 @@ if ('serviceWorker' in navigator) {
   function agentLabel(s) {
     const custom = customSessionName('agent/' + s.agent, s.sessionId);
     if (custom) return custom;
+    if (s.agent === 'codex') return s.displayName || (s.project || 'Codex') + ' · ' + s.sessionId.slice(-8);
     let label = s.project;
     if (s.activity && s.activity.gitBranch) {
       const br = String(s.activity.gitBranch);
@@ -3613,6 +3636,7 @@ if ('serviceWorker' in navigator) {
     }
     return label;
   }
+  window.lisaAgentLabel = agentLabel;
   const AGENT_NAMES = {
     'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode',
     aider: 'Aider', 'github-pr': 'GitHub PR', cursor: 'Cursor',
@@ -3794,7 +3818,7 @@ if ('serviceWorker' in navigator) {
     }
     leaf.querySelector('.tname').textContent = agentLabel(s);
     leaf.querySelector('.ttime').textContent = relativeTime(s.lastMtime);
-    leaf.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
+    leaf.title = agentLabel(s) + ' · ' + (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
     leaf.setAttribute('data-agent', s.agent);
     leaf.setAttribute('data-session', s.sessionId);
     leaf.setAttribute('aria-haspopup', 'menu');
@@ -3805,7 +3829,7 @@ if ('serviceWorker' in navigator) {
   // sessions + agent sessions side by side (mini glyphs mark the source).
   function buildProjectTree(tree) {
     const projects = [];
-    const byProject = {};
+    const byProject = Object.create(null);
     function bucket(p) {
       if (!byProject[p]) { byProject[p] = { lisa: [], agents: [] }; projects.push(p); }
       return byProject[p];
@@ -3869,7 +3893,7 @@ if ('serviceWorker' in navigator) {
       const kids = document.createElement('div');
       kids.className = 'tchildren';
       const projects = [];
-      const byProject = {};
+      const byProject = Object.create(null);
       byKind[kind].forEach(function (s) {
         const p = s.project || '?';
         if (!byProject[p]) { byProject[p] = []; projects.push(p); }
@@ -4520,6 +4544,7 @@ if ('serviceWorker' in navigator) {
     openStreamTab({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
   };
   function openStreamTab(entry) {
+    if (currentAgentTab !== entry) document.getElementById('asSteps').replaceChildren();
     if (ptyStream) { ptyStream.close(); ptyStream = null; }
     currentAgentTab = entry;
     document.body.classList.add('agent-tab-active');
@@ -4556,6 +4581,7 @@ if ('serviceWorker' in navigator) {
     head.appendChild(g);
     const nameEl = document.createElement('b');
     nameEl.textContent = s ? agentLabel(s) : (currentAgentTab.label || currentAgentTab.id);
+    nameEl.title = nameEl.textContent;
     head.appendChild(nameEl);
     const meta = document.createElement('span');
     meta.className = 'meta';
@@ -4618,6 +4644,7 @@ if ('serviceWorker' in navigator) {
     }
     refreshStreamSteps();
   }
+  var streamRequest = 0;
   function refreshStreamSteps() {
     if (!currentAgentTab) return;
     const stepsEl = document.getElementById('asSteps');
@@ -4649,10 +4676,16 @@ if ('serviceWorker' in navigator) {
     // structural steps when it comes back empty (remote access, other
     // agent kinds, or a quiet tail).
     const q = 'agent=' + encodeURIComponent(currentAgentTab.agent) + '&id=' + encodeURIComponent(currentAgentTab.id);
+    const tab = currentAgentTab;
+    const request = ++streamRequest;
     fetch('/api/agents/transcript?' + q)
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (!currentAgentTab) return null;
+        if (tab !== currentAgentTab || request !== streamRequest) return null;
+        if (d && d.metadataOnly) {
+          stepsEl.textContent = tr('control.metadata');
+          return null;
+        }
         if (d && d.entries && d.entries.length) {
           renderTranscript(stepsEl, d.entries);
           return null;
@@ -4660,16 +4693,20 @@ if ('serviceWorker' in navigator) {
         return fetch('/api/agents/steps?' + q)
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(function (sd) {
-            if (!sd || !currentAgentTab) return;
+            if (!sd || tab !== currentAgentTab || request !== streamRequest) return;
             renderSteps(stepsEl, sd.steps || []);
           });
       })
       .catch(function () {});
   }
   function renderTranscript(stepsEl, entries) {
+    const previous = stepsEl.querySelectorAll('details[open]');
+    const expanded = new Set(Array.from(previous, el => el.dataset.group));
     const atBottom = stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 60;
     stepsEl.innerHTML = '';
-    entries.forEach(function (en) {
+    let group;
+    let groupCount = 0;
+    entries.forEach(function (en, index) {
       if (en.kind === 'tool') {
         const row = document.createElement('div');
         row.className = 'srow' + (en.isError ? ' err' : '');
@@ -4678,9 +4715,22 @@ if ('serviceWorker' in navigator) {
         row.children[1].textContent = en.tool || '';
         row.querySelector('.sdetail').textContent = en.target || '';
         if (en.ts) row.querySelector('.stime').textContent = relativeTime(en.ts);
-        stepsEl.appendChild(row);
+        if (!group && entries[index + 1] && entries[index + 1].kind === 'tool') {
+          group = document.createElement('details');
+          group.className = 'as-tool-group';
+          group.dataset.group = String(en.ts || index) + '/' + (en.tool || '');
+          group.open = expanded.has(group.dataset.group);
+          group.appendChild(document.createElement('summary'));
+          stepsEl.appendChild(group);
+          groupCount = 0;
+        }
+        if (group) {
+          group.firstChild.textContent = tr('control.tools', { n: ++groupCount });
+          group.appendChild(row);
+        } else stepsEl.appendChild(row);
         return;
       }
+      group = null;
       const msg = document.createElement('div');
       msg.className = 'as-msg ' + (en.kind === 'user' ? 'user' : 'assistant');
       const role = document.createElement('div');
@@ -5538,7 +5588,7 @@ if ('serviceWorker' in navigator) {
     var act = actLine(s);
     return '<div class="ac">' +
       '<div class="ac-top"><span>' + esc(s.agent || 'agent') + '</span><span class="ac-status ' + cls + '">' + esc(statusLabel(s.state)) + '</span></div>' +
-      '<div class="ac-title">' + esc(s.project || s.agent || 'agent') + '</div>' +
+      '<div class="ac-title">' + esc(window.lisaAgentLabel(s) || s.agent || 'agent') + '</div>' +
       '<div class="ac-desc">' + (act ? esc(act) : 'no recent activity') + '</div>' +
       '</div>';
   }
@@ -5649,8 +5699,7 @@ if ('serviceWorker' in navigator) {
     var a = s.activity || {};
     var pend = a.pendingPermission;
     var err = a.lastError || (s.state === 'error' ? (s.stateReason || 'errored') : '');
-    var label = s.project || s.sessionId || 'agent';
-    if (a.gitBranch) { var br = String(a.gitBranch); label = br.indexOf('claude/') === 0 ? br.slice(7) : br; }
+    var label = window.lisaAgentLabel(s) || s.sessionId || 'agent';
     var badge = (s.agent && s.agent !== 'claude-code') ? '<span class="cr-badge">' + esc(s.agent) + '</span>' : '';
     var sub = ctrlProgress(s);
     var rowCls = 'ctrl-row' + (err ? ' problem' : (pend ? ' pending' : ''));
@@ -5694,7 +5743,7 @@ if ('serviceWorker' in navigator) {
       var a = s.activity || {};
       var fam = s.controllable;
       var scls = statusClass(s.state);
-      var title = (s.agent && s.agent !== 'claude-code' ? s.agent + ' · ' : '') + (s.project || 'agent');
+      var title = (s.agent && s.agent !== 'claude-code' ? s.agent + ' · ' : '') + (window.lisaAgentLabel(s) || 'agent');
       function rel(iso) { var ms = Date.now() - new Date(iso).getTime(); if (ms < 60000) return 'just now'; if (ms < 3600000) return Math.round(ms / 60000) + 'm ago'; if (ms < 86400000) return Math.round(ms / 3600000) + 'h ago'; return Math.round(ms / 86400000) + 'd ago'; }
       function row(k, v) { return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
       var h = '<div class="sd">';
@@ -5768,11 +5817,19 @@ if ('serviceWorker' in navigator) {
     if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
     renderControl();
   }
+  var changingCodexObservation = false;
+  var controlRender = 0;
   function renderControl() {
     var scroll = document.getElementById('ctrlScroll');
     if (!scroll) return;
+    var render = ++controlRender;
     Promise.all([getJSON('/api/agents/sessions'), getJSON('/api/control/policy')]).then(function (res) {
-      var sessions = (res[0] && res[0].sessions) || [];
+      if (render !== controlRender) return;
+      if (!res[0] || !Array.isArray(res[0].sessions) || !res[1]) {
+        scroll.innerHTML = '<div class="view-empty" role="alert">' + esc(tr('control.loadError')) + '</div>';
+        return;
+      }
+      var sessions = res[0].sessions;
       var policy = res[1] || {};
       updateAgentCount(sessions.length);
       // Surface problems first: error → waiting(needs you) → working → rest.
@@ -5786,11 +5843,51 @@ if ('serviceWorker' in navigator) {
       var html = '<div class="ctrl-policy">' +
         '<span class="pp-tag">remote control: ' + (policy.remoteControl ? 'on' : 'off') + '</span>' +
         '<span class="pp-tag">adopt external: ' + (policy.remoteAdoptExternal ? 'on' : 'off') + '</span></div>';
-      if (!sessions.length) { scroll.innerHTML = html + '<div class="view-empty">No agents running. Delegate a task to start one.</div>'; return; }
-      html += '<div class="ctrl-list">';
-      sessions.forEach(function (s) { html += ctrlRowHTML(s); });
-      html += '</div>';
+      var observation = policy.codexObservation;
+      if (observation && (observation.detected || observation.enabled)) {
+        html += '<div class="v-row codex-observation"><div class="v-main"><div class="v-name">Codex</div><div class="v-sub">' +
+          esc(tr(observation.enabled ? 'control.window' : 'control.found')) +
+          '</div></div>' + (observation.enabled && !observation.showsActivity ? '<button type="button" class="sd-btn" id="codexConversations">' + esc(tr('control.upgrade')) + '</button>' : '') +
+          '<button type="button" class="sd-btn" id="codexObservation"' + (changingCodexObservation ? ' disabled' : '') + '>' +
+          esc(tr(observation.enabled ? 'control.disable' : 'control.enable')) + '</button></div>';
+      }
+      if (sessions.length) {
+        html += '<div class="ctrl-list">';
+        sessions.forEach(function (s) { html += ctrlRowHTML(s); });
+        html += '</div>';
+      } else {
+        html += '<div class="view-empty">' + esc(tr('control.empty')) +
+          (observation && !observation.detected ? ' ' + esc(tr('control.missing')) : '') + '</div>';
+      }
       scroll.innerHTML = html;
+      var toggle = scroll.querySelector('#codexObservation');
+      var conversations = scroll.querySelector('#codexConversations');
+      if (toggle) toggle.addEventListener('click', changeObservation);
+      if (conversations) conversations.addEventListener('click', changeObservation);
+      async function changeObservation(event) {
+        if (changingCodexObservation) return;
+        changingCodexObservation = true;
+        toggle.disabled = true;
+        if (conversations) conversations.disabled = true;
+        var enabled = event.currentTarget === conversations || !observation.enabled;
+        try {
+          var response = await fetch('/api/agents/codex/observation', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            // Only the "Show conversations" button asks for transcripts. The plain
+            // toggle must leave a hand-set metadata-only visibility alone.
+            body: JSON.stringify({ enabled: enabled, showConversations: event.currentTarget === conversations })
+          });
+          if (!response.ok) throw new Error();
+          changingCodexObservation = false;
+          await window.refreshClaudeSessions();
+        } catch {
+          changingCodexObservation = false;
+          var button = scroll.querySelector('#codexObservation');
+          if (button) button.disabled = false;
+          if (conversations) conversations.disabled = false;
+          scroll.insertAdjacentHTML('afterbegin', '<div class="view-empty" role="alert">' + esc(tr('control.saveError')) + '</div>');
+        }
+      }
       // Inline quick approve/deny — stopPropagation so they do not open the detail.
       var quicks = scroll.querySelectorAll('.cr-quick');
       for (var q = 0; q < quicks.length; q++) {

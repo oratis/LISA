@@ -138,6 +138,8 @@ import { agentSessionsResponse, applyApiVersionHeader } from "./api-contract.js"
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
+import { CodexTitles, codexTitleKey } from "../integrations/codex/titles.js";
+import { codexObservationStatus, setCodexObservation } from "../integrations/codex/observation.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
 import { setCurrentHub } from "../integrations/current-hub.js";
 import { advise, dismissSuggestion, formatDigest } from "../advisor/engine.js";
@@ -1128,7 +1130,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Codex/OpenCode/… as adapters land) and merges their sessions into one
   // normalized stream. Privacy: structural metadata only (see types.ts +
   // each adapter). Replaces the single-purpose ClaudeCodeWatcher wiring.
-  const orchestratorCfg = await loadOrchestratorConfig(path.join(lisaHome(), "agents.json"));
+  const agentsConfigFile = path.join(lisaHome(), "agents.json");
+  const orchestratorCfg = await loadOrchestratorConfig(agentsConfigFile);
+  let codexConfig = orchestratorCfg.integrations.codex;
+  const codexTitles = new CodexTitles();
+  const codexShowsActivity = () =>
+    ["activity", "intent"].includes(codexConfig?.visibility ?? orchestratorCfg.visibility);
   const hub = new OrchestratorHub(orchestratorCfg, {
     log: (msg) => logInfo(msg),
   });
@@ -3867,8 +3874,53 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Remote-control policy: GET (any authed caller) reports it; POST sets it,
     // but only from localhost (the Mac owner) — like the API-key save.
     if (req.method === "GET" && url === "/api/control/policy") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(loadControlPolicy()));
+      const local =
+        !cloud &&
+        !accountUid &&
+        isLoopbackAddress(remoteAddr) &&
+        !crossSiteProblem(req, true, null);
+      if (local) await hubStarted;
+      const codexObservation = local
+        ? await codexObservationStatus(hub, codexConfig?.home, codexShowsActivity())
+        : undefined;
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ ...loadControlPolicy(), codexObservation }));
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/agents/codex/observation") {
+      if (
+        cloud ||
+        accountUid ||
+        !isLoopbackAddress(remoteAddr) ||
+        crossSiteProblem(req, true, null)
+      ) {
+        res.writeHead(403);
+        res.end("local_owner_required");
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      if (typeof body.enabled !== "boolean") {
+        res.writeHead(400);
+        res.end("enabled must be a boolean");
+        return;
+      }
+      await hubStarted;
+      try {
+        const entry = await setCodexObservation(
+          agentsConfigFile,
+          hub,
+          body.enabled,
+          body.showConversations === true,
+        );
+        codexConfig = entry;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ enabled: entry.enabled }));
+      } catch {
+        res.writeHead(409);
+        res.end("Could not update Codex observation. Check agents.json and its permissions.");
+      }
       return;
     }
     if (req.method === "POST" && url === "/api/control/policy") {
@@ -4274,8 +4326,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Mark idle claude sessions as adoptable: not currently live (no running
       // owner ⇒ `claude --resume` is safe) and not already a LISA-controlled row.
       const live = liveClaudeSessionIds();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(agentSessionsResponse(hub.list(), live)));
+      const roster = agentSessionsResponse(hub.list(), live);
+      if (
+        !cloud &&
+        !accountUid &&
+        isLoopbackAddress(remoteAddr) &&
+        !crossSiteProblem(req, true, null)
+      ) {
+        const codexSessions = roster.sessions.filter((s) => s.agent === "codex");
+        if (codexSessions.length && codexShowsActivity()) {
+          const titles = await codexTitles.read(codexConfig?.home);
+          for (const session of codexSessions)
+            session.displayName = titles.get(codexTitleKey(session.sessionId));
+        }
+      }
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(roster));
       return;
     }
 
@@ -4318,7 +4384,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // callers keep the structural surfaces.
     if (req.method === "GET" && url.startsWith("/api/agents/transcript")) {
       const tRemote = remoteAddress(req);
-      if (!isLoopbackAddress(tRemote)) {
+      if (cloud || accountUid || !isLoopbackAddress(tRemote) || crossSiteProblem(req, true, null)) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
@@ -4338,7 +4404,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       let entries: unknown[] = [];
-      if (session.activity && session.jsonlPath) {
+      const readable = agent === "codex" ? codexShowsActivity() : !!session.activity;
+      if (readable && session.jsonlPath) {
         if (agent === "claude-code") {
           const { parseSessionTranscript } = await import("../integrations/claude-code/parser.js");
           entries = await parseSessionTranscript(session.jsonlPath);
@@ -4348,7 +4415,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ entries }));
+      res.end(
+        JSON.stringify({
+          entries,
+          ...(agent === "codex" && !readable ? { metadataOnly: true } : {}),
+        }),
+      );
       return;
     }
 
