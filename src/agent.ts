@@ -141,9 +141,12 @@ export interface RunAgentOptions {
    * sequence, a turn costs the SUM of their latencies rather than the slowest.
    *
    * What does not change: results go back in call order, `tool_call_start` /
-   * `tool_call_end` still alternate one call at a time in call order, hooks
-   * still fire in call order, and a call that is not `concurrencySafe` waits
-   * for every earlier call to finish and runs alone.
+   * `tool_call_end` still alternate one call at a time in call order, the
+   * pre-tool hooks fire in call order and so do the post-tool hooks (a later
+   * call's pre hook may run before an earlier call's post hook), and a call
+   * that is not `concurrencySafe` waits for every earlier call to finish and
+   * runs alone. A parallel call's start event is sent when its result is
+   * collected, which is why only quick lookups are marked safe.
    *
    * Ignored whenever `approval` is set: a human answering a prompt, or Warden
    * deciding with the taint of the calls before it, needs them one at a time.

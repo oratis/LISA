@@ -29,7 +29,9 @@ export function createTaskTool(deps: {
 }): ToolDefinition<TaskInput, string> {
   return {
     name: "task",
-    concurrencySafe: true,
+    // Not concurrencySafe: a `general` sub-agent has bash, write and edit, and
+    // a sub-agent run can take minutes, while a parallel call's start event is
+    // only sent when its result is collected (the UI would show nothing).
     description:
       "Spawn a sub-agent to handle a self-contained task in its own context window. " +
       "Use this for: exploring large codebases (`type: explore`), running multi-step research, " +
