@@ -1,22 +1,22 @@
-# 用 LISA 管理三台远程 Mac mini 上的 agent
+# 用 LISA 管理多台远程 Mac 上的 agent
 
-2026-11-08 完成设计评审与首版实现。2026-11-09 在基于 `main@5803049` 的独立 PR 分支完成同机三实例验收，玄兔真机验收待接入。LISA 版本为 0.30.3。早期的三实例 PTY 验证和 88 个基线测试在 main 的独立快照上运行。[评审基线 b25fc86](https://github.com/oratis/LISA/tree/b25fc86caae3c8edad0e4f26bd9b057c37a5b73c)
+2026-11-08 完成设计评审与首版实现。2026-11-09 在基于 `main@5803049` 的独立 PR 分支完成同机三实例验收，远程真机验收尚未进行。LISA 版本为 0.30.3。早期的三实例 PTY 验证和 88 个基线测试在 main 的独立快照上运行。[评审基线 b25fc86](https://github.com/oratis/LISA/tree/b25fc86caae3c8edad0e4f26bd9b057c37a5b73c)
 
 [首版操作步骤](#首版操作步骤) · [验收记录](#首版验收记录) · [实现前的代码评审](#实现前的代码评审)
 
 ## 决策
 
-**可行。每台 mini 运行自己的 LISA Mac 后端和 coding CLI，由你的主力 Mac 上的 LISA 选机、派工、跟进和收结果。** 继续使用现有 LISA 账号发现、逐机配对和加密中继。玄兔的 VS Code 隧道作为每台机器的可选编辑器入口，适合初装、打开同一工作区、解决 CLI 登录或手动调试。首版服务一位所有者的三台机器，以手动指定目标为准。
+**可行。每台 mini 运行自己的 LISA Mac 后端和 coding CLI，由你的主力 Mac 上的 LISA 选机、派工、跟进和收结果。** 继续使用现有 LISA 账号发现、逐机配对和加密中继。VS Code 隧道作为每台机器的可选编辑器入口，适合初装、打开同一工作区、解决 CLI 登录或手动调试。首版面向单一所有者的少量机器（按三台设计和验收），以手动指定目标为准。
 
-例如，你可以说「让 mini-build 在 iOS 项目跑测试，让 mini-review 检查这次改动，mini-lab 先空着」。LISA 展示两张任务卡，各有机器、工作区、基线提交、agent 和状态。你可以只给 mini-review 追加一句，手机离线之后回到同一任务，或从失败卡打开对应机器的 VS Code。这个跨机工作流是本提案的交付目标。
+例如，你可以说「让构建机在 iOS 项目跑测试，让评审机检查这次改动，实验机先空着」。LISA 展示两张任务卡，各有机器、工作区、基线提交、agent 和状态。你可以只给评审机追加一句，手机离线之后回到同一任务，或从失败卡打开对应机器的 VS Code。这个跨机工作流是本提案的交付目标。
 
 ## 已发布版本的 Pocket 与隧道入口
 
-1. 任选一台 mini，通过玄兔提供的 SSH 或 UU远程登录。需要编辑器时，在该机运行 `code tunnel user login --provider microsoft`，在微软页面完成设备码登录，再按玄兔指南安装 `code tunnel service install --accept-server-license-terms`。在自己的 VS Code 使用 Remote - Tunnels 和同一微软账号选中这台机器。三台应有可辨认的隧道名称。[玄兔接入指南](https://co.xuantu.co/help#tunnel) · [VS Code Remote Tunnels](https://code.visualstudio.com/docs/remote/tunnels)
+1. 任选一台 mini，通过云 Mac 服务商提供的 SSH 或远程桌面登录。需要编辑器时，在该机运行 `code tunnel user login --provider microsoft`，在微软页面完成设备码登录，再安装 `code tunnel service install --accept-server-license-terms`。在自己的 VS Code 使用 Remote - Tunnels 和同一微软账号选中这台机器。每台应有可辨认的隧道名称。[VS Code Remote Tunnels](https://code.visualstudio.com/docs/remote/tunnels)
 2. 在 mini 的 macOS 用户下运行 LISA Mac，登录自己的 LISA 账号并启用 **Connect iPhone**。在同账号 Pocket 的 **Settings → Connect your Mac** 选择机器，核对双方验证码并逐端确认。支持 v2 的版本可在两端打开 **Require secure pairing**。每台 mini 都需要独立身份。现在可以在 Pocket 的 Agents 页操作当前选中的一台。[现行配对步骤](REMOTE_CONNECTIONS.md) · [Pocket 操作入口](../packaging/ios-companion/Sources/RosterView.swift)
 3. 先试 managed agent。要操作真正的 Claude Code，再用自己的账号在该机原版 CLI 中完成登录，启用含可用 `node-pty` 的 LISA 后端、设置 `LISA_PTY_AGENTS=1` 并重启后端。从 Agents 新建 Claude 任务，追加指令、查看输出、取消。观察 Codex 需要启用相应 observer，启动 Codex 则另需在该机安装并配置 CLI。每台依次验证。可选原生模块、CLI、登录状态应分别检查，运行在终端与运行在登录服务下的环境也应分别检查。[Mac 打包与检测](../packaging/mac-client/README.md) · [PTY 能力](PTY_AGENTS.md) · [观察器默认配置](../src/integrations/hub.ts)
 
-微软账号管理 VS Code 隧道，LISA 账号加双方设备密钥管理 LISA 控制链路，CLI 凭据决定代码发给哪个模型服务、消耗哪个账号的额度。玄兔说明 Claude Code 已预装且使用租户自己的账号，这三台实例的实际版本、登录状态和套餐仍须上机核实。个人交互使用原版 CLI；面向用户提供程序化 Claude 服务时，应按 Anthropic 文档采用相应 API 或云提供商凭据。[玄兔 Claude Code 说明](https://co.xuantu.co/help#claude) · [Anthropic 凭据使用说明](https://code.claude.com/docs/en/legal-and-compliance)
+微软账号管理 VS Code 隧道，LISA 账号加双方设备密钥管理 LISA 控制链路，CLI 凭据决定代码发给哪个模型服务、消耗哪个账号的额度。远程 Mac 上即使预装了 Claude Code，实际版本和登录状态仍须上机核实。交互使用原版 CLI 及其自身登录；程序化调用按 Anthropic 文档使用 API 或云提供商凭据。[Anthropic 凭据使用说明](https://code.claude.com/docs/en/legal-and-compliance)
 
 ## 实现前的代码评审
 
@@ -45,9 +45,9 @@ flowchart LR
   D["主力 Mac 的 LISA 聊天 / Agents"] --> C["本地控制器 · 已配对主机与任务索引"]
   P["Pocket · 独立配对的设备"] --> R["现有 LISA relay · 同账号密文转发"]
   C --> R
-  R <--> A["mini-build · LISA + 本机 agent"]
-  R <--> B["mini-review · LISA + 本机 agent"]
-  R <--> E["mini-lab · LISA + 本机 agent"]
+  R <--> A["构建机 · LISA + 本机 agent"]
+  R <--> B["评审机 · LISA + 本机 agent"]
+  R <--> E["实验机 · LISA + 本机 agent"]
   V["人工编辑 / 排障"] -. "VS Code tunnel" .-> A
 ```
 
@@ -58,7 +58,7 @@ flowchart LR
 - **任务卡** 始终显示机器、工作区、agent、最后更新时间及运行状态。三台并列，一台离线仍可读另两台；离线条目展示上次观测时间。批量任务给每台生成独立 run，出错后可单独处理。首版每台默认一个写任务；同机同一工作树互斥。要让几台协作同一个仓库，固定基线 SHA、使用独立分支/worktree，结果以 commit/diff 汇合，合并与推送单列为操作。
 - **聊天派工** 添加受限的「列主机/工作区、列任务、启动、追加、取消、查询结果」工具。控制器从用户选定的目标生成引用，向用户展示实际执行机、目录别名和接收数据的服务。代词绑定对话内已有 run；同名或多义才让用户选机。运行动作经过 LISA 工具审批分类和主机授权两道检查；模型不能给自己授予设备权限或批准工具调用。自动化、子 agent、托管 Cloud 账号对这些工具默认无权。Pocket 已有的 AI sharing consent 应按目标主机及接收者重新计算。[已有披露逻辑](../src/web/ai-disclosure.ts) · [Pocket 发起 agent 操作](../packaging/ios-companion/Sources/RosterView.swift)
 
-**为什么选这条路。** 三台都支持 SSH，人工首次安装可用 SSH 密钥或 VS Code 终端，图形登录可用 UU远程。用 SSH 转发 5757 会让后端看到 loopback，足以改变 owner 权限判断，因此不将它当作产品控制入口。微软也提供独立的 Agent Host 与 AHP，适合未来对接由 VS Code 自身托管的会话；采用前要逐项验证目标 CLI 版本、认证、客户端支持和所需操作。普通 tunnel URL 只说明编辑器可以连到机器。对于用户已经在终端打开的 Claude 会话，还可从官方 Remote Control 入口继续交互。LISA 首版直接打开这些官方入口即可。[VS Code Server 使用边界](https://code.visualstudio.com/docs/remote/vscode-server) · [微软远程 agent 会话](https://code.visualstudio.com/docs/agents/run/remote-agent-sessions) · [Agent Host 架构](https://code.visualstudio.com/docs/agents/concepts/agent-host) · [Claude Remote Control](https://code.claude.com/docs/en/remote-control)
+**为什么选这条路。** 远程 Mac 通常支持 SSH，人工首次安装可用 SSH 密钥或 VS Code 终端，图形登录可用远程桌面。用 SSH 转发 5757 会让后端看到 loopback，足以改变 owner 权限判断，因此不将它当作产品控制入口。微软也提供独立的 Agent Host 与 AHP，适合未来对接由 VS Code 自身托管的会话；采用前要逐项验证目标 CLI 版本、认证、客户端支持和所需操作。普通 tunnel URL 只说明编辑器可以连到机器。对于用户已经在终端打开的 Claude 会话，还可从官方 Remote Control 入口继续交互。LISA 首版直接打开这些官方入口即可。[VS Code Server 使用边界](https://code.visualstudio.com/docs/remote/vscode-server) · [微软远程 agent 会话](https://code.visualstudio.com/docs/agents/run/remote-agent-sessions) · [Agent Host 架构](https://code.visualstudio.com/docs/agents/concepts/agent-host) · [Claude Remote Control](https://code.claude.com/docs/en/remote-control)
 
 ## 建议的接口与执行语义
 
@@ -76,9 +76,9 @@ flowchart LR
 
 **断线与撤权。** 关闭客户端或 SSE 只结束观察；同一主机查询原 run 可以继续跟进。首版离线不排队，不自动换机执行。主机重启以 backendInstanceId 发现内存会话失效；只有执行器能验证时才恢复控制。撤权立即关闭该设备的连接并拒绝新命令；已授权运行的任务归主机所有，主机端另提供明确的「取消任务」。同一台 mini 上的工作区变更、设备被撤销或授权版本变化时，待执行和待审批操作须重新核验。
 
-**工作区和输出边界。** 远端 agent 专用 grant 默认只读，按设备逐项授权 observe、start、send、cancel、readOutput、decide。两端强制 v2 并固定主机公钥；现存 Pocket grant 和 v1 设备不得静默升级成跨机控制器。主机本地对白名单根做 realpath、符号链接和路径变更复核。仅切换 cwd 无法限制任意 shell；带写权限的 CLI 须经验证的 OS 沙箱或独立低权限执行环境，隔离主机控制凭据、其他租户/项目、loopback owner 端口和无关 Keychain 项。约束 unavailable 时只保留可兑现的能力。普通项目文件与 Git 凭据按任务所需单独授权。[现有沙箱入口](../src/sandbox/sandbox.ts) · [受保护资源](../src/sandbox/protect.ts)
+**工作区和输出边界。** 远端 agent 专用 grant 默认只读，按设备逐项授权 observe、start、send、cancel、readOutput、decide。两端强制 v2 并固定主机公钥；现存 Pocket grant 和 v1 设备不得静默升级成跨机控制器。主机本地对白名单根做 realpath、符号链接和路径变更复核。仅切换 cwd 无法限制任意 shell；带写权限的 CLI 须经验证的 OS 沙箱或独立低权限执行环境，隔离主机控制凭据、其他用户或项目、loopback owner 端口和无关 Keychain 项。约束 unavailable 时只保留可兑现的能力。普通项目文件与 Git 凭据按任务所需单独授权。[现有沙箱入口](../src/sandbox/sandbox.ts) · [受保护资源](../src/sandbox/protect.ts)
 
-**租用机器的身份。** 现有 RemoteHost 用 LISA 账号 session 向账号服务验明身份。个人试点可依当前设置逐机登录；面向更多租户前，建议在账号服务签发仅能以指定 hostId 向 relay 注册的可撤销凭据，支持轮换、到期和退租解绑，主机本地保留设备私钥。此项需要账号服务及生产 relay 配合。远程出租机可提供「仅中继」选项以关闭 LAN 监听。工作区使用者变化或整机抹除后，旧配对失效，新实例从首次配对开始。[现有主机注册](../src/remote/host.ts) · [relay 身份校验](../deploy/relay-worker/src/index.ts)
+**远程机器的身份。** 现有 RemoteHost 用 LISA 账号 session 向账号服务验明身份，每台机器逐机登录，主机本地保留设备私钥。远程机器可提供「仅中继」选项以关闭 LAN 监听。整机抹除后，旧配对失效，新实例从首次配对开始。[现有主机注册](../src/remote/host.ts)
 
 **数据与成本。** relay 可见账号路由、在线情况、公钥及连接元数据；命令、输出和审批走端到端加密。控制器默认缓存结构化状态，原始 PTY 尾部仅在授权详情页显示；外部 transcript 继续保留在来源机。写入审计的是发起设备、主机、工作区、操作摘要、决策、时间和结果。输出、文件名和 diff 进入模型前按外部内容处理，单独披露接收者。成果优先返回测试结果、文件相对路径、commit/diff 引用；跨机取内容需要有界、可撤销的读取。CLI 账户使用其本机认证，控制器无须保存微软设备码、SSH 私钥或 CLI 登录令牌。限每机并发、任务时长和输出字节；供应商不提供费用时显示未知，托管 LISA 推理遵循现有计费准入。[外部内容边界](../src/tasks/external.ts) · [AI 接收者](../src/web/ai-disclosure.ts)
 
@@ -87,9 +87,9 @@ flowchart LR
 | 阶段 | 改动与通过条件 |
 |---|---|
 | 1 · 桌面三机只读 | 在 `src/remote` 补控制器、主机目录、v2 专用 grant 和检测接口，在本地 Web/Mac Agents 增加机器选择与结构化总览。逐台比较验证码；三台同名仍可区分，一台下线后其他两台继续刷新；只读 grant 直接调用旧写路由或 chat/events 均被拒绝。 |
-| 2 · 指定机器完成一项工作 | 用一台已授权 mini 验证指定工作区、启动、跟进、查看测试结果，另起一项工作验证取消。先打通 managed 的请求级审批；真实 CLI 优先验证玄兔预装的 Claude Code，Codex 按实际检测开放新建。为 CLI 提供受限执行模式，PTY 保留有人值守的交互入口。需要逐工具审批时采用能明确发出审批事件的接口；当前版本只支持手动操作时，在 UI 显示「打开终端处理」。[Claude 程序化接口](https://code.claude.com/docs/en/headless) |
+| 2 · 指定机器完成一项工作 | 用一台已授权 mini 验证指定工作区、启动、跟进、查看测试结果，另起一项工作验证取消。先打通 managed 的请求级审批；真实 CLI 优先验证执行机上已安装的 Claude Code，Codex 按实际检测开放新建。为 CLI 提供受限执行模式，PTY 保留有人值守的交互入口。需要逐工具审批时采用能明确发出审批事件的接口；当前版本只支持手动操作时，在 UI 显示「打开终端处理」。[Claude 程序化接口](https://code.claude.com/docs/en/headless) |
 | 3 · 三机并行和 Pocket | 用同一任务协议接聊天和 Pocket，迁移旧配置。三台同时各跑一个有确定结束标志的任务，确认标识、输出、审批、取消、分支和结果均归对机器。桌面发起、Pocket 跟进，变更接收者时重新获取同意。 |
-| 4 · 真机发布门槛 | 在三台实际租用机上记录 macOS/架构、LISA 构建、CLI 与登录、PTY 真正 spawn、网络和机器续租状态。演练 Wi-Fi/蜂窝切换、休眠、重启/用户未登录、账号过期、换钥、撤权、部分成功，以及设备重装前的成果取回。分发物必须对实际架构完成签名、加载和一次真实 CLI 往返。 |
+| 4 · 真机发布门槛 | 在实际的远程 Mac 上记录 macOS/架构、LISA 构建、CLI 与登录、PTY 真正 spawn 和网络状态。演练 Wi-Fi/蜂窝切换、休眠、重启/用户未登录、账号过期、换钥、撤权、部分成功，以及设备重装前的成果取回。分发物必须对实际架构完成签名、加载和一次真实 CLI 往返。 |
 
 协议测试还应包含同 sessionId 跨机互不覆盖、点 A 的审批时切到 B、旧卡恰逢下一次审批、坏 JSON 和重复请求、收到启动请求后断网、幂等记录损坏、主机崩溃后 PTY 所有权不明、恶意符号链接、agent 访问 owner 端口、仅观察设备访问原始输出及收到恶意终端文本。测试撤销对单台机器以及单工作区的影响。版本不匹配进入只读或提示升级；回滚时可逐台关闭新入口。
 
@@ -97,7 +97,7 @@ flowchart LR
 
 - **88 个现有测试全部通过，无跳过。** 73 个覆盖 managed/PTY、控制策略、配对密码协议、roster、Cloud 能力边界、AI 接收者和 Claude 存活检测；15 个覆盖实际本地 WebSocket/HTTP 的账号隔离、配对、重放、撤权和 owner 限制。使用 Node 26.12.1，本机 `node-pty` 的真实 `cat` 往返也通过。旧文档关于 Node 26 的本地限制不能直接外推到这次环境。
 - **另做了三实例联测。** 在同一台开发 Mac 上启动三个独立后端进程，使用三个临时 LISA home、相同 hostname、不同设备密钥及本地 Node relay。一个测试控制器分别完成三次 v2 配对；并发通过加密链路启动三个 PTY，分别追加唯一文本，读回的输出没有串机；逐个取消并单独撤销 A，B/C 仍能调用受保护的连接并查询 PTY 能力。CLI 固定为 `/bin/cat`，账号服务为本地替身。此次验证覆盖路由和真实进程控制。
-- **实机待验证项** 为玄兔三台 mini 的配置和跨境链路、真实 Claude/Codex 登录及推理、生产 relay 与发布版客户端的三机组合、断电后恢复。后续工作树实现及其验证见下节。
+- **实机待验证项** 为远程 Mac 的实际配置与网络链路、真实 Claude/Codex 登录及推理、生产 relay 与发布版客户端的多机组合、断电后恢复。后续工作树实现及其验证见下节。
 
 ## 首个实现切片的复核决定
 
@@ -107,7 +107,7 @@ Claude Code 的 PTY 只能看到终端文字，从中推测审批会把普通问
 
 ## 首版操作步骤
 
-1. 主力 Mac 和三台 mini 都运行含本次改动的 LISA 后端，分别使用独立的 LISA home，在同一个 LISA 账号下登录。源码环境用 Node 22.19 或以上，安装项目依赖并执行 `npm run build`，在配置好账号会话的环境运行 `node dist/cli.js serve --web`。本机默认入口为 `http://127.0.0.1:5757/fleet`，也可从 LISA 侧栏进入。玄兔的 SSH、远程桌面或 VS Code 隧道可用于安装和维护。[玄兔指南](https://co.xuantu.co/help#tunnel) · [LISA 账号中继配置](REMOTE_CONNECTIONS.md)
+1. 主力 Mac 和每台 mini（下文以 A、B、C 三台为例）都运行含本次改动的 LISA 后端，分别使用独立的 LISA home，在同一个 LISA 账号下登录。源码环境用 Node 22.19 或以上，安装项目依赖并执行 `npm run build`，在配置好账号会话的环境运行 `node dist/cli.js serve --web`。本机默认入口为 `http://127.0.0.1:5757/fleet`，也可从 LISA 侧栏进入。服务商提供的 SSH、远程桌面或 VS Code 隧道可用于安装和维护。[LISA 账号中继配置](REMOTE_CONNECTIONS.md)
 2. 在三台 mini 各自的本机页面展开「配置这台 Mac 作为执行机」，启用账号连接，登记项目目录的绝对路径与显示名称。Claude Code 所在的执行机须向 LISA 后端提供 `ANTHROPIC_API_KEY`。后端按现有规则查找独立安装于项目外的 macOS 原生 `claude` 二进制，必要时在该机用 `LISA_PTY_CLAUDE_CMD` 指定可执行文件的绝对路径。此模式使用标准输入输出，独立于 `LISA_PTY_AGENTS` 和 node-pty。使用代理时由机器所有者配置 `ANTHROPIC_BASE_URL`，项目内容和指令会发往该模型端点。[执行适配器](../src/remote/fleet/claude.ts)
 3. 在主力 Mac 逐台选择并配对。两端核对同一个验证码，在 mini 点「刷新本机配置」，勾选工作区。仅在 A 上勾选「允许在选定目录启动和控制 Claude Code」，B、C 先保留观察权限。回主力 Mac 确认验证码。主机同名时用公钥指纹区分，控制器排除自身。撤权在 mini 的本机配置中完成。撤权、重新授权时去掉某个目录或写权限，或在 mini 上关闭 `remoteControl`，都会立即停止该设备在不再获准目录中的 Claude 进程，而不只是对控制端隐藏。
 4. 选 A 和一个已授权的测试工作区，输入「新建 fleet-check.txt，写入 mini A」。启动后可查看工具名和实际参数，允许一次或拒绝。等到「本轮已完成，可追加指令」再继续，例如「读取刚才的文件并报告内容」。任务卡显示最近一轮结果，取消在子进程组退出后显示「已取消」。代码文件留在该工作区，可从该机的编辑器核对。
@@ -145,4 +145,4 @@ LISA_FLEET_TEST_BROWSER=1 LISA_FLEET_TEST_CLAUDE="$(command -v claude)" \
   node --import tsx --test src/remote/fleet/fleet.test.ts src/remote/host.test.ts
 ```
 
-真实玄兔实例、生产账号中继和真实模型推理需要在租用机器上另做验收。通过标准是三台实际指纹同时可见，在选定的测试工作区完成读写、拒绝、追加、取消及掉线恢复，并在其余两台核对无任务和文件副作用。[联测用例](../src/remote/fleet/fleet.test.ts)
+真实远程 Mac、生产账号中继和真实模型推理需要在实际机器上另做验收。通过标准是三台实际指纹同时可见，在选定的测试工作区完成读写、拒绝、追加、取消及掉线恢复，并在其余两台核对无任务和文件副作用。[联测用例](../src/remote/fleet/fleet.test.ts)
