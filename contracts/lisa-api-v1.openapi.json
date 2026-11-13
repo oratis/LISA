@@ -3903,6 +3903,61 @@
           }
         }
       }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "getAuthMe",
+        "description": "The signed-in account, or signedIn:false. Any authenticated response may carry x-lisa-session (see components.headers.SessionRenewal).",
+        "responses": {
+          "200": {
+            "description": "Account summary.",
+            "headers": {
+              "x-lisa-session": {
+                "$ref": "#/components/headers/SessionRenewal"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthMe"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "refreshSession",
+        "description": "Cloud only. Requires an account session presented as Authorization: Bearer; always mints a fresh one. Rate limited per account.",
+        "responses": {
+          "200": {
+            "description": "Fresh session. The same token is also in x-lisa-session.",
+            "headers": {
+              "x-lisa-session": {
+                "$ref": "#/components/headers/SessionRenewal"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3913,6 +3968,13 @@
         "schema": {
           "type": "string",
           "const": "1"
+        }
+      },
+      "SessionRenewal": {
+        "description": "Freshly minted account session for a Bearer client whose token is past half its lifetime. Store it in place of the presented token; the old one stays valid until its own expiry. Cookie clients get a renewed lisa_token cookie instead and never this header.",
+        "required": false,
+        "schema": {
+          "type": "string"
         }
       }
     },
@@ -9163,6 +9225,71 @@
           }
         },
         "additionalProperties": true
+      },
+      "AuthMe": {
+        "type": "object",
+        "required": [
+          "signedIn"
+        ],
+        "properties": {
+          "signedIn": {
+            "type": "boolean"
+          },
+          "uid": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "apple",
+              "email",
+              "google"
+            ]
+          },
+          "appleUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "sessionExpiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Expiry (epoch ms) of the account session presented on this request. Absent for callers that did not authenticate with an account session."
+          }
+        },
+        "additionalProperties": true
+      },
+      "SessionRefreshResponse": {
+        "type": "object",
+        "required": [
+          "token",
+          "expiresAt"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "New account session; replaces the presented one."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Expiry of the new token, epoch ms."
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

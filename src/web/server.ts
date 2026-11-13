@@ -221,6 +221,9 @@ import {
   verifySession,
   looksLikeSession,
   shouldRenew,
+  SESSION_RENEWAL_HEADER,
+  SESSION_TTL_MS,
+  type SessionClaims,
 } from "./sessions-auth.js";
 import {
   AccountError,
@@ -475,16 +478,35 @@ export function isRequestAuthorized(
  * cookie by opening http://host:5757/?token=...).
  */
 function presentedToken(req: http.IncomingMessage, url: string): string | null {
+  return presentedCredential(req, url)?.token ?? null;
+}
+
+/**
+ * The presented token plus the channel it arrived on. The channel decides how
+ * a renewed account session goes back (#484: header for Bearer clients, cookie
+ * for cookie clients) and whether the token may be pinned as a cookie at all
+ * (#493: only a `?token=` bootstrap is).
+ */
+function presentedCredential(
+  req: http.IncomingMessage,
+  url: string,
+): { token: string; source: "bearer" | "cookie" | "query" } | null {
   const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
+  if (auth?.startsWith("Bearer ")) {
+    const token = auth.slice("Bearer ".length).trim();
+    return token ? { token, source: "bearer" } : null;
+  }
   const cookies = req.headers.cookie ?? "";
   const m = /(?:^|;\s*)lisa_token=([^;]+)/.exec(cookies);
-  if (m) return decodeURIComponent(m[1]!).trim() || null;
+  if (m) {
+    const token = decodeURIComponent(m[1]!).trim();
+    return token ? { token, source: "cookie" } : null;
+  }
   try {
     // Trim: tokens arrive by copy-paste (App Review pastes the demo URL), and a
     // stray trailing space/newline must not fail the exact comparison.
     const q = new URL(url, "http://localhost").searchParams.get("token")?.trim();
-    if (q) return q;
+    if (q) return { token: q, source: "query" };
   } catch {
     /* fall through */
   }
@@ -499,6 +521,10 @@ const AUTH_IP_WINDOW_MS = 10 * 60_000;
 // signup costs a birth LLM call + a free window; no human needs more.
 const REG_IP_LIMIT = 5;
 const REG_IP_WINDOW_MS = 60 * 60_000;
+// Session refresh (#484) is per account: a client needs one every few weeks,
+// so this only stops a loop from minting tokens without end.
+const REFRESH_LIMIT = 20;
+const REFRESH_WINDOW_MS = 10 * 60_000;
 // KB ingest does 2-3 outbound fetches + a yt-dlp subprocess per call, so it is a
 // far heavier route than the auth ones — a tighter per-IP ceiling on the cloud
 // edition (loopback Mac is exempt) keeps it from becoming an amplifier / DoS.
@@ -2619,9 +2645,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // uid of the authenticated LISA account, when the caller used an account
     // session (B1). null = legacy shared-token / device-token / loopback caller.
     let accountUid: string | null = null;
+    // The verified claims of that account session and the channel it came on
+    // (/api/auth/refresh and /api/auth/me read them).
+    let accountClaims: SessionClaims | null = null;
+    let credentialSource: "bearer" | "cookie" | "query" | null = null;
     let renewedCookie = false;
     if (cloud || !isLoopbackAddress(remoteAddr)) {
-      const presented = presentedToken(req, url);
+      const credential = presentedCredential(req, url);
+      const presented = credential?.token ?? null;
+      credentialSource = credential?.source ?? null;
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
       let authed =
         isRequestAuthorized(remoteAddr, webToken, presented, !cloud) ||
@@ -2633,15 +2665,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (claims && (await sessionAccountValid(claims.uid, claims.sv))) {
           authed = true;
           accountUid = claims.uid;
+          accountClaims = claims;
           if (shouldRenew(claims)) {
-            // Sliding renewal for cookie clients (web). Bearer clients (iOS)
-            // keep their token until expiry and re-run sign-in then.
+            // Sliding renewal (#484). The fresh token goes back the way the old
+            // one came: a header for Bearer clients (Pocket, the Mac), which
+            // store it in place of the old one; a cookie for cookie clients.
             const fresh = mintSession(claims.uid, sessionSecret, { sv: claims.sv });
-            res.setHeader(
-              "set-cookie",
-              `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
-            );
-            renewedCookie = true;
+            if (credential?.source === "bearer") {
+              res.setHeader(SESSION_RENEWAL_HEADER, fresh);
+            } else if (credential?.source === "cookie") {
+              res.setHeader(
+                "set-cookie",
+                `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+              );
+              renewedCookie = true;
+            }
           }
         }
       }
@@ -2891,10 +2929,43 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 email: acct.email ?? null,
                 verified: acct.verified,
                 plan: "free",
+                // Expiry of the token this request presented (#484), so a
+                // Bearer client can refresh before it lapses.
+                ...(accountClaims ? { sessionExpiresAt: accountClaims.exp } : {}),
               }
             : { signedIn: false },
         ),
       );
+      return;
+    }
+
+    // ── Session refresh for Bearer clients (#484) ─────────────────────────────
+    // Always mints a fresh 30-day session for the account session presented as
+    // Bearer. Cookie clients renew by the sliding cookie instead, so a cookie or
+    // any non-account credential is refused like any other unauthenticated call.
+    if (req.method === "POST" && url === "/api/auth/refresh") {
+      if (!sessionSecret || !accountUid || !accountClaims || credentialSource !== "bearer") {
+        res.writeHead(401, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "unauthorized", reason: "account_session_required" }));
+        return;
+      }
+      if (!ipRateOk(`refresh:${accountUid}`, REFRESH_LIMIT, REFRESH_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(
+          JSON.stringify({
+            error: "rate_limited",
+            retryAfterSec: Math.ceil(REFRESH_WINDOW_MS / 1000),
+          }),
+        );
+        return;
+      }
+      const now = Date.now();
+      const token = mintSession(accountUid, sessionSecret, { sv: accountClaims.sv, now });
+      // The gate may already have put a sliding renewal in the header; answer
+      // with one token, not two different ones.
+      res.setHeader(SESSION_RENEWAL_HEADER, token);
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ token, expiresAt: now + SESSION_TTL_MS }));
       return;
     }
 

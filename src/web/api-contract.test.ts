@@ -318,6 +318,26 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     assertContract("SSEEvent", { type: "agent_session_update", ...dispatch });
   });
 
+  test("session refresh and auth/me expiry match the account-session contract (#484)", () => {
+    assertContract("SessionRefreshResponse", {
+      token: "s1.payload.mac",
+      expiresAt: 1_700_000_000_000,
+    });
+    assertContract("AuthMe", {
+      signedIn: true,
+      uid: "em-1",
+      kind: "email",
+      appleUserId: null,
+      email: "fixture@example.com",
+      verified: true,
+      plan: "free",
+      sessionExpiresAt: 1_700_000_000_000,
+    });
+    assertContract("AuthMe", { signedIn: false });
+    const refresh = contract.components.schemas.SessionRefreshResponse!;
+    assert.ok(schemaErrors(refresh, { token: "x" }).length > 0, "expiresAt is required");
+  });
+
   test("reve dream-log fixtures conform (W9)", async () => {
     const os = await import("node:os");
     const nodePath = await import("node:path");

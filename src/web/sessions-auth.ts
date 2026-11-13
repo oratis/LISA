@@ -129,7 +129,19 @@ export function verifySession(
   return claims;
 }
 
-/** Renew when more than half the lifetime is gone (sliding sessions via cookie). */
+/**
+ * Renew when more than half the lifetime is gone (sliding sessions). Cookie
+ * clients get the fresh token as a cookie; Bearer clients (Lisa Pocket, the
+ * Mac) get it in the {@link SESSION_RENEWAL_HEADER} response header and store
+ * it in place of the old one (#484).
+ */
 export function shouldRenew(claims: SessionClaims, now: number = Date.now()): boolean {
   return now > claims.iat + (claims.exp - claims.iat) / 2;
 }
+
+/**
+ * Response header carrying a freshly minted session for a Bearer client whose
+ * token is past half-life. Clients replace their stored token with it; the old
+ * one stays valid until its own expiry.
+ */
+export const SESSION_RENEWAL_HEADER = "x-lisa-session";
