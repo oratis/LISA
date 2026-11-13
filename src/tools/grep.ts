@@ -13,6 +13,7 @@ const DEFAULT_MAX = 200;
 
 export const grepTool: ToolDefinition<GrepInput, string> = {
   name: "grep",
+  concurrencySafe: true,
   description:
     "Recursive regex search via the system `grep` command. Returns matching lines as `path:lineno: text`. " +
     "`pattern` is an extended regex. `path` defaults to the current working directory. " +
@@ -50,8 +51,7 @@ export const grepTool: ToolDefinition<GrepInput, string> = {
     }
     const lines = result.stdout.split("\n").filter(Boolean);
     const trimmed = lines.slice(0, max).join("\n");
-    const more =
-      lines.length > max ? `\n[... ${lines.length - max} more matches ...]` : "";
+    const more = lines.length > max ? `\n[... ${lines.length - max} more matches ...]` : "";
     return trimmed + more;
   },
 };

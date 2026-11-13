@@ -1,10 +1,7 @@
 import type http from "node:http";
 import type { AgentSession } from "../integrations/types.js";
 import type { SessionInfo } from "../sessions/list.js";
-import {
-  LISA_API_VERSION,
-  LISA_API_VERSION_HEADER,
-} from "./api-contract.generated.js";
+import { LISA_API_VERSION, LISA_API_VERSION_HEADER } from "./api-contract.generated.js";
 
 export { LISA_API_VERSION, LISA_API_VERSION_HEADER };
 
@@ -23,10 +20,7 @@ export function isVersionedApiSurface(rawUrl: string): boolean {
  * Advertise the response protocol before any route writes its status/headers.
  * Existing response bodies remain byte-compatible in v1.
  */
-export function applyApiVersionHeader(
-  rawUrl: string,
-  response: http.ServerResponse,
-): void {
+export function applyApiVersionHeader(rawUrl: string, response: http.ServerResponse): void {
   if (!response.headersSent && isVersionedApiSurface(rawUrl)) {
     response.setHeader(LISA_API_VERSION_HEADER, LISA_API_VERSION);
   }
@@ -34,6 +28,8 @@ export function applyApiVersionHeader(
 
 export type ApiAgentSession = Omit<AgentSession, "lastMtime" | "jsonlPath"> & {
   lastMtime: string;
+  /** Local owner only, never included in the shared event stream. */
+  displayName?: string;
   resumable?: boolean;
 };
 
@@ -79,9 +75,7 @@ export interface LisaSessionsResponse {
  * LisaSessionsResponse). Strips the absolute on-disk file path — it leaks
  * the local home directory and no client needs it.
  */
-export function lisaSessionsResponse(
-  sessions: readonly SessionInfo[],
-): LisaSessionsResponse {
+export function lisaSessionsResponse(sessions: readonly SessionInfo[]): LisaSessionsResponse {
   return {
     sessions: sessions.map((s) => {
       const { path: _path, ...rest } = s;

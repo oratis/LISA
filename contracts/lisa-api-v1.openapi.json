@@ -3495,6 +3495,10 @@
           "project": {
             "type": "string"
           },
+          "displayName": {
+            "type": "string",
+            "description": "Optional source title on the local owner’s roster."
+          },
           "cwd": {
             "type": "string"
           },
