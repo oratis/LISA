@@ -220,3 +220,39 @@ instance provided for review.
 - [ ] **社交媒体年龄分级** questions answered in ASC → App 信息 (mandatory once you
       submit again)
 - [ ] Build attached to the version → **Submit for Review**
+
+## Device checklist before each release (connections)
+
+CI runs the logic tests, the UI tests in `UITests/` and the Node relay tests,
+but none of them can stand in for a real iPhone on real networks. Before
+submitting, run these on a device against the build being shipped. Each item
+traces to an issue from the 2026-11-13 end-to-end pass (#496).
+
+- [ ] **Keyboard and navigation** (#479): on Chat, focus the field, then leave
+      by the Hide keyboard button, a tap on the conversation and a swipe down.
+      Before setup, Chat shows Get started and the field takes no keyboard.
+- [ ] **Wi-Fi → cellular → Wi-Fi** with an account-paired Mac: Settings shows
+      Local network, then Cloud relay, then Local network again, and a chat
+      keeps working across each switch.
+- [ ] **Mac asleep**: put the Mac to sleep. Pocket says the Mac isn't connected
+      (not "can't reach", not "Stopped."). Wake it: the route comes back by
+      itself within a minute, without touching the Mac (#483).
+- [ ] **Firewall denial**: deny LISA incoming connections on the Mac. Pocket
+      falls back to the cloud relay.
+- [ ] **Session expiry**: sign in with a short-TTL test session (or wait out a
+      revoked one). Pocket shows one Sign in again banner, keeps the chat draft,
+      and returns to the Mac after signing in (#484).
+- [ ] **Sign out of all devices**: the Mac's phone connections show
+      sign-in-required, and stay enabled once the Mac signs in again (#481).
+- [ ] **Service paused** (`LISA_BILLING_KILL=1` on a test instance): Chat says
+      LISA Cloud is paused and offers no credit packs (#485).
+- [ ] **Revoke this iPhone** on the Mac while Agents is open: the live list stops
+      updating within seconds and says the Mac removed this iPhone (#480, #487).
+- [ ] **Cancel pairing** on the phone after codes appear: the Mac's request
+      disappears and can't be approved (#494).
+- [ ] **Clock skew**: set the phone's clock 10 minutes off. Requests to the Mac
+      say to fix the clock (#487).
+- [ ] **Tailnet name**: pair by `mac.<tailnet>.ts.net` over Tailscale; it
+      connects (#495).
+- [ ] **Connection diagnostics** (Settings → About and data) lists each failure
+      above, and Copy diagnostics contains no token.

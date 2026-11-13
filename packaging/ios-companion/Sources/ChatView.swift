@@ -19,6 +19,11 @@ struct ChatMessage: Identifiable, Equatable {
     /// the inline "Add credits…" button — a second route to the In-App
     /// Purchases that doesn't depend on the Settings quota card rendering.
     var needsCredits: Bool = false
+    /// The turn was refused because the account session is no longer valid.
+    var needsSignIn: Bool = false
+    /// The connection dropped mid-turn (not the user's Stop): on returning to
+    /// the foreground the transcript is re-read in case the reply landed (#491).
+    var dropped: Bool = false
     var isError: Bool { status == .error }
     /// Terminal states the user can retry from (nothing useful landed).
     var isRetryable: Bool { status == .error || status == .empty || status == .cancelled }
@@ -37,6 +42,17 @@ final class ChatModel: ObservableObject {
     /// The last thing the user said — replayed by `resend()` when a turn comes
     /// back empty / errored / cancelled.
     private var lastUserText: String?
+    /// True once the user tapped Stop for the current turn, so a socket closed
+    /// for any other reason isn't reported as "Stopped." (#487).
+    private var userStopped = false
+    /// Failures every screen should know about (an expired session) go to AppState.
+    var onFailure: (@MainActor (Error) -> Void)?
+
+    /// The text Retry sends again: the last thing the user said this session,
+    /// or the newest user message in the loaded history.
+    var retryText: String? {
+        lastUserText ?? messages.last(where: { $0.role == .user })?.text
+    }
 
     func markExpressionSeen(_ id: UUID) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
@@ -45,7 +61,20 @@ final class ChatModel: ObservableObject {
 
     // ── history ──
     func loadHistory(_ client: LisaClient) async {
-        guard messages.isEmpty, let r = try? await client.history(page: 0) else { return }
+        guard messages.isEmpty else { return }
+        let r: HistoryResponse
+        do { r = try await client.history(page: 0) } catch { onFailure?(error); return }
+        messages = r.messages.compactMap(Self.map)
+        page = 0
+        hasMore = r.hasMore
+    }
+
+    /// Back in the foreground after a turn dropped: the server may have
+    /// finished it, so re-read the newest page and keep it if it has a reply.
+    func recoverDroppedTurn(_ client: LisaClient) async {
+        guard !sending, let last = messages.last, last.role == .lisa, last.dropped,
+              let r = try? await client.history(page: 0), !sending,
+              let reply = r.messages.compactMap(Self.map).last, reply.role == .lisa else { return }
         messages = r.messages.compactMap(Self.map)
         page = 0
         hasMore = r.hasMore
@@ -79,7 +108,11 @@ final class ChatModel: ObservableObject {
                         backoffSec = 1
                         if let s = msg.slug { mood = s }
                     }
-                } catch { /* dropped → backoff + reconnect below */ }
+                } catch {
+                    // A rejected credential won't fix itself: stop retrying and
+                    // let the app ask for sign-in. Anything else reconnects.
+                    if Self.stopsRetrying(error) { onFailure?(error); break }
+                }
                 if Task.isCancelled { break }
                 try? await Task.sleep(nanoseconds: backoffSec * 1_000_000_000)
                 backoffSec = min(backoffSec * 2, 30)
@@ -87,6 +120,13 @@ final class ChatModel: ObservableObject {
         }
     }
     func stopMood() { moodTask?.cancel(); moodTask = nil }
+
+    /// Errors after which reconnecting the status stream can't succeed.
+    static func stopsRetrying(_ error: Error) -> Bool {
+        if let status = error.httpStatus, status == 401 || status == 403 { return true }
+        if let link = error as? RemoteLinkError, link == .signIn || link == .notAllowed { return true }
+        return false
+    }
 
     // ── send / retry / stop ──
     func send(_ text: String, client: LisaClient) {
@@ -100,7 +140,8 @@ final class ChatModel: ObservableObject {
     /// Replay the last user message. Drops a trailing failed/empty Lisa bubble so
     /// the retry visually replaces it rather than stacking a second dead end.
     func resend(client: LisaClient) {
-        guard let text = lastUserText, !sending else { return }
+        guard let text = retryText, !sending else { return }
+        lastUserText = text
         if let last = messages.last, last.role == .lisa, last.isRetryable {
             messages.removeLast()
         }
@@ -109,12 +150,17 @@ final class ChatModel: ObservableObject {
 
     /// Stop the in-flight turn. Cancelling the task tears down the SSE stream,
     /// which also closes the connection so the Mac can abort the agent.
-    func cancel() { task?.cancel() }
+    func cancel() {
+        if sending { userStopped = true }
+        task?.cancel()
+    }
 
     private func runTurn(_ userText: String, client: LisaClient) {
         messages.append(ChatMessage(role: .lisa, status: .streaming))
         let idx = messages.count - 1
+        let config = client.config
         sending = true
+        userStopped = false
         task = Task { @MainActor in
             defer { sending = false }
             do {
@@ -145,7 +191,7 @@ final class ChatModel: ObservableObject {
                 }
                 resolveEnding(idx)
             } catch {
-                markFailed(idx, error)
+                markFailed(idx, error, config: config)
             }
         }
     }
@@ -163,32 +209,47 @@ final class ChatModel: ObservableObject {
     }
 
     /// The gateway refuses an unaffordable turn with a clean 402 before it
-    /// streams anything — that's "out of allowance", not a failure to reach us.
+    /// streams anything. Only a spent allowance or a premium model without
+    /// balance is fixed by buying credits; `service_paused` is also a 402 and
+    /// must never send people to the paywall (#485). An older server's bare 402
+    /// meant the allowance.
     static func isQuotaExhausted(_ error: Error) -> Bool {
-        if case LisaError.http(402) = error { return true }
-        return false
+        guard let failure = error.serverFailure, failure.status == 402 else { return false }
+        return failure.code.isEmpty || failure.code == "quota_exhausted" || failure.code == "premium_requires_balance"
     }
 
-    /// A thrown stream: a user-initiated stop reads as `.cancelled`; anything else
-    /// is a real error. Either way it's retryable.
-    private func markFailed(_ idx: Int, _ error: Error) {
+    /// A thrown stream: the user's own Stop reads as `.cancelled`; anything else
+    /// is a real error with its own explanation. Either way it's retryable.
+    private func markFailed(_ idx: Int, _ error: Error, config: ServerConfig) {
         guard messages.indices.contains(idx) else { return }
         let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
-        if cancelled {
+        if cancelled && (userStopped || error is CancellationError) {
             messages[idx].status = .cancelled
             if messages[idx].text.isEmpty { messages[idx].text = "Stopped." }
-        } else if Self.isQuotaExhausted(error) {
-            // Quota exhausted (B4): the server refused the turn with a clean 402
-            // before streaming. Same copy as the web paywall (strings.ts), minus
-            // the "go to Settings" pointer — the button below opens the packs.
-            messages[idx].status = .error
-            messages[idx].needsCredits = true
-            messages[idx].text = "Your free allowance for today is used up — it refreshes every 24 hours. Add credits to keep going now."
-        } else {
-            messages[idx].status = .error
-            let msg = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
-            messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + msg
+            return
         }
+        messages[idx].status = .error
+        if Self.isQuotaExhausted(error) {
+            // Same copy as the web paywall (strings.ts), minus the "go to
+            // Settings" pointer — the button below opens the packs.
+            messages[idx].needsCredits = true
+            messages[idx].text = error.serverFailure?.code == "premium_requires_balance"
+                ? "This model needs account credits. Add credits, or switch to a standard model."
+                : "Your free allowance for today is used up — it refreshes every 24 hours. Add credits to keep going now."
+            return
+        }
+        if cancelled || error is URLError || (error as? RemoteLinkError) == .interrupted {
+            // The connection closed under the turn (network change, timeout).
+            messages[idx].dropped = true
+            let note = "The connection dropped before Lisa finished. Try again."
+            messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + note
+            return
+        }
+        let problem = ConnectionProblem.classify(error, config: config)
+        if problem == .signInRequired { messages[idx].needsSignIn = true }
+        onFailure?(error)
+        let msg = problem.sentence ?? (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
+        messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + msg
     }
 }
 
@@ -240,6 +301,7 @@ struct ChatView: View {
             }
             .task(id: app.config) {
                 loadedConfig = app.config
+                model.onFailure = { [weak app = app] error in app?.noteFailure(error) }
                 model.startMood(app.client)
                 await model.loadHistory(app.client)
             }
@@ -253,7 +315,14 @@ struct ChatView: View {
             }
             .onAppear { consumeDraft(); Task { await refreshExpressions() } }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await refreshExpressions() } }
+                if phase == .active { Task {
+                    await refreshExpressions()
+                    await model.recoverDroppedTurn(app.client)
+                } }
+            }
+            // Keep what was typed across the re-sign-in the banner offers.
+            .onChange(of: app.sessionExpired) { _, expired in
+                if expired { app.stashDraftForSignIn(input) }
             }
             .onChange(of: model.sending) { _, sending in
                 if !sending { Task { await refreshExpressions() } }
@@ -346,6 +415,7 @@ struct ChatView: View {
                                 message: msg,
                                 onRetry: retryAction(for: msg),
                                 onAddCredits: msg.needsCredits ? { showPaywall = true } : nil,
+                                onSignIn: msg.needsSignIn ? { app.stashDraftForSignIn(input); app.beginSignInAgain() } : nil,
                                 expressionClient: app.client, expressionPreferences: app.expressionPreferences,
                                 onExpressionStarted: { model.markExpressionSeen(msg.id) }
                             )
@@ -417,10 +487,20 @@ struct ChatView: View {
     }
 
     /// Offer Retry only on the newest turn, when it ended with nothing useful.
+    /// Retry replaces the failed reply; it never adds a second copy of the
+    /// user's message (#491).
     private func retryAction(for msg: ChatMessage) -> (() -> Void)? {
-        guard !model.sending, msg.role == .lisa, msg.isRetryable,
+        guard !model.sending, msg.role == .lisa, msg.isRetryable, !msg.needsSignIn,
               msg.id == model.messages.last?.id else { return nil }
-        return { requestSend(model.messages.last(where: { $0.role == .user })?.text ?? "") }
+        return { requestRetry() }
+    }
+
+    private func requestRetry() {
+        guard !model.sending, let text = model.retryText, !text.trimmed.isEmpty else { return }
+        aiGate.submit(text, purpose: .chat, app: app) { _ in
+            app.cancelActiveChat = { [weak model = model] in model?.cancel() }
+            model.resend(client: app.client)
+        }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -505,6 +585,8 @@ struct MessageBubble: View {
     /// Present when the turn was refused for lack of credits — the in-chat
     /// route to the In-App Purchases (see `ChatMessage.needsCredits`).
     var onAddCredits: (() -> Void)? = nil
+    /// Present when the turn was refused because the session expired.
+    var onSignIn: (() -> Void)? = nil
     var expressionClient: LisaClient? = nil
     var expressionPreferences = ExpressionPreferences()
     var onExpressionStarted: (() -> Void)? = nil
@@ -542,6 +624,16 @@ struct MessageBubble: View {
                     .foregroundStyle(Theme.accent)
                     .padding(.top, 1)
                     .accessibilityLabel("Add credits")
+                }
+                if let onSignIn {
+                    Button(action: onSignIn) {
+                        Label("Sign in again", systemImage: "person.crop.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .padding(.top, 1)
+                    .accessibilityLabel("Sign in again")
                 }
                 if let onRetry {
                     Button(action: onRetry) {

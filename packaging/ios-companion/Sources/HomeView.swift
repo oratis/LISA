@@ -238,10 +238,21 @@ struct HomeView: View {
         guard app.config.isConfigured else { return }
         let expected = app.config
         let client = app.client
-        let p = try? await client.islandPing()
+        var p: IslandPing?
+        var failure: Error?
+        do { p = try await client.islandPing() } catch { failure = error }
         guard !Task.isCancelled, app.config == expected else { return }
         ping = p
-        error = p == nil ? "Couldn't reach Lisa. Pull to retry or check Settings." : nil
+        if let failure {
+            // Say what's actually wrong (an expired session is not "can't reach").
+            app.noteFailure(failure)
+            let problem = ConnectionProblem.classify(failure, config: client.config)
+            if problem != .cancelled {
+                error = (problem.sentence ?? "Couldn't reach Lisa.") + " Pull to retry."
+            }
+        } else {
+            error = nil
+        }
         guard app.connectionMode == .mac else { return }
         async let recapResult = client.recap(sinceMinutes: window)
         async let advisorResult = client.advisorLatest()

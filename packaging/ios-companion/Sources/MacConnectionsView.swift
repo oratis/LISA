@@ -7,6 +7,11 @@ struct MacConnectionsView: View {
     @AppStorage("lisa.link.requireSecurePairing") private var requireSecurePairing = false
     @State private var hosts: [LisaClient.RelayHost] = []
     @State private var accountUID = ""
+    /// The account this phone is signed in to, so a Mac on another account
+    /// isn't a silent "No Mac is online" (#494).
+    @State private var accountEmail = ""
+    /// The saved LISA session was rejected: offer sign-in instead of "HTTP 401".
+    @State private var needsSignIn = false
     @State private var status = ""
     @State private var code = ""
     @State private var secure = true
@@ -29,8 +34,14 @@ struct MacConnectionsView: View {
                 Section {
                     Button("Sign in to LISA") { app.setConnectionMode(.cloud); dismiss() }
                 }
+            } else if needsSignIn {
+                Section {
+                    Text("Your LISA session expired. Sign in again, then come back here.")
+                        .foregroundStyle(.secondary)
+                    Button("Sign in again") { app.noteSessionExpired(); app.beginSignInAgain(); dismiss() }
+                }
             } else {
-                Section("Your Macs") {
+                Section {
                     if hosts.isEmpty && !loading {
                         Text("No Mac is online. Keep LISA running and enable phone connections on your Mac.")
                             .foregroundStyle(.secondary)
@@ -44,6 +55,12 @@ struct MacConnectionsView: View {
                         .disabled(selected != nil)
                     }
                     Button("Refresh", action: { Task { await refresh() } }).disabled(loading)
+                } header: {
+                    Text("Your Macs")
+                } footer: {
+                    if !accountEmail.isEmpty {
+                        Text("Signed in as \(accountEmail). Your Mac must be signed in to this same account to appear here.")
+                    }
                 }
             }
             if let selected {
@@ -77,6 +94,10 @@ struct MacConnectionsView: View {
             if let target = app.config.remoteMac {
                 Section("Current connection") {
                     LabeledContent(target.name, value: app.remoteRoute)
+                    if let problem = app.remoteRouteProblem, let shown = problem.display {
+                        Label(shown.message, systemImage: problem.icon)
+                            .font(.footnote).foregroundStyle(Theme.waiting)
+                    }
                     Text("Local network is preferred. Cloud relay takes over when you're away. Your Mac must remain awake and online.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -89,7 +110,14 @@ struct MacConnectionsView: View {
             if !status.isEmpty { Section { Text(status).font(.footnote).foregroundStyle(.secondary) } }
         }
         .navigationTitle("Connect your Mac")
-        .task { await refresh() }
+        // Keep the list current while it's on screen: a Mac waking up appears
+        // without a manual Refresh (#494). Pauses while pairing.
+        .task(id: selected == nil) {
+            while selected == nil && !Task.isCancelled {
+                await refresh()
+                do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
+            }
+        }
         .task(id: "\(selected?.id ?? "")|\(confirmed)|\(requireSecurePairing)") { await poll() }
     }
     private func poll() async {
@@ -130,13 +158,14 @@ struct MacConnectionsView: View {
         }
     }
     private func cancelPairing() {
-        if let transport { Task { await transport.invalidate() } }
+        // Tell the Mac first, so the code can't be approved after the phone left.
+        if let transport { Task { await transport.cancelPairing(); await transport.invalidate() } }
         selected = nil; transport = nil; code = ""; confirmed = false; authorized = false; secure = true
         comparable = true
     }
     private func select(_ host: LisaClient.RelayHost) {
         guard let origin = app.savedCloudConfig.baseURL?.absoluteString, !accountUID.isEmpty else { return }
-        if let transport { Task { await transport.invalidate() } }
+        if let transport { Task { await transport.cancelPairing(); await transport.invalidate() } }
         let target = RemoteMacTarget(id: host.id, name: host.name, publicKey: host.publicKey,
                                      cloudOrigin: origin, accountUID: accountUID)
         transport = RemoteMacTransport(target: target, pairing: true)
@@ -146,17 +175,28 @@ struct MacConnectionsView: View {
     private func refresh() async {
         guard app.savedCloudConfig.token != nil else { return }
         loading = true; defer { loading = false }
-        let client = LisaClient(config: app.savedCloudConfig)
+        let config = app.savedCloudConfig
+        let client = LisaClient(config: config)
         do {
             let me = try await client.authMe()
             guard me.signedIn, let uid = me.uid else { throw RemoteLinkError.signIn }
             accountUID = uid
+            accountEmail = me.email ?? ""
+            needsSignIn = false
             hosts = try await client.remoteMacs()
             status = ""
-        } catch LisaError.http(403), LisaError.http(404) {
+        } catch let error where error.httpStatus == 404 || (error.httpStatus == 403 && error.serverFailure?.code.isEmpty != false) {
             hosts = []; status = "This cloud service hasn't enabled Mac connections yet."
         } catch {
-            hosts = []; status = error.localizedDescription
+            let problem = ConnectionProblem.classify(error, config: config)
+            if problem == .signInRequired {
+                needsSignIn = true
+                hosts = []; status = ""
+                return
+            }
+            if problem == .cancelled { return }
+            // Keep the last list on a brief network blip; say why it may be stale.
+            status = problem.sentence ?? error.localizedDescription
         }
     }
 }

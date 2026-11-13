@@ -114,6 +114,17 @@ final class AppState: ObservableObject {
     /// banner (docs/PLAN_IOS_REACHABILITY_v1.0.md R3).
     @Published var onCellular = false
     @Published var remoteRoute = "Connecting…"
+    /// Why the account-paired Mac can't be reached right now, if it can't (#494).
+    @Published var remoteRouteProblem: ConnectionProblem?
+    /// The LISA account session was rejected: show "Sign in again" (#484).
+    @Published var sessionExpired = false
+    /// `/api/auth/me` couldn't be reached, so the account state is unknown —
+    /// distinct from "signed out" (#492).
+    @Published var accountUnavailable = false
+    /// Set when a re-sign-in started from a relay-connected Mac, so a successful
+    /// sign-in returns there; the chat draft waits across the switch.
+    private var signInReturnsToMac = false
+    private var draftAwaitingSignIn: String?
     private let pathMonitor = NWPathMonitor()
 
     /// Fire a haptic + show a brief toast. Use `ok: false` for failures.
@@ -148,6 +159,8 @@ final class AppState: ObservableObject {
         self.config = cfg
         self.client = LisaClient(config: cfg)
         self.connectionMode = mode
+        // Older builds let URLSession.shared keep a `lisa_token` cookie (#493).
+        LisaClient.forgetCookies(for: cfg)
         self.appearance = d.string(forKey: "lisa.appearance") ?? "auto"
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
@@ -169,6 +182,7 @@ final class AppState: ObservableObject {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let cell = path.status == .satisfied
                 && path.usesInterfaceType(.cellular) && !path.usesInterfaceType(.wifi)
+            NetworkPathState.cellularOnly = cell
             Task { @MainActor in
                 guard let self else { return }
                 if self.onCellular != cell { self.client.networkChanged() }
@@ -179,10 +193,99 @@ final class AppState: ObservableObject {
         NotificationCenter.default.addObserver(forName: .lisaRemoteRoute, object: nil, queue: .main) { [weak self] note in
             let host = note.object as? String
             let route = note.userInfo?["route"] as? String
+            let failure = note.userInfo?["error"] as? Error
             Task { @MainActor in
                 guard let self, self.config.remoteMac?.id == host, let route else { return }
                 self.remoteRoute = route
+                self.remoteRouteProblem = failure.map { ConnectionProblem.classify($0, config: self.config) }
+                if let failure { self.noteFailure(failure) }
             }
+        }
+        wireClient()
+    }
+
+    /// Hook the current client's session renewal into the saved profile.
+    private func wireClient() {
+        let mode = connectionMode
+        client.onSessionRenewed = { [weak self] token in
+            Task { @MainActor in self?.adoptRenewedSession(token, mode: mode) }
+        }
+    }
+
+    // ── account session lifetime (#484) ──
+
+    /// Keep a renewed session for the same account. Saves it without replacing
+    /// `config`, which would rebuild every screen (RootView is keyed on it); the
+    /// live client already uses it and the next launch loads it.
+    func adoptRenewedSession(_ token: String, mode: ConnectionMode) {
+        var saved = profiles.load(mode)
+        guard let old = SessionToken.claims(saved.token), SessionToken.claims(token)?.uid == old.uid else { return }
+        saved.token = token
+        guard profiles.save(saved, for: mode) else { return }
+        if connectionMode == mode && config.remoteMac == nil { client.config.token = token }
+    }
+
+    /// Renew the saved LISA Cloud session once it's past half its life. The
+    /// relay route never talks to the account origin directly, so it would
+    /// otherwise expire 30 days after sign-in. Older servers answer 404: try later.
+    func refreshCloudSessionIfNeeded() async {
+        let saved = profiles.load(.cloud)
+        guard saved.isConfigured, let claims = SessionToken.claims(saved.token),
+              SessionToken.needsRenewal(claims) else { return }
+        guard claims.expiresAt > Date() else {
+            if connectionMode == .cloud || config.remoteMac != nil { noteSessionExpired() }
+            return
+        }
+        do {
+            let fresh = try await LisaClient(config: saved).refreshSession()
+            guard SessionToken.claims(fresh.token)?.uid == claims.uid else { return }
+            adoptRenewedSession(fresh.token, mode: .cloud)
+        } catch let error where error.httpStatus == 401 {
+            if connectionMode == .cloud || config.remoteMac != nil { noteSessionExpired() }
+        } catch {
+            // Offline, or a server without /api/auth/refresh: try again next time.
+        }
+    }
+
+    /// Every screen reports its failures here; a rejected account session turns
+    /// into one "Sign in again" banner instead of a dozen dead-end errors.
+    func noteFailure(_ error: Error) {
+        if ConnectionProblem.classify(error, config: config) == .signInRequired { noteSessionExpired() }
+    }
+
+    func noteSessionExpired() {
+        guard !sessionExpired else { return }
+        sessionExpired = true
+        if connectionMode == .cloud { account = LisaClient.AccountMe(signedIn: false) }
+    }
+
+    /// The banner's Sign in: open the LISA Cloud sign-in form, keeping the chat
+    /// draft and (for a relay-connected Mac) the way back to that Mac.
+    func beginSignInAgain() {
+        if connectionMode == .mac && config.remoteMac != nil {
+            signInReturnsToMac = true
+            setConnectionMode(.cloud)
+        }
+        account = LisaClient.AccountMe(signedIn: false)
+        selectedTab = 3
+    }
+
+    /// Chat hands over what was typed when the session expired; it comes back
+    /// after the user signs in again.
+    func stashDraftForSignIn(_ text: String) {
+        if !text.trimmed.isEmpty { draftAwaitingSignIn = text }
+    }
+
+    /// After any successful cloud sign-in.
+    private func didSignIn() {
+        sessionExpired = false
+        if signInReturnsToMac {
+            signInReturnsToMac = false
+            if profiles.load(.mac).remoteMac != nil { setConnectionMode(.mac) }
+        }
+        if let draft = draftAwaitingSignIn {
+            draftAwaitingSignIn = nil
+            chatDraft = draft
         }
     }
 
@@ -256,10 +359,14 @@ final class AppState: ObservableObject {
     private func activate(_ cfg: ServerConfig) {
         guard cfg != config else { return }
         client.invalidate()
+        LisaClient.forgetCookies(for: config)
         remoteRoute = "Connecting…"
+        remoteRouteProblem = nil
+        accountUnavailable = false
         withdrawAIConsent()
         config = cfg
         client = LisaClient(config: cfg)
+        wireClient()
         account = nil
         pendingSession = nil
         chatDraft = ""
@@ -366,6 +473,7 @@ final class AppState: ObservableObject {
         guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
         else { throw LisaError.secureStorage }
         await refreshAccount()
+        didSignIn()
     }
 
     // ── LISA accounts (PLAN_ACCOUNTS_BILLING B1) ──
@@ -388,6 +496,7 @@ final class AppState: ObservableObject {
         guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
         else { throw LisaError.secureStorage }
         await refreshAccount()
+        didSignIn()
     }
 
     /// Which sign-in surfaces this instance offers (drives which buttons to
@@ -405,6 +514,7 @@ final class AppState: ObservableObject {
         guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
         else { throw LisaError.secureStorage }
         await refreshAccount()
+        didSignIn()
     }
 
     /// Ask the instance to mail a one-time sign-in code. Returns false when the
@@ -422,6 +532,7 @@ final class AppState: ObservableObject {
         guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
         else { throw LisaError.secureStorage }
         await refreshAccount()
+        didSignIn()
     }
 
     /// Refresh `account` (best-effort — leaves the last value on transport errors,
@@ -433,20 +544,45 @@ final class AppState: ObservableObject {
             let value = try await client.authMe()
             guard config == expected else { return }
             account = value
-        } catch LisaError.http(401), LisaError.http(403) {
+            accountUnavailable = false
+        } catch let error where error.httpStatus == 401 || error.httpStatus == 403 {
             guard config == expected else { return }
             account = LisaClient.AccountMe(signedIn: false)
+            accountUnavailable = false
+            noteFailure(error)
         } catch {
-            // unreachable — keep whatever we knew
+            // Unreachable: keep whatever we knew, and say the state is unknown
+            // rather than looking signed out (#492).
+            guard config == expected else { return }
+            accountUnavailable = true
         }
     }
 
-    /// Drop the account session locally (the token is stateless server-side).
+    /// Drop the account session locally. Callers that can wait use
+    /// `signOut(everywhere:)`, which also revokes it on the server.
     func signOutCloud() {
         if profiles.load(.mac).remoteMac != nil {
             _ = profiles.save(ServerConfig(host: "", port: 5757, token: nil), for: .mac)
         }
+        LisaClient.forgetCookies(for: profiles.load(.cloud))
+        sessionExpired = false
         if update(host: "", port: 443, token: nil, scheme: "https", mode: .cloud) { account = nil }
+    }
+
+    /// Sign out of LISA Cloud and revoke the session on the server (#493).
+    /// `everywhere` signs out every device on the account, including the Mac's
+    /// cloud connection, so it must reach the server; a single sign-out is best
+    /// effort and always completes locally.
+    func signOut(everywhere: Bool) async throws {
+        let saved = profiles.load(.cloud)
+        if saved.isConfigured, SessionToken.claims(saved.token) != nil {
+            do {
+                try await LisaClient(config: saved).logout(everywhere: everywhere)
+            } catch {
+                if everywhere { throw error }
+            }
+        }
+        signOutCloud()
     }
 
     /// In-app account deletion (App Store 5.1.1(v)): server-side delete, then
@@ -504,7 +640,8 @@ final class AppState: ObservableObject {
         do {
             _ = try await client.islandPing()
             return .ok
-        } catch LisaError.http(let code) {
+        } catch let error where error.httpStatus != nil {
+            let code = error.httpStatus ?? -1
             if code == 401 || code == 403 { return .unauthorized }
             if code == 404 { return .ok }
             return .serverError(code)
@@ -576,7 +713,7 @@ final class AppState: ObservableObject {
         do {
             proactiveEnabled = try await client.autonomyState()
             proactiveAvailable = true
-        } catch LisaError.http(404) {
+        } catch let error where error.httpStatus == 404 {
             proactiveAvailable = false
         } catch {
             // transient (offline / timeout) — keep the last-known state, don't flip the UI

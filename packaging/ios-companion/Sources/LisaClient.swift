@@ -31,7 +31,10 @@ struct ServerConfig: Hashable {
 enum LisaError: LocalizedError {
     case notConfigured
     case secureStorage
+    /// A bare non-2xx status (older call sites and tests). New code throws `.server`.
     case http(Int)
+    /// A non-2xx answer with the server's error code and message (issue #487).
+    case server(ServerFailure)
     case decode
     case unsupportedAPIVersion(Int)
 
@@ -39,13 +42,10 @@ enum LisaError: LocalizedError {
         switch self {
         case .secureStorage: return "Couldn't save your connection in Keychain. Unlock your device and try again."
         case .notConfigured: return "Connect to LISA Cloud or pair your Mac in Settings."
+        case .server(let failure):
+            return failure.message ?? LisaError.http(failure.status).errorDescription
         case .http(403):
-            // Hosted Lisa denies the machine-level routes (push, dispatch,
-            // mail, consent, devices — CLOUD_DENIED_ROUTE_PREFIXES in
-            // src/web/capabilities.ts). "HTTP 403" told the user nothing about
-            // why registering a push destination silently never worked.
-            return "This Lisa won't do that (403). Hosted Lisa keeps machine-level "
-                 + "features — push, dispatch, mail — on your own Mac; pair with it instead."
+            return "Lisa refused this request (HTTP 403)."
         case .http(let code): return "Server returned HTTP \(code)."
         case .decode: return "Couldn't read the server response."
         case .unsupportedAPIVersion(let version):
@@ -75,11 +75,46 @@ final class LisaClient {
     var config: ServerConfig
     private let session: URLSession
     private let remote: RemoteMacTransport?
+    /// Called with a renewed account session from the `x-lisa-session` response
+    /// header. AppState stores it without resetting the connection (#484).
+    var onSessionRenewed: ((String) -> Void)?
 
-    init(config: ServerConfig, session: URLSession = .shared) {
+    /// Every request carries its credential as a Bearer header, so cookies are
+    /// never needed — and a server-set `lisa_token` cookie would outlive Unpair
+    /// and sign-out outside the Keychain (#493).
+    static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        return URLSession(configuration: configuration)
+    }()
+
+    /// Response header carrying a renewed account session (server: src/web/server.ts).
+    static let renewedSessionHeader = "x-lisa-session"
+
+    init(config: ServerConfig, session: URLSession = LisaClient.defaultSession) {
         self.config = config
         self.session = session
         self.remote = config.remoteMac.map { RemoteMacTransport(target: $0) }
+    }
+
+    /// Delete any `lisa_token` cookie an older build let URLSession.shared keep
+    /// for this server (#493).
+    static func forgetCookies(for config: ServerConfig) {
+        guard let url = config.baseURL else { return }
+        for cookie in HTTPCookieStorage.shared.cookies(for: url) ?? [] {
+            HTTPCookieStorage.shared.deleteCookie(cookie)
+        }
+    }
+
+    /// Hand a renewed session to the app when the server sent one.
+    private func captureRenewal(_ response: URLResponse) {
+        guard remote == nil, SessionToken.claims(config.token) != nil,
+              let fresh = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: Self.renewedSessionHeader),
+              SessionToken.claims(fresh)?.uid == SessionToken.claims(config.token)?.uid else { return }
+        config.token = fresh
+        onSessionRenewed?(fresh)
     }
 
     func invalidate() { if let remote { Task { await remote.invalidate() } } }
@@ -101,7 +136,9 @@ final class LisaClient {
             let (data, response) = try await remote.data(path: path, method: request.httpMethod ?? "GET", body: request.httpBody)
             return (data, response)
         }
-        return try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        captureRenewal(response)
+        return (data, response)
     }
 
     /// Exchange a Sign in with Apple identity token for the cloud instance's
@@ -114,7 +151,7 @@ final class LisaClient {
     /// the token was issued for THIS request. nil ⇒ omitted (older instances).
     static func exchangeAppleToken(base: ServerConfig, identityToken: String, rawNonce: String? = nil,
                                    authorizationCode: String? = nil,
-                                   session: URLSession = .shared) async throws -> String {
+                                   session: URLSession = LisaClient.defaultSession) async throws -> String {
         guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/apple", relativeTo: baseURL) else {
             throw LisaError.notConfigured
         }
@@ -128,7 +165,7 @@ final class LisaClient {
         let (data, resp) = try await session.data(for: req)
         try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(code) else { throw LisaError.http(code) }
+        guard (200..<300).contains(code) else { throw LisaError.server(.from(resp, body: data)) }
         struct R: Decodable { let token: String }
         guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
             throw LisaError.decode
@@ -143,7 +180,7 @@ final class LisaClient {
     /// with the server's typed status: 401 bad credentials, 409 email taken,
     /// 429 throttled, 404 instance without accounts.
     static func emailAuth(base: ServerConfig, email: String, password: String,
-                          register: Bool, session: URLSession = .shared) async throws -> String {
+                          register: Bool, session: URLSession = LisaClient.defaultSession) async throws -> String {
         let path = register ? "/api/auth/register" : "/api/auth/login"
         guard let baseURL = base.baseURL, let url = URL(string: path, relativeTo: baseURL) else {
             throw LisaError.notConfigured
@@ -156,7 +193,7 @@ final class LisaClient {
         let (data, resp) = try await session.data(for: req)
         try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(code) else { throw LisaError.http(code) }
+        guard (200..<300).contains(code) else { throw LisaError.server(.from(resp, body: data)) }
         struct R: Decodable { let token: String }
         guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
             throw LisaError.decode
@@ -181,7 +218,7 @@ final class LisaClient {
         let dataProcessing: DataProcessing?
     }
 
-    static func authConfig(base: ServerConfig, session: URLSession = .shared) async throws -> AuthConfig {
+    static func authConfig(base: ServerConfig, session: URLSession = LisaClient.defaultSession) async throws -> AuthConfig {
         guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/config", relativeTo: baseURL) else {
             throw LisaError.notConfigured
         }
@@ -190,7 +227,7 @@ final class LisaClient {
         let (data, resp) = try await session.data(for: req)
         try LisaAPICompatibility.validate(resp)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else { throw LisaError.http(status) }
+        guard (200..<300).contains(status) else { throw LisaError.server(.from(resp, body: data)) }
         guard let cfg = try? JSONDecoder().decode(AuthConfig.self, from: data) else { throw LisaError.decode }
         return cfg
     }
@@ -198,7 +235,7 @@ final class LisaClient {
     /// Exchange a Google ID token for the instance's session token
     /// (`POST /api/auth/google`). Mints access, so it takes the bare cloud base.
     static func exchangeGoogleToken(base: ServerConfig, idToken: String, nonce: String?,
-                                    session: URLSession = .shared) async throws -> String {
+                                    session: URLSession = LisaClient.defaultSession) async throws -> String {
         var payload = ["idToken": idToken]
         if let nonce { payload["nonce"] = nonce }
         let data = try await postAuth(base: base, path: "/api/auth/google", payload: payload, session: session)
@@ -220,6 +257,8 @@ final class LisaClient {
         let reason: String
         /// The corrected domain, when the server recognised a typo.
         let suggestion: String?
+        /// Seconds until another code may be requested (`otp_cooldown`).
+        var retryAfterSec: Int? = nil
     }
 
     private static func postAuth(
@@ -240,9 +279,10 @@ final class LisaClient {
         try LisaAPICompatibility.validate(resp)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(status) else {
-            struct E: Decodable { let error: String?; let suggestion: String? }
+            struct E: Decodable { let error: String?; let suggestion: String?; let retryAfterSec: Int? }
             let body = try? JSONDecoder().decode(E.self, from: data)
-            throw SignInCodeError(status: status, reason: body?.error ?? "", suggestion: body?.suggestion)
+            throw SignInCodeError(status: status, reason: body?.error ?? "", suggestion: body?.suggestion,
+                                  retryAfterSec: body?.retryAfterSec)
         }
         return data
     }
@@ -252,7 +292,7 @@ final class LisaClient {
     /// false means the instance has no mail provider configured, which the UI
     /// must say plainly rather than leaving someone waiting for a code.
     static func requestSignInCode(base: ServerConfig, email: String,
-                                  session: URLSession = .shared) async throws -> Bool {
+                                  session: URLSession = LisaClient.defaultSession) async throws -> Bool {
         let data = try await postAuth(base: base, path: "/api/auth/otp/request",
                                       payload: ["email": email], session: session)
         struct R: Decodable { let sent: Bool? }
@@ -263,7 +303,7 @@ final class LisaClient {
     /// token. Registers the account if the address is new — reading the mail is
     /// the proof, so there's no separate sign-up step.
     static func verifySignInCode(base: ServerConfig, email: String, code: String,
-                                 session: URLSession = .shared) async throws -> String {
+                                 session: URLSession = LisaClient.defaultSession) async throws -> String {
         let data = try await postAuth(base: base, path: "/api/auth/otp/verify",
                                       payload: ["email": email, "code": code], session: session)
         struct R: Decodable { let token: String }
@@ -284,10 +324,27 @@ final class LisaClient {
         var verified: Bool?
         var plan: String?
         var appleUserId: String?
+        /// When the presented session expires (epoch ms); newer servers only.
+        var sessionExpiresAt: Double?
     }
 
     func authMe() async throws -> AccountMe {
         try await decode("/api/auth/me", as: AccountMe.self)
+    }
+
+    /// A fresh account session for this one (`POST /api/auth/refresh`, #484).
+    struct RefreshedSession: Decodable { let token: String; let expiresAt: Double? }
+    func refreshSession() async throws -> RefreshedSession {
+        let r = try await decode("/api/auth/refresh", method: "POST", as: RefreshedSession.self)
+        guard SessionToken.claims(r.token) != nil else { throw LisaError.decode }
+        return r
+    }
+
+    /// Revoke this session on the server (`POST /api/auth/logout`), or every
+    /// session of the account (`/api/auth/logout-all`). Older servers only
+    /// expire the cookie; the local sign-out happens either way (#493).
+    func logout(everywhere: Bool = false) async throws {
+        try await fire(everywhere ? "/api/auth/logout-all" : "/api/auth/logout")
     }
 
     /// The signed-in account's quota window + balance (`GET /api/billing/quota`).
@@ -315,10 +372,25 @@ final class LisaClient {
         var ok: Bool
         var creditedMicroUSD: Int?
         var error: String?
+        var message: String?
+
+        /// Codes the server will refuse on every retry: re-submitting can't help,
+        /// so the user needs support, not "it will be credited automatically" (#486).
+        static let permanentErrors: Set<String> = [
+            "malformed_jws", "unbound_transaction", "wrong_account", "bad_chain",
+            "unknown_product", "sandbox_rejected",
+        ]
+        var isPermanentFailure: Bool { !ok && Self.permanentErrors.contains(error ?? "") }
     }
 
     func iapSubmit(jws: String) async throws -> IapResult {
-        var r = try await decode("/api/billing/iap", method: "POST", json: ["jws": jws], as: IapResult.self)
+        var r: IapResult
+        do {
+            r = try await decode("/api/billing/iap", method: "POST", json: ["jws": jws], as: IapResult.self)
+        } catch LisaError.server(let failure) where (400..<500).contains(failure.status) && !failure.code.isEmpty {
+            // A typed refusal is an answer, not a transport failure.
+            r = IapResult(ok: false, creditedMicroUSD: nil, error: failure.code, message: failure.message)
+        }
         if r.error == "duplicate_transaction" { r.ok = true }
         return r
     }
@@ -370,23 +442,42 @@ final class LisaClient {
 
     private func decode<T: Decodable>(_ path: String, method: String = "GET", json: [String: Any]? = nil, as: T.Type) async throws -> T {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
-        let (data, resp) = try await data(for: req, path: path)
-        try LisaAPICompatibility.validate(resp)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(code) else { throw LisaError.http(code) }
-        do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw LisaError.decode }
+        do {
+            let (data, resp) = try await data(for: req, path: path)
+            try LisaAPICompatibility.validate(resp)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+            guard (200..<300).contains(code) else { throw LisaError.server(.from(resp, body: data)) }
+            do { return try JSONDecoder().decode(T.self, from: data) }
+            catch { throw LisaError.decode }
+        } catch {
+            ConnectionLog.note("\(method) \(Self.logPath(path))", error)
+            throw error
+        }
     }
 
-    /// Fire a mutating request and return the HTTP status WITHOUT throwing on a
-    /// non-2xx — for the few call sites that branch on a specific code (503 ⇒ PTY
-    /// off, 409 ⇒ session live, 403 ⇒ remote adoption disabled).
-    @discardableResult
-    private func fireCode(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> Int {
+    /// The path without its query, for the diagnostics log.
+    private static func logPath(_ path: String) -> String {
+        String(path.split(separator: "?", maxSplits: 1).first ?? "")
+    }
+
+    /// Fire a mutating request and return the HTTP status (plus the server's
+    /// refusal) WITHOUT throwing on a non-2xx — for the few call sites that branch
+    /// on a specific answer (PTY off, session live, remote adoption disabled).
+    /// Like `fireCode`, plus what the server said when it refused.
+    private func fireResult(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> (status: Int, failure: ServerFailure?) {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
-        let (_, resp) = try await data(for: req, path: path)
-        try LisaAPICompatibility.validate(resp)
-        return (resp as? HTTPURLResponse)?.statusCode ?? -1
+        do {
+            let (data, resp) = try await data(for: req, path: path)
+            try LisaAPICompatibility.validate(resp)
+            let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+            if (200..<300).contains(status) { return (status, nil) }
+            let failure = ServerFailure.from(resp, body: data)
+            ConnectionLog.note("\(method) \(Self.logPath(path))", LisaError.server(failure))
+            return (status, failure)
+        } catch {
+            ConnectionLog.note("\(method) \(Self.logPath(path))", error)
+            throw error
+        }
     }
 
     /// Fire a mutating request that MUST succeed; throws `LisaError.http(code)` on
@@ -394,8 +485,8 @@ final class LisaClient {
     /// finding — a remote phone blocked by the control policy got 403 on every tap
     /// with zero feedback). This is the default for all the action methods below.
     private func fire(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws {
-        let code = try await fireCode(path, method: method, json: json)
-        guard (200..<300).contains(code) else { throw LisaError.http(code) }
+        let result = try await fireResult(path, method: method, json: json)
+        if let failure = result.failure { throw LisaError.server(failure) }
     }
 
     /// This connection's AI recipients (`GET /api/auth/config`), fetched over the
@@ -466,9 +557,10 @@ final class LisaClient {
 
     // ── control: PTY agents ──
     /// Spawn a fresh real CLI under a PTY (agent = "claude" | "codex"). Returns
-    /// the HTTP code (503 ⇒ the PTY spike is off on the Mac: LISA_PTY_AGENTS=1).
-    func ptyStart(agent: String, task: String) async throws -> Int {
-        try await fireCode("/api/agents/pty/start", json: ["agent": agent, "task": task])
+    /// the HTTP status and, when refused, the server's reason: `pty_disabled`,
+    /// `cli_missing` or `spawn_failed` on current Macs (#489).
+    func ptyStart(agent: String, task: String) async throws -> (status: Int, failure: ServerFailure?) {
+        try await fireResult("/api/agents/pty/start", json: ["agent": agent, "task": task])
     }
     func ptySend(_ id: String, _ text: String) async throws { try await fire("/api/agents/pty/\(id)/send", json: ["text": text]) }
     func ptyCancel(_ id: String) async throws { try await fire("/api/agents/pty/\(id)/cancel") }
@@ -485,8 +577,8 @@ final class LisaClient {
     }
     /// Adopt an idle claude session by id (resume-adopt). Returns the HTTP code
     /// (409 ⇒ the session is still live; 403 ⇒ remote adoption disabled).
-    func adopt(sessionId: String) async throws -> Int {
-        try await fireCode("/api/agents/pty/start", json: ["agent": "claude", "resumeSessionId": sessionId])
+    func adopt(sessionId: String) async throws -> (status: Int, failure: ServerFailure?) {
+        try await fireResult("/api/agents/pty/start", json: ["agent": "claude", "resumeSessionId": sessionId])
     }
 
     // ── push ──
@@ -553,7 +645,19 @@ final class LisaClient {
                     let (bytes, resp) = try await session.bytes(for: req)
                     try LisaAPICompatibility.validate(resp)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
-                    guard (200..<300).contains(code) else { continuation.finish(throwing: LisaError.http(code)); return }
+                    guard (200..<300).contains(code) else {
+                        // Read the (small) refusal body so the error carries its code.
+                        var body = Data()
+                        for try await byte in bytes {
+                            body.append(byte)
+                            if body.count > 8192 { break }
+                        }
+                        let failure = LisaError.server(.from(resp, body: body))
+                        ConnectionLog.note("\(method) \(Self.logPath(path))", failure)
+                        continuation.finish(throwing: failure)
+                        return
+                    }
+                    captureRenewal(resp)
                     var decoder = SSEDecoder()
                     // Foundation's AsyncLineSequence skips empty lines, but
                     // those lines are the event boundaries in SSE.
@@ -562,6 +666,7 @@ final class LisaClient {
                     }
                     continuation.finish()
                 } catch {
+                    if !(error is LisaError) { ConnectionLog.note("\(method) \(Self.logPath(path))", error) }
                     continuation.finish(throwing: error)
                 }
             }

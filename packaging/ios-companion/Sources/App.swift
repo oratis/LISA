@@ -76,10 +76,16 @@ struct RootView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            // Left the Mac's Wi-Fi (LAN pairing + on cellular) → the Mac is
-            // unreachable; offer the one-tap escape to LISA Cloud (R3/R4).
-            if app.lanUnreachableOnCellular && !app.showOnboarding {
-                ReachabilityBanner { app.switchToCloud() }
+            VStack(spacing: 0) {
+                // The account session was rejected: one clear way back in (#484).
+                if app.sessionExpired && !app.showOnboarding {
+                    SessionExpiredBanner { app.beginSignInAgain() }
+                }
+                // Left the Mac's Wi-Fi (LAN pairing + on cellular) → the Mac is
+                // unreachable; offer the one-tap escape to LISA Cloud (R3/R4).
+                if app.lanUnreachableOnCellular && !app.showOnboarding {
+                    ReachabilityBanner { app.switchToCloud() }
+                }
             }
         }
         .task(id: app.config) { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
@@ -87,6 +93,7 @@ struct RootView: View {
         // the server never credited; the server-side dedup makes replays safe.
         .task(id: app.config) {
             CreditsStore.shared.start(app: app)
+            await app.refreshCloudSessionIfNeeded()
             await app.refreshAccount()
             await app.checkAppleCredential()
             await CreditsStore.shared.reconcile(app: app)
@@ -97,6 +104,7 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
             if phase == .active { Task {
+                await app.refreshCloudSessionIfNeeded()
                 await app.refreshWidgetSnapshot()
                 await app.refreshAccount()
                 await app.checkAppleCredential()
@@ -146,6 +154,32 @@ struct ReachabilityBanner: View {
             Button("Use Cloud", action: onUseCloud)
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.borderedProminent).tint(Theme.accent)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(Theme.card)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Top banner shown when the LISA account session was rejected (expired, signed
+/// out elsewhere, or revoked). One tap opens sign-in; the chat draft is kept.
+struct SessionExpiredBanner: View {
+    let onSignIn: () -> Void
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark").foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Sign in again")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text("Your LISA session expired. What you typed is kept.")
+                    .font(.caption).foregroundStyle(Theme.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Sign in", action: onSignIn)
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderedProminent).tint(Theme.accent)
+                .accessibilityIdentifier("session.signIn")
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
         .background(Theme.card)
