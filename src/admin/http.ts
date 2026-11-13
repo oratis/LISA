@@ -401,9 +401,11 @@ export async function handleConsole(
         throw new ConsoleError("rate_limited", 429);
       const input = await body(req),
         email = text(input.email, 254).toLowerCase();
-      const state = await readAdminState();
-      if (!validEmail(email) || (!owners().includes(email) && !state.roles[email]))
-        throw new ConsoleError("admin_access_required", 403);
+      if (!validEmail(email)) throw new ConsoleError("invalid_field");
+      // Which addresses hold a role is not revealed before sign-in: every
+      // address gets the same answers and the same work (a code is mailed to
+      // any address, as the app's own code sign-in does), and an address
+      // without a role fails exactly like a wrong code or password.
       if (input.method === "request-code") {
         const minted = await requestEmailOtp(email);
         if (!minted.ok) throw new ConsoleError("otp_cooldown", 429);
@@ -415,7 +417,10 @@ export async function handleConsole(
       let acct: AccountRecord | null = null;
       if (input.method === "verify-code") {
         const spent = await verifyEmailOtp(email, text(input.code, 12));
-        if (!spent.ok) throw new ConsoleError("invalid_code", 401);
+        const holdsRole = async () =>
+          owners().includes(email) || !!(await readAdminState()).roles[email];
+        // Never create an account for an address without a role.
+        if (!spent.ok || !(await holdsRole())) throw new ConsoleError("invalid_code", 401);
         acct = (await ensureOtpAccount(email)).acct;
       } else if (input.method === "password")
         acct = await verifyEmailLogin(

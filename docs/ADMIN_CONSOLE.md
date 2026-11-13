@@ -11,7 +11,10 @@ Enable with `LISA_CONSOLE_ENABLED=1`, set `LISA_CONSOLE_ORIGIN=https://meetlisa.
 and configure the protected owner allowlist with `LISA_ADMIN_EMAILS`. Owner addresses are configured only in the deployment environment. No account is fabricated or marked
 verified by this configuration: a verified email/Google account must prove
 ownership via the existing mailed OTP or an existing password. Apple relay
-addresses cannot claim operator privileges.
+addresses cannot claim operator privileges. Sign-in does not reveal which
+addresses hold a role: a code is mailed to any valid address (as the app's own
+code sign-in does), and an address without a role fails exactly like a wrong
+code or password, without creating an account.
 
 Console sessions use an independently derived signing key, eight-hour expiry,
 HttpOnly/Secure/SameSite=Strict cookie scoped to `/console`, and current account

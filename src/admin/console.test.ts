@@ -31,6 +31,7 @@ import {
   upsertAppleAccount,
   sessionAccountValid,
   getAccount,
+  getAccountByEmail,
 } from "../web/accounts.js";
 import { homeScope, homeForUid } from "../paths.js";
 import { readBalance } from "../billing/quota.js";
@@ -155,6 +156,66 @@ test("login does not reveal a session token and cookie is secured and path scope
   const records = (await readAdminState()).audit;
   assert.equal(records.at(-1)?.action, "login");
   assert.ok(!JSON.stringify(records).includes("a-password-123"));
+});
+test("login answers an address without a role exactly like a wrong code or password", async () => {
+  process.env.RESEND_API_KEY = "test-resend-key";
+  const realFetch = globalThis.fetch;
+  const mailed = new Map<string, string>();
+  const spy = mock.method(
+    globalThis,
+    "fetch",
+    (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).startsWith("https://api.resend.com/")) {
+        const mail = JSON.parse(String(init?.body)) as { to: string[]; subject: string };
+        mailed.set(mail.to[0]!, /\d{6}/.exec(mail.subject)![0]);
+        return Promise.resolve(new Response('{"id":"test"}', { status: 200 }));
+      }
+      return realFetch(input, init);
+    },
+  );
+  try {
+    const login = (payload: Record<string, unknown>) =>
+      request("/console/api/login", undefined, payload);
+    const outsider = "outsider@example.com";
+    const role = await login({ method: "request-code", email: admin.email });
+    const none = await login({ method: "request-code", email: outsider });
+    assert.equal(none.response.status, role.response.status);
+    assert.deepEqual(none.body, role.body);
+    assert.equal(role.response.status, 200);
+    // A wrong code, and the RIGHT code for an address without a role: same answer.
+    const wrong = await login({ method: "verify-code", email: admin.email, code: "000000" });
+    const roleless = await login({
+      method: "verify-code",
+      email: outsider,
+      code: mailed.get(outsider),
+    });
+    for (const r of [wrong, roleless]) {
+      assert.equal(r.response.status, 401);
+      assert.deepEqual(r.body, { error: "invalid_code" });
+    }
+    assert.equal(await getAccountByEmail(outsider), null);
+    // An existing account without a role, with its correct password, fails like a
+    // wrong password does.
+    const badPassword = await login({ method: "password", email: admin.email, password: "nope" });
+    const memberPassword = await login({
+      method: "password",
+      email: regular.email,
+      password: "a-password-123",
+    });
+    for (const r of [badPassword, memberPassword]) {
+      assert.equal(r.response.status, 401);
+      assert.deepEqual(r.body, { error: "invalid_credentials" });
+    }
+    // The role holder's real code still signs in.
+    const ok = await login({
+      method: "verify-code",
+      email: admin.email,
+      code: mailed.get(admin.email!),
+    });
+    assert.equal(ok.response.status, 200);
+  } finally {
+    spy.mock.restore();
+  }
 });
 test("mutations reject cross-origin, missing custom header, stale version and read-only role", async () => {
   const state = await readAdminState();
