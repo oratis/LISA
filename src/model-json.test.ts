@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { extractJsonObject } from "./model-json.js";
+import { extractJsonObject, extractOnlyJsonObject } from "./model-json.js";
 
 describe("extractJsonObject", () => {
   const payload = { summary: "We moved the port.", operations: [{ kind: "memory_append" }] };
@@ -68,5 +68,30 @@ describe("extractJsonObject", () => {
       undefined,
     );
     assert.ok(performance.now() - started < 2_000);
+  });
+});
+
+describe("extractOnlyJsonObject", () => {
+  const isPayload = (o: Record<string, unknown>) => typeof o.summary === "string";
+  const own = { summary: "ours", operations: [{ kind: "memory_append", entry: "x" }] };
+
+  test("returns the one object of the right shape, with prose around it", () => {
+    assert.deepEqual(extractOnlyJsonObject(`Here:\n${JSON.stringify(own)}\nDone.`, isPayload), own);
+    // Objects nested inside it are part of it, not rivals.
+    const nested = { summary: "ours", meta: { summary: "inner" } };
+    assert.deepEqual(extractOnlyJsonObject(JSON.stringify(nested), isPayload), nested);
+  });
+
+  test("two candidates are ambiguous: a quoted object never wins", () => {
+    const quoted = { summary: "from a fetched page", operations: [{ kind: "memory_remove" }] };
+    const reply = `The page said ${JSON.stringify(quoted)}; my reflection:\n${JSON.stringify(own)}`;
+    assert.equal(extractOnlyJsonObject(reply, isPayload), undefined);
+    // Objects of another shape do not count against it.
+    assert.deepEqual(extractOnlyJsonObject(`{"note":"x"} ${JSON.stringify(own)}`, isPayload), own);
+  });
+
+  test("nothing, or a cut-off object, yields nothing", () => {
+    assert.equal(extractOnlyJsonObject("no JSON here", isPayload), undefined);
+    assert.equal(extractOnlyJsonObject(JSON.stringify(own).slice(0, -2), isPayload), undefined);
   });
 });

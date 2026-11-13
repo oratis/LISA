@@ -503,3 +503,33 @@ test("a reply that wraps the JSON in prose is used as is: no retry, no second mo
   assert.equal(result.summary, "Updated the API port.");
   assert.equal(calls, 1);
 });
+
+test("on the hosted edition a cut-off reply is retried under the same cap", async () => {
+  // /reflect passes no budget there, so the larger retry cap would be output
+  // that no admission covered.
+  const seen: Array<number | undefined> = [];
+  const full = JSON.stringify(correction());
+  const provider: Provider = {
+    name: "offline",
+    async runTurn(opts) {
+      seen.push(opts.maxTokens);
+      const first = seen.length === 1;
+      return {
+        content: [{ type: "text", text: first ? full.slice(0, 40) : full, citations: [] }],
+        stopReason: first ? "max_tokens" : "end_turn",
+        usage: { inputTokens: 120, outputTokens: 30, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      };
+    },
+  };
+  await writeMemory("memory", "- API port: 3000");
+  const previousEdition = process.env.LISA_EDITION;
+  process.env.LISA_EDITION = "cloud";
+  try {
+    await reflectOnSession({ history, sessionId: "session-cloud-cut", provider });
+  } finally {
+    if (previousEdition === undefined) delete process.env.LISA_EDITION;
+    else process.env.LISA_EDITION = previousEdition;
+  }
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1], seen[0]);
+});

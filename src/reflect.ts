@@ -1,5 +1,6 @@
 import path from "node:path";
-import { extractJsonObject } from "./model-json.js";
+import { extractOnlyJsonObject } from "./model-json.js";
+import { isCloud } from "./edition.js";
 import { assertHomeDirectory, readHomeTextOrEmpty } from "./home-files.js";
 import { atomicWrite } from "./fs-utils.js";
 import { DEFAULT_MODEL } from "./llm.js";
@@ -188,7 +189,9 @@ export function parseReflectionPayload(
     // whole of what the memory eval recorded as "unparseable" ("Unexpected
     // token '好'", "non-whitespace character after JSON"). Take the object;
     // if there is none, report the parse error as before so the caller retries.
-    obj = extractJsonObject(raw, (o) => typeof o.summary === "string");
+    // Exactly one candidate: the reply quotes conversation text, and a quoted
+    // object of the same shape must not be applied in place of its own.
+    obj = extractOnlyJsonObject(raw, (o) => typeof o.summary === "string");
     if (obj === undefined) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -480,9 +483,12 @@ async function reflectOnSessionInner(
     // again more sternly under the same cap is cut off at the same place. It
     // gets the same instructions and room to finish. Anything else gets the
     // stricter instruction, as before.
-    const retry = first.truncated
-      ? await runReflector(REFLECTOR_SYSTEM, REFLECT_RETRY_MAX_TOKENS)
-      : await runReflector(REFLECTOR_SYSTEM + REFLECTOR_RETRY_SUFFIX, REFLECT_MAX_TOKENS);
+    // The larger retry cap is not used on the hosted edition: /reflect passes
+    // no budget there, so it would be output no admission covered.
+    const retry =
+      first.truncated && !isCloud()
+        ? await runReflector(REFLECTOR_SYSTEM, REFLECT_RETRY_MAX_TOKENS)
+        : await runReflector(REFLECTOR_SYSTEM + REFLECTOR_RETRY_SUFFIX, REFLECT_MAX_TOKENS);
     const retryRaw = retry.text;
     const retryParsed = parseReflectionPayload(retryRaw);
     if (retryParsed.ok) {

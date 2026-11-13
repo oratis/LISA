@@ -67,3 +67,42 @@ export function extractJsonObject(
   }
   return undefined;
 }
+
+/**
+ * The JSON object in `text` that `accept` takes, but only when there is
+ * exactly ONE such top-level object; otherwise undefined.
+ *
+ * For replies built from untrusted material. A reflection reads conversation
+ * text, which can contain a fetched page; if the reply quotes an object of the
+ * right shape before its own, "the first one" would be the attacker's. Two
+ * candidates mean the reply is ambiguous, and the caller retries. Objects
+ * nested inside an accepted one are part of it and are not counted.
+ */
+export function extractOnlyJsonObject(
+  text: string,
+  accept: (value: Record<string, unknown>) => boolean,
+): Record<string, unknown> | undefined {
+  let found: Record<string, unknown> | undefined;
+  let tried = 0;
+  for (let at = text.indexOf("{"); at !== -1 && tried < MAX_CANDIDATES; tried++) {
+    const end = objectEnd(text, at);
+    let next = at + 1;
+    if (end !== -1) {
+      try {
+        const value: unknown = JSON.parse(text.slice(at, end));
+        if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+          const object = value as Record<string, unknown>;
+          if (accept(object)) {
+            if (found) return undefined;
+            found = object;
+            next = end; // what is inside it belongs to it
+          }
+        }
+      } catch {
+        // Not JSON: try the next brace.
+      }
+    }
+    at = text.indexOf("{", next);
+  }
+  return found;
+}
