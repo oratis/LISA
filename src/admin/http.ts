@@ -32,6 +32,15 @@ import {
   type Role,
 } from "./store.js";
 
+// Credit-grant limits in micro-USD ($1 = 1,000,000). The owner changes them here.
+// Daily totals are per granting operator over a rolling 24 hours, counted from
+// the grant records themselves (pending and completed alike).
+export const OPERATOR_GRANT_MAX_MICRO_USD = 50_000_000; // $50 per grant
+export const OPERATOR_GRANT_DAILY_MAX_MICRO_USD = 200_000_000; // $200 per 24 h
+export const ADMIN_GRANT_MAX_MICRO_USD = 1_000_000_000; // $1,000 per grant
+export const ADMIN_GRANT_DAILY_MAX_MICRO_USD = 5_000_000_000; // $5,000 per 24 h
+const GRANT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const COOKIE = "lisa_console";
 const TTL = 8 * 60 * 60 * 1000;
 export const consoleSecret = (secret: string) =>
@@ -91,6 +100,24 @@ function revision(state: AdminState, value: unknown): void {
 function actor(acct: AccountRecord): string {
   return acct.email ?? acct.uid;
 }
+/** Micro-USD that `by` has granted since `since`, from the grant records. */
+export function grantedSince(s: AdminState, by: string, since: number): number {
+  // Records written before grants carried `at`/`actor` still have their
+  // credit_requested audit entry.
+  const requested = new Map<string, { actor: string; at: number }>();
+  for (const a of s.audit)
+    if (a.action === "credit_requested" && typeof a.detail?.id === "string")
+      requested.set(a.detail.id, a);
+  let total = 0;
+  for (const [id, op] of Object.entries(s.operations)) {
+    const meta =
+      op.at !== undefined && op.actor !== undefined
+        ? { actor: op.actor, at: op.at }
+        : requested.get(id);
+    if (meta && meta.actor === by && meta.at > since) total += op.microUSD;
+  }
+  return total;
+}
 export function csvValue(v: unknown): string {
   let s = v === null || v === undefined ? "" : String(v);
   if (/^[\s]*[=+@-]/.test(s) || /^[\t\r\n]/.test(s)) s = "'" + s;
@@ -120,20 +147,30 @@ async function change(acct: AccountRecord, role: Role, data: Record<string, unkn
       typeof microUSD !== "number" ||
       !Number.isSafeInteger(microUSD) ||
       microUSD < 10000 ||
-      microUSD > 1000000000
+      microUSD > ADMIN_GRANT_MAX_MICRO_USD
     )
       throw new ConsoleError("invalid_credit");
+    if (uid === acct.uid) throw new ConsoleError("self_grant_forbidden", 403);
     if (!(await getAccount(uid))) throw new ConsoleError("account_not_found", 404);
+    const [perGrant, perDay] =
+      role === "admin"
+        ? [ADMIN_GRANT_MAX_MICRO_USD, ADMIN_GRANT_DAILY_MAX_MICRO_USD]
+        : [OPERATOR_GRANT_MAX_MICRO_USD, OPERATOR_GRANT_DAILY_MAX_MICRO_USD];
     const operation = await mutateAdminState((s) => {
       const old = s.operations[id];
       if (old) {
         if (old.uid !== uid || old.microUSD !== microUSD || old.reason !== reason)
           throw new ConsoleError("idempotency_conflict", 409);
+        // A retry of an accepted grant is neither re-counted nor re-limited.
         return old;
       }
       if (Object.keys(s.operations).length >= 2000)
         throw new ConsoleError("operations_archive_required", 409);
-      const fresh = { uid, microUSD, reason, status: "pending" as const };
+      if (microUSD > perGrant) throw new ConsoleError("grant_limit_exceeded", 403);
+      const at = Date.now();
+      if (grantedSince(s, actor(acct), at - GRANT_WINDOW_MS) + microUSD > perDay)
+        throw new ConsoleError("daily_grant_limit_exceeded", 403);
+      const fresh = { uid, microUSD, reason, status: "pending" as const, at, actor: actor(acct) };
       s.operations[id] = fresh;
       appendAudit(s, {
         actor: actor(acct),

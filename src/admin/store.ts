@@ -47,7 +47,15 @@ export interface AdminState {
   }[];
   operations: Record<
     string,
-    { uid: string; microUSD: number; reason: string; status: "pending" | "completed" }
+    {
+      uid: string;
+      microUSD: number;
+      reason: string;
+      status: "pending" | "completed";
+      // Absent on grants recorded before per-operator limits existed.
+      at?: number;
+      actor?: string;
+    }
   >;
   audit: AuditEntry[];
 }
@@ -128,7 +136,9 @@ export function parseState(v: unknown): AdminState {
     typeof o.reason === "string" &&
     Number.isSafeInteger(o.microUSD) &&
     Number(o.microUSD) > 0 &&
-    ["pending", "completed"].includes(String(o.status));
+    ["pending", "completed"].includes(String(o.status)) &&
+    (o.at === undefined || Number.isSafeInteger(o.at)) &&
+    (o.actor === undefined || typeof o.actor === "string");
   if (
     Number(v.revision) < 0 ||
     !v.audit.every(validAudit) ||

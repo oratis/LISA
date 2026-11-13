@@ -76,8 +76,12 @@ Details/CSV usage are the newest 1,000 records; totals use all read records.
 
 Compensation uses `admin:<UUID>` in the existing pending/credited payment state
 machine and balance-level deduplication. Retries after any interrupted write do
-not double-credit. Allowed amount is $0.01–$1,000, with a required reason. It uses
-the existing credit ledger's tier rules. Every operation has a durable intent and
+not double-credit. Nobody can grant to their own account. Operators may grant up
+to $50 per grant and $200 per rolling 24 hours; admins up to $1,000 per grant and
+$5,000 per rolling 24 hours (constants at the top of `src/admin/http.ts`). The
+24-hour total is counted per granting operator from the grant records; a retried
+grant ID is never counted twice. A reason is required. It uses the existing
+credit ledger's tier rules. Every operation has a durable intent and
 completion record. Never issue a new UUID to retry an uncertain prior grant.
 
 ## Persistence, safeguards and operations

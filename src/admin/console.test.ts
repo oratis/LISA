@@ -230,6 +230,124 @@ test("grant recovers after credit succeeds but final audit update is interrupted
     balance.paidMicroUSD,
   );
 });
+test("nobody can grant credit to their own account", async () => {
+  for (const acct of [admin, operator]) {
+    const r = await request("/console/api/action", acct, {
+      action: "credit",
+      uid: acct.uid,
+      id: `self-grant-${acct.uid}`.slice(0, 80).padEnd(16, "0"),
+      microUSD: 1000000,
+      reason: "给自己补偿",
+    });
+    assert.equal(r.response.status, 403);
+    assert.equal(r.body.error, "self_grant_forbidden");
+  }
+  assert.deepEqual((await readAdminState()).operations, {});
+});
+test("operator grants are capped per grant and per rolling 24 hours; retries are not re-counted", async () => {
+  const grant = (id: string, microUSD: number) =>
+    request("/console/api/action", operator, {
+      action: "credit",
+      uid: regular.uid,
+      id: `operator-grant-${id}`.padEnd(16, "0"),
+      microUSD,
+      reason: "客户服务补偿",
+    });
+  const over = await grant("over", 50000001);
+  assert.equal(over.response.status, 403);
+  assert.equal(over.body.error, "grant_limit_exceeded");
+  for (const id of ["a", "b", "c", "d"])
+    assert.equal((await grant(id, 50000000)).response.status, 200, id);
+  const before = await homeScope.run(homeForUid(regular.uid), readBalance);
+  const daily = await grant("e", 10000);
+  assert.equal(daily.response.status, 403);
+  assert.equal(daily.body.error, "daily_grant_limit_exceeded");
+  // A repeated idempotency key at the daily limit is neither refused nor counted.
+  assert.equal((await grant("a", 50000000)).response.status, 200);
+  const after = await homeScope.run(homeForUid(regular.uid), readBalance);
+  assert.equal(after.paidMicroUSD, before.paidMicroUSD);
+  // Another operator's grants do not count against this one.
+  const other = await ensureSeededAccount("operator2@example.com", "a-password-123");
+  await mutateAdminState((s) => {
+    s.roles[other.email!] = "operator";
+  });
+  const second = await request("/console/api/action", other, {
+    action: "credit",
+    uid: regular.uid,
+    id: "operator-two-grant-1",
+    microUSD: 50000000,
+    reason: "客户服务补偿",
+  });
+  assert.equal(second.response.status, 200);
+});
+test("admin grants allow $1,000 each and $5,000 per rolling 24 hours, including legacy records", async () => {
+  const now = Date.now();
+  await mutateAdminState((s) => {
+    // Inside the window: 4,990 by this admin. Outside it or by others: ignored.
+    s.operations["seed-inside-window-1"] = {
+      uid: regular.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "completed",
+      at: now - 60 * 60 * 1000,
+      actor: admin.email!,
+    };
+    s.operations["seed-inside-window-2"] = {
+      uid: analyst.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "pending",
+      at: now - 23 * 60 * 60 * 1000,
+      actor: admin.email!,
+    };
+    s.operations["seed-outside-window"] = {
+      uid: regular.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "completed",
+      at: now - 25 * 60 * 60 * 1000,
+      actor: admin.email!,
+    };
+    s.operations["seed-other-operator"] = {
+      uid: regular.uid,
+      microUSD: 1000000000,
+      reason: "seed",
+      status: "completed",
+      at: now - 60 * 60 * 1000,
+      actor: operator.email!,
+    };
+    // Written by the first console release: no at/actor, only the audit entry.
+    for (const [id, microUSD] of [
+      ["seed-legacy-record-1", 1000000000],
+      ["seed-legacy-record-2", 1000000000],
+      ["seed-legacy-record-3", 990000000],
+    ] as const) {
+      s.operations[id] = { uid: regular.uid, microUSD, reason: "seed", status: "completed" };
+      s.audit.push({
+        id: id,
+        at: now - 2 * 60 * 60 * 1000,
+        actor: admin.email!,
+        action: "credit_requested",
+        target: regular.uid,
+        reason: "seed",
+        detail: { id, microUSD },
+      });
+    }
+  });
+  const grant = (id: string, microUSD: number) =>
+    request("/console/api/action", admin, {
+      action: "credit",
+      uid: regular.uid,
+      id: `admin-grant-${id}`.padEnd(16, "0"),
+      microUSD,
+      reason: "客户服务补偿",
+    });
+  assert.equal((await grant("too-big", 1000000001)).response.status, 400);
+  assert.equal((await grant("fits", 10000000)).response.status, 200);
+  const refused = await grant("over", 10000);
+  assert.equal(refused.response.status, 403);
+  assert.equal(refused.body.error, "daily_grant_limit_exceeded");
+});
 test("suspension affects existing sessions, protected owner cannot be suspended, session revocation persists", async () => {
   let s = await readAdminState();
   assert.equal(
