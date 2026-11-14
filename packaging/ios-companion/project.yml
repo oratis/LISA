@@ -66,6 +66,14 @@ targets:
               - lisapocket
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+          # Tailscale MagicDNS names (mac.<tailnet>.ts.net) are not "local" to
+          # ATS, so plain-http `lisa serve --web` over a tailnet was refused even
+          # though Settings offers "IP or tailnet name" (#495). Tailnet traffic is
+          # already end-to-end encrypted by WireGuard.
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
     entitlements:
       path: Sources/LisaPocket.entitlements
       properties:
