@@ -107,6 +107,10 @@ final class RoomNavigationTests: XCTestCase {
         if closeSearch.exists && closeSearch.isHittable { closeSearch.tap() }
         let cancel = app.buttons["Cancel"].firstMatch
         if cancel.exists && cancel.isHittable { cancel.tap() }
+        // iPad's compact search field can retain its query when returning from
+        // a result. Clear it to restore the navigation bar's back control.
+        let clearSearch = app.buttons["Clear text"].firstMatch
+        if clearSearch.exists && clearSearch.isHittable { clearSearch.tap() }
         back()
         open("settings")
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
