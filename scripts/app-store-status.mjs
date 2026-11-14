@@ -45,9 +45,26 @@ const [builds, versions] = await Promise.all([
   get(`/v1/apps/${APP}/appStoreVersions`, {
     "filter[platform]": "IOS",
     limit: "20",
-    "fields[appStoreVersions]": "versionString,appVersionState,releaseType",
+    "fields[appStoreVersions]": "versionString,appVersionState,releaseType,build",
+    include: "build",
+    "fields[builds]": "version,processingState,uploadedDate",
   }),
 ]);
+const submittedBuilds = new Map(
+  (versions.included ?? [])
+    .filter((item) => item.type === "builds")
+    .map((item) => [item.id, item.attributes]),
+);
+const betaStates = new Map(
+  await Promise.all(
+    builds.data.map(async ({ id }) => {
+      const detail = await get(`/v1/builds/${id}/buildBetaDetail`, {
+        "fields[buildBetaDetails]": "internalBuildState,externalBuildState",
+      });
+      return [id, detail.data.attributes];
+    }),
+  ),
+);
 const report = {
   checkedAt: new Date().toISOString(),
   app: APP,
@@ -58,12 +75,19 @@ const report = {
     processingState: a.processingState,
     expired: a.expired,
     usesNonExemptEncryption: a.usesNonExemptEncryption,
+    beta: betaStates.get(id),
   })),
-  versions: versions.data.map(({ id, attributes: a }) => ({
+  versions: versions.data.map(({ id, attributes: a, relationships }) => ({
     id,
     version: a.versionString,
     state: a.appVersionState,
     releaseType: a.releaseType,
+    build: relationships?.build?.data
+      ? {
+          id: relationships.build.data.id,
+          number: submittedBuilds.get(relationships.build.data.id)?.version,
+        }
+      : null,
   })),
 };
 const output = JSON.stringify(report, null, 2);
