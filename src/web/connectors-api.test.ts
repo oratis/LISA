@@ -29,6 +29,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     ["notion", fake],
     ["slack", fake],
     ["feishu", fake],
+    ["t3", fake],
   ]);
   for (const id of workspaceIds) services.set(id, fake);
   const server = http.createServer((req, res) => {
@@ -55,7 +56,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal(catalog.status, 200);
   assert.equal(
     ((await catalog.json()) as { connectors: unknown[] }).connectors.length,
-    8 + workspaceIds.length,
+    9 + workspaceIds.length,
   );
   for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }])
     assert.equal((await post("{}", headers)).status, 403, JSON.stringify(headers));
@@ -77,7 +78,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal((await post("{}", { origin: "https://evil.example" }, "linear")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 200);
   assert.equal(actions, 2);
-  for (const provider of ["google-drive", "notion", "slack", "feishu", ...workspaceIds]) {
+  for (const provider of ["google-drive", "notion", "slack", "feishu", "t3", ...workspaceIds]) {
     assert.equal((await post("{}", { origin: "https://evil.example" }, provider)).status, 403);
     assert.equal((await post("{}", {}, provider)).status, 200);
   }
@@ -92,11 +93,12 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     "/api/connectors/notion/requests/test/resources",
     "/api/connectors/slack/requests/test/resources",
     "/api/connectors/feishu/requests/test/resources",
+    "/api/connectors/t3/requests/test/resources",
   ])
     assert.equal((await fetch(base + route)).status, 403);
   assert.equal((await post("{}")).status, 403);
   assert.equal((await post("{}", {}, "linear")).status, 403);
-  assert.equal(actions, 6 + workspaceIds.length);
+  assert.equal(actions, 7 + workspaceIds.length);
 });
 
 test("the catalog marks sources this install cannot serve, and their routes stay closed", async (t) => {

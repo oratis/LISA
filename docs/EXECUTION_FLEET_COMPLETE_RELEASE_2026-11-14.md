@@ -11,7 +11,7 @@ The owner confirmed on November 14, 2026 that this release includes the follow-u
 - [x] Storage: cross-task checkpoint quotas, retention controls and complete content/receipt cleanup with an explicit operation generation so old retries cannot restart deleted tasks.
 - [x] Recovery: explicit continuation from saved task context after the previous process has been verified stopped; never silently replay uncertain tool calls.
 - [x] Codex: scoped workspace browsing/editing and fresh approval requests, preserving the existing packet-only review option.
-- [ ] T3: authenticated read-only project/thread-list connector, exact selected-project scoping, pagination, cancellation and revocation.
+- [x] T3: authenticated read-only project/thread-list connector, exact selected-project scoping, pagination, cancellation, local disconnect and upstream revocation detection.
 - [ ] Screenshots: opt-in window/accessibility context in the attachment preview, with useful fallback when permission is absent or the user excludes text.
 - [ ] Update API contracts, Web/Pocket/Mac UI, translations, guides, README and release notes to match implemented behavior.
 
@@ -71,3 +71,11 @@ New destructive product actions require a user-visible preview and explicit conf
 - Tools reject escapes/dot paths/links/hardlinks/special files, require existing parents, bound text/payload/directory size, bind file/directory identity and content, and consume the operation before I/O. Partial writes cannot replay. Expired/invalid/withdrawn approvals do not authorize later calls.
 - The installed native Codex fixture completed Read → Edit → denied Write → rejected traversal, followed by a directory listing through its actual code-mode tool entry and a rejected native patch against the source. Tests now inspect both legacy tool arrays and modern `additional_tools` messages; the original packet-review fixture also remains green. This is native-protocol acceptance against a local Responses fixture, not live OpenAI inference.
 - Fleet/host: 82 passed, zero skips. Browser: 20 passed. Types/contracts and scoped lint pass. Logs: `/private/tmp/lisa-complete-codex-all.log`, `/private/tmp/lisa-complete-codex-browser.log`, `/private/tmp/lisa-complete-codex-final-static.log`.
+
+## Implementation evidence: T3 selected-project reader
+
+- Reviewed against T3 commit `e89abadaee70e0d73fb19a5ce40a686b1a92310e`. OAuth uses dynamic registration, PKCE and issuer/state-bound loopback callback; only exact `orchestration:read` grants are accepted. The configured environment is bound to the grant, and identity/scope are rechecked before and after buffered reads.
+- Only `t3_project_list` and explicitly selected-project `t3_thread_list` are callable. No thread contents, linked environments, links, source files or writes are exposed. Metadata is projected, bounded and paginated. Public HTTPS is DNS-pinned; explicitly configured HTTP loopback is pinned without DNS and rejects redirects.
+- T3 does not expose refresh or self-revocation for this grant. Local disconnect deletes credentials and cancels pending work; users revoke the upstream session in T3 Settings → Sharing & access. Revoked/expired upstream grants fail closed.
+- Seven T3 protocol/lifecycle/transport regressions pass, including revocation during a buffered read and disconnect during an in-flight continuation. Two browser regressions cover callback, project selection, original-task resumption exactly once, reuse, disconnect and cancellation. Shared MCP/API/type checks pass. Logs: `/private/tmp/lisa-complete-t3-tests.log`, `/private/tmp/lisa-complete-t3-service.log`, `/private/tmp/lisa-complete-t3-browser.log`.
+- These use deterministic protocol fixtures. Real-account authorization remains an explicit acceptance item; no T3 environment URL has been supplied yet.

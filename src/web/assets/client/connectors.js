@@ -18,6 +18,12 @@ const githubStatus = {
   cancelled: tr('github.status.cancelled'), failed: tr('github.status.failed'), expired: tr('github.status.expired')
 };
 const githubErrors = {
+  t3_endpoint_not_configured: tr('connector.error.t3_endpoint_not_configured'),
+  t3_reauthorization_required: tr('connector.error.t3_reauthorization_required'),
+  t3_read_scope_required: tr('connector.error.t3_read_scope_required'),
+  t3_invalid_response: tr('connector.error.t3_invalid_response'),
+  t3_project_unavailable: tr('connector.error.t3_project_unavailable'),
+  t3_resource_mismatch: tr('connector.error.t3_resource_mismatch'),
   feishu_client_not_configured: tr('connector.error.feishu_client_not_configured'),
   feishu_reauthorization_required: tr('connector.error.feishu_reauthorization_required'),
   feishu_read_scope_required: tr('connector.error.feishu_read_scope_required'),
@@ -222,6 +228,11 @@ const connectorCards = {
     name: 'Google Drive', detail: tr('connector.driveDetail'), authorizeDetail: tr('connector.driveAuthorize'),
     modes: { login: tr('connector.auth.drive') },
     account: a => a.email, open: tr('connector.openGoogle'), loginUrl: googleLoginUrl,
+  },
+  t3: {
+    name: 'T3 Code', detail: tr('connector.t3Detail'), authorizeDetail: tr('connector.t3Authorize'),
+    modes: { login: tr('connector.auth.t3') }, account: a => a.name + ' · ' + new URL(a.endpoint).host, open: tr('connector.openT3'),
+    loginUrl: u => ((u.protocol === 'https:' && !u.port) || (u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname))) && !u.hash && u.pathname === '/oauth/mcp/authorize' && u.searchParams.get('scope') === 'orchestration:read' && u.searchParams.get('resource') === u.origin + '/mcp' && u.searchParams.get('code_challenge_method') === 'S256',
   },
   linear: {
     name: 'Linear', detail: tr('connector.linearDetail'), authorizeDetail: tr('connector.linearAuthorize'),

@@ -75,6 +75,12 @@ import {
   connectorCatalogReply,
   type ConnectorProvider,
 } from "../connectors/catalog.js";
+import {
+  T3ReadonlyDriver,
+  isT3ReadRequest,
+  type T3Account,
+  type T3Resource,
+} from "../connectors/t3-driver.js";
 import type { ReadonlyDriver } from "../connectors/types.js";
 import { handleConnectorApi } from "./connectors-api.js";
 import { GitHubConnector, isGitHubReadRequest } from "../connectors/github.js";
@@ -430,6 +436,7 @@ export interface WebServerOptions {
   workspaceDrivers?: Partial<
     Record<WorkspaceId, ReadonlyDriver<WorkspaceResource, WorkspaceResource>>
   >;
+  t3Driver?: ReadonlyDriver<T3Account, T3Resource>;
   feishuDriver?: ReadonlyDriver<FeishuAccount, FeishuResource>;
   slackDriver?: ReadonlyDriver<SlackAccount, SlackResource>;
   notionDriver?: ReadonlyDriver<NotionAccount, NotionResource>;
@@ -1228,6 +1235,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         secrets: connectorSecrets,
         changed: (sessionId) =>
           broadcast({ type: "connector_connection_changed", sessionId, provider: "notion" }, null),
+        resume: resumeConnector,
+      }),
+    );
+    taskConnectors.set(
+      "t3",
+      new ReadonlyConnector({
+        home: lisaHome(),
+        driver: opts.t3Driver ?? new T3ReadonlyDriver(),
+        secrets: connectorSecrets,
+        changed: (sessionId) =>
+          broadcast({ type: "connector_connection_changed", sessionId, provider: "t3" }, null),
         resume: resumeConnector,
       }),
     );
@@ -6086,6 +6104,7 @@ self.addEventListener('fetch', (event) => {
             ...(isLinearReadRequest(message) ? ["linear" as const] : []),
             ...(isDriveReadRequest(message) ? ["google-drive" as const] : []),
             ...(isNotionReadRequest(message) ? ["notion" as const] : []),
+            ...(isT3ReadRequest(message) ? ["t3" as const] : []),
             ...(isFeishuReadRequest(message) ? ["feishu" as const] : []),
             ...(isSlackReadRequest(message) ? ["slack" as const] : []),
           ];

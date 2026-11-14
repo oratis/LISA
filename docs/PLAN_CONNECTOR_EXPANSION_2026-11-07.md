@@ -388,3 +388,13 @@ Atlassian 会累积同一应用和账号的授权，同时使用 Jira 和 Conflu
 11 个 Chromium 用例分别从聊天输入开始，经连接卡、授权、未选状态、资源确认、真实服务端 continuation 和历史刷新，核对内容只读一次、原会话只有一份结果。云端回环监听是真实的，供应商响应、EventKit 授权数据与模型在自动化测试中使用替身。另有越权、权限扩大、凭据轮换、跨用户或跨资源、文件版本变化与出站限制测试。
 
 本机已向 Todoist 官方成功注册 `data:read` 公共客户端；其响应确认回调与 `token_endpoint_auth_method=none`。EventKit 助手已在本机编译、签名并读取系统授权状态，两项均未取得完全访问。真实用户账号的资源读取及生产租户同意仍待相应账号与权限验收。
+
+### T3 Code：指定项目的线程列表
+
+候选版新增第 20 个只读来源 `t3`。在运行 LISA 的 Mac 配置 `LISA_T3_MCP_URL`，使用 T3 **Settings → Environments → Copy MCP URL**：公开 HTTPS（默认端口）或本机 `http://localhost:<port>/mcp` / `127.0.0.1` / `[::1]`。不接受局域网明文地址、重定向、URL 凭据、查询参数；地址不由模型提供。
+
+发送“查看我选定的 T3 项目最近的线程”，点击连接，在 T3 授权页选择 **Read only**，返回后勾选项目。LISA 只调用 `t3_project_list` 和指定 `projectId` 的 `t3_thread_list`，每页最多 100 条；选择器最多展示 10 页，每次项目验证最多读 10 个上游页。列表会随上游变化，不承诺分页快照一致性。线程只保留标题、ID、状态、创建/更新时间，不读取正文、源码、脚本、附件，也不调用 `thread_read`、等待、启动、批准、跨环境或写入操作。
+
+授权绑定配置地址、客户端和环境 ID；每次读取前后复核环境和严格只读 scope。凭据通过现有本机 SecretStore 保存，取消/断开阻止迟到任务提交。T3 当前没有刷新或此只读会话的自行撤销接口：**断开 LISA 连接只删除本机凭据**，上游会话请在 T3 **Settings → Sharing & access** 撤销；到期后重新授权。Auto/完整权限会被拒绝，误授予的权限也请在 T3 撤销。本机所有者专用，不开放给 Pocket、Cloud 或远程设备。
+
+协议依据：[T3 外部智能体文档](https://github.com/pingdotgg/t3code/blob/e89abadaee70e0d73fb19a5ce40a686b1a92310e/docs/user/outside-agents.md)，以及同一提交中的 OAuth、MCP 权限和项目/线程 schema。自动化覆盖已完成，真实账号验收仍待提供环境地址。
