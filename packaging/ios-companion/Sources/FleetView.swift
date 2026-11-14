@@ -38,7 +38,7 @@ private struct FleetPocketContent: View {
                 Button { model.selection = run.id } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(run.workspaceName + " · " + run.id.prefix(8))
-                        Text(run.state).font(.subheadline)
+                        Text((run.agent ?? "claude-code") + " · " + run.state + " · " + run.accessLabel).font(.subheadline)
                         Text(Date(timeIntervalSince1970: run.updatedAt / 1000), style: .relative)
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -52,7 +52,7 @@ private struct FleetPocketContent: View {
                     Text("\(macName) · Read only")
                     if let message = model.message { Text(message).font(.footnote) }
                     if let run = model.timeline.run {
-                        Text(run.workspaceName + " · " + run.state)
+                        Text(run.workspaceName + " · " + (run.agent ?? "claude-code") + " · " + run.state)
                         Text("Updated \(Date(timeIntervalSince1970: run.updatedAt / 1000).formatted())")
                             .font(.caption).foregroundStyle(.secondary)
                         if let approval = run.approval {

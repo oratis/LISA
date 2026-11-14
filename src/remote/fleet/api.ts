@@ -3,6 +3,8 @@ import path from "node:path";
 import { FleetHostService } from "./host-service.js";
 import { FleetController } from "./controller.js";
 import { LocalClaude } from "./claude.js";
+import { LocalCodex } from "./codex.js";
+import { getCurrentHub } from "../../integrations/current-hub.js";
 import {
   digest,
   FleetError,
@@ -21,7 +23,10 @@ export class FleetApi {
   readonly host: FleetHostService;
   readonly controller: FleetController;
   constructor(home: string, port: number) {
-    this.host = new FleetHostService(home, new LocalClaude(home, port));
+    this.host = new FleetHostService(home, new LocalClaude(home, port), {
+      codex: new LocalCodex(home, port),
+      observed: () => getCurrentHub()?.list() ?? [],
+    });
     // The controller private key must never resolve through a model-facing secret:// handle.
     const dir = path.join(home, "fleet");
     const secrets =
@@ -40,6 +45,8 @@ export class FleetApi {
   }
   peer(peer: FleetPeer, route: string, method: string, body: Record<string, unknown>) {
     const effective = { ...peer, control: peer.control && loadControlPolicy().remoteControl };
+    if (method === "POST" && route.endsWith("/handoff-preview"))
+      return this.host.previewHandoff(effective, uuid(route.split("/").at(-2)), body);
     return method === "GET"
       ? this.host.read(effective, route)
       : this.host.mutate(effective, route, body);

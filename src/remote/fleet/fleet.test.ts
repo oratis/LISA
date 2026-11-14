@@ -652,7 +652,7 @@ test(
             await route.continue();
           });
           await page.locator("#prompt").fill("fleet-first browser-probe");
-          await page.getByRole("button", { name: "启动 Claude Code", exact: true }).click();
+          await page.getByRole("button", { name: "启动任务", exact: true }).click();
           await expect(page.locator("#retry")).toBeEnabled();
           // A page reload drops all JS state. The receipt lookup must still use its original target.
           await page.reload();
@@ -676,7 +676,9 @@ test(
           await page.locator("#follow").click();
           await expect(page.locator("#runs pre")).toHaveText("followup 2", { timeout: 12000 });
           await page.getByRole("button", { name: "取消此任务" }).click();
-          await expect(page.locator("#runs strong")).toHaveText("已取消", { timeout: 12000 });
+          await expect(page.locator("#runs strong")).toHaveText("claude-code · 已取消", {
+            timeout: 12000,
+          });
           await expect(timeline).toContainText("第 2 轮完成");
           await expect(timeline).toContainText("任务结束 · 已取消", { timeout: 12000 });
           // A reload drops the page's cursor. The history is read again from the Mac.
