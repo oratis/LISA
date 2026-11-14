@@ -2,6 +2,7 @@ import type http from "node:http";
 import type { AgentSession } from "../integrations/types.js";
 import type { SessionInfo } from "../sessions/list.js";
 import { LISA_API_VERSION, LISA_API_VERSION_HEADER } from "./api-contract.generated.js";
+import { errorBody } from "./error-shape.js";
 
 export { LISA_API_VERSION, LISA_API_VERSION_HEADER };
 
@@ -92,7 +93,7 @@ export function writeApiError(
   extra: Record<string, unknown> = {},
 ): void {
   res.writeHead(status, { "content-type": "application/json" });
-  res.end(JSON.stringify({ ...extra, error, message }));
+  res.end(JSON.stringify(errorBody(error, extra, message)));
 }
 
 /** Wire shape of a Lisa chat session — the on-disk `path` never serializes. */

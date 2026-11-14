@@ -82,7 +82,10 @@ test("cloud hides the host import catalog, refuses skill writes and token-only s
       body: JSON.stringify({ display: "off", frequency: "lively" }),
     });
     assert.equal(expressionWrite.status, 403);
-    assert.deepEqual(await expressionWrite.json(), { error: "account_session_required" });
+    assert.deepEqual(await expressionWrite.json(), {
+      error: "account_session_required",
+      message: "Sign in to your Lisa account to do this.",
+    });
     assert.equal(
       await fs.stat(path.join(home, "expression-preferences.json")).then(
         () => true,

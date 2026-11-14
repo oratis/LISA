@@ -124,7 +124,16 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     return 1;
   }
   if (!res.ok) {
-    console.error(`pair failed (${res.status}): ${(await res.text().catch(() => "")).trim()}`);
+    // Error bodies are {error, message} JSON; older servers sent plain text.
+    const text = (await res.text().catch(() => "")).trim();
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text) as { message?: unknown; error?: unknown };
+      detail = String(parsed.message ?? parsed.error ?? text);
+    } catch {
+      /* plain text */
+    }
+    console.error(`pair failed (${res.status}): ${detail}`);
     return 1;
   }
 

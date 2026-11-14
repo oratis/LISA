@@ -670,7 +670,10 @@ test("expression preferences take JSON only and answer with typed v1 errors", as
     assert.equal(plain.status, 415);
     const invalid = await put(JSON.stringify({ display: "html", frequency: "lively" }));
     assert.equal(invalid.status, 400);
-    assert.deepEqual(JSON.parse(invalid.text), { error: "invalid_expression_preferences" });
+    // Typed v1 error: the code, plus the shared {error, message} shape (#485).
+    const invalidBody = JSON.parse(invalid.text) as { error: string; message: string };
+    assert.equal(invalidBody.error, "invalid_expression_preferences");
+    assert.equal(typeof invalidBody.message, "string");
     assert.equal((await put("{")).status, 400);
     assert.equal(
       (await put(JSON.stringify({ display: "auto", pad: "x".repeat(8192) }))).status,
@@ -678,10 +681,10 @@ test("expression preferences take JSON only and answer with typed v1 errors", as
     );
     const foreign = await put(valid, { origin: "https://untrusted.example" });
     assert.equal(foreign.status, 403);
-    assert.deepEqual(JSON.parse(foreign.text), { error: "cross_origin_request" });
+    assert.equal((JSON.parse(foreign.text) as { error: string }).error, "cross_origin_request");
     const rebound = await put(valid, { host: "attacker.example" });
     assert.equal(rebound.status, 403);
-    assert.deepEqual(JSON.parse(rebound.text), { error: "untrusted_host" });
+    assert.equal((JSON.parse(rebound.text) as { error: string }).error, "untrusted_host");
     const saved = await put(valid);
     assert.equal(saved.status, 200);
     assert.deepEqual(JSON.parse(saved.text), { display: "emoji", frequency: "lively" });
