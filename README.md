@@ -20,7 +20,7 @@
 | **Mac app** | Web workspace, menu-bar Island, local tools and agent controls | Download the signed, notarized **Lisa-Suite.dmg** from Releases; Node and the backend are bundled |
 | **CLI / self-hosted web** | Local assistant, configurable providers, knowledge, integrations and development tools | Node **22.19+** and a provider key or local model |
 | **LISA Cloud** | Account-based chat, memory and knowledge tools, without setting up a Mac | [Sign in](https://meetlisa.ai/cloud/); usage allowance and optional credits apply |
-| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | **1.2 is available on the [US App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058)**; availability varies by region |
+| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | **1.3 is available on the [US App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058)**; availability varies by region |
 
 Cloud and Mac are **separate instances**: their histories, memories and credentials do not automatically sync. Local tools need your Mac to be running and reachable. Cloud does not expose your Mac's shell, mail, coding agents or host-level push services.
 
@@ -54,9 +54,9 @@ Anthropic, OpenAI, Gemini, OpenAI-compatible services and local models are suppo
 - **Start with everyday work.** Planning, writing and idea starters open editable drafts. Chat supports streaming replies, tool activity, history, cancellation and retry.
 - **Build lasting context.** File-backed identity, memories, opinions and journals evolve across sessions within the same instance. Review and reflection can update Lisa's desires and skills.
 - **Keep a personal knowledge base.** Save links, ingest supported articles and video transcripts, search a linked wiki, and generate briefs from configured feeds.
-- **Coordinate coding agents.** Observe supported Claude Code, Codex, OpenCode and Aider sessions; dispatch work, compare worktrees and approve LISA-managed agent actions. Available controls depend on the integration and local configuration.
-- **Connect your local workflow.** Optional read-only mail, MCP tools, skills, plugins and Telegram / Discord / Slack / Feishu / iMessage / webhook channels. These require setup; a cloud login does not connect them for you.
-- **Give Lisa time to work.** Current `main` adds durable goals, routines and local watchers, with saved runs, cancellation and recovery. Tasks drafted in chat stay off until you enable them. Hosted tasks remain off by default; task side effects without an approval integration are denied.
+- **Coordinate coding agents across Macs.** Fleet starts Claude Code in separately authorized workspaces, records a reconnectable task timeline, and captures per-turn file changes in isolated worktrees. Preview a finished turn before handing it to Claude or a Codex review. Controls reflect each agent’s actual capabilities; Codex reviews only the confirmed packet. Share selected task summaries with a securely paired Pocket as a read-only viewer. See [Fleet setup and limits](docs/FLEET.md).
+- **Connect your local workflow.** Nineteen read-only source connectors cover documents, tasks, calendars, mail and design tools, including selected Feishu documents. Browse `/connectors`, authorize an account and choose what Lisa may read. Availability depends on local OAuth configuration; Apple Calendar and Reminders require a Swift toolchain. MCP servers, skills, plugins and messaging channels remain optional. See [connector setup](docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md).
+- **Give Lisa time to work.** Durable goals, routines and local watchers come with saved runs, cancellation and recovery. Tasks drafted in chat stay off until you enable them. Hosted tasks remain off by default; task side effects without an approval integration are denied.
 - **Keep her in view.** A pixel-art room, mood portraits and the Mac Island reflect real activity. Mobile widgets and Live Activities depend on a configured, reachable Mac and notification setup.
 
 ## Memory, identity and control
@@ -65,7 +65,7 @@ LISA's **SOUL** is a set of persistent files for identity, purpose, constitution
 
 Local data lives under `~/.lisa` by default. Choosing a remote model sends relevant context to that provider; local storage does not mean local-only inference. Lisa Pocket discloses recipients before AI chat and supports withdrawing permission. See the [privacy policy](https://meetlisa.ai/privacy/) and [security policy](docs/THREAT_MODEL.md).
 
-On current `main`, **Warden** adds deterministic action decisions, scoped grants, an approval inbox and audit records. It is **opt-in for web chat**:
+**Warden** provides deterministic action decisions, scoped grants, an approval inbox and audit records. It is **opt-in for web chat**:
 
 ```sh
 # Warden ships in v0.28.1 and later.
@@ -75,23 +75,21 @@ lisa approvals list
 
 Warden does not cover every execution surface and does not replace an OS sandbox. Credential handles and inbound-mail filtering provide additional building blocks; they are not a complete cloud connector platform. Read [the design and limits](docs/DESIGN_WARDEN.md) and [threat model](docs/THREAT_MODEL.md).
 
-The merged **reach-out gate** applies source controls, quiet hours, deduplication and budgets to integrated proactive senders. Approval and critical notices have special delivery rules; cloud APNs and a cross-device relay remain future work. See [the reach-out policy](docs/POLICY_REACH_OUT.md).
+The **reach-out gate** applies source controls, quiet hours, deduplication and budgets to integrated proactive senders. Approval and critical notices have special delivery rules; tenant-level cloud APNs remains future work. Account-based Mac connections already use authenticated LAN access with an encrypted cloud relay fallback; the Mac must stay awake. See [the reach-out policy](docs/POLICY_REACH_OUT.md).
 
 ## Development status
 
-The latest tagged package is **v0.28.2** ([release notes](docs/RELEASE_v0.28.2.md)). Current `main` may include later work; a merged feature is not proof that it has been deployed to Cloud or released in a native binary.
+**v0.32.0** brings the three Fleet workflow phases together with connection recovery, session renewal and the Feishu document connector ([release notes](docs/RELEASE_v0.32.0.md), [changelog](CHANGELOG.md)). GitHub Releases, npm, Homebrew, the hosted service and Pocket are separate delivery channels; merging code does not publish all of them. See the [release checklist](docs/RELEASE_CHECKLIST_v0.32.0.md) for verification and remaining gates.
 
-| Workstream | Status (iOS availability rechecked 2026-10-24) |
+| Workstream | Status |
 | --- | --- |
-| Personal-assistant entry, Cloud/Mac isolation, streaming/history fixes | Merged; native and production evidence recorded in the [execution log](docs/EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md) |
-| Warden core / credential broker / reach-out gate | Merged to `main`; Warden web-chat policy requires opt-in |
-| Durable goals, routines and watchers | [PR #403](https://github.com/oratis/LISA/pull/403), merged; hosted execution remains off by default |
-| Guarded cloud web search / fetch | [PR #404](https://github.com/oratis/LISA/pull/404), merged; off by default and disabled in production |
-| Purpose-based model routing and cost controls | [PR #407](https://github.com/oratis/LISA/pull/407), merged; estimated run budgets are an opt-in API, not a universal spending ceiling |
-| Cross-device memory, tenant-level push, calendar/mail-write connectors, computer use | Planned; not advertised as available |
-| iOS App Store | **1.2 is live**; Apple lists the release date as October 14. Production password login and streamed chat passed using the released client's source ([verification and limits](docs/REVIEW_POCKET_LIVE_2026-10-24.md)) |
-
-The [October integration audit](docs/REVIEW_OPEN_PRS_2026-10-07.md) records per-PR fixes, validation and release gates.
+| Fleet timelines, scoped Pocket viewing, per-turn diffs and agent handoffs | Implemented in [#504](https://github.com/oratis/LISA/pull/504), [#505](https://github.com/oratis/LISA/pull/505) and [#508](https://github.com/oratis/LISA/pull/508); Pocket viewing requires the new Pocket binary |
+| Mac connections and account sessions | LAN/relay recovery, session renewal/revocation, live-stream closure and actionable connection errors implemented; physical iPhone network-switch acceptance is still pending |
+| Pocket Room and iPad layouts | Updated in [#509](https://github.com/oratis/LISA/pull/509); the 1.4 source includes Room navigation, editable starters and shared Fleet tasks |
+| iOS App Store | **1.3 is live**, released November 7 and checked November 14, 2026; the source’s 1.4 features are not part of that binary |
+| Warden, durable goals, routines and watchers | Available; Warden web policy is opt-in and hosted tasks remain off by default |
+| Model routing and costs | Purpose-based routing and opt-in estimated budgets; these are not a universal spending ceiling |
+| Next steps | Pocket multi-Mac profiles, file rollback, automatic merge, full Fleet ledger cleanup, cross-device memory and write connectors remain future work |
 
 Product research on Muse and other personal assistants informs the direction, with implementation boundaries documented in the [Muse review](docs/RESEARCH_MUSE_2026-09-27.md), [always-on research](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md) and [upgrade plan](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md). LISA is an independent project.
 

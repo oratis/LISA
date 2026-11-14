@@ -7,6 +7,21 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.32.0] — 2026-11-14
+
+Fleet tasks now keep a timeline that reconnecting controllers and explicitly authorized Pocket viewers can catch up on. Review each turn's file changes in an isolated worktree, then preview exactly what a second agent will receive before handing the work over. This release also brings steadier Mac connections, renewable and revocable account sessions, selected Feishu document reads, and the source for Pocket's refreshed iPhone and iPad Room.
+
+- Fleet timelines and read-only Pocket sharing
+- Per-turn checkpoints and file diffs
+- Capability-aware controls and confirmed agent handoffs
+- Connections and account recovery
+- Selected Feishu documents
+- Pocket Room and iPad refresh
+- Upgrade and remaining limits
+- Included changes
+
+[Release notes](docs/RELEASE_v0.32.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.32.0)
+
 ## [0.31.0] — 2026-11-13
 
 Lisa on your Mac can now start and steer Claude Code in workspaces on your other paired Macs, each one granted separately. Read-only connections grow from seven apps to eighteen, cards let you pick what Lisa may read in one place, and you can browse the connectors and add public HTTPS MCP servers from the chat. Codex sessions show up again with their real titles. This release also fixes a security problem in the local web server, stops the hosted edition from running the idle dream, and corrects how cached tokens are counted for OpenAI-compatible models.
@@ -29,6 +44,16 @@ Lisa on your Mac can now start and steer Claude Code in workspaces on your other
 The Mac account window now guides you through email and verification-code sign-in, then switches to a dedicated account page with live connection status and a clear next step for connecting Lisa Pocket.
 
 [Release notes](docs/RELEASE_v0.30.3.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.30.3)
+
+## [0.30.2] — 2026-11-07
+
+The Mac account window now guides you through email and verification-code sign-in, then switches to a dedicated account page with live connection status and a clear next step for connecting Lisa Pocket.
+
+- Account and Pocket improvements
+- Included main-branch updates
+- Updating and limits
+
+[Release notes](docs/RELEASE_v0.30.2.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.30.2)
 
 ## [0.30.1] — 2026-11-07
 

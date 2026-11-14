@@ -264,7 +264,7 @@ production Worker: Cloud relay → Local network → Cloud relay when LAN was bl
 → Local network after recovery. This used real URLSession WebSockets, the actual
 CryptoKit/Node protocol and a private-IP LAN endpoint under the app's ATS settings.
 The test's transport disabled only this development Mac's unavailable proxy.
-Physical Wi-Fi ↔ cellular handoff remains **not tested** (iPhone unavailable).
+Rechecked with the v0.32.0 candidate Pocket source on November 14, 2026 against the same production Worker: all four route transitions passed again. Physical Wi-Fi ↔ cellular handoff remains **not tested** (iPhone unavailable).
 
 
 The Node integration tests boot the real Mac HTTP server and real WebSocket peers,

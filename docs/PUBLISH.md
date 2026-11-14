@@ -27,7 +27,7 @@ for a successful tag release. Never rebuild or move a published version tag.
 
 ## 0. GitHub Release artifacts (automated)
 
-Triggered by `git push --follow-tags` after `npm version`. The
+Triggered by pushing the explicit version tag on the reviewed merge commit. The
 [release.yml](../.github/workflows/release.yml) workflow does the work:
 
 1. Validates that `package.json` version matches the tag.
@@ -227,72 +227,33 @@ The formula installs Node as a dep and links the `lisa` bin into Homebrew's pref
 
 ---
 
-## 3. Cloudflare Pages — `meetlisa.ai`
+## 3. Website and hosted services
 
-Status: `meetlisa.ai` purchased. Cloudflare Pages setup pending —
-secrets not yet wired, so the deploy step in [.github/workflows/website-deploy.yml](../.github/workflows/website-deploy.yml)
-is still skipped on push. The workflow builds the Astro site on every
-push to `main` (under `website/` paths) regardless, so the build is
-known-good before flipping the deploy switch.
-
-### One-time setup (now that the domain is registered)
-
-1. **Domain.** ✅ Already purchased: `meetlisa.ai` (Cloudflare Registrar / Namecheap / Porkbun all work).
-
-2. **Create the Cloudflare Pages project.**
-   - Sign in to Cloudflare → Workers & Pages → Create → Pages → Connect to Git.
-   - Connect this repo (`oratis/LISA`).
-   - **Project name**: `lisa-website` (must match the workflow).
-   - **Production branch**: `main`.
-   - Build settings: leave empty — the GH Actions workflow handles building. (Cloudflare's own builder will be skipped because the workflow uses `pages deploy` directly.)
-
-3. **Generate API credentials.**
-   - Cloudflare → My Profile → API Tokens → Create Token → "Custom token":
-     - Permissions: `Account → Cloudflare Pages → Edit`
-     - Account Resources: `<your account>`
-     - TTL: leave default
-   - Copy the token.
-   - Find your Account ID on the Cloudflare dashboard right sidebar.
-
-4. **Add repo secrets.** GitHub → repo Settings → Secrets and variables → Actions → New repository secret:
-   - `CF_API_TOKEN` = the token from step 3
-   - `CF_ACCOUNT_ID` = the account ID from step 3
-
-5. **Push to trigger the deploy.**
-
-   ```sh
-   git commit --allow-empty -m "trigger website deploy"
-   git push origin main
-   ```
-
-   Watch GitHub Actions → "Website — build + deploy" → both jobs should complete green. The deploy job posts the live URL.
-
-6. **Custom domain.** Cloudflare Pages project → Custom domains → Set up a custom domain → enter `meetlisa.ai`. Cloudflare auto-creates the CNAME / TLS cert.
-
-### Updates
-
-After step 5, every push to `main` that touches `website/`, `src/web/assets/`, `scripts/lisa-moods.ts`, or the workflow itself triggers a re-deploy.
-
-### Local-only mode (current default)
-
-While the secrets are unset, the deploy job is skipped — the workflow only builds + uploads an artifact (handy for visually verifying changes before going public). To test the site without going public:
+Production `meetlisa.ai` is served by Cloud Run service `lisa-web` in project `oratis-491316`, region `us-central1`. The Astro build fetches GitHub releases at build time, so publish the GitHub release before rebuilding the website:
 
 ```sh
-cd website
-npm install
-npm run dev    # http://localhost:4321
+PROJECT=oratis-491316 website/deploy/deploy.sh --canary
+# Check the returned canary URL, including /, /zh-CN/ and /changelog/.
+# Promote only the verified revision; preserve any unrelated traffic tags.
 ```
 
----
+[`website/deploy/deploy.sh`](../website/deploy/deploy.sh) builds locally, then uploads the static site and its nginx configuration. A normal invocation promotes the new revision immediately; `--canary` leaves traffic on the current revision. Record the candidate and previous revision before promotion so rollback is concrete.
+
+The optional [.github/workflows/website-deploy.yml](../.github/workflows/website-deploy.yml) builds/uploads artifacts and can deploy to Cloudflare Pages if `CF_API_TOKEN` and `CF_ACCOUNT_ID` are configured. These secrets were absent at the November 14 audit. A green build in that workflow does not mean the production website changed.
+
+The account/AI backend is Cloud Run service `lisa-cloud` in the same project/region. For an existing production service, build the reviewed commit with [deploy/Dockerfile](../deploy/Dockerfile), deploy the image as a no-traffic revision **without replacing existing environment variables, secrets, volumes, account storage or scaling**, smoke-test it, then promote that specific revision. The older `deploy/deploy.sh` is a provisioning script with demo defaults; do not blindly rerun it over production.
+
+The Mac relay is the separate `lisa-relay` Cloudflare Worker at `cloud.meetlisa.ai/api/relay/*`, not the website and not Cloud Run's fallback relay. Run its checks/tests before deploying and verify account authorization plus an encrypted client round trip afterward. See [REMOTE_CONNECTIONS.md](REMOTE_CONNECTIONS.md#deployment) for deployment and the production URLSession fixture.
+
 
 ## 4. Coordination
 
-When you publish a new version, do them roughly together:
+Use the reviewed-merge/tag sequence at the top of this document. Track each channel independently:
 
-1. `git tag v0.X.Y && git push --tags`
-2. GitHub Release (auto-generated changelog from commits is fine)
-3. `npm publish --access public`
-4. Update Homebrew formula in tap repo (~5min after npm publish so users can use either)
-5. Bump website's "current version" badge (if you add one) and re-deploy
+1. GitHub artifacts, npm and the notarized Mac DMG from the version tag.
+2. Homebrew after the npm tarball is available.
+3. Backend and relay revisions after their smoke tests; retain rollback targets.
+4. Website rebuild/deploy after the GitHub release exists.
+5. Pocket TestFlight and, when its acceptance gates pass, App Store submission through the [native runbook](../packaging/ios-companion/RELEASE.md).
 
-Total time per release: ~10 minutes once the credentials are wired.
+A merged PR, successful upload or TestFlight build is not proof that every channel is public. Record pending physical-device checks and Apple review explicitly.

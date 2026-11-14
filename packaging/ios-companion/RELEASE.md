@@ -12,19 +12,11 @@ workflow runs the same thing in CI — modeled on the secret-gated pattern of
 App identity: bundle id **`ai.meetlisa.main`** (+ the widget extension
 `ai.meetlisa.main.widgets`), team **`9LH9NBX7P4`**.
 
-**Reused from Telloria** (same Apple Developer account, **wangharp@gmail.com**):
-the Apple **team `9LH9NBX7P4`** and the **App Store Connect API key** are
-account-level, so the very key that uploads Telloria uploads Lisa Pocket too —
-no new credentials. The **privacy manifest** ([`Sources/PrivacyInfo.xcprivacy`](Sources/PrivacyInfo.xcprivacy))
-mirrors Telloria's required-reason API set (UserDefaults / file-timestamp /
-boot-time / disk-space). It differs only on data collection: Telloria declares
-email / user-id / purchase / analytics because it collects them; Lisa Pocket is
-a thin client to **your own** backend and collects nothing to a Lisa server, so
-its collected-data + tracking are empty. **iOS only** — there is no Android
-target (Lisa Pocket is native SwiftUI, not the Expo app Telloria ships to both
-stores).
+The App Store record is **6784690058**. The existing team and App Store Connect API key are reused by CI. The app is native SwiftUI and iOS-only.
 
-## One-time setup (Apple account actions — only you can do these)
+The [privacy manifest](Sources/PrivacyInfo.xcprivacy) declares account-linked email, user ID, purchases, chat/content, usage and diagnostics for Cloud functionality; content also supports personalized memory. No advertising or tracking is declared. **Do not select “Data Not Collected”** in App Store Connect. Use the current [metadata and privacy checklist](APPSTORE_METADATA.md#submission-gates); a binary manifest does not update the store disclosure automatically.
+
+## One-time setup (requires the appropriate Apple account role)
 
 1. **Register the app in App Store Connect.** App Store Connect → Apps → ➕ →
    New App → iOS, bundle id `ai.meetlisa.main`, pick an SKU. (If the bundle
@@ -60,7 +52,7 @@ group once Apple finishes processing (a few minutes).
 
 ## Build + upload from CI (tag-triggered)
 
-> **Status: configured & live** (2026-07-23). All six secrets below are populated
+> **CI credentials configured** (metadata rechecked 2026-11-14). All six secrets below are populated
 > on `oratis/LISA`, so any collaborator with push access can ship a TestFlight
 > build from CI alone — no Mac, no local certificates.
 
@@ -70,7 +62,8 @@ Either of:
 
 ```sh
 # 1. Tag-triggered (preferred — leaves a versioned marker)
-git tag pocket-v1.2.0 && git push origin pocket-v1.2.0
+git tag -a pocket-v1.4.0 <reviewed-commit> -m "Lisa Pocket 1.4"
+git push origin pocket-v1.4.0
 ```
 
 ```sh
@@ -103,44 +96,17 @@ nothing sensitive lives in the repo itself.
 ## From TestFlight to App Store (public release)
 
 TestFlight (above) gets the build to Apple. Going **public on the App Store**
-adds these App Store Connect console steps (account actions — only you):
+adds these App Store Connect steps:
 
-1. **App Privacy** (App → App Privacy) — answer **"Data Not Collected"** to match
-   the privacy manifest (Lisa Pocket is a thin client to your own backend; nothing
-   reaches a Lisa-operated server). No tracking.
-2. **Reviewability — the make-or-break item.** A reviewer has no Mac running
-   `lisa serve`, so a pairing-only build looks non-functional (Guideline 2.1).
-   Ship the **LISA Cloud M0 demo** (see [docs/PLAN_CLOUD_v1.0.md](../../docs/PLAN_CLOUD_v1.0.md)):
-   a hosted instance + a seeded **demo account**, and put its credentials in
-   App Review → **App Review Information → Sign-in required → demo user/pass**,
-   with a note explaining the Mac-pairing vs cloud modes.
-3. **Encryption / export compliance** — answered by `ITSAppUsesNonExemptEncryption=false`
-   in `project.yml` (standard HTTPS only), so no per-build prompt.
-4. **Metadata** — name "Lisa Pocket", subtitle, description, keywords, **support URL**
-   + **privacy-policy URL** (required; host on meetlisa.ai), category, **age rating**,
-   and **screenshots** (6.7"/6.5" iPhone at minimum; iPad if `supportsTablet`).
-   Copy-ready text is drafted in [`APPSTORE_METADATA.md`](APPSTORE_METADATA.md).
-5. **Submit for Review** (the build from TestFlight → "Add Build" on the app version).
+1. Match **App Privacy** to the current manifest, service behavior and [metadata checklist](APPSTORE_METADATA.md#submission-gates).
+2. Verify a dedicated review account can sign in through **Use a password instead**, stream a Cloud reply and access the credit packs. Keep its credentials in App Review Information, never in this repository. The reviewer should not need a Mac, emailed OTP or a purchase to review Cloud chat.
+3. Verify export-compliance answers against the app's current encryption use. `project.yml` contains `ITSAppUsesNonExemptEncryption=false`.
+4. Update localized metadata, What's New, current iPhone/iPad screenshots, support/privacy URLs and age-rating answers. Use [APPSTORE_METADATA.md](APPSTORE_METADATA.md), not the retired shared-token demo instructions.
+5. Complete the device checklist below. Attach the processed TestFlight build to the version and submit for review. Upload, processing, submission, approval and public availability are separate states.
 
-## Sign in with Apple (LISA Cloud) — optional
+## Account sign-in
 
-The cloud onboarding path offers **Sign in with Apple** in addition to pasting a
-`?token=` URL. It's **off by default** and single-tenant — on success the server
-hands back the shared `LISA_WEB_TOKEN`, matching the M0/C2 demo (one shared soul;
-per-user isolation is deferred C3 work). Enable it on the cloud instance with:
-
-| Env | Meaning |
-| --- | --- |
-| `LISA_CLOUD_APPLE_SIGNIN` | `1`/`true` to turn the `POST /api/auth/apple` endpoint on (else 404). |
-| `LISA_CLOUD_APPLE_AUD` | Expected token audience; defaults to the app bundle id `ai.meetlisa.main`. |
-| `LISA_CLOUD_APPLE_SUBS` | Optional comma-separated allowlist of Apple `sub`s. Empty ⇒ any verified Apple ID may sign in (fine for a rate-limited demo); set it to restrict access. |
-
-The endpoint verifies the Apple identity token (issuer / audience / expiry /
-signature against `appleid.apple.com/auth/keys`) before returning the token — see
-`src/web/cloudAuth.ts`. The iOS app needs the **Sign in with Apple** capability
-(declared in `project.yml`; enable it on the App ID in the Developer portal before
-a signed build). For App Review you can leave it off and keep the token-paste demo
-flow in the review notes above, or enable it and allowlist the reviewer.
+Cloud uses per-account sessions and separate account data. Email/password, email codes and configured Apple/Google options are described in the current app and [metadata](APPSTORE_METADATA.md). The retired M0 shared-token URL is not the public app's review login. Verify enabled providers and the real review account against the deployed backend; do not copy a server master token into App Review Information.
 
 ## Honest limits
 
@@ -152,61 +118,20 @@ flow in the review notes above, or enable it and allowlist the reviewer.
 - Live push behavior is still only verifiable on a real device with `LISA_APNS_*`
   configured; everything up to the upload is scripted here.
 
-## App Review notes (paste into ASC → App Review Information)
+## App Review notes
 
-Set **Sign-in required: YES**. The ASC form insists on a user/pass pair, but
-this build signs in by pasting ONE full URL — so fill the fields in a way that
-can't mislead the reviewer, and put the real instructions in the notes:
-
-- **User name**: `see-review-notes` (a literal hint, not a credential)
-- **Password**: `<DEMO_TOKEN>` (the raw token, as a fallback reference)
-
-Fill the two placeholders from the live Cloud Run service
-(`gcloud run services describe lisa-cloud …`) — keep the real token OUT of this
-repo. **Before every submission**: `curl -s -o /dev/null -w '%{http_code}' \
-"<DEMO_URL>/?token=<DEMO_TOKEN>"` must print `200` — a `401` here is exactly the
-"unable to sign in when we entered the code" rejection (Guideline 2.1,
-2026-07-13). The 401 body is now structured JSON (`token_mismatch` /
-`token_missing`) if you need to diagnose.
-
-```
-Lisa Pocket is a companion client for "Lisa", a personal AI. It connects to
-EITHER (a) the user's own Mac running the open-source Lisa server (local +
-private — the default), OR (b) a hosted LISA Cloud instance.
-
-IMPORTANT — sign-in model: this build has NO username/password form. Access
-is granted by pasting one full URL that embeds the access token. The
-username/password fields above are placeholders; please follow these steps:
-
-  1. Open the app → Settings tab.
-  2. At the top, set "Connect to" → "LISA Cloud".
-  3. Paste this ENTIRE line (one line, nothing trimmed) into the URL field:
-       <DEMO_URL>/?token=<DEMO_TOKEN>
-  4. Tap "Connect". The app performs a live check and shows
-     "Connected to LISA Cloud." If you instead see a message about a
-     rejected token (401), the paste was truncated — please re-copy the
-     whole line including everything after "?token=".
-  5. Open the Chat tab and talk to Lisa. (First reply may take a few
-     seconds; responses stream in.)
-
-IN-APP PURCHASES: Settings tab -> "Add credits…" opens the sheet listing the
-three consumable credit packs. If a session's free allowance runs out mid-chat,
-the chat bubble offers the same "Add credits…" button directly.
-
-Lisa collects no personal data; the cloud demo is a shared, rate-limited
-instance provided for review.
-```
+Use the current [review notes](APPSTORE_METADATA.md#review-notes). Set **Sign-in required: YES**, supply the dedicated account's real username/password privately in ASC, and verify them before every submission. The app opens into Room; open Settings from Room to manage Cloud/My Mac, AI sharing, the account and credits. Review notes must describe the submitted binary, including any Pocket features absent from the currently public version.
 
 ## Pre-submission checklist (App Store, public)
 
 - [ ] ASC app record created (`ai.meetlisa.main`) + App Store Connect API key
-- [ ] LISA Cloud demo live + token filled into the review notes above
-- [ ] App Privacy → **Data Not Collected** (matches `PrivacyInfo.xcprivacy`)
+- [ ] Deployed Cloud login and streamed chat verified with the dedicated review account
+- [ ] App Privacy matches `PrivacyInfo.xcprivacy`, live Cloud behavior and `APPSTORE_METADATA.md`
 - [ ] Export compliance → covered by `ITSAppUsesNonExemptEncryption=false`
 - [ ] **Privacy-policy URL** (required) hosted on meetlisa.ai
 - [ ] Support URL
-- [ ] Screenshots — 6.7" + 6.5" iPhone (iPad if `supportsTablet`)
-- [x] Metadata — name/subtitle/description/keywords/category/age rating (drafted in [`APPSTORE_METADATA.md`](APPSTORE_METADATA.md))
+- [ ] Current iPhone/iPad screenshots accepted for the device sizes requested by ASC
+- [ ] Current metadata, What’s New and age rating verified in ASC; draft source: [`APPSTORE_METADATA.md`](APPSTORE_METADATA.md)
 - [ ] `testflight.sh` upload succeeded → build shows in TestFlight
 - [ ] **IAP reachable** — sign in with the review account on a device and confirm
       Settings → "Add credits…" lists all three packs. Then kill the network,
