@@ -73,7 +73,7 @@ flowchart LR
 | `src/tools/github.ts` | 旧版 gh 读写动作 | 不能因此声称新连接卡已经具备受限写入能力；贡献流应通过统一网关提供专门操作 |
 | `src/web/event-bus.ts`、`src/paths.ts` | Home 作用域、租户过滤事件 | 任务恢复、对象 revision 与激活锁；事件只是通知，持久化状态才是事实 |
 
-关联方案：[连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Warden](DESIGN_WARDEN.md)。新功能复用它们的身份、连接和执行边界，不另起一套账号或秘密存储。
+关联方案：[连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[跨平台设计](DESIGN_CROSS_PLATFORM_ASSISTANT_v1.0.md)、[Warden](DESIGN_WARDEN.md)。新功能复用它们的身份、连接和执行边界，不另起一套账号或秘密存储。
 
 ## 4. 执行架构
 

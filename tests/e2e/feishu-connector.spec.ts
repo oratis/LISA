@@ -155,7 +155,10 @@ test.describe("Feishu read-only connector", () => {
     const input = card.getByRole("textbox", { name: "飞书文档链接或 ID" });
     await input.fill("https://evil.example/docx/" + doc.id);
     await card.getByRole("button", { name: "添加文档", exact: true }).click();
-    await expect(card.locator(".github-error")).toContainText("请输入飞书 docx");
+    await expect(input).toHaveJSProperty(
+      "validationMessage",
+      "请输入飞书 docx 文档链接或文档 ID，暂不支持知识库及其他链接。",
+    );
     await expect(confirm).toBeDisabled();
     await input.fill("https://example.feishu.cn/docx/" + doc.id + "?from=copy");
     await card.getByRole("button", { name: "添加文档", exact: true }).click();

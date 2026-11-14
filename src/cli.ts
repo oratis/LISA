@@ -39,7 +39,7 @@ import {
   resolveDefaultModel,
   hasCredentialsForModel,
 } from "./providers/registry.js";
-import { reflectOnSession } from "./reflect.js";
+import { durableReflectionSummary, reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
 import { colorEnabled, setColorOverride } from "./cli/ansi.js";
 import { createEventRenderer, type EventRenderer } from "./cli/render.js";
@@ -727,6 +727,7 @@ async function main(): Promise<void> {
         subcommand: args.subcommand,
         serveWeb: args.serveWeb,
         reflect: args.reflect,
+        idleMinutes: args.idleMinutes,
         thinking: args.thinking,
         compaction: args.compaction,
         approval: args.approval,
@@ -734,7 +735,7 @@ async function main(): Promise<void> {
         approvalExplicit: args.approvalExplicit,
       });
       logInfo(`[runtime] ${describeRuntimePolicy(policy)}`);
-      await startWebServer({
+      const server = await startWebServer({
         policy,
         port: args.port,
         host: args.host,
@@ -758,7 +759,9 @@ async function main(): Promise<void> {
             `(open http://${args.host}:${args.port}/?token=<value> once per device)`,
         );
       }
-      // Keep alive until SIGINT.
+      // Close the server on SIGTERM/SIGINT so its shutdown hook runs, then exit.
+      const { exitOnSignals } = await import("./web/shutdown.js");
+      exitOnSignals(server, { log: logInfo });
       await new Promise<void>(() => {});
       return;
     }
@@ -864,7 +867,7 @@ async function main(): Promise<void> {
     args.prompt = args.subargs.slice(1).join(" ") || null;
     console.error(`Resumed session ${id} (${history.length} messages).`);
   } else {
-    session = await SessionStore.create({ cwd, model: args.model });
+    session = await SessionStore.create({ cwd, model: args.model, origin: "owner" });
     history = [];
   }
 
@@ -916,6 +919,9 @@ async function main(): Promise<void> {
       thinking: args.thinking,
       compaction: args.compaction,
       approval,
+      // Independent lookups in one model turn overlap instead of queueing
+      // (ignored whenever an approval mode is on).
+      parallelTools: true,
       preToolHook: async (name, input) => {
         const r = await fireHooks(
           "PreToolUse",
@@ -978,7 +984,9 @@ async function main(): Promise<void> {
         sessionId: session.id,
         model: args.model,
       });
-      await session.appendReflection(reflection.summary);
+      // The placeholder a malformed pass returns is not a summary to resume from.
+      const summary = durableReflectionSummary(reflection);
+      if (summary !== null) await session.appendReflection(summary);
       console.error(`[reflection] ${reflection.summary}`);
       for (const a of reflection.applied) console.error(`  applied: ${a}`);
       for (const s of reflection.skipped) console.error(`  skipped: ${s}`);

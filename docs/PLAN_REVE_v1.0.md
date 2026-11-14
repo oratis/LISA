@@ -1,5 +1,7 @@
 # PLAN · REVE — 自主反思与进化（v1.0）
 
+> 2026-11-07 的[记忆整理实现](REVE_MEMORY_CONSOLIDATION_2026-11-07.md)及[真实模型评测](REVE_LIVE_EVAL_2026-11-07.md)补充了纠错、来源和版本恢复的行为。
+
 > 展开 [ROADMAP_v1.0.md §5](./ROADMAP_v1.0.md) 的 Reve 支柱。基线 v0.9.1。
 > Reve = 现有 **Dreams** 系统的正式更名（idle 反思 + 会话末反思 + heartbeat + soul 演化）。
 > **本支柱最成熟，1.0 的工作是"硬化 / 可观测 / 有界 / 可度量"，不是加新能力**——

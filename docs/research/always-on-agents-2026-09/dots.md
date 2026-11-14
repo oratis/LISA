@@ -1,5 +1,7 @@
 # Dots (OpenAI) 深度调研（截至 2026-09-30）
 
+> **2026-10-24 更新指引：** 当前官方文档已支持在移动 App 创建 Dot，本文“只能桌面创建”的条目不再代表现状。当前能力与限制见 [新竞品备忘](../product-alignment-2026-10/competitors.md)及其 [D01–D07 来源](../product-alignment-2026-10/sources.md)。本文件保留 9 月快照；其余新闻、价格和安全评测数字没有全部重新验证。
+
 > 标注：[官方] OpenAI 官方博客 / Help Center / 系统卡 / 发布说明；[媒体] 主流媒体；[实测] 上手体验；[社区] HN / Slashdot / 论坛 / GitHub；[推测] 本文推断。行内引用 [n] 对应文末 Sources。
 > 说明：openai.com 对抓取工具和浏览器都弹出 Cloudflare 人机验证，本文没有去绕过它。官方博客（Introducing dots、DevDay 2026 Recap、Agents API、Australia 致歉文）读的都是 Wayback Machine 在 2026-09-29/30 的存档快照 [1][6][12][13]。Help Center 与系统卡（deploymentsafety.openai.com）是直接读的原页面 [2][3][4][7]。
 > 另有两点要说明。一是 "dots safety blog"（/index/how-we-build-safety-security-and-privacy-into-dots/）的存档快照只抓到验证页，正文没能读到。二是本会话共享的 WebSearch 配额已经用完，后期只能靠直接抓页面补查。

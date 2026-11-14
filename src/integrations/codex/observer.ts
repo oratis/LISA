@@ -24,7 +24,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
+import { codexSessionsRoot } from "./observation.js";
 import { EventEmitter } from "node:events";
 import { registerIntegration } from "../registry.js";
 import { cwdGitBranch, type GitBranchResolver } from "../git/branch.js";
@@ -46,7 +46,7 @@ export interface CodexObserverOptions extends AgentIntegrationConfig {
 const ACTIVE_WINDOW_MS = 30 * 60_000;
 const MAX_LISTED = 10;
 const DEBOUNCE_MS = 300;
-const TAIL_BYTES = 32 * 1024;
+const TAIL_BYTES = 128 * 1024;
 
 interface CodexSessionInfo {
   sessionId: string;
@@ -66,6 +66,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
   private sessionsRoot: string;
   private sessions = new Map<string, CodexSessionInfo>();
   private watcher: fs.FSWatcher | null = null;
+  private retry: NodeJS.Timeout | undefined;
   private pending = new Map<string, NodeJS.Timeout>();
   private emitFn: ((s: AgentSession) => void) | null = null;
   private readonly computeActivity: boolean;
@@ -74,10 +75,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
 
   constructor(cfg: CodexObserverOptions) {
     super();
-    const home = cfg.home
-      ? cfg.home.replace(/^~/, os.homedir())
-      : (process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex"));
-    this.sessionsRoot = path.join(home, "sessions");
+    this.sessionsRoot = codexSessionsRoot(cfg.home);
     // Tier 2: compute structural activity when visibility is "activity" or
     // "intent". At "metadata"/"off" we stay metadata-only (cheaper, and the
     // privacy-minimal default) — mirrors the claude-code observer.
@@ -87,8 +85,8 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
 
   async start(emit: (s: AgentSession) => void): Promise<void> {
     this.emitFn = emit;
-    await this.scan();
     this.attach();
+    await this.scan();
   }
 
   list(): AgentSession[] {
@@ -101,6 +99,8 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
   }
 
   async stop(): Promise<void> {
+    this.emitFn = null;
+    clearTimeout(this.retry);
     this.watcher?.close();
     this.watcher = null;
     for (const t of this.pending.values()) clearTimeout(t);
@@ -140,17 +140,34 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
       this.watcher.on("error", () => {
         this.watcher?.close();
         this.watcher = null;
+        this.retryAttach();
       });
     } catch {
-      // sessions dir absent / unwatchable → graceful no-op (Codex not installed)
+      this.retryAttach();
     }
+  }
+
+  private retryAttach(): void {
+    if (!this.emitFn) return;
+    clearTimeout(this.retry);
+    this.retry = setTimeout(() => {
+      this.attach();
+      if (this.watcher) void this.scan();
+    }, 5000).unref();
   }
 
   private async record(full: string): Promise<void> {
     try {
       const st = await fsp.stat(full);
-      if (!st.isFile()) return;
-      const { state, reason, cwd } = await parseCodexState(full);
+      if (!st.isFile() || st.mtimeMs < Date.now() - ACTIVE_WINDOW_MS) {
+        this.sessions.delete(full);
+        return;
+      }
+      const { state, reason, cwd, internalReview } = await parseCodexState(full);
+      if (internalReview) {
+        this.sessions.delete(full);
+        return;
+      }
       let activity = this.computeActivity ? await parseCodexActivity(full) : undefined;
       // O-D1: enrich with the branch derived from cwd (Codex doesn't record one).
       if (this.computeActivity && cwd) {
@@ -164,7 +181,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
       }
       this.sessions.set(full, {
         sessionId: path.basename(full, ".jsonl").replace(/^rollout-/, ""),
-        project: cwd ? path.basename(cwd) : path.basename(path.dirname(full)),
+        project: cwd ? path.basename(cwd) : "Codex",
         cwd,
         lastMtime: st.mtimeMs,
         state,
@@ -193,6 +210,15 @@ function toAgentSession(i: CodexSessionInfo): AgentSession {
 }
 
 /** Recursively collect rollout-*.jsonl under root. Empty array if absent. */
+/** A CLI-written user message that only carries setup context, not the user's words. */
+function isCliSetupMessage(content: unknown): boolean {
+  if (!Array.isArray(content) || content.length === 0) return false;
+  return content.every((part) => {
+    const text = asRecord(part)?.text;
+    return typeof text === "string" && /^\s*<(user_instructions|environment_context)>/.test(text);
+  });
+}
+
 export async function walkRollouts(root: string): Promise<string[]> {
   const out: string[] = [];
   async function rec(dir: string): Promise<void> {
@@ -212,26 +238,150 @@ export async function walkRollouts(root: string): Promise<string[]> {
   return out;
 }
 
-/**
- * Tolerant state derivation from a Codex rollout tail. Codex schema differs
- * by version; we look for the last entry's role/type and any error flag.
- * Unknown shapes → "unknown". Structural fields only.
- */
+type RolloutEntry = Record<string, unknown>;
+
+function asRecord(value: unknown): RolloutEntry | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as RolloutEntry)
+    : undefined;
+}
+
+// Current rollouts wrap messages and calls in response_item. event_msg often
+// mirrors those messages; consume only its lifecycle and usage fields so a
+// message or a tool result never becomes a second conversation entry.
+function rolloutEntry(line: string, transcript = false): RolloutEntry | undefined {
+  let row: RolloutEntry | undefined;
+  try {
+    row = asRecord(JSON.parse(line));
+  } catch {
+    return undefined;
+  }
+  if (!row) return undefined;
+  const payload = asRecord(row.payload);
+  if (row.type === "response_item") {
+    if (!payload) return undefined;
+    if (payload.type === "custom_tool_call") {
+      return { type: "function_call", name: payload.name, timestamp: row.timestamp };
+    }
+    if (payload.type === "custom_tool_call_output") {
+      return { type: "function_call_output", is_error: payload.is_error, timestamp: row.timestamp };
+    }
+    if (
+      !["message", "function_call", "function_call_output", "reasoning"].includes(
+        String(payload.type),
+      )
+    )
+      return undefined;
+    if (payload.type === "message" && payload.role === "user") {
+      const kinds = asRecord(
+        payload.internal_chat_message_metadata_passthrough,
+      )?.content_item_kinds;
+      if (
+        Array.isArray(kinds) &&
+        kinds.length &&
+        kinds.every(
+          (k) =>
+            typeof k === "string" &&
+            (k.startsWith("environments.") || k.startsWith("additional_content.")),
+        )
+      )
+        return undefined;
+      // The CLI (codex-rs) writes the same setup context without that metadata:
+      // the AGENTS.md body and the environment block arrive as plain user
+      // messages. They are not the user's words, and counting them would also
+      // inflate turn numbers and end the "found a user message" scan early.
+      if (isCliSetupMessage(payload.content)) return undefined;
+    }
+    return { ...payload, timestamp: row.timestamp };
+  }
+  if (row.type === "event_msg") {
+    if (transcript) {
+      const item = asRecord(payload?.item);
+      if (
+        payload?.type === "item_completed" &&
+        (item?.type === "UserMessage" || item?.type === "AgentMessage")
+      ) {
+        return {
+          type: "message",
+          role: item.type === "UserMessage" ? "user" : "assistant",
+          content: item.content,
+          timestamp: row.timestamp,
+          mirror: true,
+        };
+      }
+      if (payload?.type === "user_message" || payload?.type === "agent_message") {
+        return {
+          type: "message",
+          role: payload.type === "user_message" ? "user" : "assistant",
+          content: payload.message,
+          timestamp: row.timestamp,
+          mirror: true,
+        };
+      }
+    }
+    return { type: payload?.type, cumulativeUsage: asRecord(payload?.info)?.total_token_usage };
+  }
+  if (row.type === "session_meta" || row.type === "turn_context") {
+    const internalReview = asRecord(asRecord(payload?.source)?.subagent)?.other === "guardian";
+    return { type: row.type, cwd: payload?.cwd ?? row.cwd, internalReview };
+  }
+  return row;
+}
+
+function entryState(e: RolloutEntry): { state: AgentSessionState; reason: string } | undefined {
+  const type = readString(e.type);
+  const role = readString(e.role) ?? readString(asRecord(e.message)?.role);
+  if (e.is_error === true || e.error === true || type === "error")
+    return { state: "error", reason: "is_error" };
+  if (type === "task_complete" || type === "turn_aborted")
+    return { state: "waiting", reason: type };
+  if (role === "assistant" || type === "assistant" || type === "response") {
+    return { state: e.phase === "commentary" ? "working" : "waiting", reason: "assistant" };
+  }
+  if (
+    role === "user" ||
+    (type &&
+      [
+        "user",
+        "function_call",
+        "function_call_output",
+        "tool_use",
+        "task_started",
+        "reasoning",
+      ].includes(type))
+  ) {
+    return { state: "working", reason: type ?? "user" };
+  }
+  return undefined;
+}
+
 export async function parseCodexState(
   filePath: string,
-): Promise<{ state: AgentSessionState; reason: string; cwd?: string }> {
+): Promise<{ state: AgentSessionState; reason: string; cwd?: string; internalReview?: true }> {
   let tail: string;
-  let size: number;
+  let cwd: string | undefined;
+  let header: RolloutEntry | undefined;
   try {
-    const st = await fsp.stat(filePath);
-    size = st.size;
-    if (size === 0) return { state: "unknown", reason: "empty" };
     const fd = await fsp.open(filePath, "r");
     try {
-      const len = Math.min(TAIL_BYTES, size);
-      const buf = Buffer.alloc(len);
-      await fd.read(buf, 0, len, size - len);
-      tail = buf.toString("utf8");
+      const { size } = await fd.stat();
+      if (size === 0) return { state: "unknown", reason: "empty" };
+      const length = Math.min(TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      const start = size - length;
+      const { bytesRead } = await fd.read(buf, 0, length, start);
+      tail = buf.toString("utf8", 0, bytesRead);
+      if (start > 0) {
+        tail = tail.slice(tail.indexOf("\n") + 1);
+        const head = await fd.read(buf, 0, length, 0);
+        const first = buf.toString("utf8", 0, head.bytesRead).split("\n", 1)[0];
+        if (first) header = rolloutEntry(first);
+      } else {
+        header = rolloutEntry(tail.split("\n", 1)[0] ?? "");
+      }
+      if (header?.internalReview)
+        return { state: "idle", reason: "internal-review", internalReview: true };
+      cwd = readString(header?.cwd);
     } finally {
       await fd.close();
     }
@@ -239,36 +389,17 @@ export async function parseCodexState(
     return { state: "unknown", reason: "read-failed" };
   }
 
-  const lines = tail.split("\n").filter(Boolean);
-  if (size > TAIL_BYTES && lines.length) lines.shift();
-
-  let cwd: string | undefined;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    let e: Record<string, unknown>;
-    try {
-      e = JSON.parse(lines[i]!) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    if (!cwd && typeof e.cwd === "string") cwd = e.cwd;
-    if (e.is_error === true || e.error === true) return { state: "error", reason: "is_error", cwd };
-    const type = typeof e.type === "string" ? e.type : undefined;
-    const role =
-      typeof e.role === "string"
-        ? e.role
-        : typeof (e.message as { role?: unknown })?.role === "string"
-          ? (e.message as { role: string }).role
-          : undefined;
-    // Heuristic: last meaningful entry from the assistant → it just spoke
-    // (waiting for the user); from the user / a tool call → working.
-    if (role === "assistant" || type === "assistant" || type === "response") {
-      return { state: "waiting", reason: "assistant", cwd };
-    }
-    if (role === "user" || type === "user" || type === "function_call" || type === "tool_use") {
-      return { state: "working", reason: type ?? role ?? "user", cwd };
-    }
+  let decision: ReturnType<typeof entryState>;
+  let recentCwd: string | undefined;
+  for (const line of tail.split("\n").reverse()) {
+    if (!line) continue;
+    const entry = rolloutEntry(line);
+    if (!entry) continue;
+    recentCwd ??= readString(entry.cwd);
+    decision ??= entryState(entry);
+    if (decision && recentCwd) break;
   }
-  return { state: "unknown", reason: "no-decision", cwd };
+  return { ...(decision ?? { state: "unknown", reason: "no-decision" }), cwd: recentCwd ?? cwd };
 }
 
 // ── O2 (Tier 2): structural activity extraction ─────────────────────────────
@@ -330,23 +461,20 @@ export async function parseCodexActivity(filePath: string): Promise<SessionActiv
   const files: string[] = [];
   let lastCommandName: string | undefined;
   let lastError: string | undefined;
+  let cumulativeUsage: RolloutEntry | undefined;
   let inTok = 0;
   let outTok = 0;
 
   for (const line of lines) {
-    let e: unknown;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!e || typeof e !== "object") continue;
-    const obj = e as Record<string, unknown>;
+    const obj = rolloutEntry(line);
+    if (!obj) continue;
 
     if (obj.is_error === true || obj.error === true) lastError = "tool error";
 
     // Token usage may live top-level or under .message — read both shapes,
     // tolerate either snake_case spelling.
+    if (obj.type === "token_count")
+      cumulativeUsage = asRecord(obj.cumulativeUsage) ?? cumulativeUsage;
     accumulateUsage(obj.usage, obj.token_usage);
     const msg = obj.message;
     if (msg && typeof msg === "object") {
@@ -392,12 +520,16 @@ export async function parseCodexActivity(filePath: string): Promise<SessionActiv
     }
 
     if (SHELL_NAME_RE.test(name)) {
-      const argv0 = shellArgv0(args.command);
+      const argv0 = shellArgv0(args.command ?? args.cmd);
       if (argv0) lastCommandName = argv0;
     }
   }
 
-  if (turnCount === 0 && toolsInOrder.length === 0) return undefined;
+  if (cumulativeUsage) {
+    inTok = toNum(cumulativeUsage.input_tokens);
+    outTok = toNum(cumulativeUsage.output_tokens);
+  }
+  if (turnCount === 0 && toolsInOrder.length === 0 && !inTok && !outTok) return undefined;
 
   return {
     turnCount,
@@ -517,14 +649,8 @@ export async function parseCodexSteps(filePath: string): Promise<AgentStep[]> {
   let turn = 0;
 
   for (const line of lines) {
-    let e: unknown;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!e || typeof e !== "object") continue;
-    const obj = e as Record<string, unknown>;
+    const obj = rolloutEntry(line);
+    if (!obj) continue;
 
     const type = readString(obj.type);
     const ts = readString(obj.timestamp);
@@ -550,7 +676,7 @@ export async function parseCodexSteps(filePath: string): Promise<AgentStep[]> {
           }
         }
         if (!target && SHELL_NAME_RE.test(name)) {
-          const argv0 = shellArgv0(args.command);
+          const argv0 = shellArgv0(args.command ?? args.cmd);
           if (argv0) target = "$ " + argv0;
         }
       }
@@ -589,39 +715,67 @@ export async function parseCodexSteps(filePath: string): Promise<AgentStep[]> {
 // LOOPBACK-ONLY endpoint. Privacy test: transcript.test.ts.
 
 const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+const MAX_TRANSCRIPT_SCAN = 8 * 1024 * 1024;
 const MAX_TRANSCRIPT_ENTRIES = 160;
 const MAX_TEXT_CHARS = 4000;
 
 export async function parseCodexTranscript(filePath: string): Promise<AgentTranscriptEntry[]> {
-  let size: number;
-  try {
-    const st = await fsp.stat(filePath);
-    if (!st.isFile() || st.size === 0) return [];
-    size = st.size;
-  } catch {
-    return [];
-  }
-
-  let tail: string;
+  // A single tool output or embedded screenshot can exceed the initial tail.
+  // Expand only while conversation is missing, with bounded I/O even for
+  // multi-gigabyte rollouts. Never include the fragment at the start.
   try {
     const fd = await fsp.open(filePath, "r");
     try {
-      const length = Math.min(TRANSCRIPT_TAIL_BYTES, size);
-      const buf = Buffer.alloc(length);
-      await fd.read(buf, 0, length, size - length);
-      tail = buf.toString("utf8");
+      const { size } = await fd.stat();
+      let length = Math.min(TRANSCRIPT_TAIL_BYTES, size);
+      while (length > 0) {
+        const buf = Buffer.alloc(length);
+        const { bytesRead } = await fd.read(buf, 0, length, size - length);
+        const lines = buf.toString("utf8", 0, bytesRead).split("\n");
+        if (length < size) lines.shift();
+        const entries = transcriptEntries(lines);
+        if (
+          length === size ||
+          length >= MAX_TRANSCRIPT_SCAN ||
+          (entries.some((e) => e.kind === "user") && entries.some((e) => e.kind === "assistant"))
+        )
+          return entries;
+        length = Math.min(size, length * 4, MAX_TRANSCRIPT_SCAN);
+      }
     } finally {
       await fd.close();
     }
   } catch {
-    return [];
+    /* A deleted rollout has no local transcript. */
   }
+  return [];
+}
 
-  const lines = tail.split("\n").filter(Boolean);
-  if (size > TRANSCRIPT_TAIL_BYTES && lines.length > 0) lines.shift();
+function codexUserText(text: string): string {
+  const request = "\n## My request:";
+  if (text.startsWith("# Files mentioned by the user:") && text.includes(request)) {
+    return text.slice(text.indexOf(request) + request.length).trim();
+  }
+  if (text.startsWith("<send_user_message_question_reply>")) {
+    try {
+      const body = text.slice(text.indexOf(">") + 1, text.lastIndexOf("</"));
+      const replies: unknown = JSON.parse(body);
+      if (Array.isArray(replies))
+        return replies
+          .map((r) => readString(asRecord(r)?.answer))
+          .filter(Boolean)
+          .join("\n");
+    } catch {
+      /* Leave an ordinary user message intact. */
+    }
+  }
+  return text;
+}
 
+function transcriptEntries(lines: string[]): AgentTranscriptEntry[] {
   const entries: AgentTranscriptEntry[] = [];
   let turn = 0;
+  let previousMessage: { role: string; text: string; mirror: boolean } | undefined;
 
   const textOfContent = (content: unknown): string => {
     if (typeof content === "string") return content;
@@ -632,24 +786,25 @@ export async function parseCodexTranscript(filePath: string): Promise<AgentTrans
       const b = block as Record<string, unknown>;
       // Codex block spellings vary by version — text-ish blocks only.
       if (
-        (b.type === "text" || b.type === "input_text" || b.type === "output_text") &&
+        (b.type === "text" ||
+          b.type === "Text" ||
+          b.type === "input_text" ||
+          b.type === "output_text") &&
         typeof b.text === "string"
       ) {
-        parts.push(b.text);
+        // The desktop app wraps attached images in two standalone tags.
+        if (!/^<image (?:name|path)=/.test(b.text) && b.text.trim() !== "</image>")
+          parts.push(b.text);
+      } else if (b.type === "local_image" || b.type === "input_image" || b.type === "image") {
+        parts.push("[Image]");
       }
     }
     return parts.join("\n");
   };
 
   for (const line of lines) {
-    let e: unknown;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!e || typeof e !== "object") continue;
-    const obj = e as Record<string, unknown>;
+    const obj = rolloutEntry(line, true);
+    if (!obj) continue;
 
     const type = readString(obj.type);
     const ts = readString(obj.timestamp);
@@ -672,7 +827,7 @@ export async function parseCodexTranscript(filePath: string): Promise<AgentTrans
           }
         }
         if (!target && SHELL_NAME_RE.test(name)) {
-          const argv0 = shellArgv0(args.command);
+          const argv0 = shellArgv0(args.command ?? args.cmd);
           if (argv0) target = "$ " + argv0;
         }
       }
@@ -692,23 +847,33 @@ export async function parseCodexTranscript(filePath: string): Promise<AgentTrans
     }
 
     const content = (m ? m.content : undefined) ?? obj.content;
-    if (role === "user" || type === "user") {
-      const text = textOfContent(content).trim();
-      if (text) {
-        turn++;
-        entries.push({ ts, kind: "user", turn, text: text.slice(0, MAX_TEXT_CHARS) });
-      }
+    const user = role === "user" || type === "user";
+    if (!user && role !== "assistant" && type !== "assistant" && type !== "response") continue;
+    const kind = user ? "user" : "assistant";
+    const raw = textOfContent(content).trim();
+    const text = (user ? codexUserText(raw) : raw).slice(0, MAX_TEXT_CHARS);
+    if (!text) continue;
+    const mirror = obj.mirror === true;
+    if (
+      previousMessage?.role === kind &&
+      previousMessage.text === text &&
+      previousMessage.mirror !== mirror
+    ) {
+      previousMessage = undefined;
       continue;
     }
-    if (role === "assistant" || type === "assistant" || type === "response") {
-      const text = textOfContent(content).trim();
-      if (text) {
-        entries.push({ ts, kind: "assistant", turn, text: text.slice(0, MAX_TEXT_CHARS) });
-      }
-    }
+    previousMessage = { role: kind, text, mirror };
+    if (user) turn++;
+    entries.push({ ts, kind, turn, text });
   }
 
-  return entries.slice(-MAX_TRANSCRIPT_ENTRIES);
+  // Keep room for dialogue even when a coding turn produces hundreds of tools.
+  let tools = 0;
+  return entries
+    .reverse()
+    .filter((e) => e.kind !== "tool" || ++tools <= 80)
+    .slice(0, MAX_TRANSCRIPT_ENTRIES)
+    .reverse();
 }
 
 registerIntegration("codex", (cfg) => new CodexObserver(cfg));

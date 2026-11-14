@@ -79,7 +79,9 @@ test.describe("mobile app shell", () => {
     await expect(page.locator("#roomFrame")).toBeVisible();
     await page.locator("#mobileMore").click();
     await expect(page.getByRole("dialog", { name: "Explore Lisa" })).toBeVisible();
-    await expect(page.locator("#mobileMenu .nav-item")).toHaveCount(9);
+    // The nine view tiles, and the Remote Macs entry that the local owner gets.
+    await expect(page.locator("#mobileMenu #navList .nav-item")).toHaveCount(9);
+    await expect(page.locator('#mobileMenu a.nav-item[href="/fleet"]')).toBeVisible();
     await expect(page.locator("#sessionTree .tleaf").first()).toBeVisible();
     await page.screenshot({
       animations: "disabled",
@@ -127,6 +129,7 @@ test.describe("mobile app shell", () => {
   test("action sheet, search and theme work without hiding conversation controls", async ({
     page,
   }, info) => {
+    await page.emulateMedia({ colorScheme: "dark" });
     await page.goto(lisa.baseURL);
     await page.locator("#mobileToolsBtn").click();
     await page.locator("#fnTheme").click();

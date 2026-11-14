@@ -24,6 +24,8 @@ import { ensureDir } from "../fs-utils.js";
 import { soulDir } from "./paths.js";
 
 export interface FileLockOpts {
+  /** Stop waiting for the lock when the caller is cancelled. */
+  signal?: AbortSignal;
   /** Treat a held lock as abandoned after this many ms (crashed holder). */
   staleMs?: number;
   /** Give up acquiring after this many ms. */
@@ -100,6 +102,7 @@ export async function withFileLock<T>(
 
   // ── acquire ──
   for (;;) {
+    opts.signal?.throwIfAborted();
     // Write the lock body to a private temp file first, then atomically link it
     // into place. link() fails with EEXIST if the lock already exists, so
     // exclusive creation and "the lock file always has complete content" hold

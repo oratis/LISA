@@ -8,7 +8,7 @@
  * (PLAN_UI_SESSION_SHELL_v1.0):
  *   - Glass-morphism dark UI ("Nebula") with cyan (#6ad4ff) brand accent,
  *     plus a light "Calm" theme via <body data-theme="calm"> (fnbar toggle)
- *   - 3-column shell: 300px sidebar (identity card · 3×3 nav grid ·
+ *   - 3-column shell: 272px sidebar (identity card · 3×3 nav grid ·
  *     session footer) · main view stack · 320px right panel (currently
  *     wanting · agents monitor · mail · last reflection)
  *
@@ -54,7 +54,7 @@ const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
 /**
  * Content-Security-Policy for the shell (T-4).
  *
- * The page carries two inline <script> blocks, so a policy without
+ * The page carries inline <script> blocks, so a policy without
  * 'unsafe-inline' needs a per-response nonce — which is the point: with a
  * nonce, an injected <script> (from a tool result, a mail subject, an agent's
  * output rendered as Markdown) cannot run, because the attacker cannot guess
@@ -85,12 +85,14 @@ export function mainHtmlCsp(nonce: string): string {
 }
 
 /**
- * Render the shell. `nonce` is stamped on both inline <script> tags so they
+ * Render the shell. `nonce` is stamped on every inline <script> tag so they
  * survive the script-src above; omit it (the MAIN_HTML export below) and the
  * page is byte-identical to the pre-CSP version, which is what the tests and
  * any non-HTTP consumer want.
  */
-export function renderMainHtml(opts: { nonce?: string } = {}): string {
+export function renderMainHtml(
+  opts: { nonce?: string; remoteFleet?: boolean; connectorCatalog?: boolean } = {},
+): string {
   const nonceAttr = opts.nonce ? ` nonce="${opts.nonce}"` : "";
   return `<!doctype html>
 <html lang="en"><head>
@@ -108,6 +110,17 @@ export function renderMainHtml(opts: { nonce?: string } = {}): string {
 ${MAIN_CSS}
 </style>
 </head><body>
+<script${nonceAttr}>
+// Apply appearance before any visible content, including first-run overlays.
+(() => {
+  let theme = 'system';
+  try { theme = localStorage.getItem('lisa-theme'); } catch (_) {}
+  const light = theme === 'calm' || (theme !== 'nebula' && !matchMedia('(prefers-color-scheme: dark)').matches);
+  if (light) document.body.dataset.theme = 'calm';
+  document.documentElement.style.colorScheme = light ? 'light' : 'dark';
+  document.querySelector('meta[name="theme-color"]').content = light ? '#f5f6fa' : '#07091a';
+})();
+</script>
 
 <!-- Right-panel default = COLLAPSED. Applied here, before .frame is parsed,
      so a fresh profile never flashes the 3-column layout during the long tail
@@ -147,6 +160,8 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
         <p class="identity-desire" id="sbDesire" title="">—</p>
       </div>
     </div>
+
+    ${opts.remoteFleet ? '<a href="/fleet" class="nav-item" aria-label="远程 Mac · Remote Macs">远程 Mac · Remote Macs</a>' : ""}
 
     <!-- Primary navigation (3×3 tile grid view switcher — wired in setupConsole) -->
     <nav class="nav-list" id="navList">
@@ -237,9 +252,10 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
            ＋ menu, so it must not be a keyboard Tab stop. -->
       <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple tabindex="-1">
       <div class="plus-wrap">
-        <button type="button" id="plusBtn" title="Attach or screenshot" aria-label="Attach or screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button type="button" id="plusBtn" title="Chat options" aria-label="Chat options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <div class="plus-menu" id="plusMenu">
           <button type="button" id="pmAttach"><span class="g">📎</span> Attach file</button>
+          ${opts.connectorCatalog ? '<button type="button" id="pmConnectors">Browse app connectors</button>' : ""}
           <button type="button" id="pmShot"><span class="g">📷</span> Screenshot</button>
         </div>
       </div>

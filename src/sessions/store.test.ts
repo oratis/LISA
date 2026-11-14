@@ -54,6 +54,13 @@ describe("SessionStore — create / open round-trip", () => {
     },
   );
 
+  test("the creator's author scope survives resume; unmarked sessions stay unmarked", async () => {
+    for (const origin of ["owner", "channel", undefined] as const) {
+      const created = await SessionStore.create({ cwd: "/w", model: "m", origin });
+      assert.equal((await SessionStore.open(created.id)).header.origin, origin);
+    }
+  });
+
   test("open() rejects a missing session", async () => {
     await assert.rejects(SessionStore.open("does-not-exist"));
   });

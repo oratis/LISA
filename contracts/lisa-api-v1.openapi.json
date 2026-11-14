@@ -11,9 +11,462 @@
   "x-lisa-compatibility": {
     "missingVersionHeader": "accept-as-legacy-v1",
     "sameMajor": "accept-additive-fields",
-    "higherMajor": "reject-and-require-client-upgrade"
+    "higherMajor": "reject-and-require-client-upgrade",
+    "managedApproval": "An explicit boolean allow is required. Allowing also requires the current approvalId. During the migration window a deny without approvalId, as sent by older clients, still refuses the session's current request."
   },
   "paths": {
+    "/api/agent-host/v1/capabilities": {
+      "get": {
+        "operationId": "getFleetCapabilities",
+        "description": "Requires a verified agent-host v2 grant. Lists the workspace aliases authorized for this device.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetCapabilities"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs": {
+      "get": {
+        "operationId": "getFleetRuns",
+        "description": "Most recent tasks for this controller on this Mac, filtered by workspace grant.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runs"
+                  ],
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "startFleetRun",
+        "description": "Persist the intent before spawning. The operation ID identifies the run. Changing a recorded operation payload returns 409.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}": {
+      "get": {
+        "operationId": "getFleetRun",
+        "description": "Return the latest result and pending permission for this device and run.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "run"
+                  ],
+                  "properties": {
+                    "run": {
+                      "$ref": "#/components/schemas/FleetRun"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/events": {
+      "get": {
+        "operationId": "getFleetRunEvents",
+        "description": "Timeline of one task for this device, read by cursor. Each entry has a per-task sequence number that only grows. The response also carries the current run, so one read is a consistent snapshot plus the entries after the cursor. `gap` reports entries dropped by retention; `reset` reports a cursor that is ahead of this ledger, answered from the oldest retained entry.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "Last sequence number the client holds. Entries after it are returned. Defaults to 0.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size, at most 100. Only accepted together with `after`, in that order.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetRunEvents"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/messages": {
+      "post": {
+        "operationId": "sendFleetMessage",
+        "description": "Send a new turn to the waiting process.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/decisions": {
+      "post": {
+        "operationId": "decideFleetApproval",
+        "description": "Resolve exactly the displayed permission. A stale approval returns 409.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "approvalId",
+                      "allow"
+                    ],
+                    "properties": {
+                      "approvalId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "allow": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelFleetRun",
+        "description": "Stop the process group. Poll the run until the process exits.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetMutation"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/operations/{id}": {
+      "get": {
+        "operationId": "getFleetReceipt",
+        "description": "Use the original host, controller and operation ID after a lost reply. An existing receipt consumes the key even when its status is unknown.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
     "/api/agents/sessions": {
       "get": {
         "operationId": "listAgentSessions",
@@ -1531,7 +1984,18 @@
                 "google-drive",
                 "notion",
                 "slack",
-                "feishu"
+                "feishu",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1585,7 +2049,18 @@
                 "google-drive",
                 "notion",
                 "slack",
-                "feishu"
+                "feishu",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1671,7 +2146,18 @@
                 "google-drive",
                 "notion",
                 "slack",
-                "feishu"
+                "feishu",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1758,7 +2244,18 @@
                 "google-drive",
                 "notion",
                 "slack",
-                "feishu"
+                "feishu",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1833,7 +2330,18 @@
                 "google-drive",
                 "notion",
                 "slack",
-                "feishu"
+                "feishu",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -1907,7 +2415,18 @@
                 "google-drive",
                 "notion",
                 "slack",
-                "feishu"
+                "feishu",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           },
@@ -2007,7 +2526,18 @@
                 "google-drive",
                 "notion",
                 "slack",
-                "feishu"
+                "feishu",
+                "todoist",
+                "outlook-mail",
+                "outlook-calendar",
+                "onedrive",
+                "sharepoint",
+                "jira",
+                "confluence",
+                "figma",
+                "dropbox",
+                "apple-calendar",
+                "apple-reminders"
               ]
             }
           }
@@ -2017,7 +2547,7 @@
     "/api/connectors": {
       "get": {
         "operationId": "listConnectorCatalog",
-        "description": "Local loopback owner only. Restores cards for the specified local chat; cloud and paired remote clients are denied.",
+        "description": "Local loopback owner only. Lists reviewed apps and editable example read requests. No account or credential access.",
         "responses": {
           "200": {
             "description": "Local owner response. Credentials are never included.",
@@ -2039,7 +2569,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "description": "Include the non-GitHub connection cards for this local chat.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/api/skills": {
@@ -2707,6 +3248,154 @@
         }
       }
     },
+    "/api/reve": {
+      "get": {
+        "operationId": "getReveOverview",
+        "description": "Bounded, tenant-scoped reflection, memory revision and usage overview. Does not invoke a model. partial identifies unavailable sections; missing cache counts are tracked separately.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30,
+              "default": 7
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped result; Cache-Control: no-store.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveOverview"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account or trusted origin required."
+          },
+          "503": {
+            "description": "Overview unavailable."
+          }
+        }
+      }
+    },
+    "/api/reve/revisions/{id}": {
+      "get": {
+        "operationId": "getReveRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped result; Cache-Control: no-store.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveRevision"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account or trusted origin required."
+          },
+          "404": {
+            "description": "Revision not found in this tenant."
+          },
+          "503": {
+            "description": "Revision unavailable or corrupt."
+          }
+        }
+      }
+    },
+    "/api/reve/revisions/{id}/restore": {
+      "post": {
+        "operationId": "restoreReveRevision",
+        "description": "Owner-only, same-origin restore. Compare-and-swap preserves newer memory writes; a successful restore records another revision. Body limit 512 bytes.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped result; Cache-Control: no-store.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveRestoreResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON."
+          },
+          "403": {
+            "description": "Owner or trusted origin required."
+          },
+          "404": {
+            "description": "Revision not found in this tenant."
+          },
+          "409": {
+            "description": "Memory changed after the revision."
+          },
+          "413": {
+            "description": "Body exceeds 512 bytes."
+          },
+          "415": {
+            "description": "JSON content type required."
+          },
+          "503": {
+            "description": "Restore unavailable."
+          }
+        }
+      }
+    },
     "/api/reve/dreams": {
       "get": {
         "operationId": "listReveDreams",
@@ -3221,6 +3910,444 @@
           }
         }
       }
+    },
+    "/api/agent-host/v1/view/runs": {
+      "get": {
+        "operationId": "getSharedFleetRuns",
+        "description": "Securely paired Pocket only. Returns tasks explicitly shared by this Mac owner with this pairing. An unshared task is absent. Pairing revocation/replacement invalidates all its shares.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runs"
+                  ],
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetViewerRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/view/runs/{id}/events": {
+      "get": {
+        "operationId": "getSharedFleetRunEvents",
+        "description": "Securely paired Pocket only; rechecks the specific task share on every page. Returns 404 when unshared or revoked. Same cursor, retention and reset semantics as the controller timeline, with an allow-listed read-only projection.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "Last sequence number the client holds. Entries after it are returned. Defaults to 0.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size, at most 100. Only accepted together with `after`, in that order.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetViewerEvents"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/fleet/shares": {
+      "post": {
+        "operationId": "setFleetTaskShare",
+        "description": "Local owner only, protected by loopback and same-origin checks. Grant or revoke one run for an already v2 paired non-controller device. Grants bind the local host, task and pairing instance; re-pairing does not restore them.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "deviceId",
+                  "runId",
+                  "enabled"
+                ],
+                "properties": {
+                  "deviceId": {
+                    "type": "string"
+                  },
+                  "runId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Share updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "shared"
+                  ],
+                  "properties": {
+                    "shared": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/changes": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listFleetCheckpoints",
+        "description": "List the most recent 100 turn records. Missing or interrupted snapshots are explicit. Only the initiating controller with its current workspace grant can read; Pocket grants do not include source diffs.",
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "turns"
+                  ],
+                  "properties": {
+                    "turns": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "$ref": "#/components/schemas/FleetCheckpointTurn"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/changes/{turn}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "turn",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getFleetChanges",
+        "description": "List additions, modifications and deletions between the start/end worktree snapshots of a turn, including untracked files and changes committed during that turn. Renames appear as delete/add. Untracked ignored files are excluded. No rollback.",
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetChanges"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/changes/{turn}/{file}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "turn",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "file",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getFleetFileDiff",
+        "description": "Read a bounded file diff from immutable checkpoints, by file ID returned by getFleetChanges. Never runs external diff/textconv drivers or reads the live workspace for historical diffs.",
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetFileDiff"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/worktrees": {
+      "post": {
+        "operationId": "createFleetCheckpointWorkspace",
+        "description": "Local owner only. Create a detached sibling worktree from a registered repository root at HEAD, register it as a new workspace. Source uncommitted edits are not copied. Explicit controller authorization of the new workspace is required. Checkout hooks and filter drivers are disabled.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "workspaceId"
+                ],
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "root"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "root": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/checkpoints/clear": {
+      "post": {
+        "operationId": "clearFleetCheckpoints",
+        "description": "Local owner only, finished tasks only. Delete all private checkpoint objects and refs, mark the checkpoint records cleared and notify via the timeline. Retain task state, operation receipts and workspace files.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "runId"
+                ],
+                "properties": {
+                  "runId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "cleared"
+                  ],
+                  "properties": {
+                    "cleared": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3252,6 +4379,344 @@
       }
     },
     "schemas": {
+      "FleetWorkspace": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "checkpoints": {
+            "type": "boolean",
+            "description": "This registered workspace was created by LISA as an isolated Git worktree and supports per-turn checkpoints."
+          }
+        }
+      },
+      "FleetCapabilities": {
+        "type": "object",
+        "required": [
+          "version",
+          "hostId",
+          "instanceId",
+          "control",
+          "unavailable",
+          "workspaces"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "instanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "control": {
+            "type": "boolean"
+          },
+          "unavailable": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetWorkspace"
+            }
+          },
+          "features": {
+            "type": "array",
+            "description": "Optional protocol features of this host. `run-events`: the task timeline route. Absent on hosts that predate it.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "FleetRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspaceId",
+          "hostId",
+          "state",
+          "result",
+          "approval",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "approval",
+              "waiting",
+              "cancelling",
+              "completed",
+              "cancelled",
+              "failed",
+              "unknown"
+            ]
+          },
+          "result": {
+            "type": "string"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "tool",
+                  "input",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "tool": {
+                    "enum": [
+                      "Read",
+                      "Edit",
+                      "Write"
+                    ]
+                  },
+                  "input": {
+                    "type": "object"
+                  },
+                  "expiresAt": {
+                    "type": "integer",
+                    "description": "Unix time in milliseconds."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "updatedAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds of the newest timeline entry."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sequence number of the newest timeline entry. A client reads the timeline when this moves past its cursor."
+          }
+        }
+      },
+      "FleetRunEvent": {
+        "type": "object",
+        "description": "One timeline entry. Entries carry display summaries only: a bounded instruction excerpt, the tool and target of a permission request, and a bounded result excerpt. Tool input stays on the run's pending approval. Clients show an unknown `type` by name.",
+        "required": [
+          "seq",
+          "at",
+          "type"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "type": {
+            "type": "string",
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started."
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prompt": {
+            "type": "string",
+            "description": "First 500 characters of the instruction that started the turn."
+          },
+          "approvalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Path relative to the workspace, or the requested path when it lies outside."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "outcome": {
+            "enum": [
+              "allowed",
+              "denied",
+              "expired",
+              "withdrawn",
+              "invalid",
+              "cancelled"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "description": "Last 4,000 characters of the turn's result."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Tool calls the workspace policy refused during the turn."
+          },
+          "by": {
+            "enum": [
+              "controller",
+              "owner",
+              "timeout",
+              "shutdown",
+              "revoked",
+              "policy"
+            ],
+            "description": "revoked: the owner revoked the device or narrowed its grant. policy: remote control was switched off on the host."
+          },
+          "state": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "process": {
+            "enum": [
+              "exited",
+              "stopped"
+            ],
+            "description": "On orphan_released: whether the agent left by an earlier backend had already exited, or this backend stopped it."
+          }
+        }
+      },
+      "FleetRunEvents": {
+        "type": "object",
+        "required": [
+          "run",
+          "events",
+          "firstSeq",
+          "lastSeq",
+          "gap",
+          "reset",
+          "more"
+        ],
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/FleetRun"
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/FleetRunEvent"
+            }
+          },
+          "firstSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Oldest retained sequence number. The host keeps the newest 500 entries of a task."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gap": {
+            "type": "boolean",
+            "description": "Entries between the cursor and `firstSeq` are no longer retained."
+          },
+          "reset": {
+            "type": "boolean",
+            "description": "The cursor was ahead of this ledger. The client discards its copy."
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Further entries exist after this page."
+          }
+        }
+      },
+      "FleetReceipt": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "status",
+          "run"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "unknown"
+            ]
+          },
+          "run": {
+            "$ref": "#/components/schemas/FleetRun"
+          }
+        }
+      },
+      "FleetMutation": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "workspaceId",
+          "hostId"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": [
@@ -3328,6 +4793,10 @@
           "tokens": {
             "$ref": "#/components/schemas/TokenUsage"
           },
+          "approvalId": {
+            "type": "string",
+            "description": "One-time ID bound to the displayed managed permission. The decision endpoint requires it to allow; a deny without it refuses the current request (kept for older clients)."
+          },
           "pendingPermission": {
             "type": "string"
           }
@@ -3353,6 +4822,10 @@
           },
           "project": {
             "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Optional source title on the local owner’s roster."
           },
           "cwd": {
             "type": "string"
@@ -5782,7 +7255,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Display name; stable identity is id plus workspaceId for Notion, Slack and Feishu."
+            "description": "Display name; stable identity is id plus workspaceId for Notion and Slack."
           },
           "workspaceId": {
             "type": "string"
@@ -5813,7 +7286,8 @@
               "team",
               "file",
               "page",
-              "channel"
+              "channel",
+              "selected"
             ]
           },
           "timeZone": {
@@ -5894,7 +7368,7 @@
           },
           "authorizationUrl": {
             "type": "string",
-            "description": "Short-lived trusted Google, Linear or Notion authorization URL; no access token, client secret or PKCE verifier."
+            "description": "Short-lived provider authorization URL. Tokens, client secrets and PKCE verifiers are never included."
           }
         },
         "additionalProperties": false
@@ -5946,7 +7420,18 @@
               "google-drive",
               "notion",
               "slack",
-              "feishu"
+              "feishu",
+              "todoist",
+              "outlook-mail",
+              "outlook-calendar",
+              "onedrive",
+              "sharepoint",
+              "jira",
+              "confluence",
+              "figma",
+              "dropbox",
+              "apple-calendar",
+              "apple-reminders"
             ]
           }
         },
@@ -5974,7 +7459,18 @@
                     "google-drive",
                     "notion",
                     "slack",
-                    "feishu"
+                    "feishu",
+                    "todoist",
+                    "outlook-mail",
+                    "outlook-calendar",
+                    "onedrive",
+                    "sharepoint",
+                    "jira",
+                    "confluence",
+                    "figma",
+                    "dropbox",
+                    "apple-calendar",
+                    "apple-reminders"
                   ]
                 },
                 "name": {
@@ -5983,21 +7479,93 @@
                 "access": {
                   "const": "read"
                 },
+                "example": {
+                  "type": "object",
+                  "properties": {
+                    "en": {
+                      "type": "string"
+                    },
+                    "zh-CN": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "en",
+                    "zh-CN"
+                  ],
+                  "additionalProperties": false
+                },
                 "authModes": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   }
+                },
+                "workspace": {
+                  "type": "object",
+                  "properties": {
+                    "vendor": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "hint": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "vendor",
+                    "unit",
+                    "hint",
+                    "scope"
+                  ],
+                  "additionalProperties": false
+                },
+                "available": {
+                  "type": "boolean",
+                  "description": "False when this install cannot serve the source: no OAuth client configured, or the Apple EventKit reader cannot run in this build. Such sources are not routed from chat."
                 }
               },
               "required": [
                 "id",
                 "name",
                 "access",
-                "authModes"
+                "authModes",
+                "example",
+                "available"
               ],
               "additionalProperties": false
             }
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "request": {
+                  "$ref": "#/components/schemas/ConnectorRequest"
+                }
+              },
+              "required": [
+                "provider",
+                "request"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unavailableProviders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stores currently unavailable while restoring cards."
           }
         },
         "required": [
@@ -6405,6 +7973,581 @@
           }
         },
         "additionalProperties": true
+      },
+      "ReveUsage": {
+        "type": "object",
+        "required": [
+          "inputTokens",
+          "outputTokens",
+          "cacheReadTokens",
+          "cacheWriteTokens",
+          "incompleteCacheRuns"
+        ],
+        "properties": {
+          "inputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cacheReadTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cacheWriteTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "incompleteCacheRuns": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ReveRevisionSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "store",
+          "at",
+          "status",
+          "changeCount",
+          "sources",
+          "reason",
+          "canRestore"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "store": {
+            "type": "string",
+            "enum": [
+              "user",
+              "memory"
+            ]
+          },
+          "at": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "applied"
+            ]
+          },
+          "restores": {
+            "type": "string"
+          },
+          "changeCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string"
+          },
+          "canRestore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReveEvidenceQuote": {
+        "type": "object",
+        "required": [
+          "id",
+          "quote"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
+      },
+      "ReveMemoryChange": {
+        "type": "object",
+        "required": [
+          "kind",
+          "reason",
+          "evidence"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "append",
+              "replace",
+              "remove"
+            ]
+          },
+          "old_text": {
+            "type": "string"
+          },
+          "new_text": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveEvidenceQuote"
+            }
+          }
+        }
+      },
+      "ReveRevision": {
+        "type": "object",
+        "required": [
+          "id",
+          "store",
+          "createdAt",
+          "status",
+          "before",
+          "after",
+          "changes",
+          "sources",
+          "canRestore"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "store": {
+            "type": "string",
+            "enum": [
+              "user",
+              "memory"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "applied"
+            ]
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "restores": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveMemoryChange"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "sessionId",
+                "role"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool"
+                  ]
+                },
+                "at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "canRestore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReveOverview": {
+        "type": "object",
+        "required": [
+          "generatedAt",
+          "days",
+          "limits",
+          "enabled",
+          "partial",
+          "canRestore",
+          "agentRecapEnabled",
+          "reflectionEnabled",
+          "stats",
+          "memory",
+          "revisions",
+          "reflections",
+          "knowledge",
+          "desires",
+          "runs"
+        ],
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "limits": {
+            "type": "object",
+            "required": [
+              "runs",
+              "revisionsPerStore",
+              "displayedRecords"
+            ],
+            "properties": {
+              "runs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "revisionsPerStore": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "displayedRecords": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "partial": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "canRestore": {
+            "type": "boolean"
+          },
+          "agentRecapEnabled": {
+            "type": "boolean"
+          },
+          "reflectionEnabled": {
+            "type": "boolean"
+          },
+          "stats": {
+            "type": "object",
+            "required": [
+              "runs",
+              "completed",
+              "issues",
+              "changes",
+              "corrections",
+              "usage"
+            ],
+            "properties": {
+              "runs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "completed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "issues": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "changes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "corrections": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "usage": {
+                "$ref": "#/components/schemas/ReveUsage"
+              }
+            }
+          },
+          "memory": {
+            "type": "object",
+            "required": [
+              "user",
+              "memory"
+            ],
+            "properties": {
+              "user": {
+                "type": "object",
+                "required": [
+                  "bytes",
+                  "limit"
+                ],
+                "properties": {
+                  "bytes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "memory": {
+                "type": "object",
+                "required": [
+                  "bytes",
+                  "limit"
+                ],
+                "properties": {
+                  "bytes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveRevisionSummary"
+            }
+          },
+          "reflections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "sessionId",
+                "at",
+                "summary",
+                "appliedCount",
+                "skipped"
+              ],
+              "properties": {
+                "sessionId": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "appliedCount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "skipped": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "knowledge": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "sources",
+              "pages",
+              "brokenCount",
+              "orphanCount",
+              "broken",
+              "orphans"
+            ],
+            "properties": {
+              "sources": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pages": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "brokenCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "orphanCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "broken": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "from",
+                    "target"
+                  ],
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "orphans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "ref",
+                    "title"
+                  ],
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "desires": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "slug",
+                "what",
+                "why",
+                "actionable",
+                "needsUser"
+              ],
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "what": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                },
+                "actionable": {
+                  "type": "boolean"
+                },
+                "needsUser": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "at",
+                "outcome",
+                "inputTokens",
+                "outputTokens",
+                "durationMs"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string"
+                },
+                "inputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "outputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "durationMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ReveRestoreResult": {
+        "type": "object",
+        "required": [
+          "changed",
+          "revisionId"
+        ],
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "alreadyApplied": {
+            "type": "boolean"
+          }
+        }
       },
       "ReveDreamSummary": {
         "type": "object",
@@ -7478,6 +9621,341 @@
           }
         },
         "additionalProperties": true
+      },
+      "FleetViewerRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "hostId",
+          "state",
+          "result",
+          "createdAt",
+          "updatedAt",
+          "lastSeq",
+          "workspaceName",
+          "truncated",
+          "approval"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "approval",
+              "waiting",
+              "cancelling",
+              "completed",
+              "cancelled",
+              "failed",
+              "unknown"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "updatedAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds of the newest timeline entry."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sequence number of the newest timeline entry. A client reads the timeline when this moves past its cursor."
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "approval": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tool",
+                  "target",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "tool": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "number"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "Read-only Pocket projection: result excerpt, tool/target only; no prompt, input, approval ID or controller identity."
+      },
+      "FleetViewerEvent": {
+        "type": "object",
+        "description": "One timeline entry. Entries carry display summaries only: a bounded instruction excerpt, the tool and target of a permission request, and a bounded result excerpt. Tool input stays on the run's pending approval. Clients show an unknown `type` by name.",
+        "required": [
+          "seq",
+          "at",
+          "type"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "type": {
+            "type": "string",
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started."
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tool": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Path relative to the workspace, or the requested path when it lies outside."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "outcome": {
+            "enum": [
+              "allowed",
+              "denied",
+              "expired",
+              "withdrawn",
+              "invalid",
+              "cancelled"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "description": "Last 4,000 characters of the turn's result."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Tool calls the workspace policy refused during the turn."
+          },
+          "by": {
+            "enum": [
+              "controller",
+              "owner",
+              "timeout",
+              "shutdown",
+              "revoked",
+              "policy"
+            ],
+            "description": "revoked: the owner revoked the device or narrowed its grant. policy: remote control was switched off on the host."
+          },
+          "state": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FleetViewerEvents": {
+        "type": "object",
+        "required": [
+          "run",
+          "events",
+          "firstSeq",
+          "lastSeq",
+          "gap",
+          "reset",
+          "more"
+        ],
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/FleetViewerRun"
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/FleetViewerEvent"
+            }
+          },
+          "firstSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Oldest retained sequence number. The host keeps the newest 500 entries of a task."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gap": {
+            "type": "boolean",
+            "description": "Entries between the cursor and `firstSeq` are no longer retained."
+          },
+          "reset": {
+            "type": "boolean",
+            "description": "The cursor was ahead of this ledger. The client discards its copy."
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Further entries exist after this page."
+          }
+        }
+      },
+      "FleetCheckpointTurn": {
+        "type": "object",
+        "required": [
+          "turn",
+          "state",
+          "available",
+          "startedAt"
+        ],
+        "properties": {
+          "turn": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "complete",
+              "interrupted",
+              "cleared"
+            ]
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "endedAt": {
+            "type": "number"
+          }
+        }
+      },
+      "FleetChangedFile": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Opaque position in this immutable turn diff; clients never send a filesystem path."
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "A",
+              "M",
+              "D",
+              "T"
+            ]
+          }
+        }
+      },
+      "FleetChanges": {
+        "type": "object",
+        "required": [
+          "turn",
+          "state",
+          "files",
+          "concurrent"
+        ],
+        "properties": {
+          "turn": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "maxItems": 4000,
+            "items": {
+              "$ref": "#/components/schemas/FleetChangedFile"
+            }
+          },
+          "concurrent": {
+            "type": "boolean",
+            "description": "HEAD or index changed between/during captures. False does not establish exclusive agent authorship."
+          }
+        }
+      },
+      "FleetFileDiff": {
+        "type": "object",
+        "required": [
+          "turn",
+          "state",
+          "file",
+          "patch",
+          "truncated",
+          "concurrent"
+        ],
+        "properties": {
+          "turn": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/FleetChangedFile"
+          },
+          "patch": {
+            "type": "string",
+            "description": "Unified diff prefix, bounded to 64 KiB of Git output. Binary files have Git binary markers, not raw payloads."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "concurrent": {
+            "type": "boolean"
+          }
+        }
       }
     }
   }

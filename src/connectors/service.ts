@@ -134,6 +134,15 @@ export class ReadonlyConnector<A, R> {
     this.dir = path.join(options.home, "connectors", options.driver.id);
     this.now = options.now ?? Date.now;
   }
+  private async hasState() {
+    try {
+      await fs.access(path.join(this.dir, "state.json"));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
   private async state<T>(fn: (s: State<A, R>) => Promise<T> | T, write = true): Promise<T> {
     await fs.mkdir(this.dir, { recursive: true, mode: 0o700 });
     await fs.chmod(this.dir, 0o700);
@@ -220,6 +229,7 @@ export class ReadonlyConnector<A, R> {
   }
   async list(sessionId: string): Promise<ConnectionRequestView<A, R>[]> {
     if (!idOK(sessionId)) throw new ConnectorError("invalid_session");
+    if (!(await this.hasState())) return [];
     return this.state(
       (s) => s.requests.filter((r) => r.sessionId === sessionId).map((r) => this.view(r, s)),
       false,
@@ -259,6 +269,7 @@ export class ReadonlyConnector<A, R> {
   }
   /** A new user turn supersedes unfinished work; never resume an obsolete instruction. */
   async cancelSession(sessionId: string) {
+    if (!(await this.hasState())) return;
     const ids = await this.state(
       (s) =>
         s.requests.filter((r) => r.sessionId === sessionId && !terminal(r.status)).map((r) => r.id),
@@ -376,22 +387,20 @@ export class ReadonlyConnector<A, R> {
         ),
     };
   }
-  private async staged(id: string) {
-    return this.state(async (s) => {
-      const r = this.find(s, id);
-      if (r.status !== "selecting" || !r.stagedSecret || !r.account || r.expiresAt <= this.now())
-        throw new ConnectorError("request_not_selecting");
-      const token = await this.options.secrets.get(r.stagedSecret);
-      if (!token) throw new ConnectorError(this.options.driver.reauthorizationCode);
-      return {
-        credentials: this.credentials(r.stagedSecret),
-        account: r.account,
-        secret: r.stagedSecret,
-      };
-    }, false);
+  /** Read the staged grant inside the caller's state lock. */
+  private async staged(r: Request<A, R>) {
+    if (r.status !== "selecting" || !r.stagedSecret || !r.account || r.expiresAt <= this.now())
+      throw new ConnectorError("request_not_selecting");
+    const token = await this.options.secrets.get(r.stagedSecret);
+    if (!token) throw new ConnectorError(this.options.driver.reauthorizationCode);
+    return {
+      credentials: this.credentials(r.stagedSecret),
+      account: r.account,
+      secret: r.stagedSecret,
+    };
   }
   async resources(id: string, page: number, signal: AbortSignal) {
-    const { credentials } = await this.staged(id);
+    const { credentials } = await this.state((s) => this.staged(this.find(s, id)), false);
     return this.options.driver.resources(credentials, page, signal);
   }
   async confirm(id: string, names: unknown, signal: AbortSignal) {
@@ -402,12 +411,13 @@ export class ReadonlyConnector<A, R> {
       !names.every(this.options.driver.validResourceName)
     )
       throw new ConnectorError("invalid_resources");
-    const done = await this.state((s) => {
+    const staged = await this.state(async (s) => {
       const r = this.find(s, id);
-      return ["ready", "resuming", "completed"].includes(r.status);
+      if (["ready", "resuming", "completed"].includes(r.status)) return;
+      return this.staged(r);
     }, false);
-    if (done) return; // double click / replay never widens an existing grant
-    const { credentials, account, secret } = await this.staged(id);
+    if (!staged) return; // double click / replay never widens an existing grant
+    const { credentials, account, secret } = staged;
     const actual = await this.options.driver.account(credentials, signal);
     if (this.options.driver.accountId(actual) !== this.options.driver.accountId(account))
       throw new ConnectorError("connector_account_changed");
@@ -599,27 +609,29 @@ export class ReadonlyConnector<A, R> {
     };
   }
   async start() {
+    await fs.mkdir(this.dir, { recursive: true, mode: 0o700 });
     // Interrupted interactive auth requires a new click, never a silent OAuth restart.
-    await this.state((s) => {
-      for (const r of s.requests)
-        if (r.status === "authorizing") {
-          let alive = false;
-          if (r.auth) {
-            try {
-              process.kill(r.auth.pid, 0);
-              alive = true;
-            } catch {
-              /* dead owner */
+    if (await this.hasState())
+      await this.state((s) => {
+        for (const r of s.requests)
+          if (r.status === "authorizing") {
+            let alive = false;
+            if (r.auth) {
+              try {
+                process.kill(r.auth.pid, 0);
+                alive = true;
+              } catch {
+                /* dead owner */
+              }
+            }
+            if (!alive || !r.auth || this.now() - r.auth.startedAt > 10 * 60_000) {
+              r.status = "waiting";
+              delete r.userCode;
+              delete r.authorizationUrl;
+              delete r.auth;
             }
           }
-          if (!alive || !r.auth || this.now() - r.auth.startedAt > 10 * 60_000) {
-            r.status = "waiting";
-            delete r.userCode;
-            delete r.authorizationUrl;
-            delete r.auth;
-          }
-        }
-    });
+      });
     this.timer = setInterval(() => this.kick(), 5000);
     this.timer.unref();
     this.kick();
@@ -633,6 +645,7 @@ export class ReadonlyConnector<A, R> {
       });
   }
   private async drain() {
+    if (!(await this.hasState())) return;
     const runnable = await this.state(async (s) => {
       for (const r of s.requests)
         if (!terminal(r.status) && r.expiresAt <= this.now()) {

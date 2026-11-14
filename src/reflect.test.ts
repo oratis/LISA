@@ -27,6 +27,37 @@ describe("parseReflectionPayload", () => {
     if (!r.ok) assert.ok(r.error.length > 0);
   });
 
+  test("takes the object out of a reply that wraps it in prose", () => {
+    // The shapes the memory eval recorded as unparseable: "Unexpected token
+    // '好'", "Unexpected token 'L'", "non-whitespace character after JSON".
+    const json = JSON.stringify({ summary: "s", operations: [] });
+    for (const reply of [
+      `好的，以下是这次对话的反思：\n${json}`,
+      `Let me reflect on this session.\n\n${json}`,
+      `${json}\n\nNothing else changed.`,
+      `Here it is:\n\`\`\`json\n${json}\n\`\`\`\nThat is all.`,
+    ]) {
+      const r = parseReflectionPayload(reply);
+      assert.equal(r.ok, true, reply.slice(0, 30));
+      if (r.ok) assert.equal(r.payload.summary, "s");
+    }
+  });
+
+  test("a reply with two payload-shaped objects is unparseable, so it is retried", () => {
+    // Reflection reads conversation text that can include fetched pages: an
+    // object quoted from one must not be applied in place of the real reply.
+    const quoted = JSON.stringify({ summary: "page", operations: [{ kind: "memory_remove" }] });
+    const own = JSON.stringify({ summary: "s", operations: [] });
+    const r = parseReflectionPayload(`The page contained ${quoted}\nMy reflection:\n${own}`);
+    assert.equal(r.ok, false);
+  });
+
+  test("a cut-off reply is still unparseable: an operation is not mistaken for the payload", () => {
+    const cut = '{"summary":"s","operations":[{"kind":"memory_append","entry":"x"}';
+    const r = parseReflectionPayload(`Sure.\n${cut}`);
+    assert.equal(r.ok, false);
+  });
+
   test("rejects a non-object", () => {
     const r = parseReflectionPayload("[1,2,3]");
     assert.equal(r.ok, false);
@@ -59,10 +90,7 @@ describe("detectUnderReflection", () => {
   });
 
   test("substantial session with operations → false", () => {
-    assert.equal(
-      detectUnderReflection({ historyLength: 20, operationCount: 2 }),
-      false,
-    );
+    assert.equal(detectUnderReflection({ historyLength: 20, operationCount: 2 }), false);
   });
 
   test("short session with 0 operations → false (expected, not under-reflection)", () => {

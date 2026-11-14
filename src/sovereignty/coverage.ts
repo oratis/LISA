@@ -55,6 +55,10 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   embeddings: { forget: "scanned", what: "search embedding cache (evicted)" },
 
   // ── can hold user text, not scanned ──
+  admin: {
+    forget: "not_scanned",
+    what: "global operator roles, support notes, tickets and administrative audit history",
+  },
   skills: { forget: "not_scanned", what: "skill instructions and notes" },
   autonomy: { forget: "not_scanned", what: "Lisa's autonomy run log (chore and desire notes)" },
   sense: { forget: "not_scanned", what: "activity log, social drafts and uploaded media" },
@@ -81,6 +85,14 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   },
   "accounts.json": { forget: "not_scanned", what: "account records (email addresses)" },
   "devices.json": { forget: "not_scanned", what: "paired device names" },
+  "remote-link.json": {
+    forget: "not_scanned",
+    what: "paired device names and remote access grants",
+  },
+  fleet: {
+    forget: "not_scanned",
+    what: "registered workspaces, task viewer grants, timelines (instruction and result excerpts), pending tool inputs and private Git checkpoints (full file contents)",
+  },
   "otp.json": { forget: "not_scanned", what: "sign-in codes by email address" },
   "current-mood.json": { forget: "not_scanned", what: "current mood and its origin label" },
   "import-backups": { forget: "not_scanned", what: "data backed up by `lisa import --replace`" },

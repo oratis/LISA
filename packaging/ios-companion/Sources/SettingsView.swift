@@ -259,11 +259,11 @@ struct SettingsView: View {
                     Picker("Theme", selection: Binding(
                         get: { app.appearance },
                         set: { app.setAppearance($0) })) {
-                        Text("Nebula (dark)").tag("nebula")
-                        Text("Calm (light)").tag("calm")
-                        Text("Auto (system)").tag("auto")
+                        Text("System").tag("auto")
+                        Text("Light · Calm").tag("calm")
+                        Text("Dark · Nebula").tag("nebula")
                     }
-                    Text("Mirrors the Mac shell's Nebula / Calm theme pair.")
+                    Text("Follow your device automatically, or choose a look.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 

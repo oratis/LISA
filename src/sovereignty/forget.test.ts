@@ -1116,3 +1116,25 @@ describe("forget × the dream log (#423)", () => {
     assert.ok(!report.notScanned.some((s) => s.startsWith("reve")));
   });
 });
+
+test("Forget refuses linked review and processed directories across homes", async () => {
+  const foreign = fs.mkdtempSync(path.join(os.tmpdir(), "foreign-forget-"));
+  try {
+    const secret = JSON.stringify({ summary: "Private target word" });
+    fs.writeFileSync(path.join(foreign, "secret.json"), secret);
+    for (const rel of ["memory/revisions", "reflections/processed"]) {
+      fs.mkdirSync(path.join(home, path.dirname(rel)), { recursive: true });
+      fs.symlinkSync(foreign, path.join(home, rel));
+    }
+    const report = await forget("Private target");
+    assert.ok(report.errors.some((e) => e.layer === "reve"));
+    assert.ok(report.errors.some((e) => e.layer === "reflections"));
+    assert.equal(fs.readFileSync(path.join(foreign, "secret.json"), "utf8"), secret);
+    assert.equal(
+      report.locations.some((l) => l.location.includes("secret.json")),
+      false,
+    );
+  } finally {
+    fs.rmSync(foreign, { recursive: true, force: true });
+  }
+});

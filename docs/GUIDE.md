@@ -620,11 +620,20 @@ until you grant it. See `lisa consent list`.
 ```json
 {
   "mcpServers": {
+    "mslearn": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp",
+      "allowedTools": ["microsoft_docs_search"]
+    },
     "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] },
     "github":     { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..." } }
   }
 }
 ```
+
+For a built-in app, open **+ → Browse app connectors** in local-owner chat or send `/connectors`. Filter by name or example task with `/connectors Gmail`. Selecting an example adds it to the draft. Send it to start the existing scoped read flow.
+
+Custom MCP servers load on the next local Lisa startup. A plugin can supply the same entries in its `.mcp.json`. HTTP entries discover and call tools over public HTTPS on port 443, using Streamable HTTP with JSON or SSE responses. Endpoints must work without sign-in, custom headers, query strings or redirects. Use a vendor endpoint you trust. `allowedTools` selects exact tool names, an empty list exposes none, and omitting it registers all compatible tools. Each call sends its arguments to that endpoint. The example enables document search on the public [Microsoft Learn MCP server](https://learn.microsoft.com/en-us/training/support/mcp).
 
 ### `~/.lisa/heartbeat.json`
 

@@ -38,6 +38,8 @@ describe("cloud route capability boundary", () => {
   test("denies machine-control and arbitrary outbound routes, including query forms", () => {
     for (const route of [
       "/api/agents/managed/start",
+      "/api/agent-host/v1/capabilities",
+      "/api/fleet/request",
       "/api/advisor/latest",
       "/api/agents/pty/a/output",
       "/api/dispatch/status?id=secret",

@@ -101,4 +101,20 @@ LISA 应吸收这一卡片入口，并进一步明确：如果用户已经要求
 | Cloud | [能力边界](../src/web/capabilities.ts)、[Home](../src/paths.ts)、[任务宿主](../src/web/tasks-host.ts) | Cloud 启动不加载宿主插件/MCP，云任务默认关闭；不能通过开放全局配置实现租户连接器 |
 | 特定领域 | [社交连接器](../src/sense/social/connectors/plugin.ts) | 可借鉴 manifest、能力探测、批准后由宿主执行；目前是领域专用协议 |
 
-因此，本次增量应接在现有 产品对齐草案 C01（另行维护） 下，并显式依赖 B01–B03 的权限与任务恢复工作。下一步开发切分、接口、状态与验收见[实现方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)。
+因此，本次增量应接在现有 [产品对齐方案 C01](PLAN_PRODUCT_ALIGNMENT_2026-10-24.md) 下，并显式依赖 B01–B03 的权限与任务恢复工作。下一步开发切分、接口、状态与验收见[实现方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)。
+
+## 7 2026-11-08 复核与实施
+
+本轮从 `429ef5b` 的七项本机只读应用和 Linear 远程 MCP 出发。以下产品行为依据公开官方资料，未登录五款竞品实测。
+
+| 产品 | 本轮核对的产品行为 | 对 LISA 本轮范围的影响 |
+|---|---|---|
+| Cue | 每个 agent 有自己的身份与电脑，多个 agent 可在群聊中分工。[Manus 发布说明中的 Cue](https://manus.im/blog/introducing-manus-2-0) | 标明连接在哪台主机执行。跨 agent 共享凭据需要另行设计。 |
+| Grok Bot | 用户能浏览或搜索应用、从聊天卡登录，再将应用附加到任务。[Grok Bot 应用文档](https://docs.x.ai/grok-bot/computer-and-apps) | 把已支持的应用和可执行示例放进聊天输入框菜单，选择后保留草稿供编辑。 |
+| Manus | 自定义 MCP 接受服务 URL、命令或 JSON 配置。[Manus Connectors](https://www.manus.im/features/connectors) | 给已有命令型配置补上 HTTPS 入口，Home 与插件使用同一套解析。 |
+| Meta Muse | 平台要求对工具说明读写范围、敏感程度和副作用。用户可以按工具选择授权，敏感写操作逐次确认。[Muse Connector Platform](https://platform.muse.ai/docs) | 目录展示已实现的只读任务，自定义 MCP 的工具清单只决定哪些工具可见，具体调用仍沿用所在会话的动作策略。 |
+| OpenAI Dot | 插件可用性取决于账号连接、权限和任务执行环境。[Dot 的电脑与应用](https://learn.chatgpt.com/docs/dots/computers-and-apps) | 目录回答支持哪些任务。账号就绪和资源授权继续由原任务的连接卡判定。 |
+
+本轮验证使用 Microsoft Learn 的免登录 HTTPS 端点，通过 LISA 客户端完成协议握手、按名称加载一个工具并执行公开文档检索。浏览目录只读本机定义，原有连接卡即使正在等用户登录也能继续。自定义远程 OAuth、运行中重载，以及跨设备共享连接仍待实现。微软端点只覆盖公开资料场景。[Microsoft Learn MCP](https://learn.microsoft.com/en-us/training/support/mcp)
+
+下一步优先验证一个需要登录的远程 MCP。验收场景是用户在原任务中授权、选择资源并完成读取，再撤销授权并重试同一任务。届时分别记录首次读取、撤销生效和任务恢复的结果，并核对账号切换时旧授权的作用范围。

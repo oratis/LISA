@@ -53,21 +53,21 @@ export async function* jsonlLines(file: string): AsyncGenerator<string> {
 export async function tailLines(
   file: string,
   maxBytes: number = DEFAULT_TAIL_BYTES,
+  openFile: (file: string) => Promise<fsp.FileHandle> = (name) => fsp.open(name, "r"),
 ): Promise<{ lines: string[]; complete: boolean }> {
-  const st = await fsp.stat(file);
-  if (!st.isFile() || st.size === 0) return { lines: [], complete: true };
-  const length = Math.min(maxBytes, st.size);
-  const fd = await fsp.open(file, "r");
-  let text: string;
+  const fd = await openFile(file);
   try {
+    const st = await fd.stat();
+    if (!st.isFile() || st.size === 0) return { lines: [], complete: true };
+    const length = Math.min(maxBytes, st.size);
     const buf = Buffer.alloc(length);
-    await fd.read(buf, 0, length, st.size - length);
-    text = buf.toString("utf8");
+    const { bytesRead } = await fd.read(buf, 0, length, st.size - length);
+    const text = buf.toString("utf8", 0, bytesRead);
+    const lines = text.split("\n").filter(Boolean);
+    const complete = length === st.size;
+    if (!complete && lines.length > 0) lines.shift();
+    return { lines, complete };
   } finally {
     await fd.close();
   }
-  const lines = text.split("\n").filter(Boolean);
-  const complete = length === st.size;
-  if (!complete && lines.length > 0) lines.shift();
-  return { lines, complete };
 }

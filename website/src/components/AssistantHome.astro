@@ -89,15 +89,15 @@ const copy = zh ? {
   </section>
 </Base>
 <style>
-  .hero { display:grid; grid-template-columns:1.25fr 1fr; gap:clamp(2rem,5vw,4rem); align-items:center; }
+  .hero { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:clamp(2rem,5vw,4rem); align-items:center; }
   .lede { font-size:1.08rem; color:var(--muted); line-height:1.7; max-width:62ch; }
   .hero h1 { font-size:clamp(2.5rem,5.3vw,4.6rem); line-height:1.08; letter-spacing:-.04em; }
   .hero .actions { margin:1.7rem 0 1rem; }
-  .starter-panel { padding:2rem; border:1px solid var(--border); border-radius:24px; background:radial-gradient(ellipse at top right,#173139 0%,var(--panel) 70%); }
+  .starter-panel { padding:2rem; border:1px solid var(--border); border-radius:24px; background:radial-gradient(ellipse at top right,var(--hero-tint) 0%,var(--panel) 70%); box-shadow:var(--shadow); }
   .starter-panel img { border-radius:26px; display:block; margin-bottom:1.4rem; }
   .starter-panel h2 { font-size:1.2rem; }
   .starter-panel ul { list-style:none; padding:0; margin:1rem 0 0; display:grid; gap:.75rem; }
-  .starter-panel li { border:1px solid var(--border); border-radius:12px; padding:.9rem 1rem; color:var(--ink); background:#0a0b0d80; line-height:1.5; }
+  .starter-panel li { border:1px solid var(--border); border-radius:12px; padding:.9rem 1rem; color:var(--ink); background:var(--starter-bg); line-height:1.6; }
   .section { margin-top:4rem; }
   .feature-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-top:1.3rem; }
   .mode-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1.5rem; margin-top:1.3rem; }
@@ -105,4 +105,18 @@ const copy = zh ? {
   .boundary { max-width:92ch; line-height:1.7; margin-top:1.2rem; }
   .cta-band { margin-top:4rem; }
   @media(max-width:820px) { .hero,.feature-grid,.mode-grid { grid-template-columns:1fr; } .hero { gap:2rem; } .starter-panel { padding:1.5rem; } .section { margin-top:3rem; } }
+  @media(max-width:640px) {
+    .hero h1 { font-size:clamp(2rem,9vw,3rem); line-height:1.12; }
+    .hero .actions { margin:1.4rem 0 .9rem; }
+    .lede { font-size:1rem; line-height:1.7; }
+    .starter-panel { padding:1.25rem; border-radius:20px; display:grid; grid-template-columns:56px minmax(0,1fr); align-items:center; column-gap:.85rem; }
+    .starter-panel img { width:56px; height:56px; border-radius:16px; margin:0; }
+    .starter-panel h2 { font-size:1.1rem; line-height:1.3; margin:0; text-wrap:initial; }
+    .starter-panel ul { grid-column:1 / -1; gap:.6rem; }
+    .starter-panel li { padding:.8rem .9rem; font-size:.95rem; }
+    .mode-grid { gap:1.25rem; }
+    .section.mode-grid { gap:2.5rem; margin-top:3rem; }
+    .card a, .mode-grid article > a { display:inline-flex; align-items:center; min-height:44px; }
+    .card a { margin-top:.6rem; }
+  }
 </style>

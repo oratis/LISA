@@ -348,3 +348,25 @@ export async function releaseLease(
     // expiry will clean up
   }
 }
+
+/** Bounded collection read for the operator console, never called by tenant routes. */
+export async function listCollection(
+  path: string,
+  pageToken?: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<{ rows: Record<string, unknown>[]; nextPageToken?: string }> {
+  if (!/^[A-Za-z0-9-]+$/.test(path)) throw new Error("invalid collection");
+  const b = await base(fetchFn);
+  const query = new URLSearchParams({ pageSize: "1000" });
+  if (pageToken) query.set("pageToken", pageToken);
+  const response = await fetchFn(`${b.url}/${path}?${query}`, { headers: b.headers });
+  if (!response.ok) throw new FirestoreError(response.status, "collection read failed");
+  const data = (await response.json()) as {
+    documents?: { fields?: Record<string, FsValue> }[];
+    nextPageToken?: string;
+  };
+  return {
+    rows: (data.documents ?? []).map((d) => fromFsFields(d.fields ?? {})),
+    nextPageToken: data.nextPageToken,
+  };
+}

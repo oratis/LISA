@@ -110,20 +110,40 @@ export class OrchestratorHub extends EventEmitter {
 
     for (const [name, entry] of Object.entries(this.cfg.integrations)) {
       if (entry.enabled === false) continue;
-      // Resolve the effective visibility for this integration.
-      const visibility = entry.visibility ?? this.cfg.visibility;
       try {
-        const obs = await makeIntegration(name, { ...entry, visibility });
-        await obs.start((session) => {
-          this.emit("update", session);
-        });
-        this.observers.push(obs);
-        this.log(`[orchestrator] integration "${name}" started (visibility=${visibility})`);
+        await this.setObserverEnabled(name, entry);
       } catch (err) {
         // A bad/unknown integration must not take down the others.
         this.log(`[orchestrator] integration "${name}" failed: ${(err as Error).message}`);
       }
     }
+  }
+
+  hasObserver(name: string): boolean {
+    return this.observers.some((obs) => obs.agent === name);
+  }
+
+  /** Reconfigure one source without interrupting any other running agent. */
+  async setObserverEnabled(name: string, entry: AgentIntegrationConfig): Promise<void> {
+    const existing = this.observers.find((obs) => obs.agent === name);
+    if (entry.enabled === false) {
+      if (existing) {
+        await existing.stop();
+        this.observers = this.observers.filter((obs) => obs !== existing);
+      }
+      return;
+    }
+    if (existing) return;
+    const visibility = entry.visibility ?? this.cfg.visibility;
+    const observer = await makeIntegration(name, { ...entry, visibility });
+    try {
+      await observer.start((session) => this.emit("update", session));
+    } catch (err) {
+      await observer.stop().catch(() => {});
+      throw err;
+    }
+    this.observers.push(observer);
+    this.log(`[orchestrator] integration "${name}" started (visibility=${visibility})`);
   }
 
   async stop(): Promise<void> {
@@ -155,9 +175,7 @@ export class OrchestratorHub extends EventEmitter {
 }
 
 /** Load ~/.lisa/agents.json, falling back to the default config. */
-export async function loadOrchestratorConfig(
-  path: string,
-): Promise<OrchestratorConfig> {
+export async function loadOrchestratorConfig(path: string): Promise<OrchestratorConfig> {
   const fs = await import("node:fs/promises");
   let raw: string;
   try {

@@ -254,6 +254,61 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     try {
       const r = await request(srv.port, "POST", "/reflect", { body: "{}" });
       assert.notEqual(r.status, 409, "manual must not be refused by the reflection gate");
+      const stale = await request(srv.port, "POST", "/reflect", {
+        headers: { "x-lisa-session-id": "no-longer-selected" },
+        body: "{}",
+      });
+      assert.equal(stale.status, 409);
+      assert.deepEqual(JSON.parse(stale.text), { error: "session_changed" });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("the idle dream never starts on the cloud surface, whatever --idle says", async () => {
+    // deploy/entrypoint.sh passes no --no-idle, so the hosted server is handed
+    // the flag's default of 60 minutes. The dream runs on the process-level
+    // chat, which there belongs to no account: nobody is admitted or billed
+    // for it, and it stalls the event loop every signed-in user shares.
+    const { getIdleWatcher } = await import("../idle/watcher.js");
+    const dreamHandlers = () => getIdleWatcher(60 * 60_000).listenerCount("idle");
+    const before = dreamHandlers();
+
+    const cloud = buildRuntimePolicy({ ...base, idleMinutes: 60 }, { LISA_EDITION: "cloud" });
+    assert.equal(cloud.idleDream, false);
+    const hosted = await boot({ policy: cloud, idleMinutes: 60 });
+    try {
+      assert.equal(dreamHandlers(), before, "cloud policy must not arm the idle dream");
+    } finally {
+      await hosted.close();
+    }
+
+    // The same options on the Mac edition do arm it — the gate is the policy.
+    const mac = buildRuntimePolicy({ ...base, idleMinutes: 60 }, { LISA_EDITION: "mac" });
+    assert.equal(mac.idleDream, true);
+    const local = await boot({ policy: mac, idleMinutes: 60 });
+    try {
+      assert.equal(dreamHandlers(), before + 1);
+    } finally {
+      await local.close();
+    }
+  });
+
+  test("a competing reflection gets a stable conflict without leaking its lock path", async () => {
+    const { withFileLock } = await import("../soul/lock.js");
+    const { reflectionsDir } = await import("../paths.js");
+    const srv = await boot();
+    try {
+      const session = await request(srv.port, "GET", "/session");
+      const { id } = JSON.parse(session.text) as { id: string };
+      const response = await withFileLock(path.join(reflectionsDir(), `${id}.lock`), () =>
+        request(srv.port, "POST", "/reflect", {
+          body: "{}",
+          headers: { "x-lisa-session-id": id },
+        }),
+      );
+      assert.equal(response.status, 409);
+      assert.deepEqual(JSON.parse(response.text), { error: "reflection_busy" });
     } finally {
       await srv.close();
     }
@@ -324,6 +379,96 @@ describe("managed agents (Lisa Pocket delegation)", () => {
       assert.equal(names.has("read"), true);
     } finally {
       managedRegistry.start = original;
+      await srv.close();
+    }
+  });
+});
+
+describe("managed approve keeps a migration window for shipped Pocket builds", () => {
+  test("old deny without an id, new allow with an id, and allow without an id is refused", async () => {
+    const { managedRegistry } = await import("../agents/managed.js");
+    const ran: string[] = [];
+    // A real managed agent that pauses on one mutating tool, then finishes.
+    const startPaused = (label: string) =>
+      managedRegistry.start({
+        task: label,
+        cwd: TMP,
+        systemPrompt: "sys",
+        tools: [
+          {
+            name: "edit",
+            description: "edit a file",
+            inputSchema: { type: "object" as const },
+            execute: async () => {
+              ran.push(label);
+              return "edited";
+            },
+          },
+        ],
+        provider: (() => {
+          let i = 0;
+          const turns = [
+            {
+              content: [{ type: "tool_use", id: "t-" + label, name: "edit", input: {} }],
+              stopReason: "tool_use",
+            },
+            { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
+          ];
+          return {
+            name: "fake",
+            async runTurn() {
+              const t = turns[i++];
+              if (!t) throw new Error("scripted provider drained");
+              return {
+                ...t,
+                usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+              } as never;
+            },
+          };
+        })(),
+      });
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 300 && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+      assert.ok(check(), "condition timed out");
+    };
+    const pendingOf = (id: string) => managedRegistry.get(id)?.view().pending;
+    const srv = await boot();
+    const approve = (id: string, body: unknown) =>
+      request(srv.port, "POST", "/api/agents/managed/" + id + "/approve", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const allowed = startPaused("allowed"),
+      denied = startPaused("denied");
+    try {
+      await until(() => !!pendingOf(allowed.id) && !!pendingOf(denied.id));
+
+      // Allow without an id: refused, and the request stays open.
+      for (const body of [{ allow: true }, { allow: true, approvalId: "" }, { allow: "yes" }]) {
+        const r = await approve(allowed.id, body);
+        assert.equal(r.status, 400, JSON.stringify(body) + " → " + r.text);
+        assert.match(r.text, /approval_id_and_boolean_decision_required/);
+      }
+      assert.ok(pendingOf(allowed.id));
+      const stale = await approve(allowed.id, { allow: true, approvalId: "previous-request" });
+      assert.equal(stale.status, 409, stale.text);
+
+      // New clients: allow names the request that was shown.
+      const ok = await approve(allowed.id, { allow: true, approvalId: pendingOf(allowed.id)!.id });
+      assert.equal(ok.status, 200, ok.text);
+      await until(() => !pendingOf(allowed.id) && ran.includes("allowed"));
+
+      // Shipped Pocket: {"allow": false} with no id still denies the current request.
+      const legacy = await approve(denied.id, { allow: false });
+      assert.equal(legacy.status, 200, legacy.text);
+      await until(() => managedRegistry.get(denied.id)?.view().state === "waiting");
+      assert.equal(pendingOf(denied.id), undefined);
+      assert.deepEqual(ran, ["allowed"], "the denied tool must not run");
+      const nothing = await approve(denied.id, { allow: false });
+      assert.equal(nothing.status, 409, "no request is left to deny");
+    } finally {
+      managedRegistry.cancel(allowed.id);
+      managedRegistry.cancel(denied.id);
       await srv.close();
     }
   });

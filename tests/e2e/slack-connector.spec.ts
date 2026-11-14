@@ -161,6 +161,38 @@ test.describe("Slack read-only connector", () => {
     await page.locator("#input").fill(prompt);
     await page.locator("#sendBtn").click();
   }
+  test("browse read-only examples, preserve a draft, and look up apps while a card waits", async ({
+    page,
+  }) => {
+    await page.goto(base);
+    await page.locator("#sbNewSession").click();
+    const draft = page.locator("#input");
+    await draft.fill("只返回数量。");
+    await page.locator("#plusBtn").click();
+    await page.getByRole("button", { name: "浏览应用连接器", exact: true }).click();
+    const panel = page.locator("#modalBody");
+    // Every source this install can serve, and no other (workspace sources
+    // without a configured OAuth client are not offered).
+    const catalog = (await (await page.request.get(base + "/api/connectors")).json()) as {
+      connectors: Array<{ available?: boolean }>;
+    };
+    const offered = catalog.connectors.filter((c) => c.available !== false).length;
+    expect(offered).toBeGreaterThanOrEqual(7);
+    await expect(panel.getByRole("button")).toHaveCount(offered);
+    await panel.getByRole("button", { name: "Slack · 将示例加入草稿" }).click();
+    await expect(draft).toHaveValue(/只返回数量。\n总结我选定的 Slack/);
+    const card = page.getByRole("region", { name: "Slack 只读连接" });
+    await expect(card).toHaveCount(0);
+    await page.locator("#sendBtn").click();
+    await expect(card.getByRole("button", { name: "登录 Slack，只读连接" })).toBeVisible();
+    await draft.fill("/connectors Gmail");
+    await page.locator("#sendBtn").click();
+    await expect(page.locator("#log .msg").last()).toContainText("Gmail");
+    await page.reload();
+    await expect(page.locator("#log")).toContainText("Gmail");
+    await expect(card.getByRole("button", { name: "登录 Slack，只读连接" })).toBeVisible();
+    await card.getByRole("button", { name: "取消此任务" }).click();
+  });
   test("PKCE callback → unchecked channel card → original task once → reload/reuse/disconnect", async ({
     page,
   }) => {
@@ -181,6 +213,10 @@ test.describe("Slack read-only connector", () => {
     await expect(confirm).toBeDisabled();
     await expect(card.getByRole("checkbox")).toHaveCount(1);
     expect(reads).toBe(0);
+    await page.locator("#input").fill("/connectors Gmail");
+    await page.locator("#sendBtn").click();
+    await expect(page.locator("#log .msg").last()).toContainText("Gmail");
+
     await page.reload();
     await card.getByRole("checkbox", { name: "#fixture", exact: true }).check();
     await confirm.click();

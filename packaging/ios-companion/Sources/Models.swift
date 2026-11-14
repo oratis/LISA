@@ -72,6 +72,7 @@ struct SessionActivity: Codable, Hashable {
     var gitBranch: String?
     var tokens: TokenUsage?
     var pendingPermission: String?
+    var approvalId: String?
 }
 
 struct TokenUsage: Codable, Hashable {

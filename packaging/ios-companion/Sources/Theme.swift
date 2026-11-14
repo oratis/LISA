@@ -7,10 +7,11 @@ import SwiftUI
 /// `.preferredColorScheme` at the root, and every `Theme.*` follows.
 enum Theme {
     // Surfaces
-    static let bgDeep = Color(dark: 0x0A0E22, light: 0xF6F7F9)   // app background
-    static let panel  = Color(dark: 0x0F1430, light: 0xFFFFFF)   // tab/nav bars, grouped lists
+    static let bgDeep = Color(dark: 0x0A0E22, light: 0xF5F6FA)   // app background
+    static let panel  = Color(dark: 0x0F1430, light: 0xFCFCFE)   // tab/nav bars, grouped lists
     static let card   = Color(dark: 0x161C3C, light: 0xFFFFFF)   // rows, cards, banners
-    static let border = Color.primary.opacity(0.08)              // hairline (trait-aware)
+    static let border = Color(dark: 0x303858, light: 0xDDE2EC)
+    static let userBubble = Color(dark: 0x192D47, light: 0xEEF0FC)
     /// Sunken code/log wells (CodeBlock) — deep in Nebula, faint in Calm.
     static let sunken = Color(UIColor { t in
         t.userInterfaceStyle == .light
@@ -21,12 +22,12 @@ enum Theme {
     // Text
     static let text      = Color(dark: 0xE8EAFF, light: 0x1B2430)
     static let secondary = Color(dark: 0x9AA3C8, light: 0x4D5666)
-    static let tertiary  = Color(dark: 0x6B7299, light: 0x8A919F)
+    static let tertiary  = Color(dark: 0x969FBE, light: 0x5F6878)
 
     // Identity / accents
     static let accent = Color(dark: 0x6AD4FF, light: 0x4F5BD5)   // cyan / calm indigo
-    static let gold   = Color(dark: 0xFFD066, light: 0xD97706)   // Lisa identity
-    static let green  = Color(dark: 0x3DDC97, light: 0x1F9D6B)   // proactive / live / done
+    static let gold   = Color(dark: 0xFFD066, light: 0x8B5A00)   // Lisa identity
+    static let green  = Color(dark: 0x3DDC97, light: 0x147653)   // proactive / live / done
 
     // Status pips — defined in Shared/GlanceColors so the widget extension (which
     // can't see Theme) renders identical status colors (review I1/B23).
@@ -36,8 +37,8 @@ enum Theme {
     static let done    = GlanceColors.done
     static let idle    = GlanceColors.idle
 
-    static let cardRadius: CGFloat = 12
-    static let hairline: CGFloat = 0.5
+    static let cardRadius: CGFloat = 16
+    static let hairline: CGFloat = 1
 
     /// One spacing scale so padding/stack-spacing is consistent across screens
     /// (review I3 — values were ad-hoc 8/12/14/18/22/… everywhere).
@@ -141,9 +142,9 @@ struct ThemePill: View {
     var color: Color = Theme.accent
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 7).padding(.vertical, 2)
-            .background(color.opacity(0.16), in: Capsule())
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(color.opacity(0.08), in: Capsule())
             .foregroundStyle(color)
             .overlay(Capsule().strokeBorder(color.opacity(0.3), lineWidth: Theme.hairline))
     }

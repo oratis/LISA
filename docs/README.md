@@ -24,6 +24,11 @@ documentation you use or work still open. If a plan here is finished, archive it
 | [PUBLISH.md](./PUBLISH.md) | The distribution channels themselves and the one-time credentials each needs. |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Where to help, the norms, the local dev loop. |
 
+The October 24 [product research](./RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md) informs the
+[implementation proposal](./PLAN_PRODUCT_ALIGNMENT_2026-10-24.md) and the
+[cross-platform design](./DESIGN_CROSS_PLATFORM_ASSISTANT_v1.0.md). The documents record the
+v0.28.1 baseline and the features proposed at that time.
+
 ## Current plans
 
 Open work. Each plan carries its own status line — trust that over this table.
@@ -34,6 +39,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 |---|---|
 | [ROADMAP_v1.0.md](./ROADMAP_v1.0.md) | The 1.0 roadmap: four pillars (Sense · Dispatch · Reve · Model) and what "1.0" means. Never archived — it is the map. |
 | [PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md](./PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) | Approved 2026-10-02, in progress: the upgrade after the always-on agent wave — Task Engine, Warden, Home + Relay, one portable Lisa; re-prioritizes the pillars and redefines 1.0. |
+| [PLAN_PRODUCT_ALIGNMENT_2026-10-24.md](./PLAN_PRODUCT_ALIGNMENT_2026-10-24.md) | Proposed App, Mac and Web workflows, dependencies and acceptance criteria. |
 | [PLAN_PLUGINS_CONNECTORS_2026-11-07.md](./PLAN_PLUGINS_CONNECTORS_2026-11-07.md) | GitHub read-only connection preview with durable chat continuation; roadmap for a shared plugin and connector system. |
 | [PLAN_CONNECTOR_EXPANSION_2026-11-07.md](./PLAN_CONNECTOR_EXPANSION_2026-11-07.md) | Other connector research, provider-specific authorization limits, and phased Calendar / Gmail / Linear integration plan. |
 | [POLICY_REACH_OUT.md](./POLICY_REACH_OUT.md) | The Reach-out charter: when Lisa may contact you first — dial, budget, quiet hours, red lines. Replaces the autonomy roadmap's "never reach out" non-goal. |
@@ -48,6 +54,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 | [PLAN_SENSE_S2_v1.0.md](./PLAN_SENSE_S2_v1.0.md) | Ambient vision + voice — the most privacy-sensitive block; gated on the consent framework. |
 | [PLAN_SENSE_SOCIAL_CONNECTORS_v1.0.md](./PLAN_SENSE_SOCIAL_CONNECTORS_v1.0.md) | Conversational social publishing through connected accounts. |
 | [PLAN_DISPATCH_v1.0.md](./PLAN_DISPATCH_v1.0.md) | The unified command layer over local CLI agents + TakoAPI. |
+| [Remote Mac agent design](./PLAN_REMOTE_MAC_AGENTS_2026-11-08.md) | Three-Mac design, first implementation, setup and validation of Claude Code approvals and reconnects. Physical-host acceptance remains open. |
 | [PLAN_DISPATCH_D2B_v1.0.md](./PLAN_DISPATCH_D2B_v1.0.md) | D2b — an A2A adapter putting remote agents in the hub. |
 | [PLAN_DISPATCH_D4_v1.0.md](./PLAN_DISPATCH_D4_v1.0.md) | D4 — the multi-agent monitor and advisor actions. |
 | [PLAN_OBSERVER_DEEPENING_v1.0.md](./PLAN_OBSERVER_DEEPENING_v1.0.md) | Tier-2 fidelity for the codex / opencode / aider observers. |
@@ -69,6 +76,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 | Plan | Scope |
 |---|---|
 | [PLAN_HARNESS_ALIGNMENT_v1.0.md](./PLAN_HARNESS_ALIGNMENT_v1.0.md) | Aligning with the DeepSeek harness: capability seam, sandbox modes, prompt in the session log. |
+| [T3 Code agent workflow proposal](./PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md) | Fleet task timeline (first slice implemented in #473), per-task viewing from Pocket, turn-level diffs, provider capabilities, and optional T3 integration. |
 | [PLAN_KNOWLEDGE_BASE_v2.0.md](./PLAN_KNOWLEDGE_BASE_v2.0.md) | Knowledge base v2: URL ingest, the daily brief, the link graph. |
 | [PLAN_DESIRE_EVOLUTION_v1.0.md](./PLAN_DESIRE_EVOLUTION_v1.0.md) | Why her wishes didn't change with a conversation, and how to fix it without breaking sovereignty. |
 | [PLAN_MAIL_v1.0.md](./PLAN_MAIL_v1.0.md) | The read-only mailbox and its daily digest. |
@@ -112,6 +120,7 @@ several are cited by name from source comments.
 
 ## Releases
 
+- [v0.31.0 — Your other Macs, more of your apps](./RELEASE_v0.31.0.md)
 - [v0.30.0 — Yours to see, keep and undo](./RELEASE_v0.30.0.md)
 - [v0.29.1 — Mac connection security and reliability](./RELEASE_v0.29.1.md)
 - [v0.29.0 — Pocket connects to your Mac anywhere](./RELEASE_v0.29.0.md)
@@ -185,6 +194,7 @@ finding is never mistaken for a commitment.
 | Note | Subject |
 |---|---|
 | [THREAT_MODEL.md](./THREAT_MODEL.md) | The threat model: what Warden, taint, hygiene and the relay defend against, and what is shipped vs planned. |
+| [RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md](./RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md) | Manus, Dot and Muse research with a [source register and LISA capability inventory](./research/product-alignment-2026-10/README.md). |
 | [RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md](./RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md) | Grok Bot and Manus plugin/connector research, in-chat authorization, and the LISA baseline. |
 | [RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md](./RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md) | The always-on agent wave — Grok Bot, Cue, Muse, Dots and the landscape — compared against LISA. Source memos in [research/always-on-agents-2026-09/](./research/always-on-agents-2026-09/README.md). |
 | [RESEARCH_MUSE_2026-09-27.md](./RESEARCH_MUSE_2026-09-27.md) | Meta Muse, read for the Lisa Pocket 1.2 submission. |
@@ -199,6 +209,7 @@ Smaller, self-contained design write-ups that aren't plans with phases.
 
 | Note | Subject |
 |---|---|
+| [DESIGN_CROSS_PLATFORM_ASSISTANT_v1.0.md](./DESIGN_CROSS_PLATFORM_ASSISTANT_v1.0.md) | Proposed layouts and interaction states for tasks, approvals and results across App, Mac and Web. |
 | [DESIGN_COMPRESSION_GATE.md](./DESIGN_COMPRESSION_GATE.md) | The compression-gain consolidation gate. |
 | [DESIGN_CONCEPT_BENCH.md](./DESIGN_CONCEPT_BENCH.md) | A constructed-language benchmark that turns misunderstanding into a controlled variable. |
 | [DESIGN_LEXICAL_ENTRY.md](./DESIGN_LEXICAL_ENTRY.md) | Token-triggered lexical-entry memory. |

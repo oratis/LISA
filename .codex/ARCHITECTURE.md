@@ -47,6 +47,8 @@ Notion 使用 confidential OAuth + state + 预注册 localhost 回调；不假�
 
 Slack 使用注册桌面应用的 PKCE + user OAuth 和轮换令牌，无客户端密钥；四项频道读取 scope 精确匹配，实时 scope 头与刷新响应仅额外允许隐式 `identify`。`slack_read` 固定 Web API 读取所选成员频道的历史/讨论串，禁止私信、共享频道、搜索、文件和写入；不是官方 MCP 透传。默认七天、最多 31 天、100 条/40,000 字符，读取前后检查账号/频道，结果一律不可信。成员列表可省略 `is_member`，但确认和读取的频道详情必须明确为 true。配置、边界及真实验收见 `docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md` 第 11 节。
 
+工作应用连接器在 `src/connectors/workspace/` 实现。9 个云来源使用固定供应商 REST 调用，2 个 Apple 来源通过随包的 EventKit 助手在本机执行。所有来源复用 `ReadonlyConnector`，范围由供应商身份与已确认资源 ID 约束。只有已配置 OAuth 客户端的云来源（Todoist 自行注册公共客户端）和助手可运行时的 Apple 来源会在启动时注册并参与聊天路由；Lisa.app 内嵌运行时不含助手源码，Apple 来源在其中不可用。本机聊天通过 `GET /api/connectors?sessionId=…` 一次恢复非 GitHub 连接卡，GitHub 继续走兼容路由。授权配置及平台前置条件见 [接入方案第 13 节](../docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md)。
+
 飞书首批使用自建 confidential 应用的用户 OAuth（S256/state、v3 token、精确下收敛 scope），仅请求 `docx:document:readonly` 与 `offline_access`。绑定企业/用户；手动添加 docx 链接或 ID，后端确认访问后，仅开放 `feishu_read` 的 list/metadata/content。固定飞书 API、DNS 固定、无重定向，30,000 字符/1 MB 上限；读取前后复核身份和文档版本。单次刷新令牌串行持久化，断开尽力撤销 access 与 refresh；客户端密钥仅放本机私有配置/SecretStore。第八项目录，沿用统一生命周期，不开 Cloud、远程或任意 MCP。配置与验收见接入方案第 12 节。
 
 `src/agent.ts` 的核心职责：
@@ -72,7 +74,7 @@ Soul 位于动态 `lisaHome()` 下，包含：
 
 Soul 写入具备文件锁、原子写入、审计和 Git 溯源等防护。Reflection 从会话中提取结构化操作，更新日志、记忆、技能、情绪、观点和欲望，并对格式错误进行重试。
 
-关键风险不是“是否能写”，而是“同一段会话是否会被重复反思”。Cloud sweep 当前更接近按时间扫描，而不是按消息水位和幂等键消费。
+Cloud sweep 按会话的用户消息水位决定是否触发反思。反思在会话锁下按原文片段指纹去重。`memory/review.ts` 在记忆锁下核对版本、验证引用并记录可恢复快照。Rêve 页面在当前账户范围内展示记忆来源、反思和自主运行用量。
 
 ## Knowledge Base
 
@@ -157,3 +159,13 @@ flowchart TB
 ```
 
 建议保持模块化单体，先建立明确边界，再决定是否需要拆服务。
+
+## Operator console
+
+`src/admin/` provides the opt-in cloud operator console at `/console`, reverse
+proxied by `website/nginx.conf` onto `meetlisa.ai`. It has separate eight-hour
+sessions, verified-email roles, protected deployment-configured owners,
+server-side account/feature/model controls, audited idempotent credit grants,
+internal support tickets and aggregate business reports. Tenant credentials and
+private conversation contents are not exposed. See `docs/ADMIN_CONSOLE.md` for
+data definitions, limits, validation and deployment/rollback details.

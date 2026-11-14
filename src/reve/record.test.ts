@@ -384,3 +384,29 @@ describe("dream storage robustness", () => {
     await assert.rejects(readDream(wrong), CorruptDreamError);
   });
 });
+
+for (const error of [undefined, new Error("invalidated")]) {
+  test(`a ${error ? "failed" : "completed"} pass spanning Forget cannot re-persist a forgotten fact or consume reconsider notes`, async () => {
+    const { forget } = await import("../sovereignty/forget.js");
+    const { requestReconsider, takeReconsiderBlock, listReconsiderRequests } =
+      await import("./reconsider.js");
+    await withDream({ trigger: "idle" }, () =>
+      soulStore.writeIdentity("I want to keep records accurate."),
+    );
+    const source = await onlyDream();
+    const note = await requestReconsider(source.id, "Consider a shorter description.");
+    await appendMemory("user", "SecretBakerProject is underway.");
+    const pass = await beginDream({ trigger: "reflect" });
+    assert.ok(pass.id);
+    const block = await pass.run(takeReconsiderBlock);
+    assert.match(block, /shorter description/);
+    const preview = await forget("SecretBakerProject", { dryRun: true });
+    const report = await forget("SecretBakerProject", { digest: preview.digest });
+    assert.equal(report.errors.length, 0);
+    assert.equal(await pass.end({ error }), null);
+    const { dreamsDir } = await import("./paths.js");
+    assert.ok(!fs.readdirSync(dreamsDir()).some((file) => file.startsWith(pass.id!)));
+    const requests = await listReconsiderRequests(source.id);
+    assert.equal(requests.find((r) => r.id === note.id)?.status, "pending");
+  });
+}

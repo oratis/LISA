@@ -161,6 +161,13 @@ struct RosterView: View {
             .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    if app.config.remoteMac != nil {
+                        NavigationLink { FleetPocketView() } label: {
+                            Image(systemName: "desktopcomputer")
+                        }.accessibilityLabel("Shared Fleet tasks")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showDelegate = true } label: { Image(systemName: "plus") }
                         .disabled(!app.config.isConfigured)
                         .accessibilityLabel("Delegate a task")
@@ -399,7 +406,7 @@ struct NeedsYouCard: View {
         Task { @MainActor in
             defer { busy = false }
             do {
-                try await app.client.managedApprove(session.sessionId, allow: allow)
+                try await app.client.managedApprove(session.sessionId, allow: allow, approvalId: session.activity?.approvalId)
                 app.notify(allow ? "Approved." : "Denied.")
             } catch {
                 app.notify((error as? LocalizedError)?.errorDescription ?? "Action failed.", ok: false)
@@ -692,9 +699,9 @@ struct SessionDetailView: View {
                     if let pend = session.activity?.pendingPermission {
                         Text("Paused on: \(pend)").font(.subheadline)
                         HStack {
-                            Button("Approve") { act { try await app.client.managedApprove(session.sessionId, allow: true) } }
+                            Button("Approve") { act { try await app.client.managedApprove(session.sessionId, allow: true, approvalId: session.activity?.approvalId) } }
                                 .buttonStyle(.borderedProminent)
-                            Button("Deny", role: .destructive) { act { try await app.client.managedApprove(session.sessionId, allow: false) } }
+                            Button("Deny", role: .destructive) { act { try await app.client.managedApprove(session.sessionId, allow: false, approvalId: session.activity?.approvalId) } }
                         }
                     }
                     sendRow

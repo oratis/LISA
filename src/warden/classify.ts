@@ -8,6 +8,7 @@
  * hints (src/types.ts): an annotation can only ever make a tool STRICTER, and
  * an MCP server never gets to classify itself as harmless.
  */
+import { workspaceIds, toolName } from "../connectors/workspace/catalog.js";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -899,6 +900,21 @@ export function classifyToolCall(
   const sensitive = (p: string) => isSensitivePath(p, ctx.sensitivePaths, ctx.homeDir);
 
   if (name.startsWith(MCP_PREFIX)) return classifyMcp(name, rec, tool, base, ctx);
+
+  const workspaceProvider = workspaceIds.find((id) => toolName(id) === name);
+  if (workspaceProvider) {
+    const operation = str(rec.operation);
+    return {
+      ...base,
+      category: operation === "read" || operation === "list" ? "read" : "write",
+      connector: workspaceProvider,
+      method: operation,
+      targets: [str(rec.resourceId) ?? "selected resources"],
+      egress: !workspaceProvider.startsWith("apple-"),
+      destination: "fixed",
+      taintSource: true,
+    };
+  }
 
   if (
     name === "gmail_read" ||

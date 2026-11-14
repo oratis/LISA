@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
+import type { StoredMessage } from "../types.js";
 import type { Provider, ProviderResult, ProviderRunOpts, ProviderUsage } from "./types.js";
 
 /**
@@ -25,15 +26,21 @@ export class AnthropicProvider implements Provider {
     // baseURL overrides the default https://api.anthropic.com — used to
     // route through an Anthropic-compatible proxy (one-api, openrouter,
     // self-hosted relay) when direct access is blocked.
-    // authToken sends `Authorization: Bearer …` instead of the default
-    // `x-api-key` header — the sanctioned path for an Anthropic-compatible
-    // LLM gateway / proxy (matches Claude Code's ANTHROPIC_AUTH_TOKEN). When
-    // set it takes precedence over apiKey, so callers pass one or the other.
+    // authToken sends `Authorization: Bearer …` instead of the `x-api-key`
+    // header — the sanctioned path for an Anthropic-compatible LLM gateway /
+    // proxy (matches Claude Code's ANTHROPIC_AUTH_TOKEN). It takes precedence
+    // over apiKey: the SDK holds one credential and throws when given both.
+    const authToken = opts.authToken || undefined;
+    const apiKey = authToken ? undefined : opts.apiKey || undefined;
     this.client = new Anthropic({
-      apiKey: opts.apiKey,
-      authToken: opts.authToken,
+      apiKey,
+      authToken,
       baseURL: opts.baseURL,
       fetch: proxyAwareFetch,
+      // SDK 1.x sends an API key as `Authorization: Bearer` too. Keep it in
+      // `x-api-key`, where a relay behind ANTHROPIC_BASE_URL may be reading
+      // it; api.anthropic.com accepts either header.
+      defaultHeaders: apiKey ? { "X-Api-Key": apiKey, Authorization: null } : undefined,
     });
   }
 
@@ -125,6 +132,7 @@ export class AnthropicProvider implements Provider {
       return (await stream.finalMessage()) as Anthropic.Message;
     });
     return {
+      model: message.model,
       content: message.content,
       stopReason: message.stop_reason ?? "end_turn",
       usage: anthropicUsage(message.usage),
@@ -165,7 +173,7 @@ export function modelSupportsEffort(model: string): boolean {
   return !/haiku/i.test(model);
 }
 
-function withCacheBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+function withCacheBreakpoint(messages: StoredMessage[]): StoredMessage[] {
   if (messages.length === 0) return messages;
   const out = messages.slice();
   const last = out[out.length - 1]!;

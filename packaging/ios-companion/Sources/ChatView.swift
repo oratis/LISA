@@ -200,6 +200,10 @@ struct ChatView: View {
     @State private var showPaywall = false
     @StateObject private var aiGate = AISharingGate()
     @State private var loadedConfig: ServerConfig?
+    /// The composer's keyboard. The tab bar sits under the keyboard and the
+    /// multi-line field turns Return into a newline, so every way out (tap the
+    /// transcript, swipe it down, the hide button, leaving the tab) clears this.
+    @FocusState private var composerFocused: Bool
     private static let bottomID = "chat-bottom"
 
     private func refreshExpressions() async {
@@ -212,12 +216,14 @@ struct ChatView: View {
             VStack(spacing: 0) {
                 transcript
                 Divider()
-                quickChips
-                Text(app.aiConsent.isGranted(for: .chat)
-                     ? "AI data sharing allowed: " + app.aiConsent.recipients.joined(separator: ", ")
-                     : "Before your first message, review and allow sharing with third-party AI.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.horizontal)
+                if app.config.isConfigured {
+                    quickChips
+                    Text(app.aiConsent.isGranted(for: .chat)
+                         ? "AI data sharing allowed: " + app.aiConsent.recipients.joined(separator: ", ")
+                         : "Before your first message, review and allow sharing with third-party AI.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                }
                 composer
             }
             .background(Theme.bgDeep.ignoresSafeArea())
@@ -253,6 +259,9 @@ struct ChatView: View {
                 if !sending { Task { await refreshExpressions() } }
             }
             .onChange(of: app.chatDraft) { _, _ in consumeDraft() }
+            // TabView keeps this view alive off-screen; never leave its keyboard up.
+            .onChange(of: app.selectedTab) { _, _ in composerFocused = false }
+            .onChange(of: app.showOnboarding) { _, showing in if showing { composerFocused = false } }
             // The gate drops its own sheet and pending check; the stream is the model's.
             .onChange(of: app.aiConsent.generation) { _, _ in model.cancel() }
             .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
@@ -349,21 +358,51 @@ struct ChatView: View {
                 .padding()
                 Color.clear.frame(height: 1).id(Self.bottomID)
             }
+            .accessibilityIdentifier("chat.transcript")
             .scrollDismissesKeyboard(.interactively)
+            // An empty or short transcript must still take the swipe-down that
+            // dismisses the keyboard; it only scrolls when it bounces.
+            .scrollBounceBehavior(.always)
+            // Tapping the conversation closes the keyboard. Buttons inside the
+            // transcript (Retry, Load earlier, Get started) keep their own taps.
+            .onTapGesture { composerFocused = false }
             .onChange(of: model.messages) { _, _ in scrollToBottom(proxy) }
             .onChange(of: model.sending) { _, _ in scrollToBottom(proxy) }
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "bubble.left.and.text.bubble.right")
-                .font(.largeTitle).foregroundStyle(Theme.tertiary)
-            Text("Ask Lisa anything — or tap a suggestion below.")
-                .font(.callout).foregroundStyle(Theme.secondary)
-                .multilineTextAlignment(.center)
+    @ViewBuilder private var emptyState: some View {
+        if app.config.isConfigured {
+            VStack(spacing: 6) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.largeTitle).foregroundStyle(Theme.tertiary)
+                Text("Ask Lisa anything — or tap a suggestion below.")
+                    .font(.callout).foregroundStyle(Theme.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+        } else {
+            // Nothing typed here could be sent: point at setup instead of
+            // offering a composer that only opens a keyboard.
+            VStack(spacing: Theme.Space.s) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.largeTitle).foregroundStyle(Theme.tertiary)
+                Text("Connect Lisa to start chatting")
+                    .font(.headline).foregroundStyle(Theme.text)
+                Text("Sign in to LISA Cloud or connect your Mac first.")
+                    .font(.callout).foregroundStyle(Theme.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Get started") {
+                    composerFocused = false
+                    app.presentOnboarding()
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("chat.getStarted")
+                .padding(.top, Theme.Space.xs)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal)
         }
-        .frame(maxWidth: .infinity)
     }
 
     /// A Lisa turn that's mid-stream with nothing to show yet.
@@ -390,8 +429,30 @@ struct ChatView: View {
 
     private var composer: some View {
         HStack(spacing: Theme.Space.s) {
-            TextField("Message…", text: $input, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
+            if composerFocused {
+                // Return adds a line in this multi-line field, and the keyboard
+                // covers the tab bar, so offer a visible way to put it away.
+                Button { composerFocused = false } label: {
+                    Image(systemName: "keyboard.chevron.compact.down").font(.title3)
+                }
+                .frame(width: 44, height: 44)
+                .foregroundStyle(Theme.secondary)
+                .accessibilityLabel("Hide keyboard")
+                .accessibilityIdentifier("chat.hideKeyboard")
+                .transition(.opacity)
+            }
+            TextField(app.config.isConfigured ? "Message…" : "Connect Lisa to chat", text: $input, axis: .vertical)
+                .focused($composerFocused)
+                .disabled(!app.config.isConfigured)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.border, lineWidth: Theme.hairline))
+                .foregroundStyle(Theme.text)
+                .tint(Theme.accent)
+                .accessibilityLabel("Message Lisa")
+                .accessibilityIdentifier("chat.composer")
                 .lineLimit(1...5)
                 .onSubmit(sendCurrent)
             if model.sending {
@@ -413,6 +474,9 @@ struct ChatView: View {
             }
         }
         .padding()
+        .animation(.easeOut(duration: 0.15), value: composerFocused)
+        .background(Theme.panel)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: Theme.hairline) }
     }
 
     private func sendCurrent() {
@@ -452,7 +516,7 @@ struct MessageBubble: View {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                     switch seg {
                     case .text(let t):
-                        Text(renderMarkdown(t)).textSelection(.enabled)
+                        Text(renderMarkdown(t)).font(.body).lineSpacing(3).textSelection(.enabled)
                     case .code(let c):
                         CodeBlock(text: c)
                     }
@@ -461,9 +525,11 @@ struct MessageBubble: View {
                     ConversationExpressionView(expression: expression, client: client, preferences: expressionPreferences, live: message.expressionLive, onPlaybackStarted: onExpressionStarted)
                 }
                 if !message.tools.isEmpty {
-                    HStack(spacing: Theme.Space.xs) {
-                        ForEach(message.tools, id: \.self) { tool in
-                            ThemePill(text: tool, color: Theme.accent)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Space.xs) {
+                            ForEach(message.tools, id: \.self) { tool in
+                                ThemePill(text: tool, color: Theme.accent)
+                            }
                         }
                     }
                 }
@@ -488,10 +554,11 @@ struct MessageBubble: View {
                     .accessibilityLabel("Retry")
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(bubbleBg, in: RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(bubbleBg, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius).strokeBorder(Theme.border, lineWidth: Theme.hairline))
             .foregroundStyle(textColor)
-            .frame(maxWidth: 320, alignment: message.role == .user ? .trailing : .leading)
+            .frame(maxWidth: 560, alignment: message.role == .user ? .trailing : .leading)
             if message.role == .lisa { Spacer(minLength: 36) }
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
@@ -500,7 +567,7 @@ struct MessageBubble: View {
     }
 
     private var segments: [MessageSegment] { parseSegments(message.text) }
-    private var bubbleBg: Color { message.role == .user ? Theme.accent.opacity(0.18) : Theme.card }
+    private var bubbleBg: Color { message.role == .user ? Theme.userBubble : Theme.card }
     /// Errors read red; empty/stopped turns read muted; normal text is primary.
     private var textColor: Color {
         switch message.status {
