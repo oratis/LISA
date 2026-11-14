@@ -79,7 +79,7 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 
 ## 开发状态
 
-**v0.32.0** 汇总三期 Fleet 工作流、连接恢复、会话续期和飞书文档连接器（[发布说明](docs/RELEASE_v0.32.0.md)、[更新日志](CHANGELOG.md)）。GitHub Releases、npm、Homebrew、托管服务与 Pocket 分别发布；代码合并不代表所有渠道已更新。验证和剩余门槛见[发布清单](docs/RELEASE_CHECKLIST_v0.32.0.md)。
+当前已发布的核心版本为 **v0.31.0**。**v0.32.0 候选版**汇总三期 Fleet 工作流、连接恢复、会话续期和飞书文档连接器（[发布说明](docs/RELEASE_v0.32.0.md)、[更新日志](CHANGELOG.md)）。GitHub Releases、npm、Homebrew、托管服务与 Pocket 分别发布；代码合并不代表所有渠道已更新。验证和剩余门槛见[发布清单](docs/RELEASE_CHECKLIST_v0.32.0.md)。
 
 | 工作方向 | 当前状态 |
 | --- | --- |

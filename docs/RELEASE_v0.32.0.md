@@ -2,6 +2,8 @@
 
 Fleet tasks now keep a timeline that reconnecting controllers and explicitly authorized Pocket viewers can catch up on. Review each turn's file changes in an isolated worktree, then preview exactly what a second agent will receive before handing the work over. This release also brings steadier Mac connections, renewable and revocable account sessions, selected Feishu document reads, and the source for Pocket's refreshed iPhone and iPad Room.
 
+Status: release candidate. Publication is pending the [remaining acceptance gates](RELEASE_CHECKLIST_v0.32.0.md).
+
 ## Fleet timelines and read-only Pocket sharing
 
 - The executing Mac records task events and operation receipts together. Retrying a request cannot start the work twice; reconnecting clients page from their last sequence number. Missing or expired history is marked rather than silently hidden.

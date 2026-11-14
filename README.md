@@ -79,7 +79,7 @@ The **reach-out gate** applies source controls, quiet hours, deduplication and b
 
 ## Development status
 
-**v0.32.0** brings the three Fleet workflow phases together with connection recovery, session renewal and the Feishu document connector ([release notes](docs/RELEASE_v0.32.0.md), [changelog](CHANGELOG.md)). GitHub Releases, npm, Homebrew, the hosted service and Pocket are separate delivery channels; merging code does not publish all of them. See the [release checklist](docs/RELEASE_CHECKLIST_v0.32.0.md) for verification and remaining gates.
+The latest published core version is **v0.31.0**. The **v0.32.0 release candidate** brings the three Fleet workflow phases together with connection recovery, session renewal and the Feishu document connector ([release notes](docs/RELEASE_v0.32.0.md), [changelog](CHANGELOG.md)). GitHub Releases, npm, Homebrew, the hosted service and Pocket are separate delivery channels; merging code does not publish all of them. See the [release checklist](docs/RELEASE_CHECKLIST_v0.32.0.md) for verification and remaining gates.
 
 | Workstream | Status |
 | --- | --- |
