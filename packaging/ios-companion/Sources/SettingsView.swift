@@ -62,6 +62,11 @@ struct SettingsView: View {
                     }
                     if let target = app.config.remoteMac {
                         LabeledContent(target.name, value: app.remoteRoute)
+                        if let problem = app.remoteRouteProblem, let shown = problem.display {
+                            // Why it isn't connecting, instead of "Connecting…" forever (#494).
+                            Label(shown.message, systemImage: problem.icon)
+                                .font(.footnote).foregroundStyle(Theme.waiting)
+                        }
                     }
                 } footer: {
                     Text("Use the same LISA account on both devices. After approval on your Mac, local and cloud connections switch automatically.")
@@ -78,8 +83,11 @@ struct SettingsView: View {
                         Button("Save") {
                             let saved = app.update(host: host, port: Int(portText) ?? 5757,
                                                    token: token.isEmpty ? nil : token, scheme: app.config.scheme)
-                            status = saved ? "Saved." : "Couldn't save securely. Try again."
+                            // Saving isn't connecting: check it, like Apply pairing does (#495).
+                            if saved { verifyAndReport(prefix: "Saved") }
+                            else { status = "Couldn't save securely. Try again." }
                         }
+                        .disabled(connectBusy)
                     }
 
                     Section("Pair from QR / URL") {
@@ -110,6 +118,14 @@ struct SettingsView: View {
                     // sign-in form (SIWA / email / advanced token link) otherwise.
                     if app.account?.signedIn == true {
                         AccountCard()
+                    } else if app.accountUnavailable && app.config.isConfigured {
+                        // Unknown is not signed out: keep Sign out / Delete reachable
+                        // once LISA Cloud answers again (#492).
+                        Section("LISA account") {
+                            Label("Couldn't reach LISA Cloud to load your account.", systemImage: "wifi.exclamationmark")
+                                .font(.footnote).foregroundStyle(Theme.waiting)
+                            Button("Try again") { Task { await app.refreshAccount() } }
+                        }
                     } else {
                         CloudSignInForm { outcome in
                             switch outcome {
@@ -290,6 +306,9 @@ struct SettingsView: View {
                 }
 
                 Section("About and data") {
+                    NavigationLink { ConnectionDiagnosticsView() } label: {
+                        Label("Connection diagnostics", systemImage: "stethoscope")
+                    }
                     NavigationLink { AssistantPrivacyView() } label: {
                         Label("AI and your data", systemImage: "hand.raised")
                     }

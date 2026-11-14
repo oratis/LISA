@@ -298,7 +298,8 @@ struct OnboardingFlow: View {
         } else if !verifying, let outcome {
             // Outcome-specific recovery: a rejected token re-scans, an unreachable
             // Mac retries (see VerifyOutcome.recovery).
-            let actions = outcome.recovery
+            let cloud = app.connectionMode == .cloud
+            let actions = cloud ? outcome.cloudRecovery : outcome.recovery
             VStack(spacing: 8) {
                 if let primary = actions.first {
                     OnboardingPrimaryButton(title: primary.label) { perform(primary) }
@@ -306,7 +307,8 @@ struct OnboardingFlow: View {
                 ForEach(Array(actions.dropFirst()), id: \.self) { action in
                     OnboardingSecondaryButton(title: action.label) { perform(action) }
                 }
-                OnboardingSecondaryButton(title: "Back") { go(.pair) }
+                // A cloud sign-in never went through the Mac pairing screens.
+                OnboardingSecondaryButton(title: "Back") { go(cloud ? .mode : .pair) }
             }
         }
     }
@@ -316,11 +318,26 @@ struct OnboardingFlow: View {
         case .retry:  Task { await verify() }
         case .rescan: scanNote = nil; go(.scan)
         case .manual: openManual(.mac)
+        case .signInAgain: openManual(.cloud)
         }
     }
 
     @ViewBuilder private func failureView(_ o: VerifyOutcome) -> some View {
+        let cloud = app.connectionMode == .cloud
         let (icon, title, desc): (String, String, String) = {
+            if cloud {
+                switch o {
+                case .unauthorized:
+                    return ("lock.trianglebadge.exclamationmark", "Sign-in didn't stick",
+                            "LISA Cloud rejected the new session. Sign in again.")
+                case .serverError(let code):
+                    return ("exclamationmark.triangle", "LISA Cloud returned an error",
+                            "LISA Cloud answered with HTTP \(code). Try again in a moment.")
+                case .unreachable, .ok:
+                    return ("wifi.exclamationmark", "Can't reach LISA Cloud",
+                            "Check that this iPhone is online, then try again.")
+                }
+            }
             switch o {
             case .unauthorized:
                 return ("lock.trianglebadge.exclamationmark",

@@ -33,7 +33,8 @@ export interface PairArgs {
 const USAGE = "usage: lisa pair [--host <ip-or-tailnet>] [--port N] [--name <label>]";
 
 /** Parse `lisa pair` argv. Pure (no I/O). */
-export function parsePairArgs(argv: string[]): PairArgs | { error: string } {
+export function parsePairArgs(argv: string[]): PairArgs | { error: string } | { help: true } {
+  if (argv.includes("--help") || argv.includes("-h")) return { help: true };
   let host: string | undefined;
   let port = Number(process.env.LISA_WEB_PORT) || DEFAULT_PORT;
   let name = "phone";
@@ -75,6 +76,17 @@ function isLoopbackBind(boundHost: string): boolean {
 
 export async function runPairCommand(argv: string[]): Promise<number> {
   const parsed = parsePairArgs(argv);
+  if ("help" in parsed) {
+    console.log(USAGE);
+    console.log(
+      "  --host  address the phone dials (LAN IP or tailnet name; default: this Mac's LAN IP)",
+    );
+    console.log(
+      "  --port  port of the running `lisa serve --web` (default: $LISA_WEB_PORT or 5757)",
+    );
+    console.log('  --name  label for the paired device (default: "phone")');
+    return 0;
+  }
   if ("error" in parsed) {
     console.error(parsed.error);
     return 2;

@@ -14,6 +14,7 @@ import { createReadStream, existsSync } from "node:fs";
 import crypto from "node:crypto";
 import { RelayBroker } from "../remote/broker.js";
 import { RemoteHost } from "../remote/host.js";
+import { startSessionRenewal } from "../remote/session-renewal.js";
 import { FleetError, fleetRoute, fleetViewRoute, VIEW_API } from "../remote/fleet/types.js";
 import type { FleetApi } from "../remote/fleet/api.js";
 import { trackShutdown } from "./shutdown.js";
@@ -156,6 +157,8 @@ import {
 } from "./http-body.js";
 import {
   agentSessionsResponse,
+  apiAgentSession,
+  writeApiError,
   applyApiVersionHeader,
   isVersionedApiSurface,
 } from "./api-contract.js";
@@ -195,7 +198,13 @@ import {
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedAgentSubset } from "../tools/registry.js";
 import { managedRegistry } from "../agents/managed.js";
-import { ptyRegistry, ptyEnabled, ptyAvailability, normalizeAgentKind } from "../agents/pty.js";
+import {
+  ptyRegistry,
+  ptyEnabled,
+  ptyAvailability,
+  normalizeAgentKind,
+  PtyStartError,
+} from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { sweepAll, pollNewMail, probeAccount } from "../mail/service.js";
 import { friendlyMailError } from "../mail/connect-error.js";
@@ -220,6 +229,7 @@ import {
   touchDevice,
   listDevices,
   revokeDevice,
+  trackDeviceResponse,
 } from "./devices.js";
 import {
   loadOrCreateSessionSecret,
@@ -241,7 +251,7 @@ import {
   saveAppleAuthorization,
   deleteAccount,
   getAccount,
-  sessionAccountValid,
+  sessionAccountState,
   revokeSession,
   revokeAccountSessions,
   ensureSeededAccount,
@@ -1352,8 +1362,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // sessions that have since ended. (Dedups consecutive same-state events.)
     recordEvent(session);
     pushBridge.onAgentUpdate(session);
-    // New generalized event for the multi-agent UI.
-    broadcast({ type: "agent_session_update", ...session });
+    // New generalized event for the multi-agent UI. The row is serialized
+    // exactly like the REST roster (no jsonlPath, `resumable` set, ISO
+    // lastMtime) — Pocket replaces its row with this copy (#490).
+    broadcast({
+      type: "agent_session_update",
+      ...apiAgentSession(session, (id) => liveClaudeSessionIds().has(id)),
+    });
     // Back-compat: the island still listens for claude_session_update as a
     // "something changed, refetch" trigger. Keep emitting it for Claude Code.
     if (session.agent === "claude-code") {
@@ -2686,6 +2701,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // (/api/auth/refresh and /api/auth/me read them).
     let accountClaims: SessionClaims | null = null;
     let credentialSource: "bearer" | "cookie" | "query" | null = null;
+    let accountUnavailable = false;
     if (cloud || !isLoopbackAddress(remoteAddr)) {
       const credential = presentedCredential(req, url);
       const presented = credential?.token ?? null;
@@ -2698,7 +2714,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // account record, so deleted accounts lose access immediately.
       if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
         const claims = verifySession(presented, sessionSecret);
-        if (claims && (await sessionAccountValid(claims.uid, claims.sv, sessionId(claims)))) {
+        const state = claims
+          ? await sessionAccountState(claims.uid, claims.sv, sessionId(claims))
+          : "revoked";
+        accountUnavailable = state === "unavailable";
+        if (claims && state === "valid") {
           authed = true;
           accountUid = claims.uid;
           accountClaims = claims;
@@ -2726,6 +2746,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (device) {
           authed = true;
           touchDevice(device.id);
+          // The token is checked only here, so a stream this request opens
+          // (/events, a PTY attach) must end when the device is revoked.
+          const untrack = trackDeviceResponse(device.id, () => res.destroy());
+          res.once("close", untrack);
         }
       }
       // Hosted edition: a credential with no account behind it (the shared
@@ -2743,6 +2767,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // answer the owner-only routes have always given it.
         res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify({ error: "untrusted_host" }));
+        return;
+      }
+      if (!authed && accountUnavailable) {
+        // Not a sign-out: a client that treats 401/403 as "session revoked" (the
+        // Mac's relay link, Pocket) must retry this one.
+        res.writeHead(503, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+          "retry-after": "5",
+        });
+        res.end(JSON.stringify({ error: "account_service_unavailable" }));
         return;
       }
       if (!authed) {
@@ -4410,13 +4445,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         payload = JSON.parse(mBody || "{}");
       } catch {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("bad json");
+        writeApiError(res, 400, "bad_json", "The request body is not valid JSON.");
         return;
       }
       if (typeof payload.task !== "string" || !payload.task.trim()) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("task required");
+        writeApiError(res, 400, "task_required", "A task is required.");
         return;
       }
       const cwd =
@@ -4471,22 +4504,40 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           (raw !== undefined && raw !== null && typeof raw !== "string") ||
           (payload.allow && !approvalId)
         ) {
-          res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "approval_id_and_boolean_decision_required" }));
+          writeApiError(
+            res,
+            400,
+            "approval_id_and_boolean_decision_required",
+            "Send {allow: true|false}; an approval must also name the request (approvalId).",
+          );
           return;
         }
         ok = managedRegistry.decide(id, payload.allow, approvalId);
         if (!ok) {
-          res.writeHead(409, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "stale_approval" }));
+          // Already answered (here or on another device), replaced by a newer
+          // request, or the agent is gone: the client should refresh, not retry.
+          writeApiError(
+            res,
+            409,
+            "stale_approval",
+            "This request was already handled or has changed — refresh to see the current state.",
+          );
           return;
         }
+      } else if (action === "send") {
+        writeApiError(res, 400, "text_required", "send needs a JSON body {text}.");
+        return;
       } else {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("action must be send|cancel|approve");
+        writeApiError(res, 400, "bad_action", "action must be send|cancel|approve");
         return;
       }
-      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      if (!ok) {
+        writeApiError(res, 404, "unknown_session", "That agent is no longer running on this Mac.", {
+          ok,
+        });
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok }));
       return;
     }
@@ -4494,7 +4545,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // ── PTY agents (Stage C spike, off unless LISA_PTY_AGENTS=1) ─────────
     // Real `claude`/`codex` CLIs LISA spawns under a pseudo-terminal: it types
     // your task + follow-ups and can read the terminal tail. Behind the same
-    // auth gate; 503 when the spike flag is off / node-pty is absent.
+    // auth gate. Errors are JSON {error, message}; /start answers 503
+    // pty_disabled | cli_missing and 500 spawn_failed (PtyStartError), and
+    // /status tells a client up front which of those a start would hit.
     if (req.method === "GET" && url === "/api/agents/pty/status") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(await ptyAvailability()));
@@ -4508,13 +4561,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         payload = JSON.parse(pBody || "{}");
       } catch {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("bad json");
+        writeApiError(res, 400, "bad_json", "The request body is not valid JSON.");
         return;
       }
       if (!ptyEnabled()) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end("PTY agents are disabled — set LISA_PTY_AGENTS=1 to enable this spike");
+        writeApiError(
+          res,
+          503,
+          "pty_disabled",
+          "PTY agents are disabled on this Mac — set LISA_PTY_AGENTS=1 and restart `lisa serve --web`",
+        );
         return;
       }
       const agent =
@@ -4530,8 +4586,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // signal, so we can't guard against resuming a *live* rollout and corrupting
       // it — refuse with a clear 400 rather than silently spawning a fresh session.
       if (resumeSessionId && normalizeAgentKind(agent) !== "claude-code") {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end(
+        writeApiError(
+          res,
+          400,
+          "resume_unsupported",
           `resume-adopt is only supported for claude sessions (got "${agent}"); start a fresh agent instead`,
         );
         return;
@@ -4539,14 +4597,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Adopting an existing session needs no task (it continues the convo); a
       // fresh agent does. Guard: never resume a session that's currently live.
       if (!resumeSessionId && (typeof payload.task !== "string" || !payload.task.trim())) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("task required");
+        writeApiError(res, 400, "task_required", "A task is required.");
         return;
       }
       if (resumeSessionId && liveClaudeSessionIds().has(resumeSessionId)) {
-        res.writeHead(409, { "content-type": "text/plain" });
-        res.end(
-          "that session is currently live (open in the app/terminal) — close it first; resuming a live session would corrupt its transcript",
+        writeApiError(
+          res,
+          409,
+          "session_live",
+          "That session is currently live (open in the app/terminal) — close it first; resuming a live session would corrupt its transcript",
         );
         return;
       }
@@ -4564,8 +4623,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, agent: view }));
       } catch (err) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end((err as Error).message);
+        // 503 = this Mac can't run PTY agents as configured (a setting or an
+        // install away); a spawn that fails anyway is a server error, not
+        // "disabled" — shipped Pocket builds read every 503 as "turn it on".
+        const code = err instanceof PtyStartError ? err.code : "spawn_failed";
+        const message =
+          err instanceof PtyStartError
+            ? err.message
+            : `Couldn't start the agent: ${(err as Error).message}`;
+        writeApiError(res, code === "spawn_failed" ? 500 : 503, code, message);
       }
       return;
     }
@@ -4574,8 +4640,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const id = url.slice("/api/agents/pty/".length, -"/output".length);
       const out = ptyRegistry.output(decodeURIComponent(id));
       if (out === null) {
-        res.writeHead(404, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false }));
+        writeApiError(res, 404, "unknown_session", "That agent is no longer on this Mac.", {
+          ok: false,
+        });
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
@@ -4590,8 +4657,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const id = decodeURIComponent(url.slice("/api/agents/pty/".length, -"/stream".length));
       const initial = ptyRegistry.output(id);
       if (initial === null) {
-        res.writeHead(404, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false }));
+        writeApiError(res, 404, "unknown_session", "That agent is no longer on this Mac.", {
+          ok: false,
+        });
         return;
       }
       res.writeHead(200, {
@@ -4600,6 +4668,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         connection: "keep-alive",
       });
       res.write(`data: ${JSON.stringify({ type: "snapshot", text: initial })}\n\n`);
+      // Attached after the agent already exited (a re-attach, or a detail view
+      // opened from an old roster row): no "done" update will ever come, so
+      // finish now with the same end frame the live path sends below (#490).
+      const finished = ptyRegistry.get(id)?.view();
+      if (finished?.state === "done") {
+        res.end(`data: ${JSON.stringify({ type: "end", state: finished.state })}\n\n`);
+        return;
+      }
       attachSseHeartbeat(req, res); // T-11 — an idle terminal is still a live stream
       const onOut = (e: { id: string; chunk: string }) => {
         if (e.id !== id) return;
@@ -4645,12 +4721,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (action === "send" && typeof payload.text === "string")
         ok = ptyRegistry.send(id, payload.text);
       else if (action === "cancel") ok = ptyRegistry.cancel(id);
-      else {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("action must be send|cancel");
+      else if (action === "send") {
+        writeApiError(res, 400, "text_required", "send needs a JSON body {text}.");
+        return;
+      } else {
+        writeApiError(res, 400, "bad_action", "action must be send|cancel");
         return;
       }
-      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      if (!ok) {
+        writeApiError(res, 404, "unknown_session", "That agent is no longer on this Mac.", { ok });
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok }));
       return;
     }
@@ -6511,12 +6593,11 @@ self.addEventListener('fetch', (event) => {
   if (cloudEdition && sessionSecret && process.env.LISA_RELAY_ENABLED === "1") {
     relayBroker = new RelayBroker(server, async (token) => {
       const claims = verifySession(token, sessionSecret);
-      if (
-        !claims ||
-        deletingAccounts.has(claims.uid) ||
-        !(await sessionAccountValid(claims.uid, claims.sv, sessionId(claims)))
-      )
-        return null;
+      if (!claims || deletingAccounts.has(claims.uid)) return null;
+      const state = await sessionAccountState(claims.uid, claims.sv, sessionId(claims));
+      // The broker answers 503 (retry) for a throw, 403 (signed out) for null.
+      if (state === "unavailable") throw new Error("account_service_unavailable");
+      if (state !== "valid") return null;
       return { uid: claims.uid, expiresAt: claims.exp };
     });
   } else if (!cloudEdition) {
@@ -6530,6 +6611,10 @@ self.addEventListener('fetch', (event) => {
       void remoteHost
         .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
         .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));
+      // Renew the Mac's account session past half-life (it is not renewed by use), so
+      // the relay route and managed models outlive the 30-day session.
+      const stopRenewal = startSessionRenewal((token) => remoteHost?.setSession(token));
+      server.on("close", stopRenewal);
       // An earlier backend may have left a remote Claude process running. Opening the
       // ledger now stops it or frees its slot, instead of on the first remote request.
       if (existsSync(path.join(lisaGlobalHome(), "fleet", "runs.sqlite")))

@@ -57,7 +57,9 @@ final class ChatKeyboardUITests: XCTestCase {
         let hide = focusComposer(app)
         let transcript = app.scrollViews["chat.transcript"]
         XCTAssertTrue(transcript.exists)
-        transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        // iOS 27 includes the area underneath the translucent navigation bar.
+        // Tap the middle of the visible conversation, not the title bar.
+        transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(waitUntilGone(hide), "tapping the conversation left the composer focused")
     }
 

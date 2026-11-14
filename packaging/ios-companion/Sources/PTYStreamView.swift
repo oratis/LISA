@@ -95,13 +95,13 @@ final class PTYStreamModel: ObservableObject {
                         }
                     }
                 } catch {
-                    if case LisaError.http(403) = error {
+                    if error.httpStatus == 403 {
                         // The Mac's control policy refuses remote attach — retrying
                         // would just hammer it (A8).
                         self?.state = .blocked("Remote control is disabled on this Mac — no live output.")
                         return
                     }
-                    if case LisaError.http(404) = error {
+                    if error.httpStatus == 404 {
                         self?.state = .blocked("This session is no longer attached on the Mac.")
                         return
                     }

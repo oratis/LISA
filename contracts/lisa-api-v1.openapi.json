@@ -2801,6 +2801,10 @@
                     "installed": {
                       "type": "boolean"
                     },
+                    "spawnHelperExecutable": {
+                      "type": "boolean",
+                      "description": "False when node-pty's macOS spawn-helper lacks its exec bit and LISA could not fix it; a start would answer spawn_failed."
+                    },
                     "available": {
                       "type": "boolean"
                     },
@@ -4830,6 +4834,10 @@
           "message": {
             "type": "string",
             "description": "One sentence for the person using the app. Always present on responses from the server; wording may change, so never parse it."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation a client may show as-is (agent-control routes always send it)."
           },
           "reason": {
             "type": "string"

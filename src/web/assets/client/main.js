@@ -222,6 +222,7 @@ const LISA_STRINGS = {
     "expressions.lively": "More often",
     'pty.disabled': 'Interactive CLI agents are turned off on this Mac. Managed tasks remain available.',
     'pty.missing': 'This installation does not include interactive CLI support. Update Lisa to enable it.',
+    'pty.helper': 'Interactive CLI support is installed but cannot start programs (its helper is not executable). Reinstall Lisa to fix it.',
     "panel.loading": "Loading…",
     "panel.failed": "Could not load this panel. Please try again.",
     "panel.retry": "Retry",
@@ -660,6 +661,7 @@ const LISA_STRINGS = {
     "expressions.lively": "活泼",
     'pty.disabled': '此 Mac 尚未开启交互式 CLI 代理，可以使用内置任务。',
     'pty.missing': '当前安装缺少交互式 CLI 支持，请更新 Lisa。',
+    'pty.helper': '交互式 CLI 支持已安装，但无法启动程序（辅助程序没有执行权限）。请重新安装 Lisa。',
     "panel.loading": "正在加载…",
     "panel.failed": "加载失败，请重试。",
     "panel.retry": "重试",
@@ -4343,7 +4345,7 @@ if ('serviceWorker' in navigator) {
         option.disabled = !status.available || !status.agents?.some(agent => agent.id === option.value && agent.available);
       });
       const note = document.getElementById('dmAvailability');
-      if (note) note.textContent = status.available ? '' : tr(status.installed ? 'pty.disabled' : 'pty.missing');
+      if (note) note.textContent = status.available ? '' : tr(status.reason === 'missing-module' ? 'pty.missing' : status.reason === 'spawn-helper-not-executable' ? 'pty.helper' : 'pty.disabled');
     }).catch(function () { const note = document.getElementById('dmAvailability'); if (note) note.textContent = tr('panel.failed'); });
     const taskEl = document.getElementById('dmTask');
     const startEl = document.getElementById('dmStart');
