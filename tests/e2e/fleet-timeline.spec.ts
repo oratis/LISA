@@ -160,3 +160,54 @@ test("a gap replaces the cached prefix and a reset clears its retention notice",
   await expect(rows.first()).toContainText("第 1 轮");
   await expect(page.locator("#timeline-note")).toBeEmpty();
 });
+
+test("the execution Mac shares only the selected task with a securely paired Pocket and can revoke it", async ({
+  page,
+}) => {
+  let shared = false;
+  const pocket = { id: "c".repeat(32), name: "My Pocket", secure: true };
+  await page.route("**/api/fleet/hosts", (route) =>
+    route.fulfill({ json: { scope: "account", hosts: [] } }),
+  );
+  await page.route("**/api/fleet/local", (route) =>
+    route.fulfill({
+      json: {
+        link: {
+          online: true,
+          pending: [],
+          devices: [pocket, { id: "d".repeat(32), name: "Old Pocket", secure: false }],
+        },
+        workspaces: [],
+        runs: [],
+        shares: [
+          {
+            id: runId,
+            workspaceName: "Project",
+            state: "completed",
+            createdAt: 1,
+            viewers: shared ? [pocket.id] : [],
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/fleet/shares", (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({
+      deviceId: pocket.id,
+      runId,
+      enabled: !shared,
+    });
+    shared = !shared;
+    return route.fulfill({ json: { shared } });
+  });
+  await page.goto(lisa.baseURL + "/fleet");
+  await page.locator("#local summary").click();
+  await expect(page.locator("#shares")).toContainText("Project");
+  await expect(page.locator("#shares")).not.toContainText("Old Pocket");
+  await page.getByRole("button", { name: /允许查看 · My Pocket/ }).click();
+  await expect(page.getByRole("button", { name: /撤销查看 · My Pocket/ })).toBeVisible();
+  await page.getByRole("button", { name: /撤销查看 · My Pocket/ }).click();
+  await expect(page.getByRole("button", { name: /允许查看 · My Pocket/ })).toBeVisible();
+  expect(shared).toBe(false);
+});
