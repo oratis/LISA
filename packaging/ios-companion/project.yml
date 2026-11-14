@@ -124,6 +124,20 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main.tests
         GENERATE_INFOPLIST_FILE: YES
 
+  # UI tests drive the real app in the simulator (DEBUG launch hooks, no server).
+  # Kept to a few flows the logic tests can't reach, such as keyboard focus.
+  LisaPocketUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: LisaPocket
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   LisaPocket:
     build:
@@ -138,3 +152,4 @@ schemes:
     test:
       targets:
         - LisaPocketTests
+        - LisaPocketUITests
