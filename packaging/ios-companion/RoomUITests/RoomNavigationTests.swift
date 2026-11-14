@@ -44,8 +44,8 @@ final class RoomNavigationTests: XCTestCase {
 
     private func back() {
         let bar = app.navigationBars.firstMatch
-        let backButton = bar.buttons["BackButton"]
-        if backButton.exists { backButton.tap() }
+        let backButton = app.navigationBars.buttons["BackButton"].firstMatch
+        if backButton.waitForExistence(timeout: 5) { backButton.tap() }
         else { bar.buttons.element(boundBy: 0).tap() }
     }
     private func capture(_ name: String) {
@@ -228,6 +228,20 @@ final class RoomNavigationTests: XCTestCase {
         XCTAssertTrue(app.buttons["Load earlier messages"].waitForExistence(timeout: 5))
         app.open(URL(string: "lisapocket://roster")!)
         XCTAssertTrue(app.navigationBars["Agents"].waitForExistence(timeout: 5))
+    }
+
+    func testIPadLandscapeKeepsDestinationsReachable() throws {
+        try launchConnected()
+        guard app.frame.width >= 760 else { throw XCTSkip("iPad landscape acceptance") }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCTAssertTrue(tile("knowledge").waitForExistence(timeout: 8))
+        XCTAssertGreaterThan(app.frame.width, app.frame.height)
+        capture("Room-iPad-landscape")
+        open("knowledge")
+        XCTAssertTrue(app.navigationBars["Knowledge"].waitForExistence(timeout: 5))
+        back()
+        XCTAssertTrue(tile("room").waitForExistence(timeout: 5))
     }
 
     func testCloudRoutesToMacSetupAndKeepsSenseLocal() throws {
