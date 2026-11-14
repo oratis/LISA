@@ -77,7 +77,7 @@ final class LisaClient: FleetReading {
     private let remote: RemoteMacTransport?
     /// Called with a renewed account session from the `x-lisa-session` response
     /// header. AppState stores it without resetting the connection (#484).
-    var onSessionRenewed: ((String) -> Void)?
+    var onSessionRenewed: ((String, String) -> Void)?
 
     /// Every request carries its credential as a Bearer header, so cookies are
     /// never needed — and a server-set `lisa_token` cookie would outlive Unpair
@@ -110,11 +110,13 @@ final class LisaClient: FleetReading {
 
     /// Hand a renewed session to the app when the server sent one.
     private func captureRenewal(_ response: URLResponse) {
-        guard remote == nil, SessionToken.claims(config.token) != nil,
+        guard remote == nil, let previous = config.token,
+              let old = SessionToken.claims(previous),
               let fresh = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: Self.renewedSessionHeader),
-              SessionToken.claims(fresh)?.uid == SessionToken.claims(config.token)?.uid else { return }
+              let renewed = SessionToken.claims(fresh), renewed.uid == old.uid,
+              renewed.expiresAt > old.expiresAt else { return }
         config.token = fresh
-        onSessionRenewed?(fresh)
+        onSessionRenewed?(fresh, previous)
     }
 
     func invalidate() { if let remote { Task { await remote.invalidate() } } }

@@ -192,4 +192,40 @@ final class ConnectionProblemTests: XCTestCase {
                         .contains("posix_spawnp failed"))
         XCTAssertTrue(AgentSends.ptyRefusal(status: 503, failure: nil).contains("LISA_PTY_AGENTS=1"))
     }
+    func testLateRenewalCannotCrossOriginsOrRestoreAnOlderSession() {
+        let name = "renewal-tests-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        var tokens: [String: String] = [:]
+        let profiles = ConnectionProfiles(defaults: defaults, readToken: { tokens[$0] },
+                                          writeToken: { tokens[$0] = $1 })
+        let now = Date()
+        let old = session(issued: now, expires: now.addingTimeInterval(1000))
+        let fresh = session(issued: now, expires: now.addingTimeInterval(2000))
+        let expected = ServerConfig(host: "one.example", port: 443, token: old, scheme: "https")
+        XCTAssertTrue(profiles.save(expected, for: .cloud))
+        var other = expected; other.host = "two.example"
+        XCTAssertTrue(profiles.save(other, for: .cloud))
+        XCTAssertFalse(profiles.renewSession(fresh, replacing: expected, for: .cloud))
+        XCTAssertEqual(profiles.load(.cloud), other)
+        XCTAssertTrue(profiles.save(expected, for: .cloud))
+        XCTAssertTrue(profiles.renewSession(fresh, replacing: expected, for: .cloud))
+        XCTAssertFalse(profiles.renewSession(old, replacing: profiles.load(.cloud), for: .cloud))
+        XCTAssertFalse(profiles.renewSession(fresh, replacing: expected, for: .cloud))
+        XCTAssertEqual(profiles.load(.cloud).token, fresh)
+        var signedOut = expected; signedOut.token = nil
+        XCTAssertTrue(profiles.save(signedOut, for: .cloud))
+        XCTAssertFalse(profiles.renewSession(fresh, replacing: expected, for: .cloud))
+        XCTAssertNil(profiles.load(.cloud).token)
+    }
+
+    func testDiagnosticsDoNotCopyServerMessagesOrFailingURLs() {
+        let secret = "private-session-token"
+        let error = LisaError.server(ServerFailure(status: 500, code: secret, reason: secret, message: secret))
+        XCTAssertFalse(ConnectionLog.describe(error).contains(secret))
+        let network = NSError(domain: NSURLErrorDomain, code: -1003,
+                              userInfo: [NSLocalizedDescriptionKey: "https://cloud.example/?token=" + secret])
+        XCTAssertFalse(ConnectionLog.describe(network).contains(secret))
+    }
+
 }

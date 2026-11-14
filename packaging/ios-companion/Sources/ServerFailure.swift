@@ -154,13 +154,15 @@ final class ConnectionLog: ObservableObject {
 
     nonisolated static func describe(_ error: Error) -> String {
         if let failure = error.serverFailure {
-            return [failure.summary, failure.message].compactMap { $0 }.joined(separator: " — ")
+            // Server messages can echo request data. Diagnostics retain only the status.
+            return "HTTP \(failure.status)"
         }
         if let link = error as? RemoteLinkError {
             return "\(link): \(link.errorDescription ?? "")"
         }
         let ns = error as NSError
-        if ns.domain == NSURLErrorDomain { return "Network error \(ns.code): \(ns.localizedDescription)" }
-        return (error as? LocalizedError)?.errorDescription ?? ns.localizedDescription
+        if ns.domain == NSURLErrorDomain { return "Network error \(ns.code)" }
+        if let lisa = error as? LisaError { return lisa.errorDescription ?? "Request failed" }
+        return "Request failed (\(ns.code))"
     }
 }

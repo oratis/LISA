@@ -72,10 +72,14 @@ final class ChatModel: ObservableObject {
     /// Back in the foreground after a turn dropped: the server may have
     /// finished it, so re-read the newest page and keep it if it has a reply.
     func recoverDroppedTurn(_ client: LisaClient) async {
-        guard !sending, let last = messages.last, last.role == .lisa, last.dropped,
-              let r = try? await client.history(page: 0), !sending,
-              let reply = r.messages.compactMap(Self.map).last, reply.role == .lisa else { return }
-        messages = r.messages.compactMap(Self.map)
+        guard !sending, let last = messages.last, last.role == .lisa, last.dropped else { return }
+        let before = messages
+        guard let r = try? await client.history(page: 0), !sending, messages == before else { return }
+        let recovered = r.messages.compactMap(Self.map)
+        let expectedUsers = Array(before.filter { $0.role == .user }.suffix(2).map(\.text))
+        guard !expectedUsers.isEmpty, recovered.last?.role == .lisa,
+              Array(recovered.filter { $0.role == .user }.suffix(expectedUsers.count).map(\.text)) == expectedUsers else { return }
+        messages = recovered
         page = 0
         hasMore = r.hasMore
     }
@@ -433,6 +437,7 @@ struct ChatView: View {
             // An empty or short transcript must still take the swipe-down that
             // dismisses the keyboard; it only scrolls when it bounces.
             .scrollBounceBehavior(.always)
+            .contentShape(Rectangle())
             // Tapping the conversation closes the keyboard. Buttons inside the
             // transcript (Retry, Load earlier, Get started) keep their own taps.
             .onTapGesture { composerFocused = false }

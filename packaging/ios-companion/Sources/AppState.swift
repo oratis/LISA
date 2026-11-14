@@ -207,8 +207,11 @@ final class AppState: ObservableObject {
     /// Hook the current client's session renewal into the saved profile.
     private func wireClient() {
         let mode = connectionMode
-        client.onSessionRenewed = { [weak self] token in
-            Task { @MainActor in self?.adoptRenewedSession(token, mode: mode) }
+        let origin = config
+        client.onSessionRenewed = { [weak self] token, previous in
+            var expected = origin
+            expected.token = previous
+            Task { @MainActor in self?.adoptRenewedSession(token, replacing: expected, mode: mode) }
         }
     }
 
@@ -217,12 +220,11 @@ final class AppState: ObservableObject {
     /// Keep a renewed session for the same account. Saves it without replacing
     /// `config`, which would rebuild every screen (RootView is keyed on it); the
     /// live client already uses it and the next launch loads it.
-    func adoptRenewedSession(_ token: String, mode: ConnectionMode) {
-        var saved = profiles.load(mode)
-        guard let old = SessionToken.claims(saved.token), SessionToken.claims(token)?.uid == old.uid else { return }
-        saved.token = token
-        guard profiles.save(saved, for: mode) else { return }
-        if connectionMode == mode && config.remoteMac == nil { client.config.token = token }
+    func adoptRenewedSession(_ token: String, replacing expected: ServerConfig, mode: ConnectionMode) {
+        guard profiles.renewSession(token, replacing: expected, for: mode) else { return }
+        if connectionMode == mode && config.baseURL == expected.baseURL && config.remoteMac == nil {
+            client.config.token = token
+        }
     }
 
     /// Renew the saved LISA Cloud session once it's past half its life. The
@@ -239,8 +241,9 @@ final class AppState: ObservableObject {
         do {
             let fresh = try await LisaClient(config: saved).refreshSession()
             guard SessionToken.claims(fresh.token)?.uid == claims.uid else { return }
-            adoptRenewedSession(fresh.token, mode: .cloud)
+            adoptRenewedSession(fresh.token, replacing: saved, mode: .cloud)
         } catch let error where error.httpStatus == 401 {
+            guard profiles.load(.cloud) == saved else { return }
             if connectionMode == .cloud || config.remoteMac != nil { noteSessionExpired() }
         } catch {
             // Offline, or a server without /api/auth/refresh: try again next time.
