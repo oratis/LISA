@@ -1,0 +1,270 @@
+<!doctype html>
+<!--
+  Design-review sketch — NOT a screenshot of the app.
+
+  The native Mac client cannot be built on a machine without Xcode, so this
+  redraws the signed-out Account window from the sizes in
+  packaging/mac-client/Sources/Lisa/CloudComponents.swift and AccountWindow.swift
+  (540×650 window, 28pt gutters, 18pt cards, 11pt button radius). It exists to
+  show one thing: the hard-coded accent (CloudStyle.accent, about #7359F2) next
+  to the shell accents the main window already uses.
+-->
+<meta charset="utf-8" />
+<title>Mac account window — accent comparison</title>
+<style>
+  body {
+    margin: 0;
+    padding: 28px;
+    background: #d9dce3;
+    font:
+      13px/1.4 -apple-system,
+      BlinkMacSystemFont,
+      "SF Pro Text",
+      system-ui,
+      sans-serif;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 540px);
+    gap: 28px;
+  }
+  figure {
+    margin: 0;
+  }
+  figcaption {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #3b4252;
+  }
+  .win {
+    width: 540px;
+    height: 620px;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 18px 50px rgba(0, 0, 0, 0.28),
+      0 0 0 1px rgba(0, 0, 0, 0.14);
+  }
+  .win.light {
+    background: #ececec;
+    color: #1d1d1f;
+    --card: #ffffff;
+    --line: rgba(0, 0, 0, 0.08);
+    --sub: rgba(60, 60, 67, 0.62);
+    --field: #ffffff;
+    --fieldline: rgba(0, 0, 0, 0.14);
+  }
+  .win.dark {
+    background: #1e1e1e;
+    color: #f5f5f7;
+    --card: #2a2a2c;
+    --line: rgba(255, 255, 255, 0.08);
+    --sub: rgba(235, 235, 245, 0.6);
+    --field: #1c1c1e;
+    --fieldline: rgba(255, 255, 255, 0.16);
+  }
+  .lights {
+    position: absolute;
+    top: 12px;
+    left: 13px;
+    display: flex;
+    gap: 8px;
+  }
+  .lights i {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: block;
+  }
+  .lights i:nth-child(1) {
+    background: #ff5f57;
+  }
+  .lights i:nth-child(2) {
+    background: #febc2e;
+  }
+  .lights i:nth-child(3) {
+    background: #28c840;
+  }
+  .col {
+    padding: 48px 28px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .head {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .eyerow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tile {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 11%, transparent);
+  }
+  .tile svg {
+    width: 21px;
+    height: 21px;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--sub);
+  }
+  h1 {
+    margin: 0;
+    font:
+      700 29px/1.15 ui-rounded,
+      "SF Pro Rounded",
+      -apple-system,
+      system-ui,
+      sans-serif;
+    letter-spacing: -0.6px;
+  }
+  .subtitle {
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--sub);
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+  .field {
+    height: 40px;
+    border-radius: 10px;
+    background: var(--field);
+    border: 1px solid var(--fieldline);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 15px;
+    color: var(--sub);
+  }
+  .help {
+    font-size: 12px;
+    color: var(--sub);
+    margin-top: -6px;
+  }
+  .primary {
+    border: 0;
+    border-radius: 11px;
+    padding: 13px 16px;
+    font: 600 14px/1.2 inherit;
+    font-family: inherit;
+    color: var(--on-accent);
+    background: var(--accent);
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+  }
+  .link {
+    text-align: center;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .adv {
+    font-size: 12px;
+    color: var(--sub);
+  }
+  .benefits {
+    display: flex;
+    gap: 18px;
+  }
+  .benefit {
+    flex: 1;
+    display: flex;
+    gap: 9px;
+    font-size: 12px;
+  }
+  .benefit svg {
+    width: 17px;
+    height: 17px;
+    color: var(--accent);
+    flex: none;
+    margin-top: 1px;
+  }
+  .benefit b {
+    display: block;
+    font-weight: 600;
+  }
+  .benefit span {
+    color: var(--sub);
+  }
+  .foot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 14px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--sub);
+  }
+</style>
+<div class="grid" id="grid"></div>
+<script>
+  const ICON = {
+    person:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+    phone:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+    swap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg>',
+  };
+  const cases = [
+    ["Now · light appearance — accent #7359F2", "light", "#7359F2", "#ffffff"],
+    ["Proposed · light — Calm accent #4f5bd5", "light", "#4f5bd5", "#ffffff"],
+    ["Now · dark appearance — accent #7359F2", "dark", "#7359F2", "#ffffff"],
+    ["Proposed · dark — Nebula accent #6ad4ff", "dark", "#6ad4ff", "#0a1024"],
+  ];
+  document.getElementById("grid").innerHTML = cases
+    .map(
+      ([cap, mode, accent, on]) => `
+    <figure><figcaption>${cap}</figcaption>
+      <div class="win ${mode}" style="--accent:${accent};--on-accent:${on}">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="col">
+          <div class="head">
+            <div class="eyerow"><div class="tile">${ICON.person}</div><div class="eyebrow">LISA ACCOUNT</div></div>
+            <h1>At home. On the go.</h1>
+            <div class="subtitle">Sign in to bring your Mac and Lisa Pocket together.</div>
+          </div>
+          <div class="card">
+            <div><label>Email address</label><div class="field">you@example.com</div></div>
+            <div class="help">We'll email you a sign-in code. No password to remember.</div>
+            <div class="primary">Continue with email →</div>
+            <div class="link">Use a password instead</div>
+          </div>
+          <div class="adv">› Advanced</div>
+          <div class="benefits">
+            <div class="benefit">${ICON.phone}<div><b>Pocket, connected</b><span>Your Mac within reach.</span></div></div>
+            <div class="benefit">${ICON.swap}<div><b>Local or cloud</b><span>Local when you're nearby.</span></div></div>
+          </div>
+        </div>
+        <div class="foot">Your conversations stay on this Mac.</div>
+      </div>
+    </figure>`,
+    )
+    .join("");
+</script>
