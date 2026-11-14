@@ -35,6 +35,8 @@ enum LisaErrorCode: String {
     case localOwnerRequired = "local_owner_required"
     /// HTTP 403. Your Mac doesn't trust this address. Connect with its access token or pairing code instead.
     case untrustedHost = "untrusted_host"
+    /// HTTP 400. Your phone's clock is more than five minutes off. Turn on Set Automatically in Date & Time, then try again.
+    case clockSkew = "clock_skew"
     /// HTTP 403. You don't have permission to do that.
     case forbidden
     /// HTTP 409, 429. Lisa is still answering your last message. Wait for it to finish, then try again.
@@ -51,10 +53,34 @@ enum LisaErrorCode: String {
     case billingStateUnavailable = "billing_state_unavailable"
     /// HTTP 503. Lisa couldn't reach your account just now. Try again in a moment.
     case accountStoreUnavailable = "account_store_unavailable"
+    /// HTTP 503. Lisa could't check your account just now. Try again in a moment.
+    case accountServiceUnavailable = "account_service_unavailable"
     /// HTTP 409. This account is being deleted.
     case accountDeletionInProgress = "account_deletion_in_progress"
     /// HTTP 404. That conversation no longer exists. Start a new one.
     case unknownSession = "unknown_session"
+    /// HTTP 409. This request was already handled or has changed. Refresh to see where it stands.
+    case staleApproval = "stale_approval"
+    /// HTTP 400. Lisa couldn't read that answer. Update the app and try again.
+    case approvalIdAndBooleanDecisionRequired = "approval_id_and_boolean_decision_required"
+    /// HTTP 503. Terminal agents are turned off on your Mac. Enable them on the Mac, then try again.
+    case ptyDisabled = "pty_disabled"
+    /// HTTP 503. That coding agent isn't installed on your Mac. Install it there, then try again.
+    case cliMissing = "cli_missing"
+    /// HTTP 500. Your Mac couldn't start the agent. Check Lisa on the Mac, then try again.
+    case spawnFailed = "spawn_failed"
+    /// HTTP 409. That session is still open on your Mac. Close it there, then try again.
+    case sessionLive = "session_live"
+    /// HTTP 400. Only Claude sessions can be resumed. Start a new agent instead.
+    case resumeUnsupported = "resume_unsupported"
+    /// HTTP 400. Give the agent a task to start with.
+    case taskRequired = "task_required"
+    /// HTTP 400. Type a message for the agent first.
+    case textRequired = "text_required"
+    /// HTTP 400. Lisa couldn't understand that request. Update the app and try again.
+    case badAction = "bad_action"
+    /// HTTP 400. Lisa couldn't read that request. Update the app and try again.
+    case badJson = "bad_json"
     /// HTTP 400. Lisa couldn't read this purchase. Restore purchases and try again.
     case malformedJws = "malformed_jws"
     /// HTTP 400. This purchase isn't linked to your Lisa account. Restore purchases while signed in.

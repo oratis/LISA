@@ -103,6 +103,12 @@
       "message": "Your Mac doesn't trust this address. Connect with its access token or pairing code instead."
     },
     {
+      "code": "clock_skew",
+      "http": [400],
+      "when": "Through the Mac relay: the request was signed more than five minutes away from the Mac clock, so nothing ran. serverTime, in epoch ms, is included.",
+      "message": "Your phone's clock is more than five minutes off. Turn on Set Automatically in Date & Time, then try again."
+    },
+    {
       "code": "forbidden",
       "http": [403],
       "when": "Generic code for a 403 without a specific one.",
@@ -151,6 +157,12 @@
       "message": "Lisa couldn't reach your account just now. Try again in a moment."
     },
     {
+      "code": "account_service_unavailable",
+      "http": [503],
+      "when": "The session itself verified but the account directory could not be read, so it can be neither accepted nor declared signed out. Retry-After is set. Not a sign-out: keep the session and retry.",
+      "message": "Lisa could't check your account just now. Try again in a moment."
+    },
+    {
       "code": "account_deletion_in_progress",
       "http": [409],
       "when": "This account is being deleted.",
@@ -161,6 +173,72 @@
       "http": [404],
       "when": "The conversation named in the request no longer exists.",
       "message": "That conversation no longer exists. Start a new one."
+    },
+    {
+      "code": "stale_approval",
+      "http": [409],
+      "when": "An approval answer for a request that was already answered (here or on another device), replaced by a newer request, or whose agent is gone. Refresh, do not retry.",
+      "message": "This request was already handled or has changed. Refresh to see where it stands."
+    },
+    {
+      "code": "approval_id_and_boolean_decision_required",
+      "http": [400],
+      "when": "An approval answer without a boolean allow, or an allow that does not name the request it approves (approvalId).",
+      "message": "Lisa couldn't read that answer. Update the app and try again."
+    },
+    {
+      "code": "pty_disabled",
+      "http": [503],
+      "when": "POST /api/agents/pty/start: terminal agents are off on this Mac (LISA_PTY_AGENTS is not 1).",
+      "message": "Terminal agents are turned off on your Mac. Enable them on the Mac, then try again."
+    },
+    {
+      "code": "cli_missing",
+      "http": [503],
+      "when": "POST /api/agents/pty/start: the Mac has no claude or codex executable for the requested agent.",
+      "message": "That coding agent isn't installed on your Mac. Install it there, then try again."
+    },
+    {
+      "code": "spawn_failed",
+      "http": [500],
+      "when": "POST /api/agents/pty/start: the agent could not be started for another reason (node-pty missing, spawn failed); the message carries the cause.",
+      "message": "Your Mac couldn't start the agent. Check Lisa on the Mac, then try again."
+    },
+    {
+      "code": "session_live",
+      "http": [409],
+      "when": "Resuming a Claude session that is still open in the app or a terminal; resuming it would corrupt its transcript.",
+      "message": "That session is still open on your Mac. Close it there, then try again."
+    },
+    {
+      "code": "resume_unsupported",
+      "http": [400],
+      "when": "Resuming an existing session of an agent that only supports fresh sessions (anything but Claude).",
+      "message": "Only Claude sessions can be resumed. Start a new agent instead."
+    },
+    {
+      "code": "task_required",
+      "http": [400],
+      "when": "Starting an agent without a task.",
+      "message": "Give the agent a task to start with."
+    },
+    {
+      "code": "text_required",
+      "http": [400],
+      "when": "Sending to an agent without text.",
+      "message": "Type a message for the agent first."
+    },
+    {
+      "code": "bad_action",
+      "http": [400],
+      "when": "An agent control request named an action the route does not have.",
+      "message": "Lisa couldn't understand that request. Update the app and try again."
+    },
+    {
+      "code": "bad_json",
+      "http": [400],
+      "when": "The request body is not valid JSON.",
+      "message": "Lisa couldn't read that request. Update the app and try again."
     },
     {
       "code": "malformed_jws",
