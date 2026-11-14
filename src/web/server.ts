@@ -2706,7 +2706,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             // Sliding renewal (#484). The fresh token goes back the way the old
             // one came: a header for Bearer clients (Pocket, the Mac), which
             // store it in place of the old one; a cookie for cookie clients.
-            const fresh = mintSession(claims.uid, sessionSecret, { sv: claims.sv });
+            const fresh = mintSession(claims.uid, sessionSecret, {
+              sv: claims.sv,
+              jti: sessionId(claims),
+            });
             if (credential?.source === "bearer") {
               res.setHeader(SESSION_RENEWAL_HEADER, fresh);
             } else if (credential?.source === "cookie") {
@@ -3004,7 +3007,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const now = Date.now();
-      const token = mintSession(accountUid, sessionSecret, { sv: accountClaims.sv, now });
+      const token = mintSession(accountUid, sessionSecret, {
+        sv: accountClaims.sv,
+        now,
+        jti: sessionId(accountClaims),
+      });
       // The gate may already have put a sliding renewal in the header; answer
       // with one token, not two different ones.
       res.setHeader(SESSION_RENEWAL_HEADER, token);

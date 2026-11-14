@@ -49,6 +49,9 @@ export function unfinishedTurnIndex(
   text: string,
   attachments: number,
 ): number {
+  // Equal attachment counts do not imply equal files. Without a request id or
+  // content comparison, a new upload must never be mistaken for an old retry.
+  if (attachments > 0) return -1;
   for (let i = history.length - 1; i >= 0; i--) {
     const message = history[i]!;
     if (message.role === "assistant") {

@@ -111,22 +111,30 @@ function suite(backend: "json" | "firestore"): void {
       assert.equal((await getAccount(acct.uid))?.revokedSessions?.length, 1);
     });
 
-    test("prunes expired entries and caps the list, always keeping the new one", async () => {
+    test("the cap invalidates the account version without reviving any revoked session", async () => {
       const { acct } = await ensureOtpAccount(`cap-${backend}@example.com`);
       const sv = acct.sessionVersion;
       const now = Date.now();
-      assert.equal(await revokeSession(acct.uid, sv, "expired", now - 1, now - 2 * DAY), true);
-      for (let i = 0; i < MAX_REVOKED_SESSIONS + 3; i++) {
-        assert.equal(await revokeSession(acct.uid, sv, `s${i}`, now + (i + 10) * DAY, now), true);
+      for (let i = 0; i <= MAX_REVOKED_SESSIONS; i++) {
+        assert.equal(await revokeSession(acct.uid, sv, `s${i}`, now + DAY, now), true);
       }
-      // The soonest-expiring of all, revoked last, must still be recorded.
-      assert.equal(await revokeSession(acct.uid, sv, "soonest", now + DAY, now), true);
       const rec = (await getAccount(acct.uid))!;
-      assert.equal(rec.revokedSessions?.length, MAX_REVOKED_SESSIONS);
-      assert.equal(sessionRevoked(rec, "expired"), false, "expired entries are pruned");
-      assert.equal(sessionRevoked(rec, "soonest"), true);
-      assert.equal(sessionRevoked(rec, `s${MAX_REVOKED_SESSIONS + 2}`), true, "latest kept");
-      assert.equal(sessionRevoked(rec, "s0"), false, "soonest-expiring older entries dropped");
+      assert.equal(rec.sessionVersion, sv + 1);
+      assert.equal(rec.revokedSessions, undefined);
+      for (let i = 0; i <= MAX_REVOKED_SESSIONS; i++) {
+        assert.equal(await sessionAccountValid(acct.uid, sv, `s${i}`), false);
+      }
+    });
+
+    test("old-token logout covers newer renewals through their remaining lifetime", async () => {
+      const { acct } = await ensureOtpAccount(`family-${backend}@example.com`);
+      const now = Date.now();
+      await revokeSession(acct.uid, acct.sessionVersion, "family", now + DAY, now);
+      // Pruning after the old token expired must not restore a newer family token.
+      await revokeSession(acct.uid, acct.sessionVersion, "other", now + 3 * DAY, now + 2 * DAY);
+      assert.equal(sessionRevoked((await getAccount(acct.uid))!, "family"), true);
+      await revokeSession(acct.uid, acct.sessionVersion, "later", now + 40 * DAY, now + 31 * DAY);
+      assert.equal(sessionRevoked((await getAccount(acct.uid))!, "family"), false);
     });
 
     test("a stale session version or a missing account has nothing to revoke", async () => {

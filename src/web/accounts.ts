@@ -29,6 +29,7 @@
  * until the Firestore move (B2), which takes this table with it.
  */
 import fs from "node:fs";
+import { SESSION_TTL_MS } from "./sessions-auth.js";
 import { adminAccountAllowed } from "../admin/store.js";
 import { recordFunnel } from "../billing/funnel.js";
 import os from "node:os";
@@ -102,7 +103,8 @@ export interface RevokedSession {
 /**
  * Most single-session sign-outs an account keeps on record. A person signs in
  * again before each sign-out, so reaching this in a 30-day token lifetime is
- * not normal use; past it the entry that expires soonest is dropped.
+ * not normal use; reaching the cap invalidates all sessions by advancing the
+ * account version. Never drop a live revocation and revive a signed-out token.
  */
 export const MAX_REVOKED_SESSIONS = 32;
 
@@ -732,8 +734,14 @@ export async function revokeSession(
       )
       .filter((r) => r.id !== sessionId)
       .sort((a, b) => b.exp - a.exp);
-    // The new entry always stays; the cap drops whatever expires soonest.
-    acct.revokedSessions = [...live.slice(0, MAX_REVOKED_SESSIONS - 1), { id: sessionId, exp }];
+    if (live.length >= MAX_REVOKED_SESSIONS) {
+      acct.sessionVersion++;
+      delete acct.revokedSessions;
+    } else {
+      // An older token can sign out a family with a newer, longer-lived renewal.
+      // Keep the revocation for the full remaining lifetime of every such token.
+      acct.revokedSessions = [...live, { id: sessionId, exp: Math.max(exp, now + SESSION_TTL_MS) }];
+    }
     return true;
   });
 }

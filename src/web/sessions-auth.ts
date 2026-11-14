@@ -30,7 +30,8 @@ export interface SessionClaims {
   /** Account session version — must match the account record at verify time. */
   sv: number;
   /**
-   * Random per-token id, so one session can be signed out without touching
+   * Random login-family id, retained on renewal so signing out invalidates
+   * every token from that login without touching
    * the account's other devices (#493). Tokens minted before it existed have
    * none; {@link sessionId} falls back to their `iat`.
    */
@@ -82,7 +83,7 @@ function mac(data: string, secret: string): Buffer {
 export function mintSession(
   uid: string,
   secret: string,
-  opts: { now?: number; ttlMs?: number; sv?: number } = {},
+  opts: { now?: number; ttlMs?: number; sv?: number; jti?: string } = {},
 ): string {
   const iat = opts.now ?? Date.now();
   const claims: SessionClaims = {
@@ -90,7 +91,7 @@ export function mintSession(
     iat,
     exp: iat + (opts.ttlMs ?? SESSION_TTL_MS),
     sv: opts.sv ?? 0,
-    jti: crypto.randomBytes(12).toString("base64url"),
+    jti: opts.jti ?? crypto.randomBytes(12).toString("base64url"),
   };
   const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
   const sig = mac(`${PREFIX}.${payload}`, secret).toString("base64url");

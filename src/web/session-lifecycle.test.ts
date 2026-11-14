@@ -220,6 +220,26 @@ async function signedIn(headers: Record<string, string>): Promise<boolean> {
 }
 
 describe("POST /api/auth/logout revokes that session only (#493)", () => {
+  test("logout of either an old or renewed token revokes its entire login family", async () => {
+    for (const legacy of [false, true]) {
+      for (const signOutFresh of [false, true]) {
+        const { uid, sv } = await account(`family-${legacy}-${signOutFresh}@example.com`);
+        const old = legacy
+          ? legacyToken(uid, sv, Date.now() - 20 * DAY)
+          : mintSession(uid, secret, { sv, now: Date.now() - 20 * DAY });
+        const sliding = (await me(bearer(old))).headers.get("x-lisa-session")!;
+        const explicit = ((await (await refresh(bearer(old))).json()) as { token: string }).token;
+        const otherDevice = mintSession(uid, secret, { sv });
+        await logout(bearer(signOutFresh ? explicit : old));
+        for (const token of [old, sliding, explicit]) {
+          assert.equal(await signedIn(bearer(token)), false);
+          assert.equal((await refresh(bearer(token))).status, 401);
+        }
+        assert.equal(await signedIn(bearer(otherDevice)), true);
+      }
+    }
+  });
+
   test("a Bearer sign-out kills that token and leaves the account's other sessions", async () => {
     const { uid, sv } = await account("logout-bearer@example.com");
     const phone = mintSession(uid, secret, { sv });

@@ -263,7 +263,11 @@ describe("chat-retry helpers", () => {
     assert.equal(unfinishedTurnIndex(cut, "b", 0), -1);
     assert.equal(unfinishedTurnIndex(cut, "a", 1), -1, "different attachments");
     assert.equal(unfinishedTurnIndex([...cut, answer], "a", 0), -1, "answered");
-    assert.equal(unfinishedTurnIndex([user("a", 2)], "a", 2), 0);
+    assert.equal(
+      unfinishedTurnIndex([user("a", 2)], "a", 2),
+      -1,
+      "equal counts can hide different files",
+    );
     assert.equal(unfinishedTurnIndex([{ role: "user", content: "a" }], "a", 0), 0);
     assert.equal(unfinishedTurnIndex([], "a", 0), -1);
   });
