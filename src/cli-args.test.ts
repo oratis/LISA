@@ -177,3 +177,29 @@ describe("parseArgs — approval mode", () => {
     assert.deepEqual(w.subargs, ["rules", "set", "exec", "ask"]);
   });
 });
+
+describe("parseArgs — pair (#488)", () => {
+  test("--host / --port / --name all reach the pair handler verbatim", () => {
+    const a = parseArgs(["pair", "--host", "h", "--port", "1", "--name", "x"]);
+    assert.equal(a.subcommand, "pair");
+    assert.deepEqual(a.subargs, ["--host", "h", "--port", "1", "--name", "x"]);
+    assert.equal(a.host, "127.0.0.1", "--host is pair's, not the global serve bind");
+    assert.equal(a.port, 5757, "--port is pair's, not the global one");
+  });
+
+  test("--port=N / --host=H / --name=L forms are passed through, not rejected", () => {
+    const a = parseArgs(["pair", "--port=6000", "--host=mac.tailnet.ts.net", "--name=iPad"]);
+    assert.equal(a.subcommand, "pair");
+    assert.deepEqual(a.subargs, ["--port=6000", "--host=mac.tailnet.ts.net", "--name=iPad"]);
+  });
+
+  test("--help after pair goes to the handler; global flags before pair still apply", () => {
+    const h = parseArgs(["pair", "--help"]);
+    assert.equal(h.showHelp, false);
+    assert.deepEqual(h.subargs, ["--help"]);
+    const v = parseArgs(["--verbose", "pair", "--port", "6000"]);
+    assert.equal(v.verbose, true);
+    assert.equal(v.subcommand, "pair");
+    assert.deepEqual(v.subargs, ["--port", "6000"]);
+  });
+});

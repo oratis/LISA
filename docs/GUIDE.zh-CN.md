@@ -236,7 +236,8 @@ lisa status                  一次性快照：身份、心情、最近 commit
 lisa doctor                  健康检查（配置、网络、git、provider）
 lisa monitor                 TUI 实时面板（心情 + soul commit + 事件）
 lisa agents                  跨所有 observer 的 agent 会话快照
-lisa pair [--host H]         显示二维码给手机配对（Lisa Pocket）—— 经运行中的 serve 铸每设备 token
+lisa pair [--host H] [--port N] [--name L]
+                             显示二维码给手机配对（Lisa Pocket）—— 经运行中的 serve 铸每设备 token
 lisa autonomy [days]         自驱运行摘要（空闲 / 心跳 / examen / desire / reflect）
 lisa model <list|install|use|health>
                              本地模型（Ollama / LM Studio / llama.cpp）+

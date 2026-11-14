@@ -60,8 +60,8 @@ blocker is **safety, not capability**:
 - **Unverified id mapping.** Our observer derives a codex `sessionId` from the rollout
   filename (`rollout-<id>.jsonl` → `<id>`); whether that's the exact token
   `codex resume <id>` wants is unconfirmed, and codex isn't installed here to check.
-- **Can't be exercised here.** node-pty won't spawn under Node 26 (see the local-dev
-  caveat), so a speculative implementation couldn't be verified end-to-end anyway.
+- **Can't be exercised here.** codex isn't installed on the machines this was
+  built on, so a speculative implementation couldn't be verified end-to-end anyway.
 
 Rather than ship a guessed, unguarded path on a transcript-**corruption** surface,
 LISA refuses codex resume explicitly: `PtyAgent.start` throws, and
@@ -77,11 +77,9 @@ adds the `codex resume <id>` form.
 
 ## Enabling it
 
-1. Install the optional native dep (it has zero JS deps; if your machine can't
-   build it, nothing else in LISA is affected):
-   ```sh
-   npm i node-pty
-   ```
+1. `node-pty` ships with LISA as an optional dependency (prebuilt for macOS; on
+   other platforms it builds from source, and if that fails nothing else in LISA
+   is affected). A source checkout gets it from `npm ci`.
 2. Turn the spike on:
    ```sh
    LISA_PTY_AGENTS=1 lisa serve --web
@@ -90,7 +88,8 @@ adds the `codex resume <id>` form.
    - **GUI** — in the agents card, pick `claude` or `codex` in the delegate
      picker, type a task, hit ▶; or
    - **Terminal** — `lisa agents pty claude "<task>"` (see below).
-   (Without the flag the start endpoint returns `503` and both surfaces show the hint.)
+   (Without the flag the start endpoint answers `503 {"error":"pty_disabled",…}` and
+   both surfaces show the hint. See [Errors](#errors) for the other cases.)
 
 Binary resolution is env-overridable: `LISA_PTY_CLAUDE_CMD`, `LISA_PTY_CODEX_CMD`.
 
@@ -138,10 +137,18 @@ a full arrow-key TUI. Raw attach is future work.
   (streaming → working, quiet → waiting), not from parsed intent.
 - **Native dep.** `node-pty` is an `optionalDependency`; installs and CI never
   fail if it can't build — PTY agents are simply unavailable then.
-- **Local-dev caveat.** `node-pty`'s native binding throws `posix_spawnp failed`
-  under **Node 26**, so the live PTY path (and `lisa agents pty` end-to-end) can't
-  be exercised on a Node-26 machine. CI runs Node 24, where it works; the pure
-  helpers and lifecycle are unit-tested with an injected fake pty regardless.
+- **macOS `spawn-helper`.** On macOS node-pty doesn't exec the CLI directly: it
+  `posix_spawn`s its own `spawn-helper`, which then execs the CLI. node-pty 1.1.0's
+  npm tarball ships `prebuilds/darwin-*/spawn-helper` **without the exec bit**
+  (mode 0644), and then *every* spawn fails with `posix_spawnp failed.` — on any
+  Node version (this was once blamed on Node 26; it was the file mode). LISA fixes
+  it in three places: the root `postinstall` (`scripts/fix-node-pty-perms.mjs`,
+  npm installs and source checkouts), the Homebrew formula (which installs with
+  `--ignore-scripts`), and `ensureSpawnHelperExecutable()` right before a spawn,
+  for any install that skipped lifecycle scripts. The DMG ships its own
+  `chmod 755` copy (`packaging/mac-client/embed-runtime.sh`). If the file can't
+  be made executable (a read-only install), start answers `spawn_failed` and
+  `/status` reports `spawnHelperExecutable: false`.
 - **Privacy.** A PTY agent captures the full terminal, including model replies.
   That content is shown to **you** on demand (`/api/agents/pty/<id>/output`) and
   is **never** folded into the structural cross-agent roster, which stays
@@ -151,12 +158,31 @@ a full arrow-key TUI. Raw attach is future work.
 
 | Method + path | Body | Effect |
 | --- | --- | --- |
-| `POST /api/agents/pty/start` | `{ agent, task, cwd? }` | spawn a fresh PTY agent (503 if flag off) |
+| `GET /api/agents/pty/status` | — | `{ enabled, installed, spawnHelperExecutable, available, reason, agents:[{id, available}] }` — which start error (below) a start would hit |
+| `POST /api/agents/pty/start` | `{ agent, task, cwd? }` | spawn a fresh PTY agent |
 | `POST /api/agents/pty/start` | `{ agent:"claude", resumeSessionId, cwd? }` | **adopt** an idle session (claude-only: **400** for other agents; **409** if it's live) |
 | `POST /api/agents/pty/<id>/send` | `{ text }` | type a line into the CLI |
 | `POST /api/agents/pty/<id>/cancel` | — | kill the CLI |
 | `GET /api/agents/pty/<id>/output` | — | ANSI-stripped terminal tail (one-shot) |
-| `GET /api/agents/pty/<id>/stream` | — | SSE: current tail (`snapshot`) then each new `chunk` — the live attach feed |
+| `GET /api/agents/pty/<id>/stream` | — | SSE: current tail (`snapshot`) then each new `chunk`, then `{"type":"end","state":"done"}` and the stream closes when the agent finishes |
+
+### Errors
+
+Every error from these routes is JSON `{"error": "<code>", "message": "<text to show>"}`
+(404s also keep the legacy `"ok": false`). `POST /api/agents/pty/start`:
+
+| Status | `error` | When | `/status` tells you ahead of time |
+| --- | --- | --- | --- |
+| 503 | `pty_disabled` | `LISA_PTY_AGENTS` isn't `1` on the Mac | `enabled: false` (`reason: "disabled"`) |
+| 503 | `cli_missing` | no `claude`/`codex` executable found | that agent's `agents[i].available: false` |
+| 500 | `spawn_failed` | anything else — node-pty absent, `posix_spawnp failed.`, …; `message` carries the cause | `installed: false` (`reason: "missing-module"`) or `spawnHelperExecutable: false` (`reason: "spawn-helper-not-executable"`) |
+| 400 | `bad_json` / `task_required` / `resume_unsupported` | malformed request | — |
+| 409 | `session_live` | adopting a session that's still open | the row has no `resumable` |
+
+`send` / `cancel` / `output` / `stream` on an unknown id answer `404 unknown_session`;
+`send` without text `400 text_required`. The managed-agent routes use the same shape,
+including `409 stale_approval` when an approve/deny names a request that was already
+answered or replaced (refresh; don't retry).
 
 ## Code
 
@@ -172,5 +198,9 @@ a full arrow-key TUI. Raw attach is future work.
 - `src/web/server.ts` — the endpoints above (incl. the `/stream` SSE feed).
 - GUI: delegate kind picker + `controllable`-family row controls in
   `lisa-html.ts` / `lisa-client.ts` / `lisa-css.ts`.
+- `scripts/fix-node-pty-perms.mjs` — the postinstall that restores the
+  `spawn-helper` exec bit (best effort, never fails an install).
 - Tests: `src/agents/pty.test.ts` (pure helpers + lifecycle via an injected fake
-  pty; one real-`node-pty` round-trip that skips when the dep can't spawn).
+  pty, start error codes, the spawn-helper fix, and a real-`node-pty` `cat`
+  round-trip that **fails** — not skips — when it can't spawn; it skips only
+  where node-pty isn't installed at all, never on macOS).

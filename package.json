@@ -44,6 +44,7 @@
     "contracts/",
     "channels.example.json",
     "completions/",
+    "scripts/fix-node-pty-perms.mjs",
     "LICENSE",
     "README.md",
     "README.zh-CN.md"
@@ -72,7 +73,8 @@
     "generate-assets": "tsx scripts/generate-pixel-assets.ts",
     "optimize-assets": "tsx scripts/optimize-assets.ts",
     "prepublishOnly": "npm run check:api-contract && npm run typecheck && npm test && npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
-    "postpublish": "npm run copy-assets"
+    "postpublish": "npm run copy-assets",
+    "postinstall": "node -e \"import('./scripts/fix-node-pty-perms.mjs').catch(() => {})\""
   },
   "engines": {
     "node": ">=22.19.0"

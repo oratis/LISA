@@ -14,11 +14,28 @@ import {
   pairingCode,
   pairingCommitment,
   pairingNonce,
+  RELAY_PING,
+  RELAY_PONG,
   verificationCode,
   type LinkIdentity,
   type SealedFrame,
 } from "./protocol.js";
 import { sendFrame } from "./broker.js";
+
+/** Advertise physical LAN interfaces, including Linux predictable interface names. */
+export function lanConnectionURLs(
+  interfaces: ReturnType<typeof os.networkInterfaces>,
+  port: number,
+): string[] {
+  return Object.entries(interfaces)
+    .filter(([name]) => /^(?:en|eth|wl)[a-z0-9]*\d[a-z0-9]*$/i.test(name))
+    .flatMap(([, entries]) =>
+      (entries ?? [])
+        .filter((entry) => entry.family === "IPv4" && !entry.internal)
+        .map((entry) => `ws://${entry.address}:${port}/link`),
+    )
+    .slice(0, 4);
+}
 
 import {
   fleetRoute,
@@ -102,6 +119,17 @@ const MAX_PAIRING_ROUNDS = 5;
  * clock skew instead of failing every request as "interrupted". */
 const CLOCK_SKEW = 5 * 60_000;
 const REQUEST_TTL = 120_000;
+const HEARTBEAT_MS = 20_000;
+
+/** The unverified expiry of a session token, for display only (the relay decides). */
+function sessionExpiry(session: string): number | undefined {
+  try {
+    const claims = JSON.parse(Buffer.from(session.split(".")[1] ?? "", "base64url").toString());
+    return typeof claims.exp === "number" ? claims.exp : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function cloudBase(raw: string): string {
   const url = new URL(raw);
@@ -180,12 +208,15 @@ export class RemoteHost {
     if (!this.stored?.enabled || !base || !session || cloudBase(base) !== this.stored.base) return;
     try {
       const claims = JSON.parse(Buffer.from(session.split(".")[1] ?? "", "base64url").toString());
-      if (claims.uid !== this.stored.uid || claims.exp <= Date.now()) return;
+      if (claims.uid !== this.stored.uid) return;
     } catch {
       return;
     }
-    // Previously approved LAN devices remain reachable during an internet outage.
+    // Previously approved LAN devices remain reachable during an internet outage, and
+    // after the session expires: they hold grants from this Mac, not from the account.
+    // The relay keeps being retried; status() tells the owner to sign in again.
     this.session = session;
+    if (this.sessionExpired()) this.error = "sign_in_required";
     const generation = this.generation;
     await this.startLan();
     this.openRelay(generation);
@@ -193,7 +224,8 @@ export class RemoteHost {
   async connect(rawBase: string, session: string): Promise<void> {
     const base = cloudBase(rawBase);
     if (!session) throw new Error("sign_in_required");
-    this.stop();
+    // Validate before tearing anything down: when the cloud is unreachable, the LAN
+    // listener and the relay retry loop that are already running must keep running.
     const generation = this.generation;
     // Resolve the authority from the server, never from unverified token claims.
     const response = await fetch(`${base}/api/auth/me`, {
@@ -201,10 +233,20 @@ export class RemoteHost {
       redirect: "error",
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) throw new Error("sign_in_required");
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error(
+        response.status === 401 || response.status === 403
+          ? "sign_in_required"
+          : "cloud_unavailable",
+      );
+    }
     const me = (await response.json()) as { signedIn?: boolean; uid?: string };
     if (!me.signedIn || !me.uid) throw new Error("sign_in_required");
+    // A disconnect or another connect finished meanwhile: it wins.
     if (generation !== this.generation) throw new Error("connection_cancelled");
+    this.stop();
+    this.error = "";
     if (this.stored?.uid !== me.uid || this.stored.base !== base) {
       // A different account starts with no grants. Agents its devices started stop.
       for (const g of this.stored?.grants ?? [])
@@ -222,9 +264,43 @@ export class RemoteHost {
     }
     this.stored.enabled = true;
     this.session = session;
+    this.failures = 0;
     this.save();
     await this.startLan();
-    this.openRelay(generation);
+    this.openRelay(this.generation);
+  }
+  /**
+   * A renewed session for the same account (see session-renewal.ts): use it from now
+   * on and move the relay onto it before the old one expires. A host that is not
+   * running a session (never connected, or turned off) ignores it; restore() and
+   * connect() read the saved session when they start.
+   */
+  setSession(session: string): void {
+    if (!session || !this.session || session === this.session || !this.stored?.enabled) return;
+    try {
+      const claims = JSON.parse(Buffer.from(session.split(".")[1] ?? "", "base64url").toString());
+      if (claims.uid !== this.stored.uid) return;
+    } catch {
+      return;
+    }
+    this.session = session;
+    if (this.error === "sign_in_required" && !this.sessionExpired()) this.error = "";
+    const old = this.relay;
+    if (!old) return; // restore() is still starting LAN; it opens the relay with this session.
+    // Retire the current socket (its handlers check this.relay) and reconnect now.
+    this.relay = undefined;
+    clearTimeout(this.reconnect);
+    clearInterval(this.heartbeat);
+    old.terminate();
+    this.online = false;
+    for (const id of this.channels.keys()) if (id.startsWith("cloud:")) this.closeChannel(id);
+    this.failures = 0;
+    this.openRelay(this.generation);
+  }
+  /** The session's own expiry has passed: only signing in again brings the relay back. */
+  private sessionExpired(): boolean {
+    const exp = this.session ? sessionExpiry(this.session) : undefined;
+    return exp !== undefined && exp <= Date.now();
   }
   status() {
     this.expirePending();
@@ -232,6 +308,7 @@ export class RemoteHost {
       enabled: this.stored?.enabled ?? false,
       online: this.online,
       signedIn: !!this.session,
+      sessionExpired: this.sessionExpired(),
       name: os.hostname(),
       error: this.error,
       hostId: this.stored ? keyId(this.stored.identity.publicKey) : null,
@@ -450,14 +527,7 @@ export class RemoteHost {
   private lanURLs(): string[] {
     const address = this.lan?.address();
     if (!address || typeof address === "string") return [];
-    return Object.entries(os.networkInterfaces())
-      .filter(([name]) => /^en\d|^eth\d|^wlan\d/.test(name))
-      .flatMap(([, entries]) =>
-        (entries ?? [])
-          .filter((e) => e.family === "IPv4" && !e.internal)
-          .map((e) => `ws://${e.address}:${address.port}/link`),
-      )
-      .slice(0, 4);
+    return lanConnectionURLs(os.networkInterfaces(), address.port);
   }
   private openRelay(generation: number): void {
     if (generation !== this.generation || !this.stored?.enabled) return;
@@ -470,6 +540,9 @@ export class RemoteHost {
     });
     this.relay = ws;
     let alive = true;
+    // The most specific reason this attempt failed; the generic `error` event that
+    // follows an aborted handshake must not replace it.
+    let failure = "";
     ws.on("pong", () => {
       alive = true;
     });
@@ -478,6 +551,8 @@ export class RemoteHost {
         type: "register",
         publicKey: this.stored!.identity.publicKey,
         name: os.hostname(),
+        // This Mac sends RELAY_PING; a relay may drop it when the pings stop.
+        heartbeat: true,
       });
       this.heartbeat = setInterval(() => {
         if (!alive) {
@@ -485,13 +560,22 @@ export class RemoteHost {
           return;
         }
         alive = false;
-        if (ws.readyState === WebSocket.OPEN) ws.ping();
-      }, 20_000);
+        if (ws.readyState !== WebSocket.OPEN) return;
+        // A protocol ping proves the TCP path; the application ping also proves, to a
+        // hibernating relay, that this Mac is still there (a sleeping Mac stops both).
+        ws.ping();
+        ws.send(RELAY_PING);
+      }, HEARTBEAT_MS);
       this.heartbeat.unref();
     });
     ws.on("message", (data) => {
       try {
-        const msg = JSON.parse(data.toString());
+        const text = data.toString();
+        if (text === RELAY_PONG) {
+          alive = true;
+          return;
+        }
+        const msg = JSON.parse(text);
         if (msg.type === "registered") {
           this.online = true;
           this.error = "";
@@ -518,16 +602,22 @@ export class RemoteHost {
       }
     });
     ws.on("error", () => {
-      this.error = "relay_unreachable";
+      if (generation !== this.generation || this.relay !== ws) return;
+      this.error = failure || "relay_unreachable";
     });
     ws.on("unexpected-response", (_request, response) => {
-      this.error = response.statusCode === 403 ? "sign_in_required" : "relay_unavailable";
+      // 403: the relay refused this account session (expired, revoked, or an account
+      // service hiccup on an older relay). Phone connections stay ON and the relay
+      // keeps being retried; only the owner turns them off, and signing in again
+      // (connect) replaces the session. LAN devices keep working meanwhile.
+      failure = response.statusCode === 403 ? "sign_in_required" : "relay_unavailable";
+      if (generation === this.generation && this.relay === ws) this.error = failure;
       response.resume();
       ws.terminate();
-      if (response.statusCode === 403) this.disable();
     });
     ws.on("close", () => {
-      if (generation !== this.generation) return;
+      // A newer socket replaced this one (setSession) or the host stopped.
+      if (generation !== this.generation || this.relay !== ws) return;
       this.online = false;
       clearInterval(this.heartbeat);
       for (const id of this.channels.keys()) if (id.startsWith("cloud:")) this.closeChannel(id);
@@ -573,8 +663,17 @@ export class RemoteHost {
         this.hello(c, frame, fromCloud);
         return;
       }
-      if (c.used) throw new Error();
       const message = c.cipher.open(frame as unknown as SealedFrame);
+      if (message.type === "cancel") {
+        // The phone's user tapped Cancel. Only the holder of this device key can seal
+        // this, so its request goes: the Mac can no longer approve a code the user
+        // never confirmed. Not dismissed, so the phone can pair again later; grants
+        // are untouched.
+        this.pending.delete(c.deviceId!);
+        this.closeChannel(id);
+        return;
+      }
+      if (c.used) throw new Error();
       if (message.type === "pair") {
         this.reveal(c, message);
         return;
@@ -586,11 +685,18 @@ export class RemoteHost {
         typeof message.id !== "string" ||
         !/^[a-f0-9-]{36}$/i.test(message.id) ||
         typeof message.expiresAt !== "number" ||
-        !Number.isFinite(message.expiresAt) ||
-        message.expiresAt < Date.now() - CLOCK_SKEW ||
-        message.expiresAt > Date.now() + REQUEST_TTL + CLOCK_SKEW
+        !Number.isFinite(message.expiresAt)
       )
         throw new Error();
+      if (
+        message.expiresAt < Date.now() - CLOCK_SKEW ||
+        message.expiresAt > Date.now() + REQUEST_TTL + CLOCK_SKEW
+      ) {
+        // An allowed phone whose clock is off: say so instead of a silent close,
+        // which Pocket can only report as "interrupted". Nothing was run.
+        this.refuseSkew(id, c);
+        return;
+      }
       for (const [key, expiry] of this.requests) if (expiry < Date.now()) this.requests.delete(key);
       if (this.requests.has(message.id) || this.requests.size >= 10_000) throw new Error();
       this.requests.set(message.id, Date.now() + REQUEST_TTL + 2 * CLOCK_SKEW);
@@ -603,6 +709,26 @@ export class RemoteHost {
     } catch {
       this.closeChannel(id);
     }
+  }
+  /** A complete, sealed HTTP-style answer to a request outside the clock window, then close. */
+  private refuseSkew(id: string, c: Channel): void {
+    c.used = true;
+    const body = JSON.stringify({
+      error: "clock_skew",
+      message:
+        "This iPhone's clock is off by more than five minutes. Turn on Set Automatically in Settings → General → Date & Time.",
+      serverTime: Date.now(),
+    });
+    c.send(
+      c.cipher!.seal({
+        type: "headers",
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    c.send(c.cipher!.seal({ type: "chunk", body: Buffer.from(body).toString("base64") }));
+    c.send(c.cipher!.seal({ type: "end" }));
+    this.closeChannel(id);
   }
   private hello(c: Channel, frame: Record<string, unknown>, fromCloud: boolean): void {
     const stored = this.stored!;
@@ -841,6 +967,7 @@ export class RemoteHost {
     clearTimeout(this.reconnect);
     clearInterval(this.heartbeat);
     this.relay?.terminate();
+    this.relay = undefined;
     for (const id of this.channels.keys()) this.closeChannel(id);
     this.pending.clear();
     for (const ws of this.lanSockets?.clients ?? []) ws.terminate();
