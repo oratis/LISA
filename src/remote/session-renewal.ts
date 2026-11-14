@@ -98,7 +98,8 @@ export async function renewManagedSession(
   }
   const fresh = typeof token === "string" ? sessionClaims(token) : null;
   if (!fresh || fresh.uid !== claims.uid || fresh.exp <= claims.exp) return "failed";
-  if (saved().session !== session) return "changed";
+  const current = saved();
+  if (current.session !== session || current.base !== rawBase) return "changed";
   await saveConfigEnv({ LISA_MANAGED_SESSION: token as string });
   onRenewed(token as string);
   return "renewed";

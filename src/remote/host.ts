@@ -22,6 +22,21 @@ import {
 } from "./protocol.js";
 import { sendFrame } from "./broker.js";
 
+/** Advertise physical LAN interfaces, including Linux predictable interface names. */
+export function lanConnectionURLs(
+  interfaces: ReturnType<typeof os.networkInterfaces>,
+  port: number,
+): string[] {
+  return Object.entries(interfaces)
+    .filter(([name]) => /^(?:en|eth|wl)[a-z0-9]*\d[a-z0-9]*$/i.test(name))
+    .flatMap(([, entries]) =>
+      (entries ?? [])
+        .filter((entry) => entry.family === "IPv4" && !entry.internal)
+        .map((entry) => `ws://${entry.address}:${port}/link`),
+    )
+    .slice(0, 4);
+}
+
 import {
   fleetRoute,
   fleetViewRoute,
@@ -512,14 +527,7 @@ export class RemoteHost {
   private lanURLs(): string[] {
     const address = this.lan?.address();
     if (!address || typeof address === "string") return [];
-    return Object.entries(os.networkInterfaces())
-      .filter(([name]) => /^en\d|^eth\d|^wlan\d/.test(name))
-      .flatMap(([, entries]) =>
-        (entries ?? [])
-          .filter((e) => e.family === "IPv4" && !e.internal)
-          .map((e) => `ws://${e.address}:${address.port}/link`),
-      )
-      .slice(0, 4);
+    return lanConnectionURLs(os.networkInterfaces(), address.port);
   }
   private openRelay(generation: number): void {
     if (generation !== this.generation || !this.stored?.enabled) return;

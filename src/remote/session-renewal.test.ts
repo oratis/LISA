@@ -43,6 +43,22 @@ beforeEach(() => {
 });
 after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
+test("switching the server during renewal leaves the new profile alone", async () => {
+  write(old);
+  const s = server(() => {
+    fs.writeFileSync(FILE, read().replace("cloud.example.com", "other.example.com"));
+    return Response.json({ token: fresh });
+  });
+  const handed: string[] = [];
+  assert.equal(
+    await renewManagedSession((t) => handed.push(t), { now: T0 + 16 * DAY, fetch: s.fetch }),
+    "changed",
+  );
+  assert.ok(read().includes(old));
+  assert.match(read(), /other\.example\.com/);
+  assert.deepEqual(handed, []);
+});
+
 test("half-life is measured from the token's own iat/exp", () => {
   assert.equal(pastHalfLife(old, T0 + 14 * DAY), false);
   assert.equal(pastHalfLife(old, T0 + 15 * DAY), true);
