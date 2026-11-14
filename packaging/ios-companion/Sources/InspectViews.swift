@@ -65,6 +65,7 @@ struct SoulView: View {
                 }
             }
         }
+        .consoleBackground()
         .navigationTitle("Soul")
     }
 
@@ -84,16 +85,34 @@ struct MemoryView: View {
     @EnvironmentObject var app: AppState
     var body: some View {
         AsyncContent(load: { try await app.client.memory() }) { mem in
-            List {
-                if !mem.user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Section("Who you are (user)") { CodeBlock(text: mem.user, maxHeight: 240) }
-                }
-                if !mem.memory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Section("Memory") { CodeBlock(text: mem.memory, maxHeight: 320) }
+            let aboutUser = mem.user.trimmingCharacters(in: .whitespacesAndNewlines)
+            let aboutLisa = mem.memory.trimmingCharacters(in: .whitespacesAndNewlines)
+            if aboutUser.isEmpty && aboutLisa.isEmpty {
+                ContentUnavailableView("No memories yet", systemImage: "book.closed",
+                                       description: Text("As Lisa learns your preferences, they’ll appear here."))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Space.xl) {
+                        if !aboutUser.isEmpty { passage("Who you are (user)", aboutUser) }
+                        if !aboutLisa.isEmpty { passage("Memory", aboutLisa) }
+                    }
+                    .padding(Theme.Space.l).frame(maxWidth: Theme.readingWidth)
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
+        .consoleBackground()
         .navigationTitle("Memory")
+    }
+
+    private func passage(_ title: LocalizedStringKey, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(Theme.title(.title2)).foregroundStyle(Theme.text)
+                .accessibilityAddTraits(.isHeader)
+            Divider()
+            Text(verbatim: text).font(.body).lineSpacing(5)
+                .textSelection(.enabled).foregroundStyle(Theme.text)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -119,6 +138,7 @@ struct DevicesView: View {
                 }
             }
         }
+        .consoleBackground()
         .navigationTitle("Paired devices")
     }
 
@@ -148,6 +168,7 @@ struct NamedListView: View {
                 }
             }
         }
+        .consoleBackground()
         .navigationTitle(title)
     }
 }

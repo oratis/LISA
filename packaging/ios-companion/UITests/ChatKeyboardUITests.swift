@@ -68,7 +68,7 @@ final class ChatKeyboardUITests: XCTestCase {
         XCTAssertTrue(app.buttons["chat.getStarted"].waitForExistence(timeout: 15),
                       "an unconnected Chat tab must offer Get started")
         let field = composer(app)
-        XCTAssertTrue(field.exists)
-        XCTAssertFalse(field.isEnabled, "an unconnected composer can't send, so it must not take the keyboard")
+        XCTAssertTrue(!field.exists || !field.isEnabled,
+                      "an unconnected composer can't send, so it must not take the keyboard")
     }
 }

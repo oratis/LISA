@@ -17,12 +17,9 @@ struct RootView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
-        // Four primary tabs (redesign direction B): Home (glanceable dashboard of
-        // Lisa) · Chat · Agents (the roster) · Settings. Tags: Home=0, Chat=1,
-        // Agents=2, Settings=3 — deep links + the Home 'Agents' card target tag 2.
         TabView(selection: $app.selectedTab) {
-            HomeView()
-                .tabItem { Label("Home", systemImage: "house") }.tag(0)
+            RoomView()
+                .tabItem { Label("Room", systemImage: "chair.lounge") }.tag(0)
             ChatView()
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(1)
             Group {
@@ -30,13 +27,11 @@ struct RootView: View {
                 else { MacFeaturesView() }
             }
             .tabItem { Label("My Mac", systemImage: "desktopcomputer") }.tag(2)
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }.tag(3)
         }
         // Recreate view state when the endpoint OR credential changes. A cached
         // transcript, account sheet or session must never cross that boundary.
         .id(app.config)
-        .tint(Theme.accent)                                  // cyan active tab + links + controls
+        .tint(Theme.accent)
         // New installs follow the system; an explicit Settings choice persists.
         // Theme.* colors are trait-aware.
         .preferredColorScheme(app.preferredScheme)
@@ -131,7 +126,7 @@ struct ToastView: View {
         .padding(.horizontal, 16).padding(.vertical, 11)
         .background(Theme.card, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.border))
-        .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+        .shadow(color: .black.opacity(0.13), radius: 10, y: 4)
         .padding(.horizontal, 24)
     }
 }
