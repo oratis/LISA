@@ -241,11 +241,14 @@ final class RoomNavigationTests: XCTestCase {
         defer { XCUIDevice.shared.orientation = .portrait }
         XCTAssertTrue(tile("knowledge").waitForExistence(timeout: 8))
         XCTAssertGreaterThan(app.frame.width, app.frame.height)
-        capture("Room-iPad-landscape")
         open("knowledge")
         XCTAssertTrue(app.navigationBars["Knowledge"].waitForExistence(timeout: 5))
         back()
         XCTAssertTrue(tile("room").waitForExistence(timeout: 5))
+        for destination in ["chat", "dashboard", "control", "reve", "room", "sense", "memory", "knowledge", "settings"] {
+            XCTAssertTrue(tile(destination).isHittable, destination)
+        }
+        capture("Room-iPad-landscape")
     }
 
     func testCloudRoutesToMacSetupAndKeepsSenseLocal() throws {
