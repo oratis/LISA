@@ -1,0 +1,312 @@
+/*
+ * Design-review prototype — NOT shipped code.
+ *
+ * Each block is the proposed change for one finding in
+ * docs/REVIEW_DESIGN_MAC_WEB_v0.31.0.md, scoped behind a body class so the
+ * capture script can show one proposal at a time on the real shell.
+ * Every value reads an existing token from src/web/assets/client/main.css;
+ * nothing here introduces a new colour.
+ */
+
+/* ── D-1 · Sidebar: give the session list the room ─────────────────────── */
+body.p-sidebar .sidebar {
+  gap: 12px;
+  padding: 14px 12px 10px;
+}
+body.p-sidebar .identity {
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 11px;
+  padding: 4px 4px 8px;
+}
+body.p-sidebar .identity .avatar-wrap {
+  width: 48px;
+  height: 48px;
+}
+body.p-sidebar .identity .mood {
+  margin-top: 2px;
+}
+body.p-sidebar .identity .identity-desire {
+  -webkit-line-clamp: 1;
+  margin-top: 2px;
+}
+/* The stray link leaves the sidebar; Control gets the entry (see proposed.js). */
+body.p-sidebar .sidebar > a.nav-item {
+  display: none;
+}
+body.p-sidebar .nav-list {
+  gap: 4px;
+}
+body.p-sidebar .nav-item {
+  min-height: 48px;
+  padding: 7px 4px 6px;
+  gap: 5px;
+}
+body.p-sidebar .nav-item .nav-tag[data-zero] {
+  display: none;
+}
+/* The raw session id already lives in the inspector and the tab tooltip. */
+body.p-sidebar .sb-footer {
+  display: none;
+}
+/* Short windows: icons only, so sessions never drop below four rows. */
+@media (max-height: 700px) and (min-width: 721px) {
+  body.p-sidebar .identity .sub,
+  body.p-sidebar .identity .identity-desire {
+    display: none;
+  }
+  body.p-sidebar .identity .avatar-wrap {
+    width: 40px;
+    height: 40px;
+  }
+  body.p-sidebar .identity {
+    grid-template-columns: 40px minmax(0, 1fr);
+    padding-bottom: 4px;
+  }
+  body.p-sidebar .nav-item {
+    min-height: 38px;
+    padding: 0;
+  }
+  body.p-sidebar .nav-item .nav-label {
+    display: none;
+  }
+}
+
+/* ── D-3 · Knowledge base: the link bar joins the page grid ────────────── */
+body.p-kb .kb-ingestbar {
+  padding: 14px 24px 0;
+  gap: 8px;
+}
+body.p-kb .kb-ingest-url,
+body.p-kb .kb-search {
+  height: 36px;
+  border-radius: 9px;
+  font-size: 13px;
+  padding: 0 12px;
+}
+body.p-kb .kb-ingest-go {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+}
+body.p-kb .kb-searchbar {
+  padding-top: 8px;
+}
+/* The empty status span still took a flex gap, pulling Save 8px off the grid. */
+body.p-kb .kb-ingest-status:empty {
+  display: none;
+}
+/* Nothing saved: no list/reader split to draw, so the empty state owns the pane. */
+body.p-kb .kb-list.is-empty {
+  width: auto;
+  flex: 1;
+  border-right: 0;
+}
+
+/* ── D-6 · One primary, one secondary, one quiet button ────────────────── */
+body.p-buttons .dm-start,
+body.p-buttons .cfg-save,
+body.p-buttons .delegate-btn {
+  font-family: inherit;
+}
+body.p-buttons .dm-start,
+body.p-buttons .cfg-save {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 0;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9px;
+  min-height: 36px;
+  padding: 8px 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+/* Orange is the Claude Code session colour; a generic action must not borrow it. */
+body.p-buttons .delegate-btn {
+  border: 1px solid var(--accent-glow);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9px;
+  min-height: 34px;
+}
+body.p-buttons .delegate-btn:hover {
+  background: var(--accent-glow);
+}
+body.p-buttons #mailSweepBtn {
+  border: 1px solid var(--border-strong) !important;
+}
+
+/* ── D-7 · Controls: one switch, one select, labels outside the card ───── */
+body.p-controls .expression-settings select {
+  font-size: 12.5px;
+  padding: 8px 10px;
+  margin: 0;
+  background: var(--bg-3);
+  min-height: 35px;
+}
+/* The status line is a live region; it takes no room until it has text. */
+body.p-controls .expression-settings p:empty {
+  display: none;
+}
+body.p-controls .v-toggle.as-switch {
+  width: 38px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border-radius: 999px;
+  position: relative;
+  font-size: 0;
+  color: transparent;
+}
+body.p-controls .v-toggle.as-switch::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--fg-3);
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+body.p-controls .v-toggle.as-switch.on {
+  background: var(--proactive-soft);
+  border-color: var(--proactive-glow);
+}
+body.p-controls .v-toggle.as-switch.on::after {
+  transform: translateX(18px);
+  background: var(--proactive);
+}
+body.p-controls .consent-name {
+  text-transform: capitalize;
+}
+
+/* ── D-8 · One icon language ───────────────────────────────────────────── */
+body.p-icons .plus-menu .g,
+body.p-icons .mem-btn .mem-ico {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  font-size: 0;
+  color: var(--fg-2);
+}
+body.p-icons .plus-menu button {
+  white-space: nowrap;
+}
+body.p-icons .plus-menu .g svg,
+body.p-icons .mem-btn .mem-ico svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* ── D-11 · Empty states with Lisa in them ─────────────────────────────── */
+.p-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 44px 24px 36px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.p-empty-state img {
+  width: 132px;
+  height: 132px;
+  object-fit: contain;
+  margin-bottom: 6px;
+}
+.p-empty-state h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.p-empty-state p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+.p-empty-state .acts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.p-btn-secondary {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 36px;
+  padding: 8px 13px;
+  border-radius: 9px;
+  color: var(--fg);
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+}
+
+/* ── D-12 · Birth ritual: nothing shows through ────────────────────────── */
+body.p-birth .birth-overlay {
+  background: var(--bg-deep);
+}
+/* The ritual is taller than an 800px window. The typewriter already scrolls
+   #birthSteps after every character; today that element cannot scroll, so the
+   page never moves and ENTER ends up below the fold. Make the step list the
+   scroller and the closing line and ENTER stay under it, always in view. */
+body.p-birth .birth-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+body.p-birth .birth-content > * {
+  flex: none;
+}
+body.p-birth #birthSteps {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+body.p-birth .birth-final {
+  margin-top: 22px;
+}
+body.p-birth .birth-enter {
+  margin-top: 16px;
+}
+body.p-birth .birth-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(60% 50% at 50% 0%, var(--accent-soft), transparent 70%);
+}
+
+/* ── D-5 / D-15 · Function-bar groups (the composer copy is in proposed.js) ── */
+body.p-fnbar .fnbar {
+  gap: 2px;
+}
+body.p-fnbar .fbar-sep {
+  width: 1px;
+  height: 18px;
+  flex: none;
+  margin: 0 5px;
+  background: var(--border-strong);
+}
+/* Highlight means "the rail is showing", not "the rail is hidden". */
+body.p-fnbar #fnPanel.active {
+  background: transparent;
+  color: var(--fg-2);
+}
+body.p-fnbar:not(.rb-collapsed) #fnPanel {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

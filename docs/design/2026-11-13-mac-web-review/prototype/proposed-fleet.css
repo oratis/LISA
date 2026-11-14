@@ -1,0 +1,190 @@
+/*
+ * Design-review prototype — NOT shipped code.
+ *
+ * D-2: /fleet (Remote Macs) restyled with the shell's own tokens so it reads
+ * as part of Lisa instead of an unstyled document. Token values are copied
+ * from src/web/assets/client/main.css; the theme attribute is the same
+ * <body data-theme="calm"> switch the shell uses.
+ */
+:root {
+  color-scheme: dark;
+  --bg-deep: #07091a;
+  --bg-card: rgba(20, 26, 64, 0.65);
+  --bg-3: #1a1f4a;
+  --border-new: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --fg: #e8eaff;
+  --fg-2: #aeb5d3;
+  --fg-3: #8189ae;
+  --accent: #6ad4ff;
+  --on-accent: #0a1024;
+  --accent-soft: rgba(106, 212, 255, 0.13);
+  --warm: #ffd066;
+  --warm-soft: rgba(255, 208, 102, 0.12);
+  --warm-line: rgba(255, 208, 102, 0.34);
+  font:
+    13px/1.55 -apple-system,
+    BlinkMacSystemFont,
+    "Inter",
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  background: var(--bg-deep);
+  color: var(--fg);
+}
+body[data-theme="calm"] {
+  color-scheme: light;
+  --bg-deep: #f6f7f9;
+  --bg-card: #ffffff;
+  --bg-3: #e7eaf0;
+  --border-new: #e4e7ec;
+  --border-strong: #d5d9e2;
+  --fg: #1b2430;
+  --fg-2: #4d5666;
+  --fg-3: #5f6878;
+  --accent: #4f5bd5;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(79, 91, 213, 0.09);
+  --warm: #d97706;
+  --warm-soft: rgba(217, 119, 6, 0.1);
+  --warm-line: rgba(217, 119, 6, 0.34);
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-deep);
+  color: var(--fg);
+  background-image: radial-gradient(70% 50% at 20% 0%, rgba(106, 212, 255, 0.06), transparent 70%);
+}
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 44px 24px 80px;
+}
+header {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0 0 20px;
+}
+header a {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 9px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+  background: var(--bg-card);
+  border: 1px solid var(--border-new);
+}
+h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+h2 {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+h3 {
+  font-size: 13px;
+}
+#notice:not(:empty) {
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  /* Body text stays --fg; the warm tone carries the border and fill only. */
+  color: var(--fg);
+  background: var(--warm-soft);
+  border: 1px solid var(--warm-line);
+}
+section,
+details {
+  margin: 0 0 12px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-new);
+}
+.heading,
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.grid:empty::before {
+  content: attr(data-empty);
+  grid-column: 1 / -1;
+  padding: 18px 2px 6px;
+  font-size: 12.5px;
+  color: var(--fg-3);
+}
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  min-height: 36px;
+  padding: 0 13px;
+}
+button {
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 0;
+}
+summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+summary::before {
+  content: "›";
+  color: var(--fg-3);
+  font-size: 15px;
+  transition: transform 120ms ease;
+}
+details[open] summary::before {
+  transform: rotate(90deg);
+}
+summary small {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
