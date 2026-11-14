@@ -7,7 +7,7 @@ The owner confirmed on November 14, 2026 that this release includes the follow-u
 - [x] Pocket: multiple saved Macs, explicit switching, per-profile credentials, account isolation and safe migration; show shared task entry points from Room.
 - [x] Pocket: separately granted Fleet approval authority with exact-request binding, expiry and server-side revalidation; read-only shares stay read-only.
 - [x] Checkpoints: preview and restore selected files with concurrent-edit protection.
-- [ ] Worktrees: preview/confirm automatic merge into the source branch, refuse conflicts or changed source state, optionally clean up owned worktrees safely.
+- [x] Worktrees: preview/confirm automatic merge into the source branch, refuse conflicts or changed source state, optionally clean up owned worktrees safely.
 - [x] Storage: cross-task checkpoint quotas, retention controls and complete content/receipt cleanup with an explicit operation generation so old retries cannot restart deleted tasks.
 - [x] Recovery: explicit continuation from saved task context after the previous process has been verified stopped; never silently replay uncertain tool calls.
 - [ ] Codex: scoped workspace browsing/editing and fresh approval requests, preserving the existing packet-only review option.
@@ -57,3 +57,10 @@ New destructive product actions require a user-visible preview and explicit conf
 - A durable verified-stopped marker is written only after process tracking proves exit/termination or the local owner explicitly verifies it. Ambiguous live/reused processes remain reserved and cannot continue.
 - The initiating controller must supply a new instruction and confirm a ten-minute signed preview. A new session receives the original requirement and last stored result excerpt, clearly labeled unverified; no previous approval/tool call or provider state is transferred. The source remains unknown and both tasks receive a linking event.
 - Tests cover unverified-process refusal, control revocation, changed instructions/context, restart/expiry invalidation, exact receipt retry, fresh approvals and stale browser previews. Fleet/host: 69 passed, zero skips. Browser: 17 passed. Logs: `/private/tmp/lisa-complete-continuation-all.log`, `/private/tmp/lisa-complete-continuation-browser.log`.
+
+## Implementation evidence: merge and owned cleanup
+
+- Creation provenance binds the original workspace, Git directory, branch and commit. Both workspace grants are rechecked before merging. Immutable snapshot bytes generate the preview and private candidate objects; hooks/filters/signing are disabled, and the original index is never used for preparation.
+- Confirmation requires a clean unchanged source and matching worktree/checkpoint. One commit is fast-forwarded; optional cleanup rechecks ownership/content and refuses ignored files. Removed workspaces retain historical diffs and cannot start new tasks.
+- Durable unknown receipts and host maintenance reservations prevent duplicate writes across backend instances. Uncertain merge receipts retain the proposed commit for inspection. Only explicit local-owner verification releases uncertain/dead-backend operations; no old operation is retried. Restore and full ledger cleanup use the same reservation.
+- Fleet/host: 74 passed, zero skips before the final two fault/restart regressions. Final checkpoint suite: 20 passed, including a human edit during merge preserving the worktree even after the source commit succeeded. Browser: 19 passed, including cleanup selection invalidating previews and late Mac-switch responses. Type checks/contracts pass; lint has zero errors / 72 existing warnings. Logs: `/private/tmp/lisa-complete-merge-all.log`, `/private/tmp/lisa-complete-merge-final.log`, `/private/tmp/lisa-complete-merge-browser.log`, `/private/tmp/lisa-complete-merge-static.log`.

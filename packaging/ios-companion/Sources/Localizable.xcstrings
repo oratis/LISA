@@ -1859,6 +1859,16 @@
           }
         }
       }
+    },
+    "A workspace was merged into its source branch": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区已合并到原分支"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

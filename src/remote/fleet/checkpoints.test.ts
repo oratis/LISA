@@ -113,6 +113,254 @@ function fixture(
   };
 }
 
+function finishedMerge(f: ReturnType<typeof fixture>) {
+  f.svc.mutate(f.peer, HOST_API + "/runs", f.start);
+  fs.writeFileSync(path.join(f.root, "a.txt"), "merged change\n");
+  fs.writeFileSync(path.join(f.root, "new.txt"), "added\n");
+  fs.unlinkSync(path.join(f.root, "delete.txt"));
+  f.events().result("done", false);
+  f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+  const peer = { ...f.peer, workspaces: [f.original.id, ...f.peer.workspaces] };
+  const selection = f.body({ turn: 1, cleanup: false });
+  return { peer, selection };
+}
+
+test("merge previews all checkpoint changes, commits once and preserves history after owned cleanup", async () => {
+  const f = fixture();
+  try {
+    const { peer, selection } = finishedMerge(f);
+    const head = git(f.source, "rev-parse", "HEAD");
+    const preview = f.svc.previewMerge(peer, f.id, { ...selection, cleanup: true });
+    assert.deepEqual(
+      preview.files.map((x) => x.path),
+      ["a.txt", "delete.txt", "new.txt"],
+    );
+    assert.match(preview.patch, /merged change/);
+    assert.equal(git(f.source, "rev-parse", "HEAD"), head, "preview cannot write source branch");
+    assert.equal(fs.readFileSync(path.join(f.source, "a.txt"), "utf8"), "original\n");
+    const body = { ...selection, ...preview };
+    const receipt = f.svc.merge(peer, f.id, body) as {
+      status: string;
+      merge: { commit: string; cleaned: boolean };
+    };
+    assert.equal(receipt.status, "accepted");
+    assert.equal(receipt.merge.cleaned, true);
+    assert.equal(git(f.source, "rev-parse", "HEAD").trim(), receipt.merge.commit);
+    assert.equal(git(f.source, "rev-parse", "HEAD^"), head);
+    assert.equal(git(f.source, "status", "--porcelain"), "");
+    assert.equal(fs.readFileSync(path.join(f.source, "a.txt"), "utf8"), "merged change\n");
+    assert.equal(fs.existsSync(path.join(f.source, "delete.txt")), false);
+    assert.equal(fs.existsSync(f.root), false);
+    assert.equal(f.svc.workspaces().find((w) => w.id === selection.workspaceId)?.archived, 1);
+    assert.deepEqual(
+      f.svc.merge(peer, f.id, body),
+      receipt,
+      "lost reply cannot merge/delete twice",
+    );
+    assert.match(
+      f.read("/1/0").patch,
+      /merged change/,
+      "archived workspace keeps its immutable diff",
+    );
+    assert.throws(
+      () => f.svc.mutate(peer, HOST_API + "/runs", f.body({ text: "new" })),
+      /workspace_archived/,
+    );
+    assert.equal(f.svc.maintenanceStatus(), null);
+  } finally {
+    await f.close();
+  }
+});
+
+test("merge requires current source and child grants; changed preview or expiry cannot write", async () => {
+  const f = fixture();
+  try {
+    const { peer, selection } = finishedMerge(f);
+    assert.throws(() => f.svc.previewMerge(f.peer, f.id, selection), /source_control_denied/);
+    assert.throws(
+      () => f.svc.previewMerge({ ...peer, control: false }, f.id, selection),
+      /control_denied/,
+    );
+    const preview = f.svc.previewMerge(peer, f.id, selection);
+    assert.throws(
+      () => f.svc.merge(f.peer, f.id, { ...selection, ...preview }),
+      /source_control_denied/,
+    );
+    assert.throws(
+      () => f.svc.merge(peer, f.id, { ...selection, ...preview, cleanup: true }),
+      /merge_preview_changed/,
+    );
+    assert.throws(
+      () => f.svc.merge(peer, f.id, { ...selection, ...preview, expiresAt: Date.now() - 1 }),
+      /preview_expired/,
+    );
+    fs.writeFileSync(path.join(f.root, "a.txt"), "later human edit\n");
+    assert.throws(
+      () => f.svc.merge(peer, f.id, { ...selection, ...preview }),
+      /merge_worktree_changed/,
+    );
+    assert.equal(fs.readFileSync(path.join(f.source, "a.txt"), "utf8"), "original\n");
+    assert.equal(fs.existsSync(f.root), true);
+    assert.equal(f.svc.maintenanceStatus(), null);
+  } finally {
+    await f.close();
+  }
+});
+
+test("merge refuses dirty/moved source, hidden index entries and ignored path collisions", async () => {
+  const f = fixture(undefined, (_, root) => {
+    fs.writeFileSync(path.join(root, "new.txt"), "added\n");
+    git(root, "add", "new.txt");
+  });
+  try {
+    const { peer, selection } = finishedMerge(f);
+    const preview = f.svc.previewMerge(peer, f.id, selection);
+    fs.writeFileSync(path.join(f.source, "a.txt"), "human change\n");
+    assert.throws(
+      () => f.svc.merge(peer, f.id, { ...selection, ...preview }),
+      /merge_source_dirty/,
+    );
+    git(f.source, "checkout", "--", "a.txt");
+    git(f.source, "update-index", "--assume-unchanged", "a.txt");
+    assert.throws(() => f.svc.previewMerge(peer, f.id, selection), /merge_hidden_index/);
+    git(f.source, "update-index", "--no-assume-unchanged", "a.txt");
+    fs.mkdirSync(path.join(f.source, ".git", "info"), { recursive: true });
+    fs.writeFileSync(path.join(f.source, ".git", "info", "exclude"), "new.txt\n");
+    fs.writeFileSync(path.join(f.source, "new.txt"), "ignored user data\n");
+    assert.throws(() => f.svc.previewMerge(peer, f.id, selection), /merge_path_collision/);
+    fs.unlinkSync(path.join(f.source, "new.txt"));
+    git(f.source, "checkout", "-b", "other");
+    assert.throws(() => f.svc.previewMerge(peer, f.id, selection), /merge_source_changed/);
+  } finally {
+    await f.close();
+  }
+});
+
+test("merge never runs repository filters/hooks and optional cleanup preserves ignored files", async () => {
+  const f = fixture((source, dir) => {
+    fs.writeFileSync(path.join(source, ".gitattributes"), "*.txt filter=evil\n");
+    git(source, "add", ".gitattributes");
+    git(source, "commit", "-m", "attributes");
+    git(source, "config", "filter.evil.clean", `touch '${path.join(dir, "ran")}'`);
+    git(source, "config", "filter.evil.smudge", `touch '${path.join(dir, "ran")}'`);
+    fs.mkdirSync(path.join(source, ".git", "hooks"), { recursive: true });
+    fs.writeFileSync(
+      path.join(source, ".git", "hooks", "post-merge"),
+      `#!/bin/sh\ntouch '${path.join(dir, "ran")}'\n`,
+      { mode: 0o755 },
+    );
+  });
+  try {
+    const { peer, selection } = finishedMerge(f);
+    fs.writeFileSync(path.join(f.root, "secret.env"), "keep me");
+    assert.throws(
+      () => f.svc.previewMerge(peer, f.id, { ...selection, cleanup: true }),
+      /worktree_contains_ignored_files/,
+    );
+    const preview = f.svc.previewMerge(peer, f.id, selection);
+    const receipt = f.svc.merge(peer, f.id, { ...selection, ...preview }) as { status: string };
+    assert.equal(receipt.status, "accepted");
+    assert.equal(fs.readFileSync(path.join(f.root, "secret.env"), "utf8"), "keep me");
+    assert.equal(fs.existsSync(path.join(f.dir, "ran")), false);
+  } finally {
+    await f.close();
+  }
+});
+
+test("unknown merge receipt reserves the host across backends until explicit owner verification", async () => {
+  const f = fixture();
+  const originalLink = fs.linkSync;
+  try {
+    const { peer, selection } = finishedMerge(f);
+    const preview = f.svc.previewMerge(peer, f.id, selection);
+    fs.linkSync = () => {
+      throw new Error("I/O unavailable");
+    };
+    const body = { ...selection, ...preview };
+    const receipt = f.svc.merge(peer, f.id, body) as { status: string };
+    fs.linkSync = originalLink;
+    assert.equal(receipt.status, "unknown");
+    assert.deepEqual(f.svc.merge(peer, f.id, body), receipt);
+    assert.throws(
+      () => f.svc.mutate(peer, HOST_API + "/runs", f.body({ text: "new" })),
+      /host_busy/,
+    );
+    const second = new FleetHostService(f.home, f.runner);
+    try {
+      assert.equal(second.maintenanceStatus()?.releasable, true);
+      assert.throws(() => second.previewCleanup(), /host_busy/);
+      assert.throws(() => second.releaseMaintenance(false), /maintenance_verification_required/);
+      second.releaseMaintenance(true);
+      assert.equal(f.svc.maintenanceStatus(), null);
+      assert.deepEqual(
+        f.svc.merge(peer, f.id, body),
+        receipt,
+        "owner verification does not replay uncertain I/O",
+      );
+    } finally {
+      await second.shutdown();
+    }
+  } finally {
+    fs.linkSync = originalLink;
+    await f.close();
+  }
+});
+
+test("a changed cleanup target is preserved even when the source merge already succeeded", async () => {
+  const f = fixture(),
+    link = fs.linkSync;
+  try {
+    const { peer, selection } = finishedMerge(f);
+    const preview = f.svc.previewMerge(peer, f.id, { ...selection, cleanup: true });
+    fs.linkSync = (source, destination) => {
+      link(source, destination);
+      fs.writeFileSync(path.join(f.root, "a.txt"), "human edit during merge\n");
+    };
+    const body = { ...selection, ...preview };
+    const receipt = f.svc.merge(peer, f.id, body) as {
+      status: string;
+      merge: { commit: string; cleaned: boolean };
+    };
+    fs.linkSync = link;
+    assert.equal(receipt.status, "unknown");
+    assert.equal(receipt.merge.cleaned, false);
+    assert.equal(git(f.source, "rev-parse", "HEAD").trim(), receipt.merge.commit);
+    assert.equal(f.svc.maintenanceStatus()?.commit, receipt.merge.commit);
+    assert.equal(fs.readFileSync(path.join(f.root, "a.txt"), "utf8"), "human edit during merge\n");
+    assert.deepEqual(f.svc.merge(peer, f.id, body), receipt);
+  } finally {
+    fs.linkSync = link;
+    await f.close();
+  }
+});
+
+test("merge confirmation rejects changed Git configuration and previews from an earlier backend", async () => {
+  const f = fixture();
+  try {
+    const { peer, selection } = finishedMerge(f);
+    const preview = f.svc.previewMerge(peer, f.id, selection);
+    git(f.source, "config", "core.filemode", "false");
+    assert.throws(
+      () => f.svc.merge(peer, f.id, { ...selection, ...preview }),
+      /merge_preview_changed/,
+    );
+    const fresh = f.svc.previewMerge(peer, f.id, selection);
+    await f.svc.shutdown();
+    const reopened = new FleetHostService(f.home, f.runner);
+    try {
+      assert.throws(
+        () => reopened.merge(peer, f.id, { ...selection, ...fresh }),
+        /merge_preview_changed/,
+      );
+      assert.equal(fs.readFileSync(path.join(f.source, "a.txt"), "utf8"), "original\n");
+    } finally {
+      await reopened.shutdown();
+    }
+  } finally {
+    await f.close();
+  }
+});
+
 test("per-turn snapshots preserve staging, include untracked changes and survive in-turn commits", async () => {
   const f = fixture();
   try {

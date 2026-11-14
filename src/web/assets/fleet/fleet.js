@@ -36,6 +36,19 @@
     continuation_preview_changed: "续接上下文或指令已变化，请重新预览。",
     continuation_too_large: "续接上下文超过 96 KiB，请整理后新建任务。",
     finish_source_first: "请先结束原任务，再预览交接。",
+    merge_source_changed: "原分支或提交已变化，请在执行机检查后手动合并。",
+    merge_source_dirty: "原仓库有未提交改动，请先在执行机处理。",
+    merge_hidden_index: "原仓库启用了隐藏索引项或稀疏检出，请先恢复完整工作区。",
+    merge_path_collision: "原仓库中有会被覆盖的忽略文件，已拒绝合并。",
+    merge_worktree_changed: "隔离工作区已变化，请选择与当前文件一致的检查点。",
+    merge_preview_changed: "合并内容或条件已变化，请重新预览。",
+    merge_origin_unavailable: "此工作区没有可验证的创建来源，不能自动合并。",
+    merge_no_changes: "此检查点与原分支没有差异。",
+    source_control_denied: "自动合并还需执行机所有者授权原仓库的控制权限。",
+    worktree_contains_ignored_files: "隔离工作区包含检查点未收录的忽略文件。请保留工作区，或在执行机手动处理这些文件。",
+    workspace_archived: "此工作区已经清理，仍可查看历史任务与 diff。",
+    maintenance_pending: "上次文件操作的结果不确定，请执行机所有者核对后解除保留。",
+    maintenance_verification_required: "文件操作尚未结束，或尚未确认核对结果。",
     restore_preview_changed: "文件、权限或目录身份已变化，请重新预览回退。",
     restore_file_changed: "文件发生了并发改动，请检查内容后重新预览。",
     unsafe_restore_path: "回退只支持原目录下的普通文件，不支持符号链接、硬链接或特殊文件。",
@@ -124,6 +137,8 @@
         return ["第 " + e.turn + " 轮已交接给 " + (e.agent || "新 agent") + "；新任务独立授权。"];
       case "approval_decided":
         return ["Pocket 已发送审批决定 · " + e.outcome];
+      case "worktree_merged":
+        return ["工作区已合并 · " + e.commit + (e.cleaned ? " · 隔离工作区已清理" : " · 保留隔离工作区")];
       case "file_restored":
         return ["已将 " + e.target + " 回退到第 " + e.turn + " 轮开始时的内容。"];
       case "checkpoints_cleared":
@@ -138,8 +153,9 @@
   const timelines = new Map();
   let changesKey = "", changesSeq = -1, changesVersion = 0;
   function clearRestore() { $("restore").replaceChildren(); $("restore").hidden = true; }
+  function clearMerge() { $("merge").replaceChildren(); $("merge").hidden = true; }
   function clearChanges() {
-    clearRestore();
+    clearRestore(); clearMerge();
     changesVersion++;
     changesKey = ""; changesSeq = -1;
     $("changes").hidden = true;
@@ -319,7 +335,7 @@
     }));
     $("workspace").replaceChildren(
       ...c.workspaces.map((w) => {
-        const o = make("option", w.name);
+        const o = make("option", w.name + (w.archived ? " · 已归档" : ""));
         o.value = w.id;
         return o;
       }),
@@ -365,7 +381,7 @@
       $("change-files").replaceChildren();
       $("change-patch").textContent = ""; $("change-patch").hidden = true;
       $("change-note").textContent = "检查点已由执行机所有者清理。";
-      clearRestore();
+      clearRestore(); clearMerge();
     }
     $("changes").hidden = false;
     const reason = {
@@ -386,22 +402,50 @@
         clearRestore();
         $("change-files").replaceChildren(); $("change-patch").hidden = true;
         const current = () => v === version && changesKey === key && runId === run.id && changesVersion === request;
+        clearMerge();
         const route = "/runs/" + run.id + "/changes/" + t.turn;
         const files = await remote(id, account, route);
         if (!current()) return;
         $("change-note").textContent = "第 " + t.turn + " 轮 · " +
           (files.concurrent ? "工作区同时变化（HEAD 或索引改变）。" : "工作区差异，无法单独归因于 agent。") +
           (files.files.length ? "" : "本轮没有记录到文件差异。");
+        if (cap.control && cap.features.includes("worktree-merge") && !cap.workspaces.find((w) => w.id === run.workspaceId)?.archived && ["completed", "cancelled", "failed"].includes(run.state)) {
+          const section = $("merge"), cleanup = document.createElement("input"), label = make("label", "");
+          cleanup.type = "checkbox";
+          label.append(cleanup, document.createTextNode("合并后清理这个隔离工作区"));
+          const content = make("div", ""); let revision = 0;
+          cleanup.onchange = () => { revision++; content.replaceChildren(); };
+          const prepare = btn("预览合并到原分支", async () => {
+            if (!current() || busy || pending()) return;
+            const selected = ++revision, remove = cleanup.checked;
+            const packet = await remote(id, account, "/runs/" + run.id + "/merge-preview", "POST", {
+              hostId: id, workspaceId: run.workspaceId, turn: t.turn, cleanup: remove, operationGeneration: cap.operationGeneration });
+            if (!current() || selected !== revision) return;
+            const send = btn("确认合并到原分支", async () => {
+              if (!current() || selected !== revision || busy || pending()) return;
+              if (!confirm("将以下全部改动作为一个新提交合并到「" + packet.sourceName + "」的 " + packet.branch + "？" + (remove ? "确认后将清理此隔离工作区。" : "将保留此隔离工作区。"))) return;
+              if (!current() || selected !== revision) return;
+              clearMerge();
+              await mutate("/runs/" + run.id + "/merge", { turn: t.turn, cleanup: remove, previewToken: packet.previewToken, expiresAt: packet.expiresAt });
+            });
+            content.replaceChildren(make("h4", packet.sourceName + " · " + packet.branch),
+              make("p", "包含此检查点相对原分支的全部改动。原仓库须干净，且仍处于创建工作区时的提交。"),
+              make("p", "基准 " + packet.base + " · 目标树 " + packet.tree),
+              make("pre", packet.files.map((f) => f.status + " · " + f.path).join("\n")),
+              make("pre", (packet.truncated ? "差异超过 64 KiB，仅显示开头；完整文件列表和目标树如上。\n" : "") + packet.patch), send);
+          });
+          section.replaceChildren(label, prepare, content); section.hidden = false;
+        }
         $("change-files").replaceChildren(...files.files.map((f) => btn(
           ({ A: "新增", M: "修改", D: "删除", T: "类型变化" }[f.status] || f.status) + " · " + f.path, async () => {
             const fileRequest = ++changesVersion;
-            clearRestore();
+            clearRestore(); clearMerge();
             $("change-patch").hidden = true;
             const diff = await remote(id, account, route + "/" + f.id);
             if (v !== version || changesKey !== key || runId !== run.id || changesVersion !== fileRequest) return;
             $("change-patch").textContent = (diff.truncated ? "差异超过 64 KiB，以下仅为开头。\n" : "") + diff.patch;
             $("change-patch").hidden = false;
-            if (cap?.control && cap.features.includes("file-restore") && ["completed", "cancelled", "failed"].includes(run.state)) {
+            if (!cap.workspaces.find((w) => w.id === run.workspaceId)?.archived && cap?.control && cap.features.includes("file-restore") && ["completed", "cancelled", "failed"].includes(run.state)) {
               const section = $("restore");
               const validRestore = () => v === version && changesKey === key && runId === run.id && changesVersion === fileRequest;
               const prepare = btn("预览回退此文件", async () => {
@@ -523,7 +567,7 @@
     $("capability").textContent = unavailable ? messages[unavailable] || unavailable
       : selectedAgent === "codex" ? "Codex 只读复核发送的文本与 diff；不读取项目、不执行验证命令，不支持追加或审批；中断后可预览上下文并新建复核任务。内容使用执行机的 OpenAI API 配置发送。"
       : "Claude Code · Read / Edit / Write 逐次审批，支持轮间追加与取消；确认旧进程退出后可创建续接任务。内容使用执行机的 Claude API 配置发送。";
-    $("start").disabled = blocked || !wid || !cap.control || !!unavailable ||
+    $("start").disabled = blocked || !wid || cap.workspaces.find((w) => w.id === wid)?.archived || !cap.control || !!unavailable ||
       (cap.agents && !provider?.start) || runs.some((x) => ["running", "waiting", "approval", "cancelling"].includes(x.state));
     const actions = r?.capabilities || (cap.features?.includes("session-capabilities") ? {} : {
       append: cap.control && r?.state === "waiting", approve: cap.control && !!r?.approval,
@@ -710,10 +754,11 @@
       sessionStorage.removeItem(savedKey);
       if (v !== version) return;
       runId = reply.run.id;
+      if (reply.merge?.cleaned) { const w = cap.workspaces.find((w) => w.id === reply.run.workspaceId); if (w) w.archived = true; clearChanges(); }
       if (op.payload.text) $("prompt").value = "";
       notice(
         reply.status === "unknown"
-          ? "已登记，但执行结果不确定。请核对任务；原操作不会再次执行。"
+          ? "已登记，但执行结果不确定。请核对任务；原操作不会再次执行。" + (reply.merge?.commit ? "候选提交：" + reply.merge.commit + "，需在执行机核对是否已合并。" : "")
           : "操作已接收。",
       );
       await refreshRuns(v);
@@ -751,9 +796,19 @@
       l = d.link;
     $("link-status").textContent = l.online ? "已连接账号中继" : "账号中继未连接";
     $("connect").hidden = l.online;
+    $("maintenance").replaceChildren();
+    if (d.maintenance) {
+      const box = $("maintenance");
+      box.append(make("p", "文件操作：" + d.maintenance.kind + " · " + d.maintenance.phase + (d.maintenance.commit ? " · 候选提交 " + d.maintenance.commit : "") + "。为保护文件，暂不接受新任务。"));
+      if (d.maintenance.releasable) box.append(btn("核对文件操作后解除保留", async () => {
+        if (!confirm("请先确认执行机上的 Git / 文件操作已结束，检查原分支、工作区与操作收据。解除保留不会重试原操作。确认已经核对？")) return;
+        await api("/api/fleet/maintenance/release", { confirmed: true }); await local();
+      }));
+    }
     $("local-workspaces").replaceChildren(
       ...d.workspaces.map((w) => {
         const row = make("p", w.name + " · " + w.root + (w.checkpoints ? " · 检查点已启用" : ""));
+        if (w.archived) { row.append(make("span", " · 已清理，保留历史")); return row; }
         row.append(btn("从当前提交创建隔离工作区", async () => {
           await api("/api/fleet/worktrees", { workspaceId: w.id });
           await local();
@@ -774,7 +829,7 @@
         box.append(label);
         return cb;
       };
-      const options = d.workspaces.map((w) => [w.id, check(w.name)]);
+      const options = d.workspaces.filter((w) => !w.archived).map((w) => [w.id, check(w.name)]);
       const write = check("允许在选定目录启动和控制 Claude Code");
       box.append(
         btn("验证码一致，授权选中目录", async () => {

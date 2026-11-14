@@ -54,7 +54,13 @@ async function openTask(page: Page, modern = false) {
             "run-events",
             "turn-changes",
             ...(modern
-              ? ["session-capabilities", "agent-handoff", "file-restore", "task-continuation"]
+              ? [
+                  "session-capabilities",
+                  "agent-handoff",
+                  "file-restore",
+                  "task-continuation",
+                  "worktree-merge",
+                ]
               : []),
           ],
           ...(modern
@@ -544,6 +550,93 @@ test("file restore requires exact preview and confirmation without changing othe
   await page.getByRole("button", { name: "确认回退此文件" }).click();
   await expect(page.locator("#notice")).toContainText("操作已接收");
   expect(state.restores).toBe(1);
+});
+
+test("merge requires a fresh cleanup preview and explicit confirmation; archived tasks keep history", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  let merges = 0;
+  await page.route("**/api/fleet/request", (route) => {
+    const request = route.request().postDataJSON();
+    if (request.path.endsWith("/merge-preview"))
+      return route.fulfill({
+        json: {
+          sourceName: "Source <script>unsafe()</script>",
+          branch: "refs/heads/main",
+          base: "a".repeat(40),
+          tree: "c".repeat(40),
+          files: [{ status: "M", path: "test.txt" }],
+          patch: "-before\n+after",
+          cleanup: request.payload.cleanup,
+          previewToken: request.payload.cleanup ? "cleanup-token" : "keep-token",
+          expiresAt: Date.now() + 60_000,
+        },
+      });
+    if (request.path.endsWith("/merge")) {
+      expect(request.payload.cleanup).toBe(true);
+      expect(request.payload.previewToken).toBe("cleanup-token");
+      merges++;
+      return route.fulfill({
+        json: {
+          status: "accepted",
+          run: { id: runId, workspaceId },
+          merge: { commit: "c".repeat(40), cleaned: true },
+        },
+      });
+    }
+    return route.fallback();
+  });
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await page.getByRole("button", { name: "预览合并到原分支" }).click();
+  await expect(page.locator("#merge")).toContainText("Source <script>unsafe()</script>");
+  await expect(page.locator("#merge script")).toHaveCount(0);
+  await page.getByLabel("合并后清理这个隔离工作区").check();
+  await expect(page.getByRole("button", { name: "确认合并到原分支" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览合并到原分支" }).click();
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "确认合并到原分支" }).click();
+  expect(merges).toBe(0);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "确认合并到原分支" }).click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(merges).toBe(1);
+  await expect(page.locator("#start")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "查看第 1 轮改动" })).toBeVisible();
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await expect(page.getByRole("button", { name: "预览合并到原分支" })).toHaveCount(0);
+});
+
+test("a merge preview arriving after a Mac switch cannot enable source writes", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/fleet/request", async (route) => {
+    if (!route.request().postDataJSON().path.endsWith("/merge-preview")) return route.fallback();
+    await held;
+    return route.fulfill({ json: { sourceName: "Previous Mac source", files: [], patch: "old" } });
+  });
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") && r.postDataJSON()?.path?.endsWith("/merge-preview"),
+  );
+  await page.getByRole("button", { name: "预览合并到原分支" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  release();
+  await expect(page.locator("#merge")).toBeHidden();
+  await expect(page.locator("#merge")).toBeEmpty();
 });
 
 test("a restore preview arriving after switching Macs cannot enable file writes", async ({

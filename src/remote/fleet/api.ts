@@ -51,6 +51,10 @@ export class FleetApi {
       return this.host.previewContinuation(effective, uuid(route.split("/").at(-2)), body);
     if (method === "POST" && route.endsWith("/handoff-preview"))
       return this.host.previewHandoff(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/merge-preview"))
+      return this.host.previewMerge(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/merge"))
+      return this.host.merge(effective, uuid(route.split("/").at(-2)), body);
     if (method === "POST" && route.endsWith("/restore-preview"))
       return this.host.previewRestore(effective, uuid(route.split("/").at(-2)), body);
     if (method === "POST" && route.endsWith("/restore"))
@@ -87,6 +91,7 @@ export class FleetApi {
         runs: this.host.ownerRuns(),
         checkpointRuns: this.host.checkpointRuns(),
         storage: this.host.storage(),
+        maintenance: this.host.maintenanceStatus(),
         shares: this.host.ownerShares(
           link.status().hostId ?? "",
           link.status().devices.flatMap((d) => {
@@ -105,6 +110,8 @@ export class FleetApi {
           throw new FleetError(400, "invalid_share");
         return this.host.share(viewer, uuid(body.runId), body.enabled, body.approve === true);
       }
+      case "/api/fleet/maintenance/release":
+        return this.host.releaseMaintenance(body.confirmed === true);
       case "/api/fleet/storage":
         return this.host.configureStorage(body);
       case "/api/fleet/ledger/preview":

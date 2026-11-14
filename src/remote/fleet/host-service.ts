@@ -8,10 +8,12 @@ import type { AgentSession } from "../../integrations/types.js";
 import { observedActions, runActions, type FleetAgent } from "./capabilities.js";
 import {
   FleetCheckpoints,
+  fleetGit,
   createCheckpointWorkspace,
   repositoryIdentity,
   type Snapshot,
 } from "./checkpoints.js";
+import { prepareMerge, cleanupOwnedWorktree } from "./merge.js";
 import { fileSummary, restoreFile, restoreState } from "./restore.js";
 import { setTimeout as wait } from "node:timers/promises";
 import {
@@ -39,6 +41,7 @@ interface Workspace {
   root: string;
   inode: string;
   checkpoints: number;
+  archived: number;
 }
 interface RunRow {
   id: string;
@@ -92,7 +95,8 @@ type EventType =
   | "checkpoints_cleared"
   | "handoff_started"
   | "file_restored"
-  | "continuation_started";
+  | "continuation_started"
+  | "worktree_merged";
 const ACTIVE = "('running','waiting','approval','cancelling')";
 // Timeline bounds. A long run drops its oldest entries and reports the gap.
 const MAX_EVENTS = 500,
@@ -116,6 +120,7 @@ function viewerEvent(e: Record<string, unknown>) {
     handoff_started: ["turn", "agent"],
     file_restored: ["turn", "target"],
     continuation_started: ["agent"],
+    worktree_merged: ["turn", "commit", "cleaned"],
   };
   return Object.fromEntries(
     ["seq", "at", "type", ...(fields[String(e.type)] ?? [])]
@@ -220,6 +225,8 @@ export class FleetHostService {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(path.join(dir, "runs.sqlite"));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;
+      CREATE TABLE IF NOT EXISTS maintenance(id INTEGER PRIMARY KEY CHECK(id=1),token TEXT,backend INTEGER,phase TEXT,kind TEXT);
+      CREATE TABLE IF NOT EXISTS merge_results(operation TEXT PRIMARY KEY,commit_id TEXT,cleaned INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS fleet_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT,root TEXT UNIQUE,inode TEXT);
       CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,host TEXT,device TEXT,workspace TEXT,epoch TEXT,state TEXT,result TEXT,pending TEXT,created INTEGER,pgid INTEGER,started INTEGER,backend INTEGER);
@@ -230,6 +237,19 @@ export class FleetHostService {
       CREATE TABLE IF NOT EXISTS viewers(run TEXT NOT NULL,host TEXT NOT NULL,device TEXT NOT NULL,pairing TEXT NOT NULL,PRIMARY KEY(run,host,device));
       CREATE TABLE IF NOT EXISTS viewer_ops(host TEXT,device TEXT,pairing TEXT,id TEXT,run TEXT,hash TEXT,status TEXT,at INTEGER,approval TEXT,PRIMARY KEY(host,device,pairing,id));
       CREATE TABLE IF NOT EXISTS events(run TEXT NOT NULL,seq INTEGER NOT NULL,at INTEGER NOT NULL,type TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run,seq)) WITHOUT ROWID;`);
+    const workspaceColumns = new Set(
+      this.db
+        .prepare("PRAGMA table_info(checkpoint_workspaces)")
+        .all()
+        .map((c) => c.name),
+    );
+    for (const column of ["source", "source_identity", "base", "branch"])
+      if (!workspaceColumns.has(column))
+        this.db.exec(`ALTER TABLE checkpoint_workspaces ADD COLUMN ${column} TEXT`);
+    if (!workspaceColumns.has("removed"))
+      this.db.exec(
+        "ALTER TABLE checkpoint_workspaces ADD COLUMN removed INTEGER NOT NULL DEFAULT 0",
+      );
     // A ledger from before process tracking gains the columns. Its runs record no
     // process group, so after a restart they still wait for the owner to check.
     const columns = new Set(
@@ -392,7 +412,7 @@ export class FleetHostService {
   workspaces(): Workspace[] {
     return this.db
       .prepare(
-        "SELECT workspaces.*,EXISTS(SELECT 1 FROM checkpoint_workspaces c WHERE c.workspace=workspaces.id) AS checkpoints FROM workspaces ORDER BY name",
+        "SELECT workspaces.*,EXISTS(SELECT 1 FROM checkpoint_workspaces c WHERE c.workspace=workspaces.id) AS checkpoints,COALESCE((SELECT removed FROM checkpoint_workspaces c WHERE c.workspace=workspaces.id),0) AS archived FROM workspaces ORDER BY name",
       )
       .all() as unknown as Workspace[];
   }
@@ -427,7 +447,7 @@ export class FleetHostService {
     if (existing && existing.inode !== token) throw new FleetError(409, "workspace_replaced");
     if (
       !existing &&
-      (workspaces.length >= 32 ||
+      (workspaces.filter((w) => !w.archived).length >= 32 ||
         workspaces.some((w) => within(root, w.root) || within(w.root, root)))
     )
       throw new FleetError(409, "workspace_overlap_or_limit");
@@ -456,6 +476,7 @@ export class FleetHostService {
   }
   private hostBusy() {
     return !!(
+      this.db.prepare("SELECT 1 FROM maintenance").get() ||
       this.sessions.size ||
       this.db.prepare(`SELECT 1 FROM runs WHERE state IN ${ACTIVE} LIMIT 1`).get()
     );
@@ -519,7 +540,8 @@ export class FleetHostService {
             !this.db
               .prepare("SELECT 1 FROM viewer_ops WHERE run=? AND approval=?")
               .get(r.id, JSON.parse(r.pending).id),
-          !!recipient &&
+          !this.workspaces().find((w) => w.id === r.workspace)?.archived &&
+            !!recipient &&
             !recipient.reason() &&
             !this.hostBusy() &&
             !!this.db
@@ -583,6 +605,7 @@ export class FleetHostService {
           "file-restore",
           "operation-generation",
           "task-continuation",
+          "worktree-merge",
         ],
         agents: this.agents(peer),
         hostId: peer.hostId,
@@ -592,7 +615,12 @@ export class FleetHostService {
         unavailable: this.runner.reason(),
         workspaces: this.workspaces()
           .filter((w) => peer.workspaces.includes(w.id))
-          .map(({ id, name, checkpoints }) => ({ id, name, checkpoints: !!checkpoints })),
+          .map(({ id, name, checkpoints, archived }) => ({
+            id,
+            name,
+            checkpoints: !!checkpoints,
+            archived: !!archived,
+          })),
       };
     if (route === HOST_API + "/runs") {
       const all = this.db
@@ -634,7 +662,15 @@ export class FleetHostService {
         .get(peer.hostId, peer.deviceId, id);
       if (!row) throw new FleetError(404, "operation_not_found");
       const run = this.getRun(peer, String(row.run));
-      return { operationId: id, status: row.status, run: this.view(run, peer) };
+      const merged = this.db
+        .prepare("SELECT commit_id,cleaned FROM merge_results WHERE operation=?")
+        .get([peer.hostId, peer.deviceId, id].join(":"));
+      return {
+        operationId: id,
+        status: row.status,
+        run: this.view(run, peer),
+        ...(merged ? { merge: { commit: merged.commit_id, cleaned: !!merged.cleaned } } : {}),
+      };
     }
     return { run: this.view(this.getRun(peer, id), peer) };
   }
@@ -678,6 +714,7 @@ export class FleetHostService {
         return this.read(peer, HOST_API + "/operations/" + op);
       }
       if (action !== "cancel") {
+        if (workspace.archived) throw new FleetError(409, "workspace_archived");
         let valid = false;
         try {
           valid =
@@ -923,6 +960,7 @@ export class FleetHostService {
   private continuationReady(run: RunRow) {
     const adapter = this.adapter(run.agent);
     return (
+      !this.workspaces().find((w) => w.id === run.workspace)?.archived &&
       run.state === "unknown" &&
       run.verified_stopped === 1 &&
       !this.hostBusy() &&
@@ -1009,6 +1047,8 @@ export class FleetHostService {
   }
   previewHandoff(peer: FleetPeer, sourceId: string, body: Body, confirming = false) {
     const source = this.getRun(peer, sourceId);
+    if (this.workspaces().find((w) => w.id === source.workspace)?.archived)
+      throw new FleetError(409, "workspace_archived");
     if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== source.workspace)
       throw new FleetError(403, "control_denied");
     if (
@@ -1129,9 +1169,10 @@ export class FleetHostService {
   }
   createWorktree(workspaceId: string) {
     const source = this.workspaces().find((w) => w.id === workspaceId);
-    if (!source) throw new FleetError(404, "workspace_not_found");
+    if (!source || source.archived) throw new FleetError(404, "workspace_not_found");
     if (inode(source.root) !== source.inode) throw new FleetError(409, "workspace_replaced");
-    if (this.workspaces().length >= 32) throw new FleetError(409, "workspace_overlap_or_limit");
+    if (this.workspaces().filter((w) => !w.archived).length >= 32)
+      throw new FleetError(409, "workspace_overlap_or_limit");
     let created: ReturnType<typeof createCheckpointWorkspace>;
     try {
       created = createCheckpointWorkspace(source.root);
@@ -1140,9 +1181,278 @@ export class FleetHostService {
     }
     const workspace = this.register(source.name.slice(0, 48) + " · Fleet", created.root);
     this.db
-      .prepare("INSERT INTO checkpoint_workspaces VALUES(?,?)")
-      .run(workspace.id, created.gitIdentity);
+      .prepare(
+        "INSERT INTO checkpoint_workspaces(workspace,identity,source,source_identity,base,branch) VALUES(?,?,?,?,?,?)",
+      )
+      .run(
+        workspace.id,
+        created.gitIdentity,
+        source.id,
+        created.sourceIdentity,
+        created.base,
+        created.branch,
+      );
     return { ...workspace, root: created.root };
+  }
+  maintenanceStatus() {
+    const row = this.db.prepare("SELECT token,kind,phase,backend FROM maintenance").get();
+    return row
+      ? {
+          kind: row.kind,
+          phase: row.phase,
+          commit: this.db
+            .prepare("SELECT commit_id FROM merge_results WHERE operation=?")
+            .get(String(row.token))?.commit_id,
+          releasable: row.phase === "unknown" || !this.exists(Number(row.backend)),
+        }
+      : null;
+  }
+  releaseMaintenance(confirmed: boolean) {
+    this.tx(() => {
+      const status = this.maintenanceStatus();
+      if (!confirmed || !status?.releasable)
+        throw new FleetError(409, "maintenance_verification_required");
+      this.db.exec("DELETE FROM maintenance");
+    });
+    return { released: true };
+  }
+  /** Called in the same transaction as the unknown receipt, before filesystem writes. */
+  private reserveMaintenance(kind: string, operation?: string) {
+    if (this.hostBusy()) throw new FleetError(409, "host_busy");
+    const token = operation ?? crypto.randomUUID();
+    this.db
+      .prepare("INSERT INTO maintenance VALUES(1,?,?,'running',?)")
+      .run(token, process.pid, kind);
+    return token;
+  }
+  private finishMaintenance(token: string, success: boolean) {
+    this.db
+      .prepare(
+        success
+          ? "DELETE FROM maintenance WHERE token=?"
+          : "UPDATE maintenance SET phase='unknown' WHERE token=?",
+      )
+      .run(token);
+  }
+  private mergePlan(peer: FleetPeer, id: string, body: Body, confirming: boolean) {
+    const run = this.getRun(peer, id);
+    if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== run.workspace)
+      throw new FleetError(403, "control_denied");
+    if (this.hostBusy() || !["completed", "cancelled", "failed"].includes(run.state))
+      throw new FleetError(409, "run_not_finished");
+    const workspace = this.workspaces().find((w) => w.id === run.workspace)!;
+    const provenance = this.db
+      .prepare("SELECT * FROM checkpoint_workspaces WHERE workspace=? AND removed=0")
+      .get(workspace.id);
+    if (!provenance?.source) throw new FleetError(409, "merge_origin_unavailable");
+    const source = this.workspaces().find((w) => w.id === provenance.source);
+    if (!source || source.archived || !peer.workspaces.includes(source.id))
+      throw new FleetError(403, "source_control_denied");
+    for (const w of [workspace, source]) {
+      try {
+        if (fs.realpathSync.native(w.root) !== w.root || inode(w.root) !== w.inode)
+          throw new Error();
+      } catch {
+        throw new FleetError(409, "workspace_replaced");
+      }
+    }
+    if (
+      !Number.isInteger(body.turn) ||
+      Number(body.turn) < 1 ||
+      Number(body.turn) > 100 ||
+      typeof body.cleanup !== "boolean"
+    )
+      throw new FleetError(400, "invalid_merge_selection");
+    const row = this.db
+      .prepare("SELECT after FROM checkpoints WHERE run=? AND turn=?")
+      .get(id, Number(body.turn));
+    if (!row?.after) throw new FleetError(409, "checkpoint_unavailable");
+    const snapshot = JSON.parse(String(row.after)) as Snapshot;
+    const checkChild = () => {
+      if (
+        fs.realpathSync.native(workspace.root) !== workspace.root ||
+        inode(workspace.root) !== workspace.inode ||
+        repositoryIdentity(workspace.root) !== provenance.identity
+      )
+        throw new FleetError(409, "workspace_replaced");
+      try {
+        fleetGit(workspace.root, ["symbolic-ref", "--quiet", "HEAD"]);
+        throw new FleetError(409, "merge_worktree_changed");
+      } catch (err) {
+        if ((err as { status?: number }).status !== 1) throw err;
+      }
+      const current = this.checkpoints.probe(workspace.root, String(provenance.identity));
+      if (
+        snapshot.changed ||
+        current.head !== provenance.base ||
+        snapshot.head !== provenance.base ||
+        current.index !== snapshot.index ||
+        current.tree !== this.checkpoints.tree(id, snapshot)
+      )
+        throw new FleetError(409, "merge_worktree_changed");
+      if (
+        body.cleanup &&
+        fleetGit(workspace.root, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"])
+          .length
+      )
+        throw new FleetError(409, "worktree_contains_ignored_files");
+      return current;
+    };
+    const child = checkChild();
+    const prepared = prepareMerge(this.home, this.checkpoints, id, snapshot, {
+      root: source.root,
+      identity: String(provenance.source_identity),
+      base: String(provenance.base),
+      branch: String(provenance.branch),
+    });
+    try {
+      const expiresAt = confirming ? Number(body.expiresAt) : Date.now() + 10 * 60_000;
+      if (
+        !Number.isFinite(expiresAt) ||
+        expiresAt <= Date.now() ||
+        expiresAt > Date.now() + 10 * 60_000
+      )
+        throw new FleetError(409, "preview_expired");
+      const packet = {
+        runId: id,
+        workspaceId: workspace.id,
+        sourceWorkspaceId: source.id,
+        sourceName: source.name,
+        branch: String(provenance.branch),
+        base: String(provenance.base),
+        tree: prepared.tree,
+        turn: Number(body.turn),
+        files: prepared.files,
+        patch: prepared.patch,
+        truncated: prepared.truncated,
+        cleanup: body.cleanup,
+        expiresAt,
+      };
+      const previewToken = crypto
+        .createHmac("sha256", this.handoffKey)
+        .update(
+          JSON.stringify([
+            packet,
+            peer.hostId,
+            peer.deviceId,
+            workspace.inode,
+            source.inode,
+            prepared.fingerprint,
+            child,
+            this.epoch,
+          ]),
+        )
+        .digest("hex");
+      if (
+        confirming &&
+        (typeof body.previewToken !== "string" ||
+          !/^[a-f0-9]{64}$/.test(body.previewToken) ||
+          !crypto.timingSafeEqual(
+            Buffer.from(body.previewToken, "hex"),
+            Buffer.from(previewToken, "hex"),
+          ))
+      )
+        throw new FleetError(409, "merge_preview_changed");
+      return { packet: { ...packet, previewToken }, prepared, checkChild, workspace, source };
+    } catch (err) {
+      prepared.dispose();
+      throw err;
+    }
+  }
+  previewMerge(peer: FleetPeer, id: string, body: Body) {
+    const plan = this.mergePlan(peer, id, body, false);
+    try {
+      return plan.packet;
+    } finally {
+      plan.prepared.dispose();
+    }
+  }
+  merge(peer: FleetPeer, id: string, body: Body) {
+    this.assertGeneration(body);
+    const op = uuid(body.operationId),
+      run = this.getRun(peer, id);
+    if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== run.workspace)
+      throw new FleetError(403, "control_denied");
+    const provenance = this.db
+      .prepare("SELECT source FROM checkpoint_workspaces WHERE workspace=?")
+      .get(run.workspace);
+    if (!peer.workspaces.includes(String(provenance?.source)))
+      throw new FleetError(403, "source_control_denied");
+    const resultKey = [peer.hostId, peer.deviceId, op].join(":");
+    const hash = digest(
+      JSON.stringify([
+        "merge",
+        id,
+        run.workspace,
+        body.turn,
+        body.cleanup,
+        body.expiresAt,
+        body.previewToken,
+      ]),
+    );
+    let plan: ReturnType<FleetHostService["mergePlan"]> | undefined,
+      token = "",
+      durable = false;
+    try {
+      const previous = this.tx(() => {
+        const prior = this.db
+          .prepare("SELECT hash FROM ops WHERE host=? AND device=? AND id=?")
+          .get(peer.hostId, peer.deviceId, op);
+        if (prior) {
+          if (prior.hash !== hash) throw new FleetError(409, "operation_conflict");
+          return true;
+        }
+        if (Number(this.db.prepare("SELECT COUNT(*) AS n FROM ops").get()?.n) >= 50000)
+          throw new FleetError(507, "receipt_capacity");
+        plan = this.mergePlan(peer, id, body, true);
+        token = this.reserveMaintenance("merge", resultKey);
+        this.db
+          .prepare("INSERT INTO ops VALUES(?,?,?,?,?,?,?,'unknown')")
+          .run(peer.hostId, peer.deviceId, op, hash, id, "merge", Date.now());
+        return false;
+      });
+      if (previous) return this.read(peer, HOST_API + "/operations/" + op);
+      durable = true;
+      const ready = plan!;
+      let success = false;
+      try {
+        ready.checkChild();
+        const commit = ready.prepared.execute((proposed) => {
+          this.db
+            .prepare("INSERT INTO merge_results(operation,commit_id) VALUES(?,?)")
+            .run(resultKey, proposed);
+        });
+        let cleaned = false;
+        if (body.cleanup) {
+          ready.checkChild();
+          cleanupOwnedWorktree(ready.source.root, ready.workspace.root);
+          this.db
+            .prepare("UPDATE checkpoint_workspaces SET removed=1 WHERE workspace=?")
+            .run(run.workspace);
+          cleaned = true;
+        }
+        this.tx(() => {
+          this.db
+            .prepare("UPDATE merge_results SET cleaned=? WHERE operation=?")
+            .run(cleaned ? 1 : 0, resultKey);
+          this.db
+            .prepare("UPDATE ops SET status='accepted' WHERE host=? AND device=? AND id=?")
+            .run(peer.hostId, peer.deviceId, op);
+          this.record(id, "worktree_merged", { turn: body.turn, commit, cleaned });
+          this.finishMaintenance(token, true);
+        });
+        success = true;
+      } finally {
+        if (!success) this.finishMaintenance(token, false);
+      }
+    } catch (err) {
+      if (!durable) throw err;
+      // Unknown is durable, including a proposed commit id when available. No retry
+      // repeats a merge or deletion; the local owner verifies before freeing the host.
+    } finally {
+      plan?.prepared.dispose();
+    }
+    return this.read(peer, HOST_API + "/operations/" + op);
   }
   private setting(key: string, fallback: string) {
     return String(
@@ -1202,6 +1512,7 @@ export class FleetHostService {
     return this.storage();
   }
   applyRetention(now = Date.now()) {
+    if (this.db.prepare("SELECT 1 FROM maintenance").get()) return;
     const days = Number(this.setting("checkpoint_retention_days", "0"));
     if (!days) return;
     const rows = this.db
@@ -1238,6 +1549,7 @@ export class FleetHostService {
   }
   clearLedger(body: Body) {
     const generation = crypto.randomUUID();
+    let token = "";
     this.db.exec("PRAGMA secure_delete=ON");
     this.tx(() => {
       const preview = this.cleanupPlan(Number(body.expiresAt));
@@ -1250,6 +1562,7 @@ export class FleetHostService {
         )
       )
         throw new FleetError(409, "cleanup_preview_changed");
+      token = this.reserveMaintenance("ledger-cleanup");
       this.setSetting("operation_generation", generation);
       // Configuration and paired-device grants remain; every task payload and receipt goes.
       for (const table of [
@@ -1259,15 +1572,22 @@ export class FleetHostService {
         "viewers",
         "viewer_ops",
         "ops",
+        "merge_results",
         "runs",
       ])
         this.db.exec(`DELETE FROM ${table}`);
     });
-    crypto.randomFillSync(this.handoffKey);
-    this.checkpoints.clearAll();
-    this.db.exec("VACUUM");
-    const compact = this.db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
-    if (Number(compact?.busy ?? 0)) throw new FleetError(503, "ledger_compaction_pending");
+    try {
+      crypto.randomFillSync(this.handoffKey);
+      this.checkpoints.clearAll();
+      this.db.exec("VACUUM");
+      const compact = this.db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      if (Number(compact?.busy ?? 0)) throw new FleetError(503, "ledger_compaction_pending");
+      this.finishMaintenance(token, true);
+    } catch (err) {
+      this.finishMaintenance(token, false);
+      throw err;
+    }
     return { cleared: true, compacted: true, operationGeneration: generation };
   }
   private captureCheckpoint(
@@ -1382,6 +1702,7 @@ export class FleetHostService {
     )
       throw new FleetError(400, "invalid_checkpoint_selection");
     const workspace = this.workspaces().find((w) => w.id === run.workspace)!;
+    if (workspace.archived) throw new FleetError(409, "workspace_archived");
     const managed = this.db
       .prepare("SELECT identity FROM checkpoint_workspaces WHERE workspace=?")
       .get(run.workspace);
@@ -1468,7 +1789,9 @@ export class FleetHostService {
       return this.read(peer, HOST_API + "/operations/" + op);
     }
     const plan = this.restorePlan(peer, id, body, true);
+    let token = "";
     this.tx(() => {
+      token = this.reserveMaintenance("restore");
       if (Number(this.db.prepare("SELECT COUNT(*) AS n FROM ops").get()?.n) >= 50000)
         throw new FleetError(507, "receipt_capacity");
       this.db
@@ -1482,9 +1805,11 @@ export class FleetHostService {
           .prepare("UPDATE ops SET status='accepted' WHERE host=? AND device=? AND id=?")
           .run(peer.hostId, peer.deviceId, op);
         this.record(id, "file_restored", { turn: plan.packet.turn, target: plan.target.path });
+        this.finishMaintenance(token, true);
       });
       return this.read(peer, HOST_API + "/operations/" + op);
     } catch {
+      this.finishMaintenance(token, false);
       // A process or I/O failure can leave a partially written file. Preserve uncertainty;
       // a retry must never overwrite an intervening user edit.
       return this.read(peer, HOST_API + "/operations/" + op);
@@ -1498,6 +1823,8 @@ export class FleetHostService {
       .all();
   }
   clearCheckpoints(id: string) {
+    if (this.db.prepare("SELECT 1 FROM maintenance").get())
+      throw new FleetError(409, "maintenance_pending");
     const run = this.db.prepare("SELECT state FROM runs WHERE id=?").get(id);
     if (!run) throw new FleetError(404, "run_not_found");
     if (

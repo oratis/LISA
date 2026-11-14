@@ -5160,6 +5160,179 @@
           }
         }
       ]
+    },
+    "/api/agent-host/v1/runs/{id}/merge-preview": {
+      "post": {
+        "operationId": "previewFleetMerge",
+        "description": "Requires the initiating controller, control grants for both the managed worktree and source repository, a finished task and idle host. Preview all checkpoint changes as one commit on the unchanged clean source branch. Cleanup is separately selected; ignored files prevent cleanup.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMergePreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetMergeSelection"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/merge": {
+      "post": {
+        "operationId": "mergeFleetWorktree",
+        "description": "Confirm an exact ten-minute preview. Persist an unknown receipt and host maintenance reservation before filesystem changes, fast-forward one commit, and optionally remove only the verified owned worktree. Replays return the same receipt; partial failures require local-owner verification. Historical diffs remain available after cleanup.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMergeSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "previewToken",
+                      "expiresAt"
+                    ],
+                    "properties": {
+                      "previewToken": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "expiresAt": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/fleet/maintenance/release": {
+      "post": {
+        "operationId": "releaseFleetMaintenance",
+        "description": "Local owner only. Explicitly verify uncertain/dead-backend Git or filesystem operations have ended before releasing the host reservation. Does not retry any old operation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "confirmed"
+                ],
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "released": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5215,6 +5388,10 @@
           "checkpoints": {
             "type": "boolean",
             "description": "This registered workspace was created by LISA as an isolated Git worktree and supports per-turn checkpoints."
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Owned worktree was removed; history remains available, new tasks and writes are disabled."
           }
         }
       },
@@ -5552,6 +5729,21 @@
           },
           "run": {
             "$ref": "#/components/schemas/FleetRun"
+          },
+          "merge": {
+            "type": "object",
+            "properties": {
+              "commit": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Proposed commit, which is not proof the checkout succeeded when status is unknown."
+              },
+              "cleaned": {
+                "type": "boolean"
+              }
+            }
           }
         }
       },
@@ -11399,6 +11591,113 @@
           },
           "expiresAt": {
             "type": "number"
+          }
+        }
+      },
+      "FleetMergeSelection": {
+        "type": "object",
+        "required": [
+          "hostId",
+          "workspaceId",
+          "turn",
+          "cleanup"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cleanup": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FleetMergePreview": {
+        "type": "object",
+        "required": [
+          "runId",
+          "workspaceId",
+          "sourceWorkspaceId",
+          "sourceName",
+          "branch",
+          "base",
+          "tree",
+          "turn",
+          "cleanup",
+          "expiresAt",
+          "previewToken",
+          "files",
+          "patch",
+          "truncated"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceWorkspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "base": {
+            "type": "string"
+          },
+          "tree": {
+            "type": "string"
+          },
+          "turn": {
+            "type": "integer"
+          },
+          "cleanup": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "integer"
+          },
+          "previewToken": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "status",
+                "path"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "patch": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
           }
         }
       }

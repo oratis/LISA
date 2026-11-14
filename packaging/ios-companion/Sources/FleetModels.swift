@@ -70,6 +70,7 @@ struct FleetEntry: Decodable, Identifiable, Equatable {
         case "outcome_unknown": return "Mac restarted · outcome needs checking"
         case "owner_released", "orphan_released": return "Previous process released · outcome needs checking"
         case "continuation_started": return String(localized: "A new continuation session was started")
+        case "worktree_merged": return String(localized: "A workspace was merged into its source branch")
         case "file_restored": return String(localized: "A checkpoint file was restored")
         case "handoff_started": return "Turn \(turn ?? 0) handed off · \(agent ?? "agent")"
         case "history_started": return "Earlier task · history starts here"
