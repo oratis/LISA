@@ -38,8 +38,8 @@ Updated November 15, 2026. Baseline: `01563b84` (PR #510 merged), followed by th
 - [ ] Cloud Run backend and relay published and smoke-tested, with existing deployment configuration retained.
 - [ ] Website rebuilt after the GitHub release exists, deployed and checked.
 - [x] Pocket 1.4 (1794678341) uploaded successfully through CI on November 15.
-- [ ] Verify Apple processing completed and the build is available in TestFlight.
-- [ ] Pocket App Store submission (explicitly requested); Apple approval remains a separate external outcome. Public version at the audit was 1.3, released November 7, 2026.
+- [x] Apple API verified build 1794678341 as `VALID`, `IN_BETA_TESTING` (internal), `READY_FOR_BETA_SUBMISSION` (external).
+- [ ] Pocket App Store submission (explicitly requested); Apple approval remains a separate external outcome. Public version at the audit was 1.3, released November 7, 2026. A separate UI-release task submitted an earlier 1.4 build (1794650503) at November 14 23:39 Asia/Shanghai; it is waiting for review with automatic release after approval. The complete-extension build 1794678341 is not that submission. Preserve the existing review until the owner chooses replacement versus a subsequent version.
 
 ## Complete-extension scope and final validation
 
