@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { FleetCheckpoints, createCheckpointWorkspace, type Snapshot } from "./checkpoints.js";
 import { setTimeout as wait } from "node:timers/promises";
 import {
   type Approval,
@@ -15,10 +16,13 @@ import {
   digest,
   FleetError,
   HOST_API,
+  VIEW_API,
+  fleetViewRoute,
   requiredText,
   uuid,
   type FleetGrant,
   type FleetPeer,
+  type FleetViewer,
 } from "./types.js";
 
 interface Workspace {
@@ -26,6 +30,7 @@ interface Workspace {
   name: string;
   root: string;
   inode: string;
+  checkpoints: number;
 }
 interface RunRow {
   id: string;
@@ -69,7 +74,8 @@ type EventType =
   | "outcome_unknown"
   | "owner_released"
   | "orphan_released"
-  | "history_started";
+  | "history_started"
+  | "checkpoints_cleared";
 const ACTIVE = "('running','waiting','approval','cancelling')";
 // Timeline bounds. A long run drops its oldest entries and reports the gap.
 const MAX_EVENTS = 500,
@@ -77,6 +83,25 @@ const MAX_EVENTS = 500,
   MAX_BLOCKED_PER_TURN = 20,
   PROMPT_EXCERPT = 500,
   RESULT_EXCERPT = 4000;
+/** Allow-list per event, including for future fields and event types. */
+function viewerEvent(e: Record<string, unknown>) {
+  const fields: Record<string, string[]> = {
+    turn_started: ["turn"],
+    approval_requested: ["turn", "tool", "target", "expiresAt"],
+    approval_resolved: ["turn", "outcome"],
+    tool_blocked: ["turn", "tool", "target"],
+    turn_completed: ["turn", "result", "truncated", "blocked"],
+    turn_failed: ["turn", "result", "truncated", "blocked"],
+    cancel_requested: ["by"],
+    run_ended: ["state", "reason"],
+    history_started: ["state"],
+  };
+  return Object.fromEntries(
+    ["seq", "at", "type", ...(fields[String(e.type)] ?? [])]
+      .filter((key) => e[key] !== undefined)
+      .map((key) => [key, e[key]]),
+  );
+}
 function inside(parent: string, entry: string) {
   return entry === parent || entry.startsWith(parent.endsWith("/") ? parent : parent + "/");
 }
@@ -105,9 +130,9 @@ function exists(id: number): boolean {
   try {
     process.kill(id, 0);
     return true;
-  } catch {
-    // ESRCH: gone. EPERM: another user's process, so not one this backend launched.
-    return false;
+  } catch (err) {
+    // Only ESRCH confirms absence. An inaccessible process or group still holds the slot.
+    return (err as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 /** `ps` reports start times to the second; the launch is recorded right after spawn. */
@@ -145,6 +170,7 @@ function inode(root: string) {
 
 export class FleetHostService {
   private readonly db: DatabaseSync;
+  private readonly checkpoints: FleetCheckpoints;
   private readonly epoch = crypto.randomUUID();
   private readonly sessions = new Map<string, ClaudeSession>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -163,6 +189,7 @@ export class FleetHostService {
     private readonly runner: ClaudeRunner,
     options: FleetHostOptions = {},
   ) {
+    this.checkpoints = new FleetCheckpoints(home);
     this.exists = options.exists ?? exists;
     this.startedAt = options.startedAt ?? processStartedAt;
     this.stopGraceMs = options.stopGraceMs ?? 1500;
@@ -173,6 +200,9 @@ export class FleetHostService {
       CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT,root TEXT UNIQUE,inode TEXT);
       CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,host TEXT,device TEXT,workspace TEXT,epoch TEXT,state TEXT,result TEXT,pending TEXT,created INTEGER,pgid INTEGER,started INTEGER,backend INTEGER);
       CREATE TABLE IF NOT EXISTS ops(host TEXT,device TEXT,id TEXT,hash TEXT,run TEXT,action TEXT,at INTEGER,status TEXT,PRIMARY KEY(host,device,id));
+      CREATE TABLE IF NOT EXISTS checkpoint_workspaces(workspace TEXT PRIMARY KEY,identity TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS checkpoints(run TEXT NOT NULL,turn INTEGER NOT NULL,before TEXT NOT NULL,after TEXT,state TEXT NOT NULL,PRIMARY KEY(run,turn));
+      CREATE TABLE IF NOT EXISTS viewers(run TEXT NOT NULL,host TEXT NOT NULL,device TEXT NOT NULL,pairing TEXT NOT NULL,PRIMARY KEY(run,host,device));
       CREATE TABLE IF NOT EXISTS events(run TEXT NOT NULL,seq INTEGER NOT NULL,at INTEGER NOT NULL,type TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run,seq)) WITHOUT ROWID;`);
     // A ledger from before process tracking gains the columns. Its runs record no
     // process group, so after a restart they still wait for the owner to check.
@@ -184,6 +214,10 @@ export class FleetHostService {
     );
     for (const column of ["pgid", "started", "backend"])
       if (!columns.has(column)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${column} INTEGER`);
+    // An unfinished boundary cannot be reconstructed after a backend restart.
+    this.db.exec(
+      "UPDATE checkpoints SET state='interrupted' WHERE after IS NULL AND state='running'",
+    );
     const live: Orphan[] = [];
     this.tx(() => {
       // A run recorded before the timeline existed starts from its verifiable state.
@@ -242,7 +276,7 @@ export class FleetHostService {
     signalGroup(o.pgid, "SIGTERM");
     if (!(await gone(this.stopGraceMs))) {
       signalGroup(o.pgid, "SIGKILL");
-      await gone(1000);
+      if (!(await gone(1000))) return; // Keep the slot for the owner to verify.
     }
     // Nobody awaits this in production, so it must not reject. If the ledger is
     // closed or busy, the next backend finds the group gone and frees the slot.
@@ -295,7 +329,9 @@ export class FleetHostService {
   }
   workspaces(): Workspace[] {
     return this.db
-      .prepare("SELECT * FROM workspaces ORDER BY name")
+      .prepare(
+        "SELECT workspaces.*,EXISTS(SELECT 1 FROM checkpoint_workspaces c WHERE c.workspace=workspaces.id) AS checkpoints FROM workspaces ORDER BY name",
+      )
       .all() as unknown as Workspace[];
   }
   register(name: unknown, directory: unknown) {
@@ -367,8 +403,8 @@ export class FleetHostService {
     };
   }
   /** One read returns the current run and the entries after the caller's cursor. */
-  private timeline(peer: FleetPeer, id: string, query: URLSearchParams) {
-    const run = this.getRun(peer, id);
+  private timeline(run: RunRow, query: URLSearchParams) {
+    const id = run.id;
     const span = this.db
       .prepare("SELECT MIN(seq) AS first,MAX(seq) AS last FROM events WHERE run=?")
       .get(id);
@@ -403,14 +439,14 @@ export class FleetHostService {
     if (route === HOST_API + "/capabilities")
       return {
         version: 1,
-        features: ["run-events"],
+        features: ["run-events", "turn-changes"],
         hostId: peer.hostId,
         instanceId: this.epoch,
         control: peer.control,
         unavailable: this.runner.reason(),
         workspaces: this.workspaces()
           .filter((w) => peer.workspaces.includes(w.id))
-          .map(({ id, name }) => ({ id, name })),
+          .map(({ id, name, checkpoints }) => ({ id, name, checkpoints: !!checkpoints })),
       };
     if (route === HOST_API + "/runs") {
       const all = this.db
@@ -421,8 +457,23 @@ export class FleetHostService {
       };
     }
     const [pathname = "", query = ""] = route.split("?");
+    const change =
+      /^\/api\/agent-host\/v1\/runs\/([a-f0-9-]{36})\/changes(?:\/(\d{1,6})(?:\/(\d{1,4}))?)?$/.exec(
+        route,
+      );
+    if (change) {
+      const run = this.getRun(peer, uuid(change[1]));
+      return this.readChanges(
+        run,
+        change[2] === undefined ? undefined : Number(change[2]),
+        change[3] === undefined ? undefined : Number(change[3]),
+      );
+    }
     if (pathname.endsWith("/events"))
-      return this.timeline(peer, uuid(pathname.split("/").at(-2)), new URLSearchParams(query));
+      return this.timeline(
+        this.getRun(peer, uuid(pathname.split("/").at(-2))),
+        new URLSearchParams(query),
+      );
     const id = uuid(route.split("/").at(-1));
     if (route === HOST_API + "/operations/" + id) {
       const row = this.db
@@ -523,6 +574,7 @@ export class FleetHostService {
       if (start) {
         let blocked = 0;
         this.turns.set(runId, 1);
+        this.beginCheckpoint(runId, 1, workspace);
         const turn = () => this.turns.get(runId) ?? 0;
         const launched = Date.now();
         const session = this.runner.start(workspace.root, {
@@ -559,6 +611,10 @@ export class FleetHostService {
               );
           },
           result: (value, error) => {
+            const cancelling =
+              this.db.prepare("SELECT state FROM runs WHERE id=?").get(runId)?.state ===
+              "cancelling";
+            if (!cancelling) this.endCheckpoint(runId, turn(), workspace, "complete");
             this.tx(() => {
               this.closePending(runId, "withdrawn");
               const applied = this.db
@@ -578,6 +634,7 @@ export class FleetHostService {
             if (error) this.sessions.get(runId)?.cancel();
           },
           exit: (err) => {
+            this.endCheckpoint(runId, turn(), workspace, "interrupted");
             this.sessions.delete(runId);
             clearTimeout(this.timers.get(runId));
             this.timers.delete(runId);
@@ -610,9 +667,9 @@ export class FleetHostService {
         this.timers.set(runId, timer);
         session.send(text!);
       } else if (action === "messages") {
-        this.sessions.get(runId)!.send(text!);
         const next = (this.turns.get(runId) ?? 0) + 1;
         this.turns.set(runId, next);
+        this.beginCheckpoint(runId, next, workspace);
         this.tx(() => {
           this.db.prepare("UPDATE runs SET state='running' WHERE id=?").run(runId);
           this.record(runId, "turn_started", {
@@ -620,6 +677,7 @@ export class FleetHostService {
             prompt: text!.slice(0, PROMPT_EXCERPT),
           });
         });
+        this.sessions.get(runId)!.send(text!);
       } else if (action === "decisions")
         this.sessions.get(runId)!.decide(approvalId!, body.allow === true);
       else if (action === "cancel") this.stopRun(runId, "controller");
@@ -628,6 +686,8 @@ export class FleetHostService {
         .prepare("UPDATE ops SET status='accepted' WHERE host=? AND device=? AND id=?")
         .run(peer.hostId, peer.deviceId, op);
     } catch (err) {
+      if (start || action === "messages")
+        this.endCheckpoint(runId, this.turns.get(runId) ?? 1, workspace, "interrupted");
       if (start) {
         // With a process, its exit closes the run. Without one, nothing else will.
         const session = this.sessions.get(runId);
@@ -641,6 +701,15 @@ export class FleetHostService {
         });
         if (!session) this.turns.delete(runId);
         else session.cancel();
+      } else if (action === "messages") {
+        this.tx(() => {
+          this.db.prepare("UPDATE runs SET state='failed' WHERE id=?").run(runId);
+          this.record(runId, "turn_failed", {
+            turn: this.turns.get(runId),
+            result: "claude_input_closed",
+          });
+        });
+        this.sessions.get(runId)?.cancel();
       }
       throw err;
     }
@@ -677,6 +746,219 @@ export class FleetHostService {
       if (applied) this.record(id, "cancel_requested", { by });
     });
     this.sessions.get(id)?.cancel();
+  }
+  createWorktree(workspaceId: string) {
+    const source = this.workspaces().find((w) => w.id === workspaceId);
+    if (!source) throw new FleetError(404, "workspace_not_found");
+    if (inode(source.root) !== source.inode) throw new FleetError(409, "workspace_replaced");
+    if (this.workspaces().length >= 32) throw new FleetError(409, "workspace_overlap_or_limit");
+    let created: ReturnType<typeof createCheckpointWorkspace>;
+    try {
+      created = createCheckpointWorkspace(source.root);
+    } catch {
+      throw new FleetError(400, "git_worktree_unavailable");
+    }
+    const workspace = this.register(source.name.slice(0, 48) + " · Fleet", created.root);
+    this.db
+      .prepare("INSERT INTO checkpoint_workspaces VALUES(?,?)")
+      .run(workspace.id, created.gitIdentity);
+    return { ...workspace, root: created.root };
+  }
+  private captureCheckpoint(
+    run: string,
+    turn: number,
+    side: "before" | "after",
+    workspace: Workspace,
+  ): Snapshot {
+    const managed = this.db
+      .prepare("SELECT identity FROM checkpoint_workspaces WHERE workspace=?")
+      .get(workspace.id);
+    if (!managed)
+      return { status: "unavailable", at: Date.now(), reason: "managed_worktree_required" };
+    try {
+      if (
+        fs.realpathSync.native(workspace.root) !== workspace.root ||
+        inode(workspace.root) !== workspace.inode
+      )
+        throw new Error();
+      return this.checkpoints.capture(run, turn, side, workspace.root, String(managed.identity));
+    } catch {
+      return { status: "unavailable", at: Date.now(), reason: "workspace_replaced" };
+    }
+  }
+  private beginCheckpoint(run: string, turn: number, workspace: Workspace) {
+    this.db
+      .prepare("INSERT INTO checkpoints VALUES(?,?,?,NULL,'running')")
+      .run(
+        run,
+        turn,
+        JSON.stringify({ status: "unavailable", at: Date.now(), reason: "snapshot_interrupted" }),
+      );
+    const before = this.captureCheckpoint(run, turn, "before", workspace);
+    this.db
+      .prepare("UPDATE checkpoints SET before=? WHERE run=? AND turn=?")
+      .run(JSON.stringify(before), run, turn);
+  }
+  private endCheckpoint(run: string, turn: number, workspace: Workspace, state: string) {
+    const row = this.db
+      .prepare(
+        "SELECT before FROM checkpoints WHERE run=? AND turn=? AND state='running' AND after IS NULL",
+      )
+      .get(run, turn);
+    if (!row) return;
+    const before = JSON.parse(String(row.before)) as Snapshot;
+    const after =
+      before.status === "ready" ? this.captureCheckpoint(run, turn, "after", workspace) : before;
+    this.db
+      .prepare("UPDATE checkpoints SET after=?,state=? WHERE run=? AND turn=?")
+      .run(JSON.stringify(after), state, run, turn);
+  }
+  private readChanges(run: RunRow, turn?: number, file?: number) {
+    const rows = this.db
+      .prepare(
+        "SELECT turn,before,after,state FROM checkpoints WHERE run=? ORDER BY turn DESC LIMIT 100",
+      )
+      .all(run.id);
+    if (turn === undefined)
+      return {
+        turns: rows.map((r) => {
+          const before = JSON.parse(String(r.before)) as Snapshot;
+          const after = r.after ? (JSON.parse(String(r.after)) as Snapshot) : null;
+          return {
+            turn: Number(r.turn),
+            state: String(r.state),
+            available: before.status === "ready" && after?.status === "ready",
+            reason: before.reason ?? after?.reason,
+            startedAt: before.at,
+            endedAt: after?.at,
+          };
+        }),
+      };
+    const row = this.db
+      .prepare("SELECT before,after,state FROM checkpoints WHERE run=? AND turn=?")
+      .get(run.id, turn);
+    if (!row) throw new FleetError(404, "checkpoint_not_found");
+    if (!row.after) throw new FleetError(409, "checkpoint_unavailable");
+    return {
+      turn,
+      state: row.state,
+      ...this.checkpoints.diff(
+        run.id,
+        JSON.parse(String(row.before)) as Snapshot,
+        JSON.parse(String(row.after)) as Snapshot,
+        file,
+      ),
+    };
+  }
+  checkpointRuns() {
+    return this.db
+      .prepare(
+        "SELECT DISTINCT r.id,r.state FROM runs r JOIN checkpoints c ON c.run=r.id WHERE c.state!='cleared' ORDER BY r.created DESC LIMIT 100",
+      )
+      .all();
+  }
+  clearCheckpoints(id: string) {
+    const run = this.db.prepare("SELECT state FROM runs WHERE id=?").get(id);
+    if (!run) throw new FleetError(404, "run_not_found");
+    if (
+      this.sessions.has(id) ||
+      ["running", "waiting", "approval", "cancelling"].includes(String(run.state))
+    )
+      throw new FleetError(409, "run_not_finished");
+    // Remove private objects/refs together; receipts and the user's checkout remain intact.
+    this.checkpoints.clear(id);
+    this.tx(() => {
+      const changed = this.db
+        .prepare(
+          "UPDATE checkpoints SET before=?,after=NULL,state='cleared' WHERE run=? AND state!='cleared'",
+        )
+        .run(
+          JSON.stringify({ status: "unavailable", at: Date.now(), reason: "checkpoints_cleared" }),
+          id,
+        ).changes;
+      if (changed) this.record(id, "checkpoints_cleared");
+    });
+    return { cleared: true };
+  }
+  /** Explicit task shares; they grant no workspace or controller access. */
+  share(viewer: FleetViewer, id: string, enabled: boolean) {
+    const run = this.db.prepare("SELECT id FROM runs WHERE id=? AND host=?").get(id, viewer.hostId);
+    if (!run) throw new FleetError(404, "run_not_found");
+    if (enabled)
+      this.db
+        .prepare(
+          "INSERT INTO viewers VALUES(?,?,?,?) ON CONFLICT(run,host,device) DO UPDATE SET pairing=excluded.pairing",
+        )
+        .run(id, viewer.hostId, viewer.deviceId, viewer.pairingId);
+    else
+      this.db
+        .prepare("DELETE FROM viewers WHERE run=? AND host=? AND device=?")
+        .run(id, viewer.hostId, viewer.deviceId);
+    return { shared: enabled };
+  }
+  ownerShares(hostId: string, devices: FleetViewer[]) {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM runs WHERE host=? AND (id IN (SELECT id FROM runs WHERE host=? ORDER BY created DESC LIMIT 50) OR id IN (SELECT run FROM viewers)) ORDER BY created DESC",
+      )
+      .all(hostId, hostId) as unknown as RunRow[];
+    return rows.map((r) => ({
+      ...this.viewerRun(r),
+      viewers: devices.filter((d) => this.hasShare(d, r.id)).map((d) => d.deviceId),
+    }));
+  }
+  private hasShare(viewer: FleetViewer, id: string) {
+    return !!this.db
+      .prepare("SELECT 1 FROM viewers WHERE run=? AND host=? AND device=? AND pairing=?")
+      .get(id, viewer.hostId, viewer.deviceId, viewer.pairingId);
+  }
+  private viewerRun(r: RunRow) {
+    const v = this.view(r);
+    return {
+      id: v.id,
+      hostId: v.hostId,
+      workspaceName:
+        this.db.prepare("SELECT name FROM workspaces WHERE id=?").get(r.workspace)?.name ?? "",
+      state: v.state,
+      createdAt: v.createdAt,
+      updatedAt: v.updatedAt,
+      lastSeq: v.lastSeq,
+      result: v.result.slice(-RESULT_EXCERPT),
+      truncated: v.result.length > RESULT_EXCERPT,
+      // No request ID, tool input or controller identity crosses the viewer boundary.
+      approval: v.approval
+        ? {
+            tool: v.approval.tool,
+            target: target(
+              this.workspaces().find((w) => w.id === r.workspace)!.root,
+              v.approval.input.file_path,
+            ),
+            expiresAt: v.approval.expiresAt,
+          }
+        : null,
+    };
+  }
+  readViewer(viewer: FleetViewer, route: string) {
+    if (!fleetViewRoute("GET", route)) throw new FleetError(404, "route_not_found");
+    return this.tx(() => {
+      if (route === VIEW_API + "/runs") {
+        const rows = this.db
+          .prepare(
+            "SELECT r.* FROM runs r JOIN viewers v ON v.run=r.id AND v.host=r.host WHERE v.host=? AND v.device=? AND v.pairing=? ORDER BY r.created DESC",
+          )
+          .all(viewer.hostId, viewer.deviceId, viewer.pairingId) as unknown as RunRow[];
+        return { runs: rows.map((r) => this.viewerRun(r)) };
+      }
+      const [pathname = "", query = ""] = route.split("?");
+      const id = uuid(pathname.split("/").at(-2));
+      if (!this.hasShare(viewer, id)) throw new FleetError(404, "run_not_found");
+      const run = this.db
+        .prepare("SELECT * FROM runs WHERE id=? AND host=?")
+        .get(id, viewer.hostId) as unknown as RunRow | undefined;
+      if (!run) throw new FleetError(404, "run_not_found");
+      const page = this.timeline(run, new URLSearchParams(query));
+      return { ...page, run: this.viewerRun(run), events: page.events.map(viewerEvent) };
+    });
   }
   ownerRuns() {
     const rows = this.db
