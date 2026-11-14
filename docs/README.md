@@ -76,7 +76,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 | Plan | Scope |
 |---|---|
 | [PLAN_HARNESS_ALIGNMENT_v1.0.md](./PLAN_HARNESS_ALIGNMENT_v1.0.md) | Aligning with the DeepSeek harness: capability seam, sandbox modes, prompt in the session log. |
-| [T3 Code agent workflow proposal](./PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md) | Fleet task timeline (first slice implemented in #473), per-task viewing from Pocket, turn-level diffs, provider capabilities, and optional T3 integration. |
+| [T3 Code agent workflow proposal](./PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md) | Three implemented Fleet phases: timelines, scoped Pocket viewing, per-turn diffs and agent handoffs; optional follow-up proposals remain separate. See the [user guide](FLEET.md). |
 | [PLAN_KNOWLEDGE_BASE_v2.0.md](./PLAN_KNOWLEDGE_BASE_v2.0.md) | Knowledge base v2: URL ingest, the daily brief, the link graph. |
 | [PLAN_DESIRE_EVOLUTION_v1.0.md](./PLAN_DESIRE_EVOLUTION_v1.0.md) | Why her wishes didn't change with a conversation, and how to fix it without breaking sovereignty. |
 | [PLAN_MAIL_v1.0.md](./PLAN_MAIL_v1.0.md) | The read-only mailbox and its daily digest. |
@@ -120,7 +120,11 @@ several are cited by name from source comments.
 
 ## Releases
 
+- [v0.32.0 — Follow the work, review each turn](./RELEASE_v0.32.0.md) · [release checklist](./RELEASE_CHECKLIST_v0.32.0.md)
 - [v0.31.0 — Your other Macs, more of your apps](./RELEASE_v0.31.0.md)
+- [v0.30.3 — A clearer account and Pocket experience](./RELEASE_v0.30.3.md)
+- [v0.30.2 — A clearer account and Pocket experience](./RELEASE_v0.30.2.md)
+- [v0.30.1 — a clearer everyday view](./RELEASE_v0.30.1.md)
 - [v0.30.0 — Yours to see, keep and undo](./RELEASE_v0.30.0.md)
 - [v0.29.1 — Mac connection security and reliability](./RELEASE_v0.29.1.md)
 - [v0.29.0 — Pocket connects to your Mac anywhere](./RELEASE_v0.29.0.md)

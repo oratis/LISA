@@ -26,7 +26,7 @@ LISA CLOUD
 Sign in with your LISA account and use the assistant without setting up a Mac or an AI API key. Available sign-in options include Apple, Google and email. AI use is subject to your account allowance; optional consumable credit packs are available in Settings.
 
 CONNECT YOUR MAC
-Pair your own Mac running LISA to chat with that instance and manage its coding agents. Local integrations, agent controls, activity notifications, widgets and Live Activities depend on your Mac configuration and permissions. Your Mac needs to be reachable over your network or tailnet.
+Pair your own Mac running LISA to chat with that instance and manage its coding agents. Local integrations, agent controls, activity notifications, widgets and Live Activities depend on your Mac configuration and permissions. Sign in to the same LISA account on both devices, compare the pairing codes and approve the phone on the Mac. Pocket prefers your local network and falls back to the encrypted cloud relay. The Mac must be awake with LISA running; legacy network/tailnet connections remain available.
 
 TWO SAVED CONNECTIONS
 Switch between Cloud and My Mac without re-entering the other connection. Each instance has its own conversations and assistant data; switching does not automatically copy them.
@@ -40,10 +40,10 @@ Learn more at meetlisa.ai.
 
 1. Launch → Continue with LISA Cloud. Expand “Use a password instead” for the existing demo credentials in App Review Information. No Mac, QR code, emailed OTP, or purchase is required to review cloud chat.
 2. Open Chat, enter a message, tap Send. The AI data sharing sheet lists the data (message, relevant history, assistant memory, tool results) and actual recipients (currently Google Gemini in cloud mode). Check the AI data-sharing permission and 18-or-older confirmations, then choose Allow AI sharing and send. Cancel sends no message and keeps the draft. Settings → AI data sharing → Withdraw AI consent stops an active chat and requires permission for the next message. The privacy policy identifies paid Gemini processing, equal-protection requirements, retention and deletion.
-3. Home offers editable daily-planning, writing and goal-planning starters. Settings shows which connection is active.
+3. Room opens nine destinations and offers editable daily-planning, writing and goal-planning starters. Settings shows which connection is active.
 4. To inspect in-app purchases, open Settings → LISA account → Add credits. Starter, Plus and Max packs are consumable credits. This entry does not depend on the allowance request succeeding. Refresh credit balance reads the remaining balance from the LISA account without Apple authentication. Unused credits remain with that account across devices/reinstalls; spent consumables are not restored. Unfinished verified transactions reconcile automatically. The review account must be sandbox-allowlisted on the backend before submission.
 5. Account deletion: Settings → LISA account → Delete account → Delete account and data. Successful deletion removes the cloud account and its data and signs out. Apple authorization is revoked when a saved authorization token is available; earlier Apple sign-ins display the official manual unlinking instructions after Lisa data is deleted. A failed cleanup remains retryable. Mac unpairing is separate.
-6. My Mac features require the user's own reachable Mac. In cloud mode this tab explains the optional setup; it does not attempt unsupported host-control APIs. With a paired Mac, starting a task from Agents → +, sending an agent a follow-up, or Adopt shows the same AI data sharing sheet, worded for agent tasks, before anything is sent; chat permission alone does not cover it. When the Mac runs coding agents (LISA_PTY_AGENTS=1), Claude Code and Codex are listed as separate recipients.
+6. My Mac features require the user's own reachable Mac. In cloud mode the Agents destination explains the optional setup; it does not attempt unsupported host-control APIs. With a paired Mac, starting a task from Agents → +, sending an agent a follow-up, or Adopt shows the same AI data sharing sheet, worded for agent tasks, before anything is sent; chat permission alone does not cover it. When the Mac runs coding agents (LISA_PTY_AGENTS=1), Claude Code and Codex are listed as separate recipients.
 
 ## Submission gates
 
@@ -55,4 +55,13 @@ Learn more at meetlisa.ai.
 
 The additional account-lifecycle and StoreKit audit is tracked in [self-audit evidence](../../docs/REVIEW_SELF_AUDIT_2026-09-28.md). Do not claim a real sandbox transaction passed until the payment and server credit have been observed.
 
-October 5 rejected build 1790567703 under 3.1.1 and 5.1.1/5.1.2. The next binary removes Apple consumable restore and strengthens explicit AI consent. See [current remediation](../../docs/REVIEW_2026-10-07.md) for verified status; the updated notes and native screenshot attachment were saved, and 1.2 (1791346539) plus all three IAPs were resubmitted on October 7 at 12:27 Asia/Shanghai. The Apple portal shows Waiting for Review, not approval.
+October 5 rejected build 1790567703 under 3.1.1 and 5.1.1/5.1.2. The next binary removes Apple consumable restore and strengthens explicit AI consent. See [current remediation](../../docs/REVIEW_2026-10-07.md) for verified status; the updated notes and native screenshot attachment were saved, and 1.2 (1791346539) plus all three IAPs were resubmitted on October 7 at 12:27 Asia/Shanghai. At that time the Apple portal showed Waiting for Review, not approval. The public US listing was rechecked on November 14, 2026: version 1.3 is available, released November 7; these older rejection/submission records are historical.
+
+## What’s New — 1.4 draft
+
+- A refreshed Room brings chat, memory, knowledge, agents and settings together, with layouts for iPhone and iPad.
+- Start with an editable draft, dismiss the chat keyboard easily, and recover from connection problems without losing what you wrote.
+- On an updated Mac, explicitly shared Fleet tasks show their progress and catch up after reconnecting. This view is read-only.
+- Clearer Mac pairing, session renewal and sign-in recovery help keep Cloud and My Mac connections understandable.
+
+This text describes the 1.4 source. It does not claim that the build is uploaded, approved or public. Replace store screenshots with verified captures of the submitted binary.

@@ -24,81 +24,29 @@ published npm tarball, so npm must go first).
 
 ## Cutting a release
 
-1. **Bump version**
+1. **Prepare a release branch.** Run `npm version minor --no-git-tag-version` (or patch/major as appropriate). Write `docs/RELEASE_vX.Y.Z.md`, update both READMEs, then run `npm run changelog`. The release note is the source for the generated changelog. Do not create a tag yet.
+2. **Validate and review.** Run the applicable test/build/native checks, `node scripts/check-md-links.mjs`, `node scripts/check-readme-drift.mjs`, and `npm run changelog -- --check`. Commit the package files, release note and generated changelog, open a PR and merge after CI and review pass.
+3. **Tag the reviewed merge commit.**
 
-   ```bash
-   npm version patch     # 0.2.0 → 0.2.1
-   # or: npm version minor / major
+   ```sh
+   git tag -a vX.Y.Z <merge-commit> -m "Lisa vX.Y.Z"
+   git push origin vX.Y.Z
    ```
 
-   `npm version` updates `package.json`, makes a commit, and creates the tag.
+   Never move a published tag. The package version and tag must match. The changelog uses the tagged commit's date when available, otherwise the release note's commit date; recheck it if publication crosses a date boundary. Full history and tags are needed for a meaningful `--check`.
+4. **Watch both workflows.** `release.yml` builds the artifacts and publishes npm with provenance; `release-mac-apps.yml` signs and notarizes the Mac app. Check that signing/notarization actually ran, since missing secrets allow an ad-hoc fallback. Validate the downloaded checksums and installed version.
+5. **Verify npm**, then update Homebrew from the actual registry tarball:
 
-2. **Write release notes**
-
-   If `docs/RELEASE_v0.2.1.md` exists, the workflow uses it as the release
-   body. Otherwise the release uses auto-generated commit notes. It is also the
-   only source for that version's `CHANGELOG.md` entry (next step), so skipping
-   it leaves a hole in the changelog.
-
-3. **Regenerate the changelog**
-
-   ```bash
-   npm run changelog     # rewrites CHANGELOG.md from docs/RELEASE_v*.md
-   git add CHANGELOG.md && git commit -m "docs: changelog for vX.Y.Z"
-   ```
-
-   `CHANGELOG.md` is generated, not written: `scripts/gen-changelog.mjs` reads
-   every `docs/RELEASE_v*.md` and emits one Keep-a-Changelog entry per release —
-   the note's headline paragraph, its `##` section titles as bullets, and links
-   to the note and the GitHub release. That is the whole reason to write a good
-   headline paragraph and good section titles: they *are* the changelog entry.
-
-   The date comes from the `vX.Y.Z` tag when it exists, so run this **after**
-   `npm version` created the tag and the entry gets the real release date; run it
-   before tagging and the entry falls back to the release note's commit date and
-   will need regenerating. `npm run changelog -- --check` fails when the file is
-   stale. Both need full history and tags, which a shallow CI clone does not
-   have — that is why this is a release step and not a CI gate.
-
-   Releases at 0.12.0 and below predate the release-note convention and are
-   hand-written. They live below the `gen-changelog:handwritten` marker comment
-   and are copied through untouched; never edit above the marker.
-
-4. **Push**
-
-   ```bash
-   git push --follow-tags
-   ```
-
-5. **Watch the workflows**
-
-   Both `Release` (Ubuntu, ~5 min) and `Release — Mac apps` (macOS, ~15 min)
-   trigger off the tag. The latter takes longer when signing + notarizing
-   are enabled — Apple's notary service can sit on a submission for
-   2–10 minutes.
-
-6. **Verify npm publication**
-
-   The `npm-publish` job in `release.yml` publishes tag pushes with provenance.
-   Wait for the whole workflow, then confirm the registry version:
-
-   ```bash
+   ```sh
    npm view @oratis/lisa version
+   gh workflow run release-homebrew.yml --repo oratis/LISA -f version=X.Y.Z
    ```
 
-   Do not run a second local publish while CI is running. Manual workflow
-   dispatch rebuilds artifacts only; it intentionally skips npm publication.
+   Wait for the tap workflow and verify its URL/hash. Do not run a second local npm publish while CI is publishing. A manual `release.yml` dispatch rebuilds artifacts only; it does not publish npm.
+6. **Publish the services separately.** Preserve the existing Cloud Run configuration, verify a no-traffic backend revision before promotion, and deploy/test the relay if it changed. Rebuild and publish the website after the GitHub release exists so its changelog includes the new release. See [PUBLISH.md](PUBLISH.md).
+7. **Publish Pocket separately.** Follow the native [Pocket release runbook](../packaging/ios-companion/RELEASE.md); a Mac tag does not upload iOS. Record TestFlight processing, App Store submission and approval as separate outcomes. Keep unavailable physical-device acceptance unchecked.
 
-7. **Bump the Homebrew tap** (manual — after npm publish lands on the registry)
-
-   ```bash
-   gh workflow run "Release — Homebrew tap"
-   ```
-
-   Pins `Formula/lisa.rb` in `oratis/homebrew-tap` to the freshly-published npm
-   tarball + its sha256. Needs the one-time `HOMEBREW_TAP_TOKEN` secret (and has a
-   manual fallback) — see [PUBLISH.md §2](PUBLISH.md). It must run *after* `npm
-   publish` because it hashes the real published tarball.
+`CHANGELOG.md` entries above the `gen-changelog:handwritten` marker are generated from `docs/RELEASE_v*.md`. Edit the notes and regenerate, never hand-edit those entries. Versions through 0.12.0 below the marker are preserved verbatim.
 
 ---
 
@@ -154,9 +102,7 @@ Passwords → generate one labeled "lisa-notarytool".
   Settings… → Show Lisa Island)
 - `Applications` — drop target
 
-Plus a `README.txt` with the prerequisite (running `lisa serve --web`
-locally, either via `npm install -g @oratis/lisa` or the standalone
-bundle from the same release).
+Lisa.app bundles Node and the backend and starts the local service itself. No separate npm installation is required for the app. The CLI bundles are different: they still require a compatible Node installation. Restart the background service after replacing an already-running app so the new backend loads.
 
 ---
 

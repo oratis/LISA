@@ -93,6 +93,7 @@ const baseline = [
 
 export default defineConfig([
   globalIgnores([
+    ".tmp/**", // Disposable backend/UI fixtures are outside the source TypeScript project.
     "dist/**",
     "dist-release/**",
     "node_modules/**",
