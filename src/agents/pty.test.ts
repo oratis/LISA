@@ -11,6 +11,8 @@ import {
   normalizeAgentKind,
   PtyAgent,
   PtyRegistry,
+  PtyStartError,
+  ensureSpawnHelperExecutable,
   type IPtyLike,
   type PtyModuleLike,
 } from "./pty.js";
@@ -308,28 +310,143 @@ test("registry actions on an unknown id are no-ops", () => {
   assert.deepEqual(reg.list(), []);
 });
 
-// ── real node-pty round-trip (skipped if the optional dep isn't built) ──
+// ── start errors carry a stable code (#489) ──
+
+test("start errors: pty_disabled / cli_missing / spawn_failed", async () => {
+  const prev = process.env.LISA_PTY_AGENTS;
+  delete process.env.LISA_PTY_AGENTS;
+  try {
+    await assert.rejects(
+      () =>
+        PtyAgent.start({ agent: "claude", task: "x", cwd: "/tmp", ptyModule: fakePty().module }),
+      (e: unknown) => e instanceof PtyStartError && e.code === "pty_disabled",
+    );
+  } finally {
+    if (prev !== undefined) process.env.LISA_PTY_AGENTS = prev;
+  }
+
+  await withFlag(async () => {
+    const saved = process.env.LISA_PTY_CODEX_CMD;
+    // A relative override never resolves (see resolveCli), so no codex is found
+    // even on a machine that has one installed.
+    process.env.LISA_PTY_CODEX_CMD = "not/a/real/codex";
+    try {
+      const f = fakePty();
+      await assert.rejects(
+        () => PtyAgent.start({ agent: "codex", task: "x", cwd: "/tmp", ptyModule: f.module }),
+        (e: unknown) => e instanceof PtyStartError && e.code === "cli_missing",
+      );
+      assert.equal(f.spawnCount, 0);
+    } finally {
+      if (saved === undefined) delete process.env.LISA_PTY_CODEX_CMD;
+      else process.env.LISA_PTY_CODEX_CMD = saved;
+    }
+
+    const throwing: PtyModuleLike = {
+      spawn: () => {
+        throw new Error("posix_spawnp failed.");
+      },
+    };
+    await assert.rejects(
+      () =>
+        PtyAgent.start({
+          agent: "claude",
+          task: "x",
+          cwd: "/tmp",
+          cli: "claude",
+          ptyModule: throwing,
+        }),
+      (e: unknown) =>
+        e instanceof PtyStartError &&
+        e.code === "spawn_failed" &&
+        /posix_spawnp failed/.test(e.message),
+    );
+  });
+});
+
+// ── node-pty's macOS spawn-helper ships without its exec bit (#489) ──
+
+/** A node-pty-shaped dir with one prebuild whose spawn-helper is 0644, like the npm tarball. */
+async function fakeNodePty(arch = "arm64") {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-node-pty-"));
+  const pre = path.join(dir, "prebuilds", `darwin-${arch}`);
+  await fs.mkdir(pre, { recursive: true });
+  await fs.writeFile(path.join(pre, "pty.node"), "");
+  await fs.writeFile(path.join(pre, "spawn-helper"), "#!/bin/sh\n", { mode: 0o644 });
+  await fs.chmod(path.join(pre, "spawn-helper"), 0o644); // umask-proof
+  return { dir, helper: path.join(pre, "spawn-helper") };
+}
+
+test("ensureSpawnHelperExecutable adds the missing exec bit to the helper node-pty uses", async () => {
+  const { dir, helper } = await fakeNodePty();
+  try {
+    const first = ensureSpawnHelperExecutable(dir, "darwin", "arm64");
+    assert.deepEqual(first, {
+      helper: "prebuilds/darwin-arm64/spawn-helper",
+      executable: true,
+      fixed: true,
+    });
+    assert.equal((await fs.stat(helper)).mode & 0o777, 0o755);
+    // Idempotent once fixed.
+    assert.equal(ensureSpawnHelperExecutable(dir, "darwin", "arm64").fixed, false);
+    // A source build (build/Release/pty.node) wins over prebuilds, as in node-pty.
+    await fs.mkdir(path.join(dir, "build", "Release"), { recursive: true });
+    await fs.writeFile(path.join(dir, "build", "Release", "pty.node"), "");
+    await fs.writeFile(path.join(dir, "build", "Release", "spawn-helper"), "", { mode: 0o755 });
+    assert.equal(
+      ensureSpawnHelperExecutable(dir, "darwin", "arm64").helper,
+      "build/Release/spawn-helper",
+    );
+    // Nothing to check off macOS, or without node-pty.
+    assert.equal(ensureSpawnHelperExecutable(dir, "linux", "x64").helper, null);
+    assert.equal(ensureSpawnHelperExecutable(null, "darwin", "arm64").executable, true);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("postinstall script fixes the helpers and never fails the install", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const script = path.resolve("scripts/fix-node-pty-perms.mjs");
+  const { dir, helper } = await fakeNodePty("x64");
+  try {
+    execFileSync(process.execPath, [script, dir], { stdio: "pipe" });
+    if (process.platform !== "win32") assert.equal((await fs.stat(helper)).mode & 0o111, 0o111);
+    // No node-pty there at all: still exit 0.
+    execFileSync(process.execPath, [script, path.join(dir, "missing")], { stdio: "pipe" });
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── real node-pty round-trip ──
 
 test("real PTY round-trip via `cat` echoes input", async (t) => {
   // `cat` under a PTY echoes typed input back on stdout — proves the real
   // spawn → write → read → kill path without depending on a heavy CLI.
-  // Skips when node-pty isn't built OR its native binding can't spawn in this
-  // environment (e.g. under the tsx test loader, which resolves node-pty's TS
-  // source rather than its compiled native lib — a runner artifact, not a
-  // defect: the shipped path runs against compiled JS).
-  const reg = new PtyRegistry();
-  let v;
+  //
+  // This used to skip on ANY error, so "posix_spawnp failed." (node-pty's macOS
+  // spawn-helper installed without its exec bit, #489) kept CI green while
+  // every npm/Homebrew install was broken. Now only a missing optional dep
+  // skips, and not on macOS, where node-pty always ships prebuilds.
   try {
     await import("node-pty");
-    v = await withFlag(() =>
-      reg.start({ agent: "claude", task: "", cwd: process.cwd(), cli: "cat", args: [] }),
-    );
   } catch (e) {
-    t.skip("node-pty unavailable here: " + (e as Error).message);
+    if (process.platform === "darwin") throw e;
+    t.skip("node-pty is not installed here: " + (e as Error).message);
     return;
   }
+  const reg = new PtyRegistry();
+  const v = await withFlag(() =>
+    reg.start({ agent: "claude", task: "", cwd: process.cwd(), cli: "cat", args: [] }),
+  );
+  // start() self-heals the helper; it must be executable afterwards.
+  const helper = ensureSpawnHelperExecutable();
+  assert.equal(helper.executable, true, `node-pty's ${helper.helper} is not executable`);
   reg.send(v.id, "ping-marker-42");
-  await new Promise((r) => setTimeout(r, 300));
+  for (let i = 0; i < 50 && !/ping-marker-42/.test(reg.output(v.id) ?? ""); i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
   assert.match(reg.output(v.id) ?? "", /ping-marker-42/);
   reg.cancel(v.id);
   assert.equal(reg.list()[0].state, "done");

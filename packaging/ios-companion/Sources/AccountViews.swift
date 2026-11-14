@@ -230,7 +230,14 @@ struct CloudSignInForm: View {
                 }
             } catch let err as LisaClient.SignInCodeError {
                 busy = false
-                error = describe(err)
+                if err.reason == "otp_cooldown" {
+                    // A code is already on its way: show where to type it (#492).
+                    codeSent = true
+                    let wait = err.retryAfterSec.map { " You can ask for another in \($0) seconds." } ?? ""
+                    note = "A code was just sent to \(email). Enter it below.\(wait)"
+                } else {
+                    error = describe(err)
+                }
             } catch {
                 busy = false
                 self.error = "Couldn't reach that LISA Cloud URL."
@@ -268,8 +275,9 @@ struct CloudSignInForm: View {
                 try await app.connectCloudWithEmail(baseURL: cloudURL, email: email,
                                                     password: password, register: register)
                 await verifyThenReport()
-            } catch LisaError.http(let code) {
+            } catch let failure where failure.httpStatus != nil {
                 busy = false
+                let code = failure.httpStatus ?? -1
                 switch code {
                 case 401: error = "Wrong email or password."
                 case 409: error = "That email already has an account — use Sign in."
@@ -330,10 +338,10 @@ struct CloudSignInForm: View {
                     try await app.connectCloudWithApple(baseURL: cloudURL, identityToken: idToken,
                                                         rawNonce: raw, authorizationCode: authorizationCode)
                     await verifyThenReport()
-                } catch LisaError.http(404) {
+                } catch let failure where failure.httpStatus == 404 {
                     busy = false
                     error = "This instance hasn't enabled Sign in with Apple — use email or a token link."
-                } catch LisaError.http(401), LisaError.http(403) {
+                } catch let failure where failure.httpStatus == 401 || failure.httpStatus == 403 {
                     busy = false
                     error = "Apple sign-in was rejected by this instance."
                 } catch {
@@ -355,6 +363,8 @@ struct AccountCard: View {
     @State private var quota: LisaClient.QuotaStatus?
     @State private var showPaywall = false
     @State private var resendMessage: String?
+    @State private var showSignOutEverywhere = false
+    @State private var signingOut = false
 
     private static let tierLabels: [String: String] = [
         "free": "Free", "free-unverified": "Free (verify email for more)",
@@ -365,10 +375,11 @@ struct AccountCard: View {
         Section("LISA account") {
             if let acct = app.account, acct.signedIn {
                 LabeledContent("Signed in as", value: acct.email ?? acct.uid ?? "—")
-                // Unverified email = reduced ($1) session window (B8a).
+                // Unverified email = reduced allowance (B8a). The amount comes
+                // from the quota answer, never from a number baked in here (#492).
                 if acct.kind == "email" && acct.verified == false {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Email not verified — your free allowance is limited to $1 per session.",
+                        Label(Self.unverifiedNote(quota),
                               systemImage: "envelope.badge")
                             .font(.caption).foregroundStyle(Theme.waiting)
                         Button(resendMessage ?? "Resend verification email") {
@@ -421,9 +432,16 @@ struct AccountCard: View {
                     Label("Add credits…", systemImage: "plus.circle")
                 }
                 Button("Sign out") {
-                    app.signOutCloud()
-                    app.notify("Signed out.")
+                    signingOut = true
+                    Task {
+                        defer { signingOut = false }
+                        try? await app.signOut(everywhere: false)
+                        app.notify("Signed out.")
+                    }
                 }
+                .disabled(signingOut)
+                Button("Sign out of all devices…") { showSignOutEverywhere = true }
+                    .disabled(signingOut)
                 Button("Delete account…", role: .destructive) { showDeleteConfirm = true }
                     .disabled(deleting)
             } else {
@@ -432,6 +450,23 @@ struct AccountCard: View {
             }
         }
         .task { quota = try? await app.client.billingQuota() }
+        .confirmationDialog("Sign out of all devices?", isPresented: $showSignOutEverywhere, titleVisibility: .visible) {
+            Button("Sign out everywhere", role: .destructive) {
+                signingOut = true
+                Task {
+                    defer { signingOut = false }
+                    do {
+                        try await app.signOut(everywhere: true)
+                        app.notify("Signed out of all devices.")
+                    } catch {
+                        app.notify("Couldn't reach LISA Cloud — nothing was signed out. Try again.", ok: false)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Ends every LISA session for this account: this iPhone, the web, and your Mac's cloud connection. Your Mac will ask you to sign in again before Pocket can reach it.")
+        }
         .sheet(isPresented: $showPaywall, onDismiss: {
             Task { quota = try? await app.client.billingQuota() }
         }) {
@@ -458,5 +493,13 @@ struct AccountCard: View {
 
     private static func dollars(_ micro: Int) -> String {
         String(format: "$%.2f", Double(micro) / 1_000_000)
+    }
+
+    /// The unverified-email line, worded from the server's own numbers.
+    static func unverifiedNote(_ quota: LisaClient.QuotaStatus?) -> String {
+        if let window = quota?.windowMicroUSD, window > 0 {
+            return "Email not verified — your free allowance is \(dollars(window)) a day until you verify it."
+        }
+        return "Email not verified — verify it to get the full free allowance."
     }
 }

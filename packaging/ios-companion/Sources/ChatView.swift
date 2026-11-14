@@ -19,6 +19,11 @@ struct ChatMessage: Identifiable, Equatable {
     /// the inline "Add credits…" button — a second route to the In-App
     /// Purchases that doesn't depend on the Settings quota card rendering.
     var needsCredits: Bool = false
+    /// The turn was refused because the account session is no longer valid.
+    var needsSignIn: Bool = false
+    /// The connection dropped mid-turn (not the user's Stop): on returning to
+    /// the foreground the transcript is re-read in case the reply landed (#491).
+    var dropped: Bool = false
     var isError: Bool { status == .error }
     /// Terminal states the user can retry from (nothing useful landed).
     var isRetryable: Bool { status == .error || status == .empty || status == .cancelled }
@@ -37,6 +42,17 @@ final class ChatModel: ObservableObject {
     /// The last thing the user said — replayed by `resend()` when a turn comes
     /// back empty / errored / cancelled.
     private var lastUserText: String?
+    /// True once the user tapped Stop for the current turn, so a socket closed
+    /// for any other reason isn't reported as "Stopped." (#487).
+    private var userStopped = false
+    /// Failures every screen should know about (an expired session) go to AppState.
+    var onFailure: (@MainActor (Error) -> Void)?
+
+    /// The text Retry sends again: the last thing the user said this session,
+    /// or the newest user message in the loaded history.
+    var retryText: String? {
+        lastUserText ?? messages.last(where: { $0.role == .user })?.text
+    }
 
     func markExpressionSeen(_ id: UUID) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
@@ -45,8 +61,25 @@ final class ChatModel: ObservableObject {
 
     // ── history ──
     func loadHistory(_ client: LisaClient) async {
-        guard messages.isEmpty, let r = try? await client.history(page: 0) else { return }
+        guard messages.isEmpty else { return }
+        let r: HistoryResponse
+        do { r = try await client.history(page: 0) } catch { onFailure?(error); return }
         messages = r.messages.compactMap(Self.map)
+        page = 0
+        hasMore = r.hasMore
+    }
+
+    /// Back in the foreground after a turn dropped: the server may have
+    /// finished it, so re-read the newest page and keep it if it has a reply.
+    func recoverDroppedTurn(_ client: LisaClient) async {
+        guard !sending, let last = messages.last, last.role == .lisa, last.dropped else { return }
+        let before = messages
+        guard let r = try? await client.history(page: 0), !sending, messages == before else { return }
+        let recovered = r.messages.compactMap(Self.map)
+        let expectedUsers = Array(before.filter { $0.role == .user }.suffix(2).map(\.text))
+        guard !expectedUsers.isEmpty, recovered.last?.role == .lisa,
+              Array(recovered.filter { $0.role == .user }.suffix(expectedUsers.count).map(\.text)) == expectedUsers else { return }
+        messages = recovered
         page = 0
         hasMore = r.hasMore
     }
@@ -79,7 +112,11 @@ final class ChatModel: ObservableObject {
                         backoffSec = 1
                         if let s = msg.slug { mood = s }
                     }
-                } catch { /* dropped → backoff + reconnect below */ }
+                } catch {
+                    // A rejected credential won't fix itself: stop retrying and
+                    // let the app ask for sign-in. Anything else reconnects.
+                    if Self.stopsRetrying(error) { onFailure?(error); break }
+                }
                 if Task.isCancelled { break }
                 try? await Task.sleep(nanoseconds: backoffSec * 1_000_000_000)
                 backoffSec = min(backoffSec * 2, 30)
@@ -87,6 +124,13 @@ final class ChatModel: ObservableObject {
         }
     }
     func stopMood() { moodTask?.cancel(); moodTask = nil }
+
+    /// Errors after which reconnecting the status stream can't succeed.
+    static func stopsRetrying(_ error: Error) -> Bool {
+        if let status = error.httpStatus, status == 401 || status == 403 { return true }
+        if let link = error as? RemoteLinkError, link == .signIn || link == .notAllowed { return true }
+        return false
+    }
 
     // ── send / retry / stop ──
     func send(_ text: String, client: LisaClient) {
@@ -100,7 +144,8 @@ final class ChatModel: ObservableObject {
     /// Replay the last user message. Drops a trailing failed/empty Lisa bubble so
     /// the retry visually replaces it rather than stacking a second dead end.
     func resend(client: LisaClient) {
-        guard let text = lastUserText, !sending else { return }
+        guard let text = retryText, !sending else { return }
+        lastUserText = text
         if let last = messages.last, last.role == .lisa, last.isRetryable {
             messages.removeLast()
         }
@@ -109,12 +154,17 @@ final class ChatModel: ObservableObject {
 
     /// Stop the in-flight turn. Cancelling the task tears down the SSE stream,
     /// which also closes the connection so the Mac can abort the agent.
-    func cancel() { task?.cancel() }
+    func cancel() {
+        if sending { userStopped = true }
+        task?.cancel()
+    }
 
     private func runTurn(_ userText: String, client: LisaClient) {
         messages.append(ChatMessage(role: .lisa, status: .streaming))
         let idx = messages.count - 1
+        let config = client.config
         sending = true
+        userStopped = false
         task = Task { @MainActor in
             defer { sending = false }
             do {
@@ -145,7 +195,7 @@ final class ChatModel: ObservableObject {
                 }
                 resolveEnding(idx)
             } catch {
-                markFailed(idx, error)
+                markFailed(idx, error, config: config)
             }
         }
     }
@@ -163,32 +213,47 @@ final class ChatModel: ObservableObject {
     }
 
     /// The gateway refuses an unaffordable turn with a clean 402 before it
-    /// streams anything — that's "out of allowance", not a failure to reach us.
+    /// streams anything. Only a spent allowance or a premium model without
+    /// balance is fixed by buying credits; `service_paused` is also a 402 and
+    /// must never send people to the paywall (#485). An older server's bare 402
+    /// meant the allowance.
     static func isQuotaExhausted(_ error: Error) -> Bool {
-        if case LisaError.http(402) = error { return true }
-        return false
+        guard let failure = error.serverFailure, failure.status == 402 else { return false }
+        return failure.code.isEmpty || failure.code == "quota_exhausted" || failure.code == "premium_requires_balance"
     }
 
-    /// A thrown stream: a user-initiated stop reads as `.cancelled`; anything else
-    /// is a real error. Either way it's retryable.
-    private func markFailed(_ idx: Int, _ error: Error) {
+    /// A thrown stream: the user's own Stop reads as `.cancelled`; anything else
+    /// is a real error with its own explanation. Either way it's retryable.
+    private func markFailed(_ idx: Int, _ error: Error, config: ServerConfig) {
         guard messages.indices.contains(idx) else { return }
         let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
-        if cancelled {
+        if cancelled && (userStopped || error is CancellationError) {
             messages[idx].status = .cancelled
             if messages[idx].text.isEmpty { messages[idx].text = "Stopped." }
-        } else if Self.isQuotaExhausted(error) {
-            // Quota exhausted (B4): the server refused the turn with a clean 402
-            // before streaming. Same copy as the web paywall (strings.ts), minus
-            // the "go to Settings" pointer — the button below opens the packs.
-            messages[idx].status = .error
-            messages[idx].needsCredits = true
-            messages[idx].text = "Your free allowance for today is used up — it refreshes every 24 hours. Add credits to keep going now."
-        } else {
-            messages[idx].status = .error
-            let msg = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
-            messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + msg
+            return
         }
+        messages[idx].status = .error
+        if Self.isQuotaExhausted(error) {
+            // Same copy as the web paywall (strings.ts), minus the "go to
+            // Settings" pointer — the button below opens the packs.
+            messages[idx].needsCredits = true
+            messages[idx].text = error.serverFailure?.code == "premium_requires_balance"
+                ? "This model needs account credits. Add credits, or switch to a standard model."
+                : "Your free allowance for today is used up — it refreshes every 24 hours. Add credits to keep going now."
+            return
+        }
+        if cancelled || error is URLError || (error as? RemoteLinkError) == .interrupted {
+            // The connection closed under the turn (network change, timeout).
+            messages[idx].dropped = true
+            let note = "The connection dropped before Lisa finished. Try again."
+            messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + note
+            return
+        }
+        let problem = ConnectionProblem.classify(error, config: config)
+        if problem == .signInRequired { messages[idx].needsSignIn = true }
+        onFailure?(error)
+        let msg = problem.sentence ?? (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
+        messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + msg
     }
 }
 
@@ -197,13 +262,13 @@ struct ChatView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var model = ChatModel()
     @State private var input = ""
+    @FocusState private var composerFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showPaywall = false
     @StateObject private var aiGate = AISharingGate()
     @State private var loadedConfig: ServerConfig?
-    /// The composer's keyboard. The tab bar sits under the keyboard and the
-    /// multi-line field turns Return into a newline, so every way out (tap the
-    /// transcript, swipe it down, the hide button, leaving the tab) clears this.
-    @FocusState private var composerFocused: Bool
+    private static let starterArtwork = Bundle.main.url(forResource: "lisa-make-a-plan", withExtension: "png")
+        .flatMap { UIImage(contentsOfFile: $0.path) }
     private static let bottomID = "chat-bottom"
 
     private func refreshExpressions() async {
@@ -215,16 +280,21 @@ struct ChatView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 transcript
-                Divider()
                 if app.config.isConfigured {
-                    quickChips
-                    Text(app.aiConsent.isGranted(for: .chat)
-                         ? "AI data sharing allowed: " + app.aiConsent.recipients.joined(separator: ", ")
-                         : "Before your first message, review and allow sharing with third-party AI.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(.horizontal)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label {
+                        if app.aiConsent.isGranted(for: .chat) {
+                            Text("AI data sharing allowed: \(app.aiConsent.recipients.joined(separator: ", "))")
+                        } else {
+                            Text("Before your first message, review and allow sharing with third-party AI.")
+                        }
+                    } icon: { Image(systemName: "hand.raised") }
+                    .font(.caption).foregroundStyle(Theme.secondary)
+                    composer
                 }
-                composer
+                .padding(.horizontal, Theme.Space.m).padding(.vertical, 8)
+                .frame(maxWidth: Theme.readingWidth)
+                }
             }
             .background(Theme.bgDeep.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -240,6 +310,7 @@ struct ChatView: View {
             }
             .task(id: app.config) {
                 loadedConfig = app.config
+                model.onFailure = { [weak app = app] error in app?.noteFailure(error) }
                 model.startMood(app.client)
                 await model.loadHistory(app.client)
             }
@@ -253,7 +324,14 @@ struct ChatView: View {
             }
             .onAppear { consumeDraft(); Task { await refreshExpressions() } }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await refreshExpressions() } }
+                if phase == .active { Task {
+                    await refreshExpressions()
+                    await model.recoverDroppedTurn(app.client)
+                } }
+            }
+            // Keep what was typed across the re-sign-in the banner offers.
+            .onChange(of: app.sessionExpired) { _, expired in
+                if expired { app.stashDraftForSignIn(input) }
             }
             .onChange(of: model.sending) { _, sending in
                 if !sending { Task { await refreshExpressions() } }
@@ -281,7 +359,7 @@ struct ChatView: View {
         HStack(spacing: 8) {
             moodAvatar(28)
             VStack(alignment: .leading, spacing: 0) {
-                Text("Lisa").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text("Lisa").font(Theme.title(.headline)).foregroundStyle(Theme.text)
                 if !model.mood.isEmpty {
                     Text(model.mood.replacingOccurrences(of: "-", with: " "))
                         .font(.caption2).foregroundStyle(Theme.green)
@@ -301,108 +379,103 @@ struct ChatView: View {
         .accessibilityHidden(true)   // chatHeader's combined label already says the mood
     }
 
-    private let quickCommands = ["Help me plan my day", "Help me write a draft", "Break down a goal"]
+    private func startDraft(_ starter: AssistantStarter) {
+        input = starter.prompt
+        composerFocused = true
+    }
 
-    /// Tappable quick-command chips above the composer — there's always a next move.
-    @ViewBuilder private var quickChips: some View {
-        if !model.sending {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Space.s) {
-                    ForEach(quickCommands, id: \.self) { cmd in
-                        Button { input = cmd } label: {
-                            Text(cmd).font(.caption)
-                                .padding(.horizontal, 12).padding(.vertical, 7)
-                                .background(Theme.accent.opacity(0.14), in: Capsule())
-                                .foregroundStyle(Theme.accent)
+    private var transcript: some View {
+        GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if model.hasMore {
+                        Button { Task { await model.loadEarlier(app.client) } } label: {
+                            if model.loadingHistory { ProgressView() }
+                            else { Text("Load earlier").font(.caption) }
+                        }
+                        .padding(.top, Theme.Space.s)
+                    }
+                    LazyVStack(spacing: Theme.Space.m) {
+                        if model.messages.isEmpty {
+                            emptyState.padding(.vertical, Theme.Space.l)
+                                .frame(minHeight: max(0, viewport.size.height - 2 * Theme.Space.m - 1))
+                        }
+                        ForEach(model.messages) { msg in
+                            // A blank streaming bubble is stood in for by the typing
+                            // indicator below — don't render an empty bubble.
+                            if !isWaitingBubble(msg) && !(msg.expression != nil && msg.text.isEmpty && msg.tools.isEmpty && app.expressionPreferences.display == .off) {
+                                MessageBubble(
+                                    message: msg,
+                                    onRetry: retryAction(for: msg),
+                                    onAddCredits: msg.needsCredits ? { showPaywall = true } : nil,
+                                    onSignIn: msg.needsSignIn ? { app.stashDraftForSignIn(input); app.beginSignInAgain() } : nil,
+                                    expressionClient: app.client, expressionPreferences: app.expressionPreferences,
+                                    onExpressionStarted: { model.markExpressionSeen(msg.id) }
+                                )
+                            }
+                        }
+                        if showTyping {
+                            TypingIndicator().frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Space.l).padding(.vertical, Theme.Space.m)
+                    .frame(maxWidth: Theme.readingWidth)
+                    .frame(maxWidth: .infinity)
+                    Color.clear.frame(height: 1).id(Self.bottomID)
+                }
+                .accessibilityIdentifier("chat.transcript")
+                .scrollDismissesKeyboard(.interactively)
+                .scrollBounceBehavior(.always)
+                .contentShape(Rectangle())
+                .onTapGesture { composerFocused = false }
+                .onChange(of: model.messages.last) { _, last in
+                    if last != nil { scrollToBottom(proxy) }
+                }
+                .onChange(of: model.sending) { _, _ in scrollToBottom(proxy) }
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(spacing: 8) {
+                if let art = Self.starterArtwork {
+                    Image(uiImage: art).resizable().scaledToFit()
+                        .frame(width: 104, height: 104).accessibilityHidden(true)
+                }
+                Text(app.config.isConfigured ? "What’s on your mind?" : "Connect Lisa to start chatting").font(Theme.title(.title))
+                    .foregroundStyle(Theme.text).multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity).padding(.bottom, 8)
+            if !app.config.isConfigured {
+                Text("Sign in to LISA Cloud or connect your Mac first.")
+                    .font(.callout).foregroundStyle(Theme.secondary)
+                    .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                Button("Get started") { composerFocused = false; app.presentOnboarding() }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("chat.getStarted")
+                    .frame(maxWidth: .infinity)
+            } else if input.trimmed.isEmpty && !composerFocused {
+                VStack(spacing: 0) {
+                    ForEach(AssistantStarter.all) { starter in
+                        if starter.id != AssistantStarter.all.first?.id { Divider().padding(.leading, 48) }
+                        Button { startDraft(starter) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: starter.icon).frame(width: 24).foregroundStyle(Theme.accent)
+                                Text(starter.title).foregroundStyle(Theme.text)
+                                Spacer()
+                                Image(systemName: "arrow.up.left").font(.caption).foregroundStyle(Theme.tertiary)
+                            }
+                            .padding(.horizontal, 16).frame(minHeight: 50).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Adds an editable draft. Tap Send when ready.")
                     }
                 }
-                .padding(.horizontal).padding(.vertical, Theme.Space.s)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
+                .overlay { RoundedRectangle(cornerRadius: Theme.cardRadius).strokeBorder(Theme.border, lineWidth: Theme.hairline) }
             }
-        }
-    }
-
-    private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                if model.hasMore {
-                    Button { Task { await model.loadEarlier(app.client) } } label: {
-                        if model.loadingHistory { ProgressView() }
-                        else { Text("Load earlier").font(.caption) }
-                    }
-                    .padding(.top, Theme.Space.s)
-                }
-                LazyVStack(spacing: Theme.Space.m) {
-                    if model.messages.isEmpty {
-                        emptyState.padding(.top, 60)
-                    }
-                    ForEach(model.messages) { msg in
-                        // A blank streaming bubble is stood in for by the typing
-                        // indicator below — don't render an empty bubble.
-                        if !isWaitingBubble(msg) && !(msg.expression != nil && msg.text.isEmpty && msg.tools.isEmpty && app.expressionPreferences.display == .off) {
-                            MessageBubble(
-                                message: msg,
-                                onRetry: retryAction(for: msg),
-                                onAddCredits: msg.needsCredits ? { showPaywall = true } : nil,
-                                expressionClient: app.client, expressionPreferences: app.expressionPreferences,
-                                onExpressionStarted: { model.markExpressionSeen(msg.id) }
-                            )
-                        }
-                    }
-                    if showTyping {
-                        TypingIndicator().frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding()
-                Color.clear.frame(height: 1).id(Self.bottomID)
-            }
-            .accessibilityIdentifier("chat.transcript")
-            .scrollDismissesKeyboard(.interactively)
-            // An empty or short transcript must still take the swipe-down that
-            // dismisses the keyboard; it only scrolls when it bounces.
-            .scrollBounceBehavior(.always)
-            // Tapping the conversation closes the keyboard. Buttons inside the
-            // transcript (Retry, Load earlier, Get started) keep their own taps.
-            .onTapGesture { composerFocused = false }
-            .onChange(of: model.messages) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: model.sending) { _, _ in scrollToBottom(proxy) }
-        }
-    }
-
-    @ViewBuilder private var emptyState: some View {
-        if app.config.isConfigured {
-            VStack(spacing: 6) {
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.largeTitle).foregroundStyle(Theme.tertiary)
-                Text("Ask Lisa anything — or tap a suggestion below.")
-                    .font(.callout).foregroundStyle(Theme.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-        } else {
-            // Nothing typed here could be sent: point at setup instead of
-            // offering a composer that only opens a keyboard.
-            VStack(spacing: Theme.Space.s) {
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.largeTitle).foregroundStyle(Theme.tertiary)
-                Text("Connect Lisa to start chatting")
-                    .font(.headline).foregroundStyle(Theme.text)
-                Text("Sign in to LISA Cloud or connect your Mac first.")
-                    .font(.callout).foregroundStyle(Theme.secondary)
-                    .multilineTextAlignment(.center)
-                Button("Get started") {
-                    composerFocused = false
-                    app.presentOnboarding()
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("chat.getStarted")
-                .padding(.top, Theme.Space.xs)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal)
-        }
+        }.frame(maxWidth: 430)
     }
 
     /// A Lisa turn that's mid-stream with nothing to show yet.
@@ -417,66 +490,77 @@ struct ChatView: View {
     }
 
     /// Offer Retry only on the newest turn, when it ended with nothing useful.
+    /// Retry replaces the failed reply; it never adds a second copy of the
+    /// user's message (#491).
     private func retryAction(for msg: ChatMessage) -> (() -> Void)? {
-        guard !model.sending, msg.role == .lisa, msg.isRetryable,
+        guard !model.sending, msg.role == .lisa, msg.isRetryable, !msg.needsSignIn,
               msg.id == model.messages.last?.id else { return nil }
-        return { requestSend(model.messages.last(where: { $0.role == .user })?.text ?? "") }
+        return { requestRetry() }
+    }
+
+    private func requestRetry() {
+        guard !model.sending, let text = model.retryText, !text.trimmed.isEmpty else { return }
+        aiGate.submit(text, purpose: .chat, app: app) { _ in
+            app.cancelActiveChat = { [weak model = model] in model?.cancel() }
+            model.resend(client: app.client)
+        }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
     }
 
     private var composer: some View {
-        HStack(spacing: Theme.Space.s) {
+        HStack(alignment: .bottom, spacing: 4) {
             if composerFocused {
-                // Return adds a line in this multi-line field, and the keyboard
-                // covers the tab bar, so offer a visible way to put it away.
                 Button { composerFocused = false } label: {
                     Image(systemName: "keyboard.chevron.compact.down").font(.title3)
+                        .frame(width: 44, height: 44)
                 }
-                .frame(width: 44, height: 44)
                 .foregroundStyle(Theme.secondary)
                 .accessibilityLabel("Hide keyboard")
                 .accessibilityIdentifier("chat.hideKeyboard")
-                .transition(.opacity)
             }
-            TextField(app.config.isConfigured ? "Message…" : "Connect Lisa to chat", text: $input, axis: .vertical)
-                .focused($composerFocused)
-                .disabled(!app.config.isConfigured)
+            if !composerFocused && !model.messages.isEmpty && input.trimmed.isEmpty && !model.sending {
+                Menu {
+                    ForEach(AssistantStarter.all) { starter in
+                        Button { startDraft(starter) } label: { Label(starter.title, systemImage: starter.icon) }
+                    }
+                } label: {
+                    Image(systemName: "sparkles").frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Writing suggestions")
+            }
+            TextField("Message…", text: $input, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.body)
-                .padding(.horizontal, 14).padding(.vertical, 12)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.border, lineWidth: Theme.hairline))
+                .focused($composerFocused)
+                .padding(.leading, 10).padding(.vertical, 11)
                 .foregroundStyle(Theme.text)
-                .tint(Theme.accent)
                 .accessibilityLabel("Message Lisa")
                 .accessibilityIdentifier("chat.composer")
                 .lineLimit(1...5)
                 .onSubmit(sendCurrent)
             if model.sending {
                 Button { model.cancel() } label: {
-                    Image(systemName: "stop.circle.fill").font(.title2)
+                    Image(systemName: "stop.circle.fill").font(.title)
+                        .frame(width: 44, height: 44)
                 }
-                .frame(width: 44, height: 44)
                 .foregroundStyle(Theme.danger)
                 .accessibilityLabel("Stop")
                 .accessibilityHint("Stops Lisa's reply")
             } else {
                 Button(action: sendCurrent) {
-                    Image(systemName: "arrow.up.circle.fill").font(.title2)
+                    Image(systemName: "arrow.up.circle.fill").font(.title)
+                        .frame(width: 44, height: 44)
                 }
-                .frame(width: 44, height: 44)
                 .accessibilityLabel("Send message")
                 .accessibilityHint("Sends what you typed to Lisa")
-                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || aiGate.busy || !app.config.isConfigured)
+                .disabled(input.trimmed.isEmpty || aiGate.busy || !app.config.isConfigured)
             }
         }
-        .padding()
-        .animation(.easeOut(duration: 0.15), value: composerFocused)
-        .background(Theme.panel)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: Theme.hairline) }
+        .padding(4)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 24))
+        .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(composerFocused ? Theme.accent : Theme.border, lineWidth: composerFocused ? 1.5 : Theme.hairline) }
     }
 
     private func sendCurrent() {
@@ -505,6 +589,8 @@ struct MessageBubble: View {
     /// Present when the turn was refused for lack of credits — the in-chat
     /// route to the In-App Purchases (see `ChatMessage.needsCredits`).
     var onAddCredits: (() -> Void)? = nil
+    /// Present when the turn was refused because the session expired.
+    var onSignIn: (() -> Void)? = nil
     var expressionClient: LisaClient? = nil
     var expressionPreferences = ExpressionPreferences()
     var onExpressionStarted: (() -> Void)? = nil
@@ -543,6 +629,16 @@ struct MessageBubble: View {
                     .padding(.top, 1)
                     .accessibilityLabel("Add credits")
                 }
+                if let onSignIn {
+                    Button(action: onSignIn) {
+                        Label("Sign in again", systemImage: "person.crop.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .padding(.top, 1)
+                    .accessibilityLabel("Sign in again")
+                }
                 if let onRetry {
                     Button(action: onRetry) {
                         Label("Retry", systemImage: "arrow.clockwise")
@@ -580,18 +676,20 @@ struct MessageBubble: View {
 
 /// Animated "Lisa is typing" dots shown while a turn streams.
 struct TypingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animate = false
     var body: some View {
         HStack(spacing: 5) {
             ForEach(0..<3) { i in
                 Circle().fill(Theme.secondary).frame(width: 7, height: 7)
                     .scaleEffect(animate ? 1 : 0.5)
-                    .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: animate)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: animate)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
-        .onAppear { animate = true }
+        .onAppear { animate = !reduceMotion }
+        .onChange(of: reduceMotion) { _, reduced in animate = !reduced }
         .accessibilityLabel("Lisa is typing")
     }
 }

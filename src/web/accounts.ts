@@ -29,6 +29,7 @@
  * until the Firestore move (B2), which takes this table with it.
  */
 import fs from "node:fs";
+import { SESSION_TTL_MS } from "./sessions-auth.js";
 import { adminAccountAllowed } from "../admin/store.js";
 import { recordFunnel } from "../billing/funnel.js";
 import os from "node:os";
@@ -73,6 +74,13 @@ export interface AccountRecord {
   verified: boolean;
   /** Bump to invalidate every outstanding session for this uid. */
   sessionVersion: number;
+  /**
+   * Sessions signed out one at a time (#493), by `sessionId()` — the token's
+   * `jti`, or its `iat` for older tokens — with the time the token would have
+   * expired anyway. Pruned past that time and capped at MAX_REVOKED_SESSIONS,
+   * so the directory (one Firestore document for every account) stays small.
+   */
+  revokedSessions?: RevokedSession[];
   /** Google's stable account id — set on any account a Google sign-in owns. */
   googleSub?: string;
   /** Apple's stable subject. Legacy records encoded it in uid instead. */
@@ -84,6 +92,21 @@ export interface AccountRecord {
   /** Verification-token expiry, ms epoch. */
   verifyExpiresAt?: number;
 }
+
+export interface RevokedSession {
+  /** `sessionId()` of the signed-out token. */
+  id: string;
+  /** When that token expires, ms epoch; the entry is useless after it. */
+  exp: number;
+}
+
+/**
+ * Most single-session sign-outs an account keeps on record. A person signs in
+ * again before each sign-out, so reaching this in a 30-day token lifetime is
+ * not normal use; reaching the cap invalidates all sessions by advancing the
+ * account version. Never drop a live revocation and revive a signed-out token.
+ */
+export const MAX_REVOKED_SESSIONS = 32;
 
 export class AccountError extends Error {
   constructor(public code: "invalid_email" | "weak_password" | "email_taken" | "throttled") {
@@ -566,19 +589,40 @@ export async function deleteAccount(uid: string): Promise<boolean> {
 
 /**
  * The gate's session check: does this (uid, sv) pair name a live account?
- * Wrong/stale sv ⇒ revoked (deleted account, future password change).
+ * Wrong/stale sv ⇒ "revoked" (deleted account, future password change).
+ * "unavailable" ⇒ the account authority could not be read: the session is
+ * neither accepted nor declared revoked, so callers answer 503, not 401/403 —
+ * a client (the Mac's relay link) must retry instead of treating it as a sign-out.
  */
-export async function sessionAccountValid(uid: string, sv: number): Promise<boolean> {
+export async function sessionAccountState(
+  uid: string,
+  sv: number,
+  sessionId?: string,
+): Promise<"valid" | "revoked" | "unavailable"> {
   try {
     const acct = await getAccount(uid);
-    return !!acct && acct.sessionVersion === sv && (await adminAccountAllowed(uid));
+    return !!acct &&
+      acct.sessionVersion === sv &&
+      !sessionRevoked(acct, sessionId) &&
+      (await adminAccountAllowed(uid))
+      ? "valid"
+      : "revoked";
   } catch (err) {
     // Authentication must fail closed when the account authority is unreadable.
     // Do not let an async HTTP handler rejection crash the process, and do not
     // silently recreate/overwrite the directory.
     console.error(`[accounts] session validation unavailable: ${(err as Error).message}`);
-    return false;
+    return "unavailable";
   }
+}
+
+/** sessionAccountState as a yes/no; an unreadable authority is a no (fail closed). */
+export async function sessionAccountValid(
+  uid: string,
+  sv: number,
+  sessionId?: string,
+): Promise<boolean> {
+  return (await sessionAccountState(uid, sv, sessionId)) === "valid";
 }
 
 /**
@@ -662,5 +706,52 @@ export async function revokeAccountSessions(uid: string): Promise<void> {
     const account = list.find((a) => a.uid === uid);
     if (!account) throw new Error("account_not_found");
     account.sessionVersion++;
+    // Every session on record carried the old version and is dead with it.
+    delete account.revokedSessions;
+  });
+}
+
+/** Has this one session been signed out (#493)? */
+export function sessionRevoked(acct: AccountRecord, sessionId: string | undefined): boolean {
+  if (!sessionId || !Array.isArray(acct.revokedSessions)) return false;
+  return acct.revokedSessions.some((r) => r?.id === sessionId);
+}
+
+/**
+ * Sign out ONE session (#493). The account's other sessions — the Mac and any
+ * other device signed in to it — stay valid. `sv` and `exp` come from the
+ * token's verified claims. Returns false when there is nothing to revoke: the
+ * account is gone, or the token's session version is already stale.
+ * Idempotent: a session already on record costs no write.
+ */
+export async function revokeSession(
+  uid: string,
+  sv: number,
+  sessionId: string,
+  exp: number,
+  now: number = Date.now(),
+): Promise<boolean> {
+  const current = await getAccount(uid);
+  if (!current || current.sessionVersion !== sv) return false;
+  if (sessionRevoked(current, sessionId)) return true;
+  return mutateAccounts((list) => {
+    const acct = list.find((a) => a.uid === uid);
+    if (!acct || acct.sessionVersion !== sv) return false;
+    const live = (Array.isArray(acct.revokedSessions) ? acct.revokedSessions : [])
+      .filter(
+        (r): r is RevokedSession =>
+          !!r && typeof r.id === "string" && typeof r.exp === "number" && r.exp > now,
+      )
+      .filter((r) => r.id !== sessionId)
+      .sort((a, b) => b.exp - a.exp);
+    if (live.length >= MAX_REVOKED_SESSIONS) {
+      acct.sessionVersion++;
+      delete acct.revokedSessions;
+    } else {
+      // An older token can sign out a family with a newer, longer-lived renewal.
+      // Keep the revocation for the full remaining lifetime of every such token.
+      acct.revokedSessions = [...live, { id: sessionId, exp: Math.max(exp, now + SESSION_TTL_MS) }];
+    }
+    return true;
   });
 }

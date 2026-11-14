@@ -1,33 +1,28 @@
 import SwiftUI
 
-/// Agent-console palette — mirrors the web shell tokens (src/web/lisa-css.ts,
-/// token table: docs/archive/plans/PLAN_UI_SESSION_SHELL_v1.0.md §2): each color carries a
-/// dark ("Nebula") and light ("Calm") variant, resolved by the trait
-/// environment — the appearance picker in Settings drives
-/// `.preferredColorScheme` at the root, and every `Theme.*` follows.
+/// Paper, ink and botanical tones shared by the room, reading views and controls.
 enum Theme {
-    // Surfaces
-    static let bgDeep = Color(dark: 0x0A0E22, light: 0xF5F6FA)   // app background
-    static let panel  = Color(dark: 0x0F1430, light: 0xFCFCFE)   // tab/nav bars, grouped lists
-    static let card   = Color(dark: 0x161C3C, light: 0xFFFFFF)   // rows, cards, banners
-    static let border = Color(dark: 0x303858, light: 0xDDE2EC)
-    static let userBubble = Color(dark: 0x192D47, light: 0xEEF0FC)
-    /// Sunken code/log wells (CodeBlock) — deep in Nebula, faint in Calm.
-    static let sunken = Color(UIColor { t in
-        t.userInterfaceStyle == .light
-            ? UIColor.black.withAlphaComponent(0.05)
-            : UIColor.black.withAlphaComponent(0.25)
-    })
+    static let bgDeep = Color(dark: 0x121B19, light: 0xF8F6EF)
+    static let panel  = Color(dark: 0x182320, light: 0xFCFAF4)
+    static let card   = Color(dark: 0x1E2926, light: 0xFFFEFA)
+    static let border = Color(dark: 0x3B4942, light: 0xDADCD1)
+    static let userBubble = Color(dark: 0x23312D, light: 0xE8EFE7)
+    static let sunken = Color(dark: 0x101815, light: 0xF0F0E9)
 
-    // Text
-    static let text      = Color(dark: 0xE8EAFF, light: 0x1B2430)
-    static let secondary = Color(dark: 0x9AA3C8, light: 0x4D5666)
-    static let tertiary  = Color(dark: 0x969FBE, light: 0x5F6878)
+    static let text      = Color(dark: 0xF4F2E8, light: 0x202F29)
+    static let secondary = Color(dark: 0xC3CBC0, light: 0x4C5D54)
+    static let tertiary  = Color(dark: 0xABB9AC, light: 0x5C695F)
 
-    // Identity / accents
-    static let accent = Color(dark: 0x6AD4FF, light: 0x4F5BD5)   // cyan / calm indigo
-    static let gold   = Color(dark: 0xFFD066, light: 0x8B5A00)   // Lisa identity
-    static let green  = Color(dark: 0x3DDC97, light: 0x147653)   // proactive / live / done
+    static let accent = Color(dark: 0xA8D9BB, light: 0x285941)
+    static let gold   = Color(dark: 0xE7BE85, light: 0x805326)
+    static let green  = Color(dark: 0x91D3B1, light: 0x216945)
+    static let sage   = Color(dark: 0x26352D, light: 0xE8EDDF)
+    static let clay   = Color(dark: 0x332E26, light: 0xF3EBDE)
+
+    static let readingWidth: CGFloat = 680
+    static func title(_ style: Font.TextStyle) -> Font {
+        .system(style, design: .serif).weight(.medium)
+    }
 
     // Status pips — defined in Shared/GlanceColors so the widget extension (which
     // can't see Theme) renders identical status colors (review I1/B23).
@@ -37,8 +32,8 @@ enum Theme {
     static let done    = GlanceColors.done
     static let idle    = GlanceColors.idle
 
-    static let cardRadius: CGFloat = 16
-    static let hairline: CGFloat = 1
+    static let cardRadius: CGFloat = 20
+    static let hairline: CGFloat = 0.75
 
     /// One spacing scale so padding/stack-spacing is consistent across screens
     /// (review I3 — values were ad-hoc 8/12/14/18/22/… everywhere).
@@ -100,7 +95,7 @@ extension Color {
 
 /// Rounded console card: card fill + hairline border + padding.
 struct ConsoleCard: ViewModifier {
-    var padding: CGFloat = 14
+    var padding: CGFloat = 16
     func body(content: Content) -> some View {
         content
             .padding(padding)
@@ -110,12 +105,13 @@ struct ConsoleCard: ViewModifier {
 }
 
 extension View {
-    func consoleCard(padding: CGFloat = 14) -> some View { modifier(ConsoleCard(padding: padding)) }
+    func consoleCard(padding: CGFloat = 16) -> some View { modifier(ConsoleCard(padding: padding)) }
 
-    /// Dark console canvas for a List / Form / ScrollView screen — clears the
-    /// default grouped background and drops the deep app background behind it.
+    /// Apply the same paper canvas to native lists, forms and scroll views.
     func consoleBackground() -> some View {
-        self.scrollContentBackground(.hidden).background(Theme.bgDeep.ignoresSafeArea())
+        self.scrollContentBackground(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.bgDeep.ignoresSafeArea())
     }
 }
 
@@ -152,19 +148,20 @@ struct ThemePill: View {
 
 /// One stat cell in the Dispatch stat strip (count above, label below).
 struct StatCell: View {
-    let value: Int
+    let value: Int?
     let label: String
     var tint: Color = Theme.accent
+    private var display: String { value.map(String.init) ?? "—" }
     var body: some View {
         VStack(spacing: 2) {
-            Text("\(value)").font(.title3.weight(.medium)).foregroundStyle(tint)
-            Text(label).font(.caption2).foregroundStyle(Theme.tertiary)
+            Text(display).font(.title3.weight(.medium)).foregroundStyle(tint)
+            Text(LocalizedStringKey(label)).font(.caption2).foregroundStyle(Theme.tertiary)
         }
         .frame(maxWidth: .infinity)
         .consoleCard(padding: 10)
         // "Needs you: 2", not "2" then "needs you" as two stray elements (D5).
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): \(value)")
+        .accessibilityLabel("\(label): \(display)")
     }
 }
 

@@ -20,7 +20,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
-export type StubMode = "ok" | "unauthorized" | "expressions";
+export type StubMode = "ok" | "unauthorized" | "expressions" | "self-edit";
 
 /** The soul the "ok" stub dreams. Fixed, so assertions can name it. */
 export const STUB_BIRTH_OUTPUT = {
@@ -147,15 +147,20 @@ export async function startStubAnthropic(mode: StubMode): Promise<StubServer> {
       usage: { input_tokens: 11, output_tokens: 0 },
     };
     sse(res, "message_start", { type: "message_start", message });
-    if (expressionTool) {
-      for (let index = 0; index < 2; index++) {
+    const selfEdit =
+      mode === "self-edit" &&
+      !completed &&
+      body.tools?.some((t: { name: string }) => t.name === "edit");
+    if (expressionTool || selfEdit) {
+      const count = selfEdit ? 1 : 2;
+      for (let index = 0; index < count; index++) {
         sse(res, "content_block_start", {
           type: "content_block_start",
           index,
           content_block: {
             type: "tool_use",
             id: "expression-" + requests + "-" + index,
-            name: "reply_expression",
+            name: selfEdit ? "edit" : "reply_expression",
             input: {},
           },
         });
@@ -164,14 +169,22 @@ export async function startStubAnthropic(mode: StubMode): Promise<StubServer> {
           index,
           delta: {
             type: "input_json_delta",
-            partial_json: JSON.stringify({
-              assetId: "sticker-hello",
-              format: prompt.includes("static")
-                ? "static"
-                : prompt.includes("emoji")
-                  ? "emoji"
-                  : "animated",
-            }),
+            partial_json: JSON.stringify(
+              selfEdit
+                ? {
+                    path: "example.ts",
+                    old_string: "before",
+                    new_string: "after",
+                  }
+                : {
+                    assetId: "sticker-hello",
+                    format: prompt.includes("static")
+                      ? "static"
+                      : prompt.includes("emoji")
+                        ? "emoji"
+                        : "animated",
+                  },
+            ),
           },
         });
         sse(res, "content_block_stop", { type: "content_block_stop", index });

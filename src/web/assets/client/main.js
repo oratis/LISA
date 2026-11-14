@@ -222,6 +222,7 @@ const LISA_STRINGS = {
     "expressions.lively": "More often",
     'pty.disabled': 'Interactive CLI agents are turned off on this Mac. Managed tasks remain available.',
     'pty.missing': 'This installation does not include interactive CLI support. Update Lisa to enable it.',
+    'pty.helper': 'Interactive CLI support is installed but cannot start programs (its helper is not executable). Reinstall Lisa to fix it.',
     "panel.loading": "Loading…",
     "panel.failed": "Could not load this panel. Please try again.",
     "panel.retry": "Retry",
@@ -282,6 +283,29 @@ const LISA_STRINGS = {
     "workspace.platform": "Apple connectors require macOS 14 or later.",
     "workspace.build": "Install Xcode Command Line Tools to build the local EventKit reader.",
     "workspace.unavailable": "Apple Calendar and Reminders are not available in this build of LISA.",
+    "connector.feishuAdd": "Add document",
+    "connector.feishuName": "Feishu",
+    "connector.feishuDetail": "Feishu grants read access to your upgraded documents. LISA reads only documents you add here. No drive search, wiki, sheets, attachments or writes. Connecting continues the original task.",
+    "connector.auth.feishu": "Sign in to Feishu (read only)",
+    "connector.feishuAuthorize": "Complete Feishu consent, then add the documents to read here.",
+    "connector.openFeishu": "Open Feishu authorization",
+    "connector.feishuSelect": "Add Feishu docx links or document IDs. LISA checks access before continuing. No document is selected by default.",
+    "connector.feishuPlaceholder": "https://your-team.feishu.cn/docx/…",
+    "connector.feishuDocument": "Feishu document link or ID",
+    "connector.error.feishu_client_not_configured": "Feishu app is not configured on this computer.",
+    "connector.error.feishu_reauthorization_required": "Feishu authorization expired. Sign in again.",
+    "connector.error.feishu_read_scope_required": "Feishu requires the document read-only and offline renewal scopes.",
+    "connector.error.feishu_document_unavailable": "The Feishu document is unavailable.",
+    "connector.error.feishu_resource_mismatch": "Feishu returned a different document.",
+    "connector.error.feishu_access_denied": "Feishu denied access. Check the app and document permissions.",
+    "connector.error.feishu_rate_limited": "Feishu rate limit reached. Try again later.",
+    "connector.error.feishu_callback_port_in_use": "The Feishu sign-in callback port is in use.",
+    "connector.error.feishu_request_failed": "The Feishu request failed. Try again.",
+    "connector.error.feishu_response_too_large": "The document exceeds the safe reading size.",
+    "connector.error.feishu_invalid_response": "Feishu returned an unexpected response.",
+    "connector.error.feishu_unavailable": "Cannot reach Feishu. Try again later.",
+    "connector.error.feishu_document_changed": "The document changed while reading. Try again.",
+    "connector.error.feishu_invalid_link": "Enter a Feishu docx link or document ID. Wiki and other links are not supported.",
     "connector.slackDetail": "Slack grants access to channel names and history. LISA reads only channels you confirm here. No DMs, shared channels, files or sending messages. Connecting continues the original task.",
     "connector.slackAuthorize": "Authorize LISA read-only in Slack, then return here to choose channels.",
     "connector.browse": "Browse app connectors",
@@ -660,6 +684,7 @@ const LISA_STRINGS = {
     "expressions.lively": "活泼",
     'pty.disabled': '此 Mac 尚未开启交互式 CLI 代理，可以使用内置任务。',
     'pty.missing': '当前安装缺少交互式 CLI 支持，请更新 Lisa。',
+    'pty.helper': '交互式 CLI 支持已安装，但无法启动程序（辅助程序没有执行权限）。请重新安装 Lisa。',
     "panel.loading": "正在加载…",
     "panel.failed": "加载失败，请重试。",
     "panel.retry": "重试",
@@ -720,6 +745,29 @@ const LISA_STRINGS = {
     "workspace.platform": "Apple 连接器需要 macOS 14 或更新版本。",
     "workspace.build": "请安装 Xcode 命令行工具以构建本机 EventKit 读取程序。",
     "workspace.unavailable": "此版本的 LISA 不支持 Apple 日历和提醒事项。",
+    "connector.feishuAdd": "添加文档",
+    "connector.feishuName": "飞书",
+    "connector.feishuDetail": "飞书授权可读取你有权限的新版文档；LISA 仅读取你在此添加的文档。不搜索云盘，不读取知识库、表格或附件，不修改内容。连接后自动继续原任务。",
+    "connector.auth.feishu": "登录飞书，只读连接",
+    "connector.feishuAuthorize": "完成飞书授权后，在此添加允许读取的文档。",
+    "connector.openFeishu": "打开飞书授权页面",
+    "connector.feishuSelect": "添加飞书新版文档（docx）链接或文档 ID，确认可访问后自动继续。默认不选择任何文档。",
+    "connector.feishuPlaceholder": "https://你的企业.feishu.cn/docx/…",
+    "connector.feishuDocument": "飞书文档链接或 ID",
+    "connector.error.feishu_client_not_configured": "本机尚未配置飞书应用。",
+    "connector.error.feishu_reauthorization_required": "飞书授权已失效，请重新登录。",
+    "connector.error.feishu_read_scope_required": "飞书需授予新版文档只读和离线续期权限。",
+    "connector.error.feishu_document_unavailable": "飞书文档不可用。",
+    "connector.error.feishu_resource_mismatch": "飞书返回的文档与所选文档不一致。",
+    "connector.error.feishu_access_denied": "飞书拒绝访问，请检查应用与文档权限。",
+    "connector.error.feishu_rate_limited": "飞书访问过于频繁，请稍后重试。",
+    "connector.error.feishu_callback_port_in_use": "飞书授权回调端口被占用，请关闭其他授权流程。",
+    "connector.error.feishu_request_failed": "飞书请求失败，请重试。",
+    "connector.error.feishu_response_too_large": "文档超过可读取的大小限制。",
+    "connector.error.feishu_invalid_response": "飞书返回格式异常，请重试。",
+    "connector.error.feishu_unavailable": "暂时无法连接飞书，请稍后重试。",
+    "connector.error.feishu_document_changed": "读取期间文档发生变化，请重试。",
+    "connector.error.feishu_invalid_link": "请输入飞书 docx 文档链接或文档 ID，暂不支持知识库及其他链接。",
     "connector.slackDetail": "Slack 授予频道名称和历史读取权限；LISA 仅读取你在此确认的频道。不读取私信、共享频道或附件，不发送消息。连接后自动继续原任务。",
     "connector.slackAuthorize": "请在 Slack 授权 LISA read-only，然后返回此卡选择频道。",
     "connector.browse": "浏览应用连接器",
@@ -1894,7 +1942,7 @@ cfgForm.addEventListener('submit', async (ev) => {
       body: JSON.stringify(lisaProviderSaveBody(provider, key, model, baseUrl)),
     });
     if (!res.ok) {
-      const txt = await res.text().catch(() => '');
+      const txt = errorText(await res.text().catch(() => ''));
       cfgError.textContent = tr('gate.saveFailed') + 'HTTP ' + res.status + (txt ? ' — ' + txt.slice(0, 120) : '');
       cfgSaveBtn.disabled = false;
       return;
@@ -2433,6 +2481,16 @@ const modalClose = document.getElementById('modalClose');
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
+// Error bodies are {error, message} JSON (contracts/lisa-error-codes.json);
+// show the message. Plain text from an older server passes through as is.
+function errorText(t) {
+  try {
+    const j = JSON.parse(t);
+    if (j && typeof j.message === 'string' && j.message) return j.message;
+    if (j && typeof j.error === 'string') return j.error;
+  } catch (_) { /* plain text */ }
+  return t;
+}
 let modalRevision = 0;
 function openModal(title, html) {
   modalRevision++;
@@ -2685,7 +2743,7 @@ async function selectPlan(plan) {
       body: JSON.stringify({ plan: plan }),
     });
     if (!res.ok) {
-      const t = await res.text().catch(function () { return ''; });
+      const t = errorText(await res.text().catch(function () { return ''; }));
       modalBody.insertAdjacentHTML('afterbegin', '<div class="empty" style="color:var(--err-color)">select failed: ' + escapeHtml(String(res.status) + (t ? ' — ' + t : '')) + '</div>');
       return;
     }
@@ -4333,7 +4391,7 @@ if ('serviceWorker' in navigator) {
         option.disabled = !status.available || !status.agents?.some(agent => agent.id === option.value && agent.available);
       });
       const note = document.getElementById('dmAvailability');
-      if (note) note.textContent = status.available ? '' : tr(status.installed ? 'pty.disabled' : 'pty.missing');
+      if (note) note.textContent = status.available ? '' : tr(status.reason === 'missing-module' ? 'pty.missing' : status.reason === 'spawn-helper-not-executable' ? 'pty.helper' : 'pty.disabled');
     }).catch(function () { const note = document.getElementById('dmAvailability'); if (note) note.textContent = tr('panel.failed'); });
     const taskEl = document.getElementById('dmTask');
     const startEl = document.getElementById('dmStart');
@@ -4354,6 +4412,7 @@ if ('serviceWorker' in navigator) {
       }).then(function (r) {
         if (!r.ok) {
           return r.text().then(function (t) {
+            t = errorText(t);
             if (errEl) errEl.textContent = t || ('failed (' + r.status + ')');
             if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
           });
@@ -5206,7 +5265,7 @@ if ('serviceWorker' in navigator) {
       if (startEl) { startEl.disabled = true; startEl.textContent = 'Checking…'; }
       fetch('/api/mail/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) {
-          if (!r.ok) { return r.text().then(function (t) { if (errEl) errEl.textContent = t || ('failed (' + r.status + ')'); if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } }); }
+          if (!r.ok) { return r.text().then(function (t) { t = errorText(t); if (errEl) errEl.textContent = t || ('failed (' + r.status + ')'); if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } }); }
           closeModal();
           if (window.refreshMail) window.refreshMail();
         })
@@ -5255,7 +5314,7 @@ if ('serviceWorker' in navigator) {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ agent: 'claude', resumeSessionId: sid, cwd: cwd || '' }),
       }).then(function (r) {
-        if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
+        if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(errorText(t)) + '</pre>'); }); }
         if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
       }).catch(function () {});
     }
@@ -5833,7 +5892,7 @@ if ('serviceWorker' in navigator) {
       headers: body ? { 'content-type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
     }).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error(String(r.status) + (t ? ' ' + t : '')); });
+      if (!r.ok) return r.text().then(function (t) { t = errorText(t); throw new Error(String(r.status) + (t ? ' ' + t : '')); });
       return r.json().catch(function () { return {}; });
     });
   }
@@ -5901,7 +5960,7 @@ if ('serviceWorker' in navigator) {
           else if (act === 'deny') afterAct(sdAction('managed', id, 'approve', { allow: false, approvalId: s.activity.approvalId }));
           else if (act === 'cancel') afterAct(sdAction(fam, id, 'cancel', null));
           else if (act === 'send') doSend();
-          else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t); }); }));
+          else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(errorText(t)); }); }));
           else if (act === 'output') {
             var out = document.getElementById('sdOut');
             if (out) { out.style.display = 'block'; out.textContent = 'loading…'; }
@@ -6373,7 +6432,7 @@ if ('serviceWorker' in navigator) {
       if (msg) { msg.style.color = ''; msg.textContent = 'Saving…'; }
       saveBtn.disabled = true;
       fetch('/api/config/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(window.lisaProviderSaveBody(pv, key, model, base)) })
-        .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t || ('failed (' + r.status + ')')); }); return r.json(); })
+        .then(function (r) { if (!r.ok) return r.text().then(function (t) { t = errorText(t); throw new Error(t || ('failed (' + r.status + ')')); }); return r.json(); })
         .then(function () { return getJSON('/api/config/status').catch(function () { return null; }); })
         .then(function (after) {
           // Same guard as the gate: say so when this backend dropped the key

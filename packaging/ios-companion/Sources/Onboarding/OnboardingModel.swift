@@ -79,13 +79,14 @@ enum VerifyOutcome: Equatable {
 /// A recovery action offered on a failed connect (drives the connect screen's
 /// buttons). Kept pure so the outcome→action mapping is unit-testable.
 enum RecoveryAction: Hashable {
-    case retry, rescan, manual
+    case retry, rescan, manual, signInAgain
 
     var label: String {
         switch self {
         case .retry:  return "Try again"
         case .rescan: return "Scan a fresh code"
         case .manual: return "Enter manually"
+        case .signInAgain: return "Sign in again"
         }
     }
 }
@@ -99,6 +100,15 @@ extension VerifyOutcome {
         case .ok:                        return []
         case .unauthorized:              return [.rescan, .manual]
         case .unreachable, .serverError: return [.retry, .manual]
+        }
+    }
+
+    /// The same for a LISA Cloud sign-in: no QR codes or Mac forms (#492).
+    var cloudRecovery: [RecoveryAction] {
+        switch self {
+        case .ok:                        return []
+        case .unauthorized:              return [.signInAgain]
+        case .unreachable, .serverError: return [.retry, .signInAgain]
         }
     }
 }

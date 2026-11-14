@@ -18,6 +18,20 @@ const githubStatus = {
   cancelled: tr('github.status.cancelled'), failed: tr('github.status.failed'), expired: tr('github.status.expired')
 };
 const githubErrors = {
+  feishu_client_not_configured: tr('connector.error.feishu_client_not_configured'),
+  feishu_reauthorization_required: tr('connector.error.feishu_reauthorization_required'),
+  feishu_read_scope_required: tr('connector.error.feishu_read_scope_required'),
+  feishu_document_unavailable: tr('connector.error.feishu_document_unavailable'),
+  feishu_resource_mismatch: tr('connector.error.feishu_resource_mismatch'),
+  feishu_access_denied: tr('connector.error.feishu_access_denied'),
+  feishu_rate_limited: tr('connector.error.feishu_rate_limited'),
+  feishu_callback_port_in_use: tr('connector.error.feishu_callback_port_in_use'),
+  feishu_request_failed: tr('connector.error.feishu_request_failed'),
+  feishu_response_too_large: tr('connector.error.feishu_response_too_large'),
+  feishu_invalid_response: tr('connector.error.feishu_invalid_response'),
+  feishu_unavailable: tr('connector.error.feishu_unavailable'),
+  feishu_document_changed: tr('connector.error.feishu_document_changed'),
+  feishu_invalid_link: tr('connector.error.feishu_invalid_link'),
   workspace_reauthorize: tr('workspace.renew'),
   workspace_scope_mismatch: tr('workspace.mismatch'),
   workspace_invalid_period: tr('workspace.period'),
@@ -136,6 +150,7 @@ const connectorIconPaths = {
   'google-drive': 'M9 3h6l8 14-3 5H4l-3-5z M9 3l8 14h6 M1 17h16 M15 3L4 22',
   github: 'M6 8v8 M8 16c6 0 10-2 10-8 M6 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 16a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M18 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z',
   slack: 'M10 3L7 21 M17 3l-3 18 M4 9h17 M3 15h17',
+  feishu: 'M5 3h10l4 4v14H5z M14 3v5h5 M8 12h8 M8 16h6',
   notion: 'M5 3h10l4 4v14H5z M14 3v5h5 M8 12h8 M8 16h6',
   linear: 'M4 17l3 3 M3 12l9 9 M5 7l12 12 M8 5a9 9 0 0 1 12 12z',
   todoist: 'M4 7l2 2 3-3 M12 8h8 M4 15l2 2 3-3 M12 16h8',
@@ -166,6 +181,23 @@ function connectorIcon(name) {
 // one catalog entry rather than another branch in every ternary below.
 const googleLoginUrl = url => url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth';
 const connectorCards = {
+  feishu: {
+    name: tr('connector.feishuName'), detail: tr('connector.feishuDetail'), authorizeDetail: tr('connector.feishuAuthorize'),
+    modes: { login: tr('connector.auth.feishu') }, account: a => a.workspaceName + ' · ' + a.name,
+    open: tr('connector.openFeishu'),
+    loginUrl: url => url.origin === 'https://accounts.feishu.cn' && url.pathname === '/open-apis/authen/v1/authorize' && url.searchParams.get('response_type') === 'code' && url.searchParams.get('scope') === 'docx:document:readonly offline_access' && url.searchParams.get('code_challenge_method') === 'S256' && url.searchParams.getAll('prompt').every(p => p === 'consent'),
+    custom: {
+      placeholder: tr('connector.feishuPlaceholder'), label: tr('connector.feishuDocument'), add: tr('connector.feishuAdd'),
+      invalid: tr('connector.error.feishu_invalid_link'),
+      parse: value => {
+        if (/^[A-Za-z0-9]{15,100}$/.test(value)) return value;
+        try {
+          const url = new URL(value), match = /^\/docx\/([A-Za-z0-9]{15,100})\/?$/.exec(url.pathname);
+          return url.protocol === 'https:' && !url.username && !url.password && !url.port && (url.hostname === 'feishu.cn' || url.hostname.endsWith('.feishu.cn')) && match ? match[1] : '';
+        } catch { return ''; }
+      },
+    },
+  },
   github: {
     name: 'GitHub', detail: tr('github.detail'), authorizeDetail: tr('github.authorizeDetail'),
     modes: { existing: tr('github.existing'), login: tr('github.login') },

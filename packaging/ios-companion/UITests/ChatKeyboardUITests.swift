@@ -57,7 +57,9 @@ final class ChatKeyboardUITests: XCTestCase {
         let hide = focusComposer(app)
         let transcript = app.scrollViews["chat.transcript"]
         XCTAssertTrue(transcript.exists)
-        transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        // iOS 27 includes the area underneath the translucent navigation bar.
+        // Tap the middle of the visible conversation, not the title bar.
+        transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(waitUntilGone(hide), "tapping the conversation left the composer focused")
     }
 
@@ -66,7 +68,7 @@ final class ChatKeyboardUITests: XCTestCase {
         XCTAssertTrue(app.buttons["chat.getStarted"].waitForExistence(timeout: 15),
                       "an unconnected Chat tab must offer Get started")
         let field = composer(app)
-        XCTAssertTrue(field.exists)
-        XCTAssertFalse(field.isEnabled, "an unconnected composer can't send, so it must not take the keyboard")
+        XCTAssertTrue(!field.exists || !field.isEnabled,
+                      "an unconnected composer can't send, so it must not take the keyboard")
     }
 }

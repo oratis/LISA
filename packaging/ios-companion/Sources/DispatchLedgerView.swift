@@ -39,6 +39,7 @@ struct DispatchLedgerView: View {
                 }
             }
         }
+        .consoleBackground()
         .navigationTitle("Dispatches")
         .refreshable { await load() }
         .task { await load() }
@@ -105,6 +106,7 @@ struct DispatchDetailView: View {
                 }
             }
         }
+        .consoleBackground()
         .navigationTitle(entry.agent)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }

@@ -5,12 +5,17 @@ import WidgetKit
 final class RosterModel: ObservableObject {
     @Published var sessions: [AgentSession] = []
     @Published var problem: ConnectionProblem?
+    /// When the list last matched the Mac, so a stale list says how stale (#490).
+    @Published var updatedAt: Date?
+    /// Failures every screen should know about (an expired session) go to AppState.
+    var onFailure: (@MainActor (Error) -> Void)?
     private var streamTask: Task<Void, Never>?
 
     func load(_ client: LisaClient) async {
         do {
             sessions = sortRows(try await client.sessions())
             problem = nil
+            updatedAt = Date()
             publishSnapshot()
         } catch {
             // A cancelled request (-999) is transient — a newer load/task is coming
@@ -19,8 +24,12 @@ final class RosterModel: ObservableObject {
             let p = ConnectionProblem.classify(error, config: client.config)
             if case .cancelled = p { return }
             problem = p
+            onFailure?(error)
         }
     }
+
+    /// The current row for a session, so a detail screen follows the live state.
+    func session(id: String) -> AgentSession? { sessions.first { $0.id == id } }
 
     func startStream(_ client: LisaClient) {
         streamTask?.cancel()
@@ -143,22 +152,25 @@ struct RosterView: View {
                         } description: {
                             Text(d.message)
                         } actions: {
-                            if p.offersCloud {
-                                Button("Use LISA Cloud") { app.switchToCloud() }
-                                    .buttonStyle(.borderedProminent)
-                            }
+                            problemAction(p).buttonStyle(.borderedProminent)
                         }
                     } else if model.sessions.isEmpty {
                         ContentUnavailableView("No agents", systemImage: "moon.zzz",
                                                description: Text("Nothing running right now."))
                     } else {
-                        agentSections
+                        VStack(spacing: 0) {
+                            // The list below is the last state Pocket saw; say so (#490).
+                            if let p = model.problem, let d = p.display {
+                                staleBanner(p, d)
+                            }
+                            agentSections
+                        }
                     }
                 }
             }
             .background(Theme.bgDeep.ignoresSafeArea())
             .navigationTitle("Agents")
-            .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
+            .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0, roster: model) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if app.config.remoteMac != nil {
@@ -190,6 +202,7 @@ struct RosterView: View {
                 lisaSessions = (try? await app.client.lisaSessions()) ?? []
             }
             .task(id: app.config) {
+                model.onFailure = { [weak app = app] error in app?.noteFailure(error) }
                 await model.load(app.client)
                 await app.loadProactive()
                 policy = try? await app.client.controlPolicy()
@@ -226,9 +239,38 @@ struct RosterView: View {
     /// sessions grouped by project (mini project headers when a kind spans
     /// more than one project). Row order inside a project keeps the model's
     /// problem-first sort.
+    /// The one next step for a problem, if it has one.
+    @ViewBuilder private func problemAction(_ p: ConnectionProblem) -> some View {
+        switch p.action {
+        case .useCloud: Button("Use LISA Cloud") { app.switchToCloud() }
+        case .signIn: Button("Sign in again") { app.beginSignInAgain() }
+        case .connectMac: Button("Open Settings") { app.openRoomSettings() }
+        case .retry: Button("Try again") { Task { await model.load(app.client) } }
+        case nil: EmptyView()
+        }
+    }
+
+    private func staleBanner(_ p: ConnectionProblem, _ d: (title: String, message: String)) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: p.icon).foregroundStyle(Theme.waiting)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(d.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                if let updated = model.updatedAt {
+                    Text("Showing the state from \(updated.formatted(date: .omitted, time: .shortened)).")
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            problemAction(p).font(.caption.weight(.semibold)).buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(Theme.card)
+        .accessibilityElement(children: .combine)
+    }
+
     private var agentSections: some View {
-        let needs = model.sessions.filter(needsYou)
-        let kinds = groupByKindAndProject(model.sessions.filter { !needsYou($0) })
+        let needs = model.sessions.filter(\.needsAttention)
+        let kinds = groupByKindAndProject(model.sessions.filter { !$0.needsAttention })
         return List {
             if !needs.isEmpty {
                 Section {
@@ -294,9 +336,6 @@ struct RosterView: View {
         .consoleBackground()
     }
 
-    private func needsYou(_ s: AgentSession) -> Bool {
-        s.activity?.pendingPermission != nil || s.state == "waiting" || s.state == "error"
-    }
 }
 
 // ── Tree grouping (v1.1 F7) — pure, unit-testable ────────────────────
@@ -523,11 +562,9 @@ enum AgentSends {
         gate.submit(task, purpose: .delegation, app: app) { text in
             done(outcome(await run {
                 if kind == "managed" { try await client.managedStart(task: text); return nil }
-                let code = try await client.ptyStart(agent: kind, task: text)
-                if (200..<300).contains(code) { return nil }
-                return code == 503
-                    ? "PTY agents are disabled on the Mac (set LISA_PTY_AGENTS=1)."
-                    : "Couldn't start (HTTP \(code))."
+                let result = try await client.ptyStart(agent: kind, task: text)
+                if (200..<300).contains(result.status) { return nil }
+                return ptyRefusal(status: result.status, failure: result.failure)
             }))
         }
     }
@@ -553,13 +590,32 @@ enum AgentSends {
                       client: LisaClient, done: @escaping @MainActor (Outcome) -> Void) {
         gate.submit("", purpose: .delegation, app: app) { _ in
             done(outcome(await run {
-                switch try await client.adopt(sessionId: session.sessionId) {
-                case 200: return nil
+                let result = try await client.adopt(sessionId: session.sessionId)
+                switch result.status {
+                case 200..<300: return nil
                 case 409: return "That session is live — close it first."
                 case 403: return "Remote adoption is disabled on the Mac."
-                case let code: return "HTTP \(code)"
+                default: return ptyRefusal(status: result.status, failure: result.failure)
                 }
             }))
+        }
+    }
+
+    /// Why the Mac didn't start a CLI agent, in its own terms (#489). Current
+    /// Macs say which; an older Mac's bare 503 could be any of them.
+    static func ptyRefusal(status: Int, failure: ServerFailure?) -> String {
+        switch failure?.code ?? "" {
+        case "pty_disabled":
+            return "Claude Code and Codex agents are turned off on your Mac. Turn them on in LISA on your Mac (LISA_PTY_AGENTS=1)."
+        case "cli_missing":
+            return failure?.message ?? "That CLI isn't installed on your Mac."
+        case "spawn_failed":
+            return "Your Mac couldn't start the CLI" + (failure?.message.map { ": \($0)" } ?? ".")
+        default:
+            if let message = failure?.message { return message }
+            return status == 503
+                ? "Your Mac couldn't start the CLI (HTTP 503). CLI agents may be off (LISA_PTY_AGENTS=1), or LISA on your Mac needs an update."
+                : "Couldn't start (HTTP \(status))."
         }
     }
 
@@ -606,6 +662,7 @@ struct DelegateSheet: View {
                     Section { Text(status).font(.caption).foregroundStyle(.red) }
                 }
             }
+            .consoleBackground()
             .navigationTitle("Delegate a task")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -636,7 +693,10 @@ struct DelegateSheet: View {
 }
 
 struct SessionDetailView: View {
+    /// The row the user opened. Everything shown reads `current`, the roster's
+    /// live copy of it, so an approval or a finished run updates this screen (#490).
     let session: AgentSession
+    @ObservedObject var roster: RosterModel
     @EnvironmentObject var app: AppState
     @State private var followUp = ""
     @State private var output = ""
@@ -648,15 +708,15 @@ struct SessionDetailView: View {
     var body: some View {
         Form {
             Section("Session") {
-                LabeledContent("Agent", value: session.agent)
-                LabeledContent("Project", value: session.project)
-                LabeledContent("State", value: session.stateReason.isEmpty ? session.state : "\(session.state) · \(session.stateReason)")
-                if let cwd = session.cwd { LabeledContent("cwd", value: cwd) }
+                LabeledContent("Agent", value: current.agent)
+                LabeledContent("Project", value: current.project)
+                LabeledContent("State", value: current.stateReason.isEmpty ? current.state : "\(current.state) · \(current.stateReason)")
+                if let cwd = current.cwd { LabeledContent("cwd", value: cwd) }
             }
             controlSection
             Section("Glance") {
                 Button {
-                    if LiveActivityController.start(for: session, client: app.client) != nil {
+                    if LiveActivityController.start(for: current, client: app.client) != nil {
                         status = "Pinned to the Live Activity."
                     } else {
                         status = "Live Activities are unavailable here (enable in iOS Settings, or run on a device)."
@@ -669,11 +729,14 @@ struct SessionDetailView: View {
                 Section { Text(status).font(.caption).foregroundStyle(.secondary) }
             }
         }
-        .navigationTitle(session.project)
+.consoleBackground()
+        .navigationTitle(current.project)
         .navigationBarTitleDisplayMode(.inline)
         .task { policy = try? await app.client.controlPolicy() }   // gate remote control (A8)
         .aiSharingConsent(aiGate, app: app)
     }
+
+    private var current: AgentSession { roster.session(id: session.id) ?? session }
 
     /// This phone is always a remote (non-loopback) caller, so the Mac's control
     /// policy decides whether it may control at all (A8). nil = not yet loaded ⇒
@@ -681,7 +744,7 @@ struct SessionDetailView: View {
     private var canControl: Bool { policy?.remoteControl ?? true }
     private var canAdopt: Bool { policy?.remoteAdoptExternal ?? true }
     /// A finished/idle session 404s on send/cancel — don't offer live controls (A9).
-    private var isTerminal: Bool { ["done", "idle"].contains(session.state) }
+    private var isTerminal: Bool { ["done", "idle"].contains(current.state) }
 
     @ViewBuilder private var remoteBlockedNote: some View {
         Text("Remote control is disabled on this Mac — enable it from the Mac (control policy).")
@@ -690,22 +753,22 @@ struct SessionDetailView: View {
 
     @ViewBuilder
     var controlSection: some View {
-        switch session.controllable {
+        switch current.controllable {
         case "managed":
             Section("Control · managed") {
                 if isTerminal {
                     Text("This session has finished — no controls.").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    if let pend = session.activity?.pendingPermission {
+                    if let pend = current.activity?.pendingPermission {
                         Text("Paused on: \(pend)").font(.subheadline)
                         HStack {
-                            Button("Approve") { act { try await app.client.managedApprove(session.sessionId, allow: true, approvalId: session.activity?.approvalId) } }
+                            Button("Approve") { act { try await app.client.managedApprove(current.sessionId, allow: true, approvalId: current.activity?.approvalId) } }
                                 .buttonStyle(.borderedProminent)
-                            Button("Deny", role: .destructive) { act { try await app.client.managedApprove(session.sessionId, allow: false, approvalId: session.activity?.approvalId) } }
+                            Button("Deny", role: .destructive) { act { try await app.client.managedApprove(current.sessionId, allow: false, approvalId: current.activity?.approvalId) } }
                         }
                     }
                     sendRow
-                    Button("Cancel", role: .destructive) { act { try await app.client.managedCancel(session.sessionId) } }
+                    Button("Cancel", role: .destructive) { act { try await app.client.managedCancel(current.sessionId) } }
                     if !canControl { remoteBlockedNote }
                 }
             }
@@ -716,29 +779,29 @@ struct SessionDetailView: View {
                     Text("This session has finished — no controls.").font(.caption).foregroundStyle(.secondary)
                 } else {
                     sendRow
-                    Button("Cancel", role: .destructive) { act { try await app.client.ptyCancel(session.sessionId) } }
+                    Button("Cancel", role: .destructive) { act { try await app.client.ptyCancel(current.sessionId) } }
                     if !canControl { remoteBlockedNote }
                 }
                 // Live attach for a running session (SSE snapshot + chunks, with
                 // reconnect); the one-shot pull stays for a finished one, where
                 // there is nothing left to stream.
                 if isTerminal {
-                    Button("Load output") { act { output = try await app.client.ptyOutput(session.sessionId) } }
+                    Button("Load output") { act { output = try await app.client.ptyOutput(current.sessionId) } }
                     if !output.isEmpty {
                         CodeBlock(text: output, maxHeight: 200)
                     }
                 } else {
-                    PTYLiveOutput(sessionId: session.sessionId)
+                    PTYLiveOutput(sessionId: current.sessionId)
                 }
             }
             .disabled(!isTerminal && !canControl)
         default:
             Section("Observe-only") {
-                if session.resumable == true {
+                if current.resumable == true {
                     Text("This session is idle — Lisa can adopt it (claude --resume) to make it controllable.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Adopt (resume)") {
-                        AgentSends.adopt(session, app: app, gate: aiGate, client: app.client) { outcome in
+                        AgentSends.adopt(current, app: app, gate: aiGate, client: app.client) { outcome in
                             show(outcome, sent: "Adopted — it'll reappear as controllable.")
                         }
                     }
@@ -762,7 +825,7 @@ struct SessionDetailView: View {
             TextField("send a follow-up…", text: $followUp)
             Button("Send") {
                 let text = followUp
-                AgentSends.followUp(text, to: session, app: app, gate: aiGate, client: app.client) { outcome in
+                AgentSends.followUp(text, to: current, app: app, gate: aiGate, client: app.client) { outcome in
                     if outcome == .sent, followUp == text { followUp = "" }
                     show(outcome, sent: nil)
                 }
@@ -786,10 +849,22 @@ struct SessionDetailView: View {
 
     func act(_ work: @escaping () async throws -> Void) {
         Task { @MainActor in
-            do { try await work(); Haptics.success() }
-            catch {
+            do {
+                try await work()
+                Haptics.success()
+                await roster.load(app.client)   // show the result, not the old row
+            } catch {
+                let failure = error.serverFailure
+                if failure?.status == 409 && failure?.code == "stale_approval" {
+                    // Answered already (here or on the Mac): not a failure (#490).
+                    status = "Already handled."
+                    await roster.load(app.client)
+                    return
+                }
                 // A1 surfaces non-2xx here; make the failure land visibly (J1).
-                let msg = (error as? LocalizedError)?.errorDescription ?? "Action failed."
+                let problem = ConnectionProblem.classify(error, config: app.client.config)
+                app.noteFailure(error)
+                let msg = problem.sentence ?? (error as? LocalizedError)?.errorDescription ?? "Action failed."
                 status = msg
                 app.notify(msg, ok: false)
             }

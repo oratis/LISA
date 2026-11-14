@@ -36,8 +36,21 @@ LISA history, memory and tasks; it does not merge those with the independent Clo
 LISA. There is no offline task queue. Legacy QR/Tailscale connections remain available.
 
 Use **Disconnect [device]** on the Mac to revoke a phone and immediately close its
-live streams on both routes. **Turn off phone connections** closes the LAN listener
-and cloud connection. Mac sign-out confirms this shutdown before clearing the account. Signing out in Pocket
+live streams on both routes. Revoking a QR-paired device token (`POST /api/devices/revoke`)
+likewise closes the `/events` and PTY streams that device still has open.
+**Turn off phone connections** closes the LAN listener and cloud connection.
+
+If the relay refuses the Mac's account session (403, for example once the session has
+expired), phone connections stay on: the Mac keeps retrying with backoff, LAN devices
+keep working, and the status reports `sign_in_required` (and `sessionExpired` once the
+session's expiry has passed) until you sign in again. The Mac app then shows **Sign in
+again** under **Connect iPhone…** and in the account window. **Reconnect** checks the account
+first; if the cloud cannot be reached, the running LAN listener and retry loop are kept.
+
+The Mac renews its account session itself: on start and every 6 hours, once the session
+in `~/.lisa/config.env` is past half-life, it calls `POST /api/auth/refresh`, saves the
+new token there and moves the relay onto it. A signed-out (cleared) session is never
+renewed, and a server without the endpoint (404) is ignored. Mac sign-out confirms this shutdown before clearing the account. Signing out in Pocket
 removes its saved account-based Mac profile. Changing the Mac's account resets its
 device keys and grants; devices must be approved again.
 
@@ -52,8 +65,21 @@ device keys and grants; devices must be approved again.
   device keys are stored. Existing sockets can close during a Worker update; clients reconnect.
 - The Worker authenticates native Bearer sessions through the fixed account origin's
   `/api/auth/me` (no redirects), rechecks active sessions every 15 seconds, and closes
-  them on expiry, deletion, or authentication-service failure. Each account allows
-  80 sockets, 10 Macs, and 64 channels per Mac; messages are limited to 1 MiB.
+  them on expiry or deletion. An account-service failure (5xx) is not a revocation: the
+  upgrade gets 503 and open sockets stay, but a socket without a successful check for
+  30 seconds is no longer listed and its messages are refused. Cloud Run answers 503,
+  not 401, while its account store cannot be read. Each account allows 80 sockets,
+  10 Macs, and 64 channels per Mac; messages are limited to 1 MiB.
+- Host liveness: a Mac sends the text `{"type":"ping"}` every 20 seconds. The Worker
+  answers `{"type":"pong"}` through WebSocket auto-response, without waking the Durable
+  Object. A Mac that declared `heartbeat` when it registered and then stays silent for
+  about 45 seconds is unlisted, phones get 503 `mac_offline` for it, and the next 15-second
+  check closes it (code 4408). A new registration for the same account and Mac ID
+  replaces the old socket (code 4000) instead of being refused. Macs from 0.31 and
+  earlier send no heartbeat: they are never timed out, only replaced.
+- A phone that stops reading does not hold up the Mac uplink or other phones. The Worker
+  cannot see a phone's socket buffer, so unlike the Node broker (which drops a client
+  above 4 MiB) it buffers until the phone reads again.
 - The in-process Node broker (`LISA_RELAY_ENABLED=1`) remains available for tests and
   explicitly single-process installations. It is **off by default in Cloud Run**.
   Cloud Run max-instance settings are soft limits and are not a production routing guarantee.
@@ -71,6 +97,12 @@ The production Worker and local `src/remote/broker.ts` verify the account before
 rechecks account validity/expiry. Discovery and forwarding are namespaced by authenticated
 account, never by a caller-supplied uid. Account deletion closes its live relay sockets.
 Only online hosts are listed; existing saved Mac profiles remain on the phone when offline.
+
+Tapping **Cancel** in Pocket during pairing sends a sealed `{type:"cancel"}` on the pairing
+channel. The Mac withdraws that request, so its code can no longer be approved; the phone
+can pair again later. A request from an allowed phone whose clock is more than five
+minutes off is answered with a sealed `400 {"error":"clock_skew","message":…,"serverTime":…}`
+before the channel closes, instead of a silent close; nothing is run.
 
 The Mac registers its name and public X25519 key. Its ID is the first 16 bytes of
 SHA-256(raw public key), lowercase hex. A client hello includes its persistent public key,
@@ -210,10 +242,13 @@ dismissed for its 10-minute lifetime even while Pocket keeps polling.
 - Cloud `GET /api/relay/macs`: verified account session → `{hosts: [{id,name,publicKey,online}]}`.
 - Cloud WebSocket `/api/relay/host`: outbound Mac registration and multiplexed ciphertext.
 - Cloud WebSocket `/api/relay/client?host=ID`: one phone request/stream, same account only.
-- Mac owner `GET /api/remote/status`: connection state, pending code comparisons
+- Mac owner `GET /api/remote/status`: connection state, `error` (`sign_in_required`,
+  `relay_unreachable`, `relay_unavailable`), `sessionExpired`, pending code comparisons
   (`secure`, `known`, `waiting`), authorized devices (`secure`), `pairingVersion`,
   `requireSecurePairing` and `legacyRefused` (the last v1 pairing that was refused).
-- Mac owner `POST /api/remote/connect`: `{base?,session?}`; omitted values use the backend account config.
+- Mac owner `POST /api/remote/connect`: `{base?,session?}`; omitted values use the backend account
+  config. The account is validated before the running connection is replaced; on failure
+  (409) nothing changes.
 - Mac owner `POST /api/remote/approve`: `{id,code}`; a current pending request and exact code are required.
 - Mac owner `POST /api/remote/revoke`: `{id}`; closes live connections and removes consent.
 - Mac owner `POST /api/remote/policy`: `{requireSecurePairing: boolean}`. When true, refuses new v1
@@ -238,6 +273,18 @@ expired/invalid sessions, explicit approval, cloud/LAN equivalence, SSE, cancell
 revocation, replay rejection and loopback privilege preservation. Pocket tests cover
 cross-language Node/CryptoKit ciphertext, LAN URL constraints, saved key pinning,
 failed-LAN fallback, network-change reprobes and no mutation replay after uncertain delivery.
+
+`src/remote/e2e-flow.test.ts` runs the whole Pocket → cloud relay → Mac path in `npm test`.
+It starts the hosted edition with its relay broker (`LISA_RELAY_ENABLED=1`) in a child
+process, a Mac backend with a scripted model in the test process, and a Node phone that
+follows `RemoteMacTransport.swift` (`tests/fixtures/remote/phone.ts`). One scenario covers:
+same-account discovery (another account lists nothing and cannot reach the Mac); pairing v2
+from commitment to the Mac's approval; through the tunnel, a REST read with its API version
+header, a streamed chat, an `/events` stream, and a cancelled chat that aborts the Mac's turn;
+revocation, which closes the open stream and refuses the next request; and, once the relay
+process is killed, an authenticated LAN `/link` request served while the revoked phone stays
+refused. The LAN step dials the Mac's saved LAN port over loopback, so it does not depend on
+the host having a network interface. Waits are bounded, and the file runs in a few seconds.
 
 Pairing v2 tests:
 

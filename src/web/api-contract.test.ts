@@ -10,6 +10,7 @@ import {
   LISA_API_VERSION,
   LISA_API_VERSION_HEADER,
   agentSessionsResponse,
+  apiAgentSession,
   applyApiVersionHeader,
   isVersionedApiSurface,
   lisaSessionsResponse,
@@ -273,6 +274,29 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     assertContract("SessionsResponse", response);
   });
 
+  test("the SSE roster row is the REST row: agent_session_update conforms too (#490)", () => {
+    const session: AgentSession = {
+      agent: "claude-code",
+      sessionId: "s2",
+      project: "lisa",
+      state: "waiting",
+      stateReason: "end_turn",
+      lastMtime: Date.parse("2026-08-08T10:00:00.000Z"),
+      jsonlPath: "/Users/someone/.claude/projects/x/s2.jsonl",
+    };
+    const row = apiAgentSession(session, () => false);
+    assert.deepEqual(row, agentSessionsResponse([session], new Set()).sessions[0]);
+    assert.equal("jsonlPath" in row, false);
+    assert.equal(row.resumable, true);
+    assertContract("AgentSession", row);
+    assertContract("SSEEvent", { type: "agent_session_update", ...row });
+    // The liveness check is only consulted for an observe-only claude row.
+    let asked = 0;
+    apiAgentSession({ ...session, controllable: "pty" }, () => (asked++, false));
+    apiAgentSession({ ...session, agent: "codex" }, () => (asked++, false));
+    assert.equal(asked, 0);
+  });
+
   test("lisa session serializer strips the on-disk path (LisaSessionsResponse)", () => {
     const response = lisaSessionsResponse([
       {
@@ -316,6 +340,34 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     });
     assertContract("ErrorResponse", { error: "rate_limited", retryAfterSec: 60 });
     assertContract("SSEEvent", { type: "agent_session_update", ...dispatch });
+  });
+
+  test("session refresh and auth/me expiry match the account-session contract (#484)", () => {
+    assertContract("SessionRefreshResponse", {
+      token: "s1.payload.mac",
+      expiresAt: 1_700_000_000_000,
+    });
+    assertContract("AuthMe", {
+      signedIn: true,
+      uid: "em-1",
+      kind: "email",
+      appleUserId: null,
+      email: "fixture@example.com",
+      verified: true,
+      plan: "free",
+      sessionExpiresAt: 1_700_000_000_000,
+    });
+    assertContract("AuthMe", { signedIn: false });
+    const refresh = contract.components.schemas.SessionRefreshResponse!;
+    assert.ok(schemaErrors(refresh, { token: "x" }).length > 0, "expiresAt is required");
+  });
+
+  test("sign-out answers match the contract (#493)", () => {
+    assertContract("LogoutResponse", { ok: true, revoked: true });
+    assertContract("LogoutResponse", { ok: true, revoked: false });
+    assertContract("LogoutAllResponse", { ok: true });
+    const logout = contract.components.schemas.LogoutResponse!;
+    assert.ok(schemaErrors(logout, { ok: true }).length > 0, "revoked is required");
   });
 
   test("reve dream-log fixtures conform (W9)", async () => {

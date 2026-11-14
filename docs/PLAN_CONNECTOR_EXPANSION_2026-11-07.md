@@ -302,6 +302,37 @@ C3 PR [#445](https://github.com/oratis/LISA/pull/445) 已合并。本批继续�
 
 自动测试涵盖真实 loopback state/PKCE 回调（供应商响应为替身）、精确权限和身份、令牌轮换、成员/共享频道、分页、越界参数和响应拒绝、文本截断与附件剥离、读取后权限变化、断开与重启恢复去重。浏览器测试覆盖卡片默认未选、回调后选择频道、同一任务仅完成一次、刷新、后续复用、取消与混合来源提示。此外已用真实刷新令牌验证轮换、持久化与账号保持一致，修复刷新响应同样附带 `identify` 的兼容问题。真实撤权、限流与讨论串正文读取尚未做账号级验收，这些路径由自动测试覆盖；不将此次 2 条频道消息验收扩展为全功能验证。
 
+## 12 C5 飞书新版文档只读实现（2026-11-07）
+
+C4 PR [#456](https://github.com/oratis/LISA/pull/456) 已合并。本批复用 `ReadonlyConnector`，新增第八项 `feishu`：同一卡片内授权、明确选择资源、原任务自动恢复、取消、断开、刷新与重启去重；仍仅开放本机 `local-owner`，每来源绑定一个企业和用户，每任务一个来源。
+
+### 资源与读取边界
+
+首批用户在卡片粘贴 **docx 文档链接或 ID**，默认不选择。链接只提取 document ID，不请求用户输入的 URL；拒绝知识库、文件夹、表格和外部站点。确认时逐份检查访问和标题，最多 30 份。OAuth 只读权限本身覆盖用户可读新版文档，指定文档边界由 LISA 服务端执行；连接卡明确披露，不称为飞书文件级 OAuth。
+
+`feishu_read` 仅有 `list`、`metadata`、`content`。固定调用 `user_info`、`docx/v1/documents/:id` 与 `/raw_content`；不搜索或枚举云盘，不跟随文档链接，不读 Wiki、Sheets、Bitable、图片/附件或消息，也不写入。每份最多返回 30,000 字符；响应超过 1 MB 拒绝，截断明确标记。仅投影文本、标题、ID 和版本；身份绑定 `tenant_key + open_id`，不申请通讯录、邮箱或手机号权限。正文读前后复核身份和版本，权限取消或版本变化即丢弃缓冲正文；外部内容一律标为不可信数据。恢复轮次只提供 `feishu_read`。
+
+依据：[文档概述](https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/docx-overview) · [元数据](https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/document/get) · [纯文本读取](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document/raw_content) · [用户身份](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/authen-v1/user_info/get)。纯文本不等于完整富文档，嵌入资源不展开。
+
+### OAuth 与本机配置
+
+采用自建 confidential 应用，仅启用用户权限 `docx:document:readonly` 与 `offline_access`，不启用 tenant scopes。授权端点 `https://accounts.feishu.cn/open-apis/authen/v1/authorize`，使用 S256 PKCE 和随机 state。重试时生成新的授权链接，由飞书判断是否需要再次显示同意页。交换与刷新采用新版 `https://accounts.feishu.cn/oauth/v3/token`，明确传入这两个 scope，避免飞书累积历史授权扩大返回令牌权限。返回 scope 仅额外允许官方示例的隐式 `user_profile`；其他权限或缺少只读/离线权限一律拒绝。旧 v2 接口不作为静默降级路径。
+
+预注册 `http://localhost:4863/oauth/feishu`；复用双栈 loopback 监听、Host/路径/state 校验、单次 code 和十分钟超时。飞书尚不开放普通第三方 public client 注册，因此不把客户端密钥打包进桌面应用；本期由本机操作者配置其自建应用，公开分发需另设计凭据托管和审核。
+
+`LISA_FEISHU_CLIENT_FILE` 指向 0600 私有 JSON，字段 `clientId`、`clientSecret`、`redirectUri`；也支持 `LISA_FEISHU_CLIENT_ID`、`LISA_FEISHU_CLIENT_SECRET`、`LISA_FEISHU_REDIRECT_URI`。密钥和令牌不得进仓库、聊天、模型上下文或日志。
+
+过期前刷新，明确失效后最多重试一次；refresh token 为单次使用，新凭据在统一跨进程锁内先落盘，再继续读取。断开先删本地秘密并阻止在途结果提交，再尽力分别撤销 refresh 与 access token；飞书撤销成功为 HTTP 200 空响应，撤销 refresh 不代表已撤销仍有效 access token。限流仅报可重试提示，不循环请求。
+
+依据：[授权码](https://open.feishu.cn/document/authentication-management/access-token/obtain-oauth-code) · [v3 交换](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/authentication-management/access-token/get-user-access-token-v3) · [v3 刷新](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/authentication-management/access-token/refresh-user-access-token-v3) · [撤销](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/authentication-management/login-state-management/revoke-token)。授权页的 PKCE 兼容说明仍提旧版，v3 token 文档已明确支持；实际可用性须以本次真实验收记录为准。
+
+### 验收进度
+
+自动测试覆盖 state/S256 的真实 loopback 回调（供应商为替身）、精确 scope、刷新轮换、固定出站、资源白名单、身份/版本变化、截断脱敏、取消断开和重启单次提交。8 项飞书专项测试通过；17 项连接器浏览器测试通过（含飞书 2 项及既有连接器 15 项）。服务端、客户端、E2E 类型检查、API 契约、格式和构建通过；新增代码 lint 无错误。4,050 项全量测试及关键模块覆盖率门槛通过（本机以 4 并发复核，避免高负载下计时测试抖动）。本批草稿 PR [#460](https://github.com/oratis/LISA/pull/460)，2026-11-14 按用户要求整合主线；真实账号验收尚未完成，不能把自动测试视为生产授权验证。
+
+已配置本机自建应用、两项用户权限和固定回调。真实授权页显示「查看新版文档」与「维持已授权访问」。用户已在飞书端确认，前次本机回调超时，LISA 未收到可用凭据。验收使用[字节跳动 AgentKit 工作坊第三节](https://github.com/bytedance/agentkit-samples/blob/9fc58da287b9b2d5910047ca8519efea597189cb/python/workshop/session3/README.md)中的示例文档。验收通过条件是原连接卡收到回调、读取所选文档正文，并在原会话中仅提交一次字符数和截断状态。
+
+
 ## 13 其余 11 项只读连接器
 
 在本机聊天输入“只读查看 Outlook Calendar 未来一周的日程”等明确包含服务名的请求。卡片先显示权限，登录后选择资源，点击「只读连接并继续」。一次任务可选同一来源的最多 30 个资源。原任务使用单独的只读工具继续，刷新聊天从持久记录恢复结果。断开会删除本机凭据，并取消该连接上尚未完成的任务；供应商授权可在对应账号设置中撤销。

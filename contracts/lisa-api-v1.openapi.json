@@ -2009,6 +2009,7 @@
                 "google-drive",
                 "notion",
                 "slack",
+                "feishu",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2073,6 +2074,7 @@
                 "google-drive",
                 "notion",
                 "slack",
+                "feishu",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2169,6 +2171,7 @@
                 "google-drive",
                 "notion",
                 "slack",
+                "feishu",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2266,6 +2269,7 @@
                 "google-drive",
                 "notion",
                 "slack",
+                "feishu",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2351,6 +2355,7 @@
                 "google-drive",
                 "notion",
                 "slack",
+                "feishu",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2435,6 +2440,7 @@
                 "google-drive",
                 "notion",
                 "slack",
+                "feishu",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2545,6 +2551,7 @@
                 "google-drive",
                 "notion",
                 "slack",
+                "feishu",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2825,6 +2832,10 @@
                     },
                     "installed": {
                       "type": "boolean"
+                    },
+                    "spawnHelperExecutable": {
+                      "type": "boolean",
+                      "description": "False when node-pty's macOS spawn-helper lacks its exec bit and LISA could not fix it; a start would answer spawn_failed."
                     },
                     "available": {
                       "type": "boolean"
@@ -4465,6 +4476,106 @@
           }
         }
       }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "getAuthMe",
+        "description": "The signed-in account, or signedIn:false. Any authenticated response may carry x-lisa-session (see components.headers.SessionRenewal).",
+        "responses": {
+          "200": {
+            "description": "Account summary.",
+            "headers": {
+              "x-lisa-session": {
+                "$ref": "#/components/headers/SessionRenewal"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthMe"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "refreshSession",
+        "description": "Cloud only. Requires an account session presented as Authorization: Bearer; always mints a fresh one. Rate limited per account.",
+        "responses": {
+          "200": {
+            "description": "Fresh session. The same token is also in x-lisa-session.",
+            "headers": {
+              "x-lisa-session": {
+                "$ref": "#/components/headers/SessionRenewal"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "signOut",
+        "description": "Signs out the presented account session only (Bearer or cookie); the account's other sessions stay valid. Always clears the lisa_token cookie. Needs no other authentication.",
+        "responses": {
+          "200": {
+            "description": "Signed out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/auth/logout-all": {
+      "post": {
+        "operationId": "signOutEverywhere",
+        "description": "Cloud only; account session required. Ends every session of the account, on every device, and clears the lisa_token cookie.",
+        "responses": {
+          "200": {
+            "description": "All sessions ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutAllResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4475,6 +4586,13 @@
         "schema": {
           "type": "string",
           "const": "1"
+        }
+      },
+      "SessionRenewal": {
+        "description": "Freshly minted account session for a Bearer client whose token is past half its lifetime. Store it in place of the presented token; the old one stays valid until its own expiry. Cookie clients get a renewed lisa_token cookie instead and never this header.",
+        "required": false,
+        "schema": {
+          "type": "string"
         }
       }
     },
@@ -4879,7 +4997,11 @@
         "properties": {
           "error": {
             "type": "string",
-            "description": "Stable machine-readable code in most v1 routes; a few legacy routes still return a short message."
+            "description": "Stable snake_case code from contracts/lisa-error-codes.json, or the generic code for the HTTP status (fallbackByStatus) when the route has no specific one. Clients treat unknown codes as unknown."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation a client may show as-is (agent-control routes always send it)."
           },
           "reason": {
             "type": "string"
@@ -4896,7 +5018,8 @@
             "minimum": 0
           }
         },
-        "additionalProperties": true
+        "additionalProperties": true,
+        "description": "Every non-2xx response on /api/*, /chat and /events. Route-specific fields (reason, retryAfterSec, resetAt, tier, ok:false, …) appear beside error and message."
       },
       "TokenUsage": {
         "type": "object",
@@ -5250,10 +5373,18 @@
           },
           "expression": {
             "$ref": "#/components/schemas/ConversationExpression"
+          },
+          "code": {
+            "type": "string",
+            "description": "On type=error: a code from contracts/lisa-error-codes.json (provider_error, turn_failed, …)."
+          },
+          "message": {
+            "type": "string",
+            "description": "On type=error: one sentence for the person using the app."
           }
         },
         "additionalProperties": true,
-        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, approval_requested, approval_resolved, task_updated, task_deleted, task_run_started, task_run_finished, task_result and error. GitHub local preview adds github_connection_changed (sessionId only). Chat opt-in also receives expression with a ConversationExpression payload before done. Unknown expression versions use readable history text; no remote asset URLs are accepted."
+        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, approval_requested, approval_resolved, task_updated, task_deleted, task_run_started, task_run_finished, task_result and error. GitHub local preview adds github_connection_changed (sessionId only). Chat opt-in also receives expression with a ConversationExpression payload before done. Unknown expression versions use readable history text; no remote asset URLs are accepted. A chat error event is {type:\"error\", code, message}; on LISA Cloud a model-provider failure is provider_error with a generic message, never the provider's raw error."
       },
       "LisaSession": {
         "type": "object",
@@ -7574,6 +7705,7 @@
               "google-drive",
               "notion",
               "slack",
+              "feishu",
               "todoist",
               "outlook-mail",
               "outlook-calendar",
@@ -7612,6 +7744,7 @@
                     "google-drive",
                     "notion",
                     "slack",
+                    "feishu",
                     "todoist",
                     "outlook-mail",
                     "outlook-calendar",
@@ -10367,6 +10500,100 @@
             }
           }
         }
+      },
+      "AuthMe": {
+        "type": "object",
+        "required": [
+          "signedIn"
+        ],
+        "properties": {
+          "signedIn": {
+            "type": "boolean"
+          },
+          "uid": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "apple",
+              "email",
+              "google"
+            ]
+          },
+          "appleUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "sessionExpiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Expiry (epoch ms) of the account session presented on this request. Absent for callers that did not authenticate with an account session."
+          }
+        },
+        "additionalProperties": true
+      },
+      "SessionRefreshResponse": {
+        "type": "object",
+        "required": [
+          "token",
+          "expiresAt"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "New account session; replaces the presented one."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Expiry of the new token, epoch ms."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogoutResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "revoked"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "True when the presented account session is now signed out. False when no account session was presented, or it was already invalid."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogoutAllResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

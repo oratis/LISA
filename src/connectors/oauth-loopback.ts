@@ -20,6 +20,7 @@ export async function loopbackAuthorization<T>(
       | "/oauth/connector"
       | "/oauth/notion"
       | "/oauth/slack"
+      | "/oauth/feishu"
       | "/oauth/microsoft"
       | "/oauth/atlassian"
       | "/oauth/dropbox"

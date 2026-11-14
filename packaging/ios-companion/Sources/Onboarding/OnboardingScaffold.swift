@@ -70,7 +70,7 @@ struct OnboardingTopBar: View {
                     .accessibilityHint("Skips setup; you can finish it later from the banner")
             }
         }
-        .frame(height: 28)
+        .frame(minHeight: 44)
         .padding(.horizontal, 24)
         .padding(.top, 8)
     }
@@ -83,7 +83,7 @@ struct OnboardingTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.title.weight(.bold))
+                .font(Theme.title(.title))
                 .foregroundStyle(Theme.text)
                 .fixedSize(horizontal: false, vertical: true)
             if let subtitle {
@@ -167,7 +167,7 @@ struct OnboardingChoiceCard: View {
                 if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent) }
             }
             .padding(14)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
+            .background(selected ? Theme.sage : Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardRadius)
                     .strokeBorder(selected ? Theme.accent : Theme.border, lineWidth: selected ? 1.5 : Theme.hairline)
@@ -185,14 +185,14 @@ struct OnboardingChoiceCard: View {
     }
 }
 
-/// Primary cyan CTA pinned at the bottom of a screen.
+/// Primary CTA pinned at the bottom of a screen.
 struct OnboardingPrimaryButton: View {
     let title: String
     var disabled: Bool = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.headline)
                 .foregroundStyle(Theme.bgDeep)
                 .frame(maxWidth: .infinity)
@@ -212,7 +212,7 @@ struct OnboardingSecondaryButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
+            Text(LocalizedStringKey(title)).font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
                 // minHeight, not a fixed height: the label still grows with
                 // Dynamic Type instead of clipping (D4).
                 .frame(minHeight: 44)

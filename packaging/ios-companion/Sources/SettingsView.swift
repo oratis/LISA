@@ -32,14 +32,13 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Group {
             Form {
-                ExpressionSettingsSection()
                 Section {
                     Picker("Connect to", selection: Binding(
                         get: { app.connectionMode },
                         set: { app.setConnectionMode($0) })) {
-                        ForEach(ConnectionMode.allCases) { m in Text(m.label).tag(m) }
+                        ForEach(ConnectionMode.allCases) { m in Text(LocalizedStringKey(m.label)).tag(m) }
                     }
                     .pickerStyle(.segmented)
                 } footer: {
@@ -62,26 +61,17 @@ struct SettingsView: View {
                     }
                     if let target = app.config.remoteMac {
                         LabeledContent(target.name, value: app.remoteRoute)
+                        if let problem = app.remoteRouteProblem, let shown = problem.display {
+                            // Why it isn't connecting, instead of "Connecting…" forever (#494).
+                            Label(shown.message, systemImage: problem.icon)
+                                .font(.footnote).foregroundStyle(Theme.waiting)
+                        }
                     }
                 } footer: {
                     Text("Use the same LISA account on both devices. After approval on your Mac, local and cloud connections switch automatically.")
                 }
 
                 if app.connectionMode == .mac && app.config.remoteMac == nil {
-                    Section("Connection") {
-                        TextField("Host (IP or tailnet name)", text: $host)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                        TextField("Port", text: $portText)
-                            .keyboardType(.numberPad)
-                        SecureField("Device token", text: $token)
-                        Button("Save") {
-                            let saved = app.update(host: host, port: Int(portText) ?? 5757,
-                                                   token: token.isEmpty ? nil : token, scheme: app.config.scheme)
-                            status = saved ? "Saved." : "Couldn't save securely. Try again."
-                        }
-                    }
-
                     Section("Pair from QR / URL") {
                         Button {
                             showScanner = true
@@ -104,12 +94,43 @@ struct SettingsView: View {
                         Text("Run `lisa pair` on your Mac and scan the QR — over the same Wi-Fi (LAN) or a Tailscale tailnet name.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    Section {
+                        DisclosureGroup("Manual connection") {
+                            LabeledContent("Host") {
+                                TextField("IP or tailnet name", text: $host)
+                                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            LabeledContent("Port") {
+                                TextField("Port", text: $portText)
+                                    .keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                            }
+                            LabeledContent("Device token") {
+                                SecureField("Device token", text: $token).multilineTextAlignment(.trailing)
+                            }
+                            Button("Save") {
+                                let saved = app.update(host: host, port: Int(portText) ?? 5757,
+                                                       token: token.isEmpty ? nil : token, scheme: app.config.scheme)
+                                if saved { verifyAndReport(prefix: "Saved") }
+                                else { status = "Couldn't save securely. Try again." }
+                            }
+                            .disabled(connectBusy)
+                        }
+                    }
                 } else if app.connectionMode == .cloud {
                     // Cloud data plane: LISA accounts are the primary flow (B1) —
                     // signed-in card when we have an account session, the shared
                     // sign-in form (SIWA / email / advanced token link) otherwise.
                     if app.account?.signedIn == true {
                         AccountCard()
+                    } else if app.accountUnavailable && app.config.isConfigured {
+                        // Unknown is not signed out: keep Sign out / Delete reachable
+                        // once LISA Cloud answers again (#492).
+                        Section("LISA account") {
+                            Label("Couldn't reach LISA Cloud to load your account.", systemImage: "wifi.exclamationmark")
+                                .font(.footnote).foregroundStyle(Theme.waiting)
+                            Button("Try again") { Task { await app.refreshAccount() } }
+                        }
                     } else {
                         CloudSignInForm { outcome in
                             switch outcome {
@@ -255,6 +276,8 @@ struct SettingsView: View {
 
                 }
 
+                ExpressionSettingsSection()
+
                 Section("Appearance") {
                     Picker("Theme", selection: Binding(
                         get: { app.appearance },
@@ -290,6 +313,9 @@ struct SettingsView: View {
                 }
 
                 Section("About and data") {
+                    NavigationLink { ConnectionDiagnosticsView() } label: {
+                        Label("Connection diagnostics", systemImage: "stethoscope")
+                    }
                     NavigationLink { AssistantPrivacyView() } label: {
                         Label("AI and your data", systemImage: "hand.raised")
                     }
@@ -322,6 +348,7 @@ struct SettingsView: View {
                     Section { Text(status).font(.caption).foregroundStyle(.secondary) }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .consoleBackground()
             .navigationTitle("Settings")
             .onAppear(perform: syncFromConfig)

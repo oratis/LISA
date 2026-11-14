@@ -716,6 +716,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             let (data, resp) = try await URLSession.shared.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             if (200..<300).contains(code) { return (true, nil) }
+            // Error bodies are {"error", "message"} JSON (contracts/lisa-error-codes.json);
+            // an older server sent plain text.
+            if let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = body["message"] as? String, !message.isEmpty {
+                return (false, message)
+            }
             let msg = String(data: data, encoding: .utf8)
             return (false, (msg?.isEmpty == false) ? msg : "HTTP \(code)")
         } catch {
