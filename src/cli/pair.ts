@@ -33,7 +33,8 @@ export interface PairArgs {
 const USAGE = "usage: lisa pair [--host <ip-or-tailnet>] [--port N] [--name <label>]";
 
 /** Parse `lisa pair` argv. Pure (no I/O). */
-export function parsePairArgs(argv: string[]): PairArgs | { error: string } {
+export function parsePairArgs(argv: string[]): PairArgs | { error: string } | { help: true } {
+  if (argv.includes("--help") || argv.includes("-h")) return { help: true };
   let host: string | undefined;
   let port = Number(process.env.LISA_WEB_PORT) || DEFAULT_PORT;
   let name = "phone";
@@ -75,6 +76,17 @@ function isLoopbackBind(boundHost: string): boolean {
 
 export async function runPairCommand(argv: string[]): Promise<number> {
   const parsed = parsePairArgs(argv);
+  if ("help" in parsed) {
+    console.log(USAGE);
+    console.log(
+      "  --host  address the phone dials (LAN IP or tailnet name; default: this Mac's LAN IP)",
+    );
+    console.log(
+      "  --port  port of the running `lisa serve --web` (default: $LISA_WEB_PORT or 5757)",
+    );
+    console.log('  --name  label for the paired device (default: "phone")');
+    return 0;
+  }
   if ("error" in parsed) {
     console.error(parsed.error);
     return 2;
@@ -116,7 +128,12 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const body = (await res.json().catch(() => ({}))) as { token?: string; id?: string; port?: number; boundHost?: string };
+  const body = (await res.json().catch(() => ({}))) as {
+    token?: string;
+    id?: string;
+    port?: number;
+    boundHost?: string;
+  };
   if (!body.token) {
     console.error("server returned no token");
     return 1;
@@ -135,7 +152,9 @@ export async function runPairCommand(argv: string[]): Promise<number> {
   console.log(`  Host:  ${host}`);
   console.log(`  Port:  ${effPort}`);
   console.log(`  Token: ${body.token}\n`);
-  console.log(`Paired device "${name}" (id ${body.id ?? "?"}). Revoke it later from the app or POST /api/devices/revoke.`);
+  console.log(
+    `Paired device "${name}" (id ${body.id ?? "?"}). Revoke it later from the app or POST /api/devices/revoke.`,
+  );
   // The QR is minted over loopback, but the phone connects over the LAN. If the
   // server is bound loopback-only the phone can't reach it however good the QR is —
   // call that out loudly instead of a generic note. (boundHost may be absent on an
@@ -144,7 +163,9 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     console.log(`\n⚠️  LISA is only listening on localhost, so this iPhone can't reach it yet.`);
     console.log(`   Restart it on your network (in a separate terminal, leave it running):`);
     console.log(`     lisa serve --web --host 0.0.0.0`);
-    console.log(`   …then run \`lisa pair\` again. (A Tailscale tailnet name as --host works too.)`);
+    console.log(
+      `   …then run \`lisa pair\` again. (A Tailscale tailnet name as --host works too.)`,
+    );
   } else {
     console.log(`Keep this phone on the same Wi-Fi (or tailnet) as your Mac.`);
   }

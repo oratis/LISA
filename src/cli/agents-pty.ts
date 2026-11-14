@@ -10,8 +10,9 @@
  * `controllable:"pty"` — it shows up in the roster (island / GUI / phone) and can
  * be steered remotely — then mirrors its output here and forwards your typed lines.
  *
- * Requires the server to run with LISA_PTY_AGENTS=1 (+ `npm i node-pty`); otherwise
- * the start endpoint 503s and we print the hint.
+ * Requires the server to run with LISA_PTY_AGENTS=1 (node-pty ships with LISA as an
+ * optional dependency); otherwise the start endpoint answers `pty_disabled` and we
+ * print the hint.
  *
  * LIMITATION (v1): input is line-oriented (each line you type → one line into the
  * CLI), not a raw keystroke passthrough — great for task-style runs, not for
@@ -68,6 +69,25 @@ export function parsePtyArgs(argv: string[]): PtyArgs | { error: string } {
   return { agent, task, port };
 }
 
+/**
+ * Read a control-route error body: JSON `{error, message}` from current
+ * servers, plain text from older ones. Pure.
+ */
+export function parseApiError(body: string): { error?: string; message: string } {
+  const text = body.trim();
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+    if (parsed && typeof parsed === "object") {
+      const error = typeof parsed.error === "string" ? parsed.error : undefined;
+      const message = typeof parsed.message === "string" ? parsed.message : (error ?? text);
+      return { error, message };
+    }
+  } catch {
+    /* plain-text body from an older server */
+  }
+  return { message: text };
+}
+
 /** Extract complete SSE `data:` payloads from a buffer; return them + the leftover. Pure. */
 export function parseSseEvents(buffer: string): { events: string[]; rest: string } {
   const events: string[] = [];
@@ -122,7 +142,12 @@ export async function runAgentPtyAttach(argv: string[]): Promise<number> {
     startRes = await fetch(`${base}/api/agents/pty/start`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ agent, task, cwd: process.cwd(), ...(resumeSessionId ? { resumeSessionId } : {}) }),
+      body: JSON.stringify({
+        agent,
+        task,
+        cwd: process.cwd(),
+        ...(resumeSessionId ? { resumeSessionId } : {}),
+      }),
     });
   } catch (err) {
     console.error(
@@ -130,22 +155,19 @@ export async function runAgentPtyAttach(argv: string[]): Promise<number> {
     );
     return 1;
   }
-  if (startRes.status === 503) {
-    const msg = (await startRes.text().catch(() => "")).trim();
-    console.error(
-      `PTY agents are off. ${msg || "Start serve with LISA_PTY_AGENTS=1 and run `npm i node-pty`."}`,
-    );
-    return 1;
-  }
-  if (startRes.status === 409) {
-    // resume guard: the session is still live (open in the app/terminal).
-    console.error(
-      `Can't adopt that session: ${(await startRes.text().catch(() => "")).trim() || "it's currently live — close it first."}`,
-    );
-    return 1;
-  }
   if (!startRes.ok) {
-    console.error(`start failed (${startRes.status}): ${(await startRes.text().catch(() => "")).trim()}`);
+    const { error, message } = parseApiError(await startRes.text().catch(() => ""));
+    if (error === "pty_disabled" || error === "cli_missing") {
+      // The server's message already says what to change on this Mac.
+      console.error(message);
+    } else if (startRes.status === 409) {
+      // resume guard: the session is still live (open in the app/terminal).
+      console.error(
+        `Can't adopt that session: ${message || "it's currently live — close it first."}`,
+      );
+    } else {
+      console.error(`start failed (${startRes.status}${error ? " " + error : ""}): ${message}`);
+    }
     return 1;
   }
 
@@ -163,7 +185,9 @@ export async function runAgentPtyAttach(argv: string[]): Promise<number> {
       ? `▶ resumed claude session ${resumeSessionId} (${view.cli}) under LISA — id ${id}`
       : `▶ ${view.agent} (${view.cli}) under LISA — id ${id}`,
   );
-  console.error("  Controllable from the roster / phone. Type a line to send it; Ctrl-C stops the agent.\n");
+  console.error(
+    "  Controllable from the roster / phone. Type a line to send it; Ctrl-C stops the agent.\n",
+  );
 
   const rl = readline.createInterface({ input: process.stdin });
   rl.on("line", (line) => {
@@ -178,7 +202,9 @@ export async function runAgentPtyAttach(argv: string[]): Promise<number> {
   const cancel = async () => {
     if (cancelled) return;
     cancelled = true;
-    await fetch(`${base}/api/agents/pty/${encodeURIComponent(id)}/cancel`, { method: "POST" }).catch(() => {});
+    await fetch(`${base}/api/agents/pty/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+    }).catch(() => {});
   };
   process.on("SIGINT", () => {
     void cancel().then(() => process.exit(130));

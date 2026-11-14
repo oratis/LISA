@@ -222,6 +222,7 @@ const LISA_STRINGS = {
     "expressions.lively": "More often",
     'pty.disabled': 'Interactive CLI agents are turned off on this Mac. Managed tasks remain available.',
     'pty.missing': 'This installation does not include interactive CLI support. Update Lisa to enable it.',
+    'pty.helper': 'Interactive CLI support is installed but cannot start programs (its helper is not executable). Reinstall Lisa to fix it.',
     "panel.loading": "Loading…",
     "panel.failed": "Could not load this panel. Please try again.",
     "panel.retry": "Retry",
@@ -683,6 +684,7 @@ const LISA_STRINGS = {
     "expressions.lively": "活泼",
     'pty.disabled': '此 Mac 尚未开启交互式 CLI 代理，可以使用内置任务。',
     'pty.missing': '当前安装缺少交互式 CLI 支持，请更新 Lisa。',
+    'pty.helper': '交互式 CLI 支持已安装，但无法启动程序（辅助程序没有执行权限）。请重新安装 Lisa。',
     "panel.loading": "正在加载…",
     "panel.failed": "加载失败，请重试。",
     "panel.retry": "重试",
@@ -2478,6 +2480,14 @@ const modalClose = document.getElementById('modalClose');
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+// Agent-control routes answer JSON {error, message}; older servers sent text.
+function apiErrorText(text, status) {
+  try {
+    const j = JSON.parse(text);
+    if (j && typeof j === 'object' && (j.message || j.error)) return String(j.message || j.error);
+  } catch { /* plain-text body */ }
+  return text || ('failed (' + status + ')');
 }
 let modalRevision = 0;
 function openModal(title, html) {
@@ -4379,7 +4389,7 @@ if ('serviceWorker' in navigator) {
         option.disabled = !status.available || !status.agents?.some(agent => agent.id === option.value && agent.available);
       });
       const note = document.getElementById('dmAvailability');
-      if (note) note.textContent = status.available ? '' : tr(status.installed ? 'pty.disabled' : 'pty.missing');
+      if (note) note.textContent = status.available ? '' : tr(status.reason === 'missing-module' ? 'pty.missing' : status.reason === 'spawn-helper-not-executable' ? 'pty.helper' : 'pty.disabled');
     }).catch(function () { const note = document.getElementById('dmAvailability'); if (note) note.textContent = tr('panel.failed'); });
     const taskEl = document.getElementById('dmTask');
     const startEl = document.getElementById('dmStart');
@@ -4400,7 +4410,7 @@ if ('serviceWorker' in navigator) {
       }).then(function (r) {
         if (!r.ok) {
           return r.text().then(function (t) {
-            if (errEl) errEl.textContent = t || ('failed (' + r.status + ')');
+            if (errEl) errEl.textContent = apiErrorText(t, r.status);
             if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
           });
         }
@@ -5301,7 +5311,7 @@ if ('serviceWorker' in navigator) {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ agent: 'claude', resumeSessionId: sid, cwd: cwd || '' }),
       }).then(function (r) {
-        if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
+        if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(apiErrorText(t, r.status)) + '</pre>'); }); }
         if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
       }).catch(function () {});
     }
@@ -5879,7 +5889,7 @@ if ('serviceWorker' in navigator) {
       headers: body ? { 'content-type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
     }).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error(String(r.status) + (t ? ' ' + t : '')); });
+      if (!r.ok) return r.text().then(function (t) { throw new Error(String(r.status) + ' ' + apiErrorText(t, r.status)); });
       return r.json().catch(function () { return {}; });
     });
   }
@@ -5947,7 +5957,7 @@ if ('serviceWorker' in navigator) {
           else if (act === 'deny') afterAct(sdAction('managed', id, 'approve', { allow: false, approvalId: s.activity.approvalId }));
           else if (act === 'cancel') afterAct(sdAction(fam, id, 'cancel', null));
           else if (act === 'send') doSend();
-          else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t); }); }));
+          else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(apiErrorText(t, r.status)); }); }));
           else if (act === 'output') {
             var out = document.getElementById('sdOut');
             if (out) { out.style.display = 'block'; out.textContent = 'loading…'; }

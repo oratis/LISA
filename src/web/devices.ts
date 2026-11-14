@@ -43,7 +43,9 @@ export function loadDevices(): DeviceRecord[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (d): d is DeviceRecord =>
-        !!d && typeof (d as DeviceRecord).id === "string" && typeof (d as DeviceRecord).tokenHash === "string",
+        !!d &&
+        typeof (d as DeviceRecord).id === "string" &&
+        typeof (d as DeviceRecord).tokenHash === "string",
     );
   } catch {
     return [];
@@ -66,7 +68,13 @@ function saveDevices(list: DeviceRecord[]): void {
 }
 
 export function toPublicDevice(d: DeviceRecord): PublicDevice {
-  return { id: d.id, name: d.name, platform: d.platform, createdAt: d.createdAt, lastSeenAt: d.lastSeenAt };
+  return {
+    id: d.id,
+    name: d.name,
+    platform: d.platform,
+    createdAt: d.createdAt,
+    lastSeenAt: d.lastSeenAt,
+  };
 }
 
 /** Mint a device token + record. Returns the raw token ONCE (for the QR). */
@@ -125,11 +133,39 @@ export function listDevices(): PublicDevice[] {
   return loadDevices().map(toPublicDevice);
 }
 
-/** Remove a device by id. Returns true if one was removed. */
+/**
+ * Open responses per device id. A device token is checked once, when a request
+ * starts, so a stream it opened (/events, a PTY attach) would otherwise outlive
+ * a revoke. The server registers every response a device token authorized.
+ */
+const openResponses = new Map<string, Set<() => void>>();
+
+/** Track a response authorized by device `id`; `close` ends it. Returns the untrack. */
+export function trackDeviceResponse(id: string, close: () => void): () => void {
+  let set = openResponses.get(id);
+  if (!set) openResponses.set(id, (set = new Set()));
+  set.add(close);
+  return () => {
+    set.delete(close);
+    if (!set.size && openResponses.get(id) === set) openResponses.delete(id);
+  };
+}
+
+/** Remove a device by id and close what it still has open. Returns true if one was removed. */
 export function revokeDevice(id: string): boolean {
   const list = loadDevices();
   const next = list.filter((d) => d.id !== id);
-  if (next.length === list.length) return false;
-  saveDevices(next);
-  return true;
+  const removed = next.length !== list.length;
+  if (removed) saveDevices(next);
+  // Even when the record is already gone: nothing may stay open for an unknown id.
+  const open = openResponses.get(id);
+  openResponses.delete(id);
+  for (const close of open ?? []) {
+    try {
+      close();
+    } catch {
+      /* already closed */
+    }
+  }
+  return removed;
 }

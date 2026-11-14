@@ -1,6 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePtyArgs, parseSseEvents } from "./agents-pty.js";
+import { parseApiError, parsePtyArgs, parseSseEvents } from "./agents-pty.js";
+
+test("parseApiError: JSON {error, message} from current servers, plain text from older ones", () => {
+  assert.deepEqual(
+    parseApiError(
+      '{"error":"spawn_failed","message":"Couldn\'t start claude: posix_spawnp failed."}',
+    ),
+    { error: "spawn_failed", message: "Couldn't start claude: posix_spawnp failed." },
+  );
+  assert.deepEqual(parseApiError('{"error":"stale_approval"}'), {
+    error: "stale_approval",
+    message: "stale_approval",
+  });
+  assert.deepEqual(parseApiError("PTY agents are disabled\n"), {
+    message: "PTY agents are disabled",
+  });
+});
 
 test("parsePtyArgs: agent + task, default port", () => {
   const prev = process.env.LISA_WEB_PORT;
@@ -58,7 +74,9 @@ test("parsePtyArgs: --resume adopts an idle session (claude-only, task optional)
 });
 
 test("parseSseEvents: extracts complete data frames, keeps the remainder", () => {
-  const { events, rest } = parseSseEvents('data: {"text":"a"}\n\ndata: {"text":"b"}\n\ndata: partial');
+  const { events, rest } = parseSseEvents(
+    'data: {"text":"a"}\n\ndata: {"text":"b"}\n\ndata: partial',
+  );
   assert.deepEqual(events, ['{"text":"a"}', '{"text":"b"}']);
   assert.equal(rest, "data: partial");
 });
