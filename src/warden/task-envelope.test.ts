@@ -73,13 +73,18 @@ function stub(name: string, record: unknown[], result = `${name} ok`): ToolDefin
   };
 }
 
-/** A real inbox nobody answers (each ask expires after `timeoutMs`), recording what was asked. */
-function unansweredInbox(timeoutMs = 30) {
+/** Reject only after the request is announced. A 30 ms expiry can beat disk
+ * persistence under load, correctly deny the call, and never emit the ask this
+ * policy test needs to observe. Expiry behavior is covered by the inbox tests. */
+function denyingInbox() {
   const asked: Array<Extract<WardenEvent, { type: "approval_requested" }>> = [];
   const inbox = new WardenInbox({
-    defaultTimeoutMs: timeoutMs,
+    defaultTimeoutMs: 30000,
     emit: (event) => {
-      if (event.type === "approval_requested") asked.push(event);
+      if (event.type === "approval_requested") {
+        asked.push(event);
+        void inbox.resolve(null, event.id, { approve: false });
+      }
     },
   });
   return { inbox, asked };
@@ -149,7 +154,7 @@ test("a model-drafted tools list pre-approves nothing: enabled without confirmin
     assert.equal(isEnvelopeConfirmed((await getTask(drafted.id))!, await confirmationKey()), false);
     await makeDue(drafted.id);
 
-    const { inbox, asked } = unansweredInbox();
+    const { inbox, asked } = denyingInbox();
     const ran: unknown[] = [];
     const runner = runnerFor(
       ws,
@@ -194,7 +199,7 @@ test("a confirmed envelope pre-approves, but not after taint: the tainted run's 
     assert.equal(isEnvelopeConfirmed((await getTask(drafted.id))!, await confirmationKey()), true);
     await makeDue(drafted.id);
 
-    const { inbox, asked } = unansweredInbox();
+    const { inbox, asked } = denyingInbox();
     const ran: Array<{ command: string }> = [];
     const runner = runnerFor(
       ws,
@@ -261,7 +266,7 @@ test("the model editing a confirmed task clears the confirmation: its bash asks 
     await runTasksCommand(["enable", drafted.id], { ...capture().io, interactive: false });
     await makeDue(drafted.id);
 
-    const { inbox, asked } = unansweredInbox();
+    const { inbox, asked } = denyingInbox();
     const ran: unknown[] = [];
     const runner = runnerFor(
       ws,
