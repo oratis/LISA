@@ -20,6 +20,8 @@ struct CloudConnectionState {
     var online = false
     var name = "This Mac"
     var error = ""
+    /// The Mac's saved account session is past its expiry (`/api/remote/status`).
+    var sessionExpired = false
     var supportsSecurePairing = false
     var requireSecurePairing = false
     var legacyRefusedName: String?
@@ -30,12 +32,16 @@ struct CloudConnectionState {
         online = value["online"] as? Bool == true
         name = value["name"] as? String ?? "This Mac"
         error = value["error"] as? String ?? ""
+        sessionExpired = value["sessionExpired"] as? Bool == true
         supportsSecurePairing = value["requireSecurePairing"] is Bool
         requireSecurePairing = value["requireSecurePairing"] as? Bool == true
         legacyRefusedName = (value["legacyRefused"] as? [String: Any])?["name"] as? String
         devices = (value["devices"] as? [[String: Any]] ?? []).map(CloudDevice.init).filter { !$0.id.isEmpty }
         pending = (value["pending"] as? [[String: Any]] ?? []).map(CloudDevice.init).filter { !$0.id.isEmpty }
     }
+    /// Lisa Cloud refused this Mac's session. Phone connections stay on and the Mac keeps
+    /// retrying, but only signing in again brings the cloud route back.
+    var needsSignIn: Bool { !online && (error == "sign_in_required" || sessionExpired) }
 }
 
 @MainActor
@@ -60,6 +66,7 @@ final class CloudConnectionModel: ObservableObject {
         if !loaded { return "Checking this Mac…" }
         if !available { return "Lisa is unavailable" }
         if state.online { return "This Mac is online" }
+        if state.needsSignIn { return "Sign in again" }
         if !state.error.isEmpty { return "Connection needs attention" }
         return state.enabled ? "Reconnecting…" : "Phone connections are off"
     }
@@ -67,6 +74,9 @@ final class CloudConnectionModel: ObservableObject {
         if !loaded { return "Checking your connection to Lisa Cloud." }
         if !available { return "Open Lisa and try again. Your saved devices are kept." }
         if state.online { return "Ready to connect with Lisa Pocket." }
+        if state.needsSignIn {
+            return "Lisa Cloud no longer accepts this Mac's sign-in, so Lisa Pocket can't reach it away from home. Devices on the same Wi-Fi still connect."
+        }
         if !state.error.isEmpty { return "Check your internet connection and account, then reconnect." }
         return state.enabled ? "Lisa will reconnect automatically when the network is available."
             : "Enable connections to use this Mac from your iPhone."

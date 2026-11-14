@@ -65,6 +65,18 @@ final class ConnectionProfiles {
         return config
     }
 
+    /// A late response must not restore a signed-out session, change origin,
+    /// overwrite a later sign-in, or replace a newer renewal.
+    @discardableResult
+    func renewSession(_ token: String, replacing expected: ServerConfig, for mode: ConnectionMode) -> Bool {
+        guard load(mode) == expected,
+              let old = SessionToken.claims(expected.token), let fresh = SessionToken.claims(token),
+              fresh.uid == old.uid, fresh.expiresAt > old.expiresAt else { return false }
+        var renewed = expected
+        renewed.token = token
+        return save(renewed, for: mode)
+    }
+
     @discardableResult
     func save(_ config: ServerConfig, for mode: ConnectionMode) -> Bool {
         let normalized = config.token?.isEmpty == false ? config.token : nil

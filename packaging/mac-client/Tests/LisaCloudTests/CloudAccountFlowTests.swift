@@ -30,6 +30,41 @@ final class CloudAccountFlowTests: XCTestCase {
         model.stop()
     }
 
+    func testARefusedMacSessionAsksToSignInAgain() {
+        let refused = CloudConnectionState(["enabled": true, "online": false, "error": "sign_in_required"])
+        XCTAssertTrue(refused.needsSignIn)
+        XCTAssertTrue(CloudConnectionState(["enabled": true, "error": "relay_unreachable", "sessionExpired": true]).needsSignIn)
+        XCTAssertFalse(CloudConnectionState(["enabled": true, "error": "relay_unreachable"]).needsSignIn)
+        XCTAssertFalse(CloudConnectionState(["enabled": true, "online": true, "sessionExpired": true]).needsSignIn)
+        let connection = CloudConnectionModel(); connection.preview = true
+        connection.loaded = true; connection.state = refused
+        XCTAssertEqual(connection.title, "Sign in again")
+        XCTAssertTrue(connection.detail.contains("same Wi-Fi"), "LAN devices still work; say so")
+    }
+
+    func testSignInAgainShowsTheFormEvenWhileAVerificationIsInFlight() async {
+        var verification: CheckedContinuation<(Int, [String: Any]), Error>?
+        let connection = CloudConnectionModel(); connection.preview = true
+        let saved = ["LISA_MANAGED_SESSION": "saved-session", "LISA_MANAGED_EMAIL": "alex@example.com"]
+        let services = CloudAccountServices(read: { saved[$0] }, save: { _ in }, request: { url, _, _ in
+            if url.path == "/api/auth/me" { return try await withCheckedThrowingContinuation { verification = $0 } }
+            return (200, [:])
+        }, restart: { _ in XCTFail("Signing in again must not restart Lisa") })
+        let model = CloudAccountModel(connection: connection, services: services)
+        model.start()
+        await waitFor { verification != nil }
+        XCTAssertTrue(model.showsAccount)
+        model.signInAgain()
+        XCTAssertFalse(model.showsAccount)
+        XCTAssertEqual(model.step, .email)
+        XCTAssertEqual(model.email, "alex@example.com")
+        // The relay refused the session even if /api/auth/me still answers: keep the form.
+        verification?.resume(returning: (200, ["signedIn": true, "email": "alex@example.com"]))
+        await Task.yield()
+        XCTAssertFalse(model.showsAccount, "a late verification must not hide the sign-in form")
+        model.stop()
+    }
+
     func testCodeIsBoundToTheAddressAndServerThatRequestedIt() async {
         var stored: [String: String] = [:]
         var verificationURL: URL?
