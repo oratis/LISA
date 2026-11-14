@@ -711,6 +711,9 @@ export class FleetHostService {
     if (!workspace) throw new FleetError(404, "workspace_not_found");
     this.db.exec("BEGIN IMMEDIATE");
     try {
+      // A different backend may have cleared the ledger after preflight.
+      // Bind generation validation to the same write lock as the new receipt.
+      this.assertGeneration(body);
       const existing = this.db
         .prepare("SELECT hash FROM ops WHERE host=? AND device=? AND id=?")
         .get(peer.hostId, peer.deviceId, op);
@@ -1401,6 +1404,7 @@ export class FleetHostService {
       durable = false;
     try {
       const previous = this.tx(() => {
+        this.assertGeneration(body);
         const prior = this.db
           .prepare("SELECT hash FROM ops WHERE host=? AND device=? AND id=?")
           .get(peer.hostId, peer.deviceId, op);
@@ -1787,23 +1791,28 @@ export class FleetHostService {
         body.previewToken,
       ]),
     );
-    const previous = this.db
-      .prepare("SELECT hash,status FROM ops WHERE host=? AND device=? AND id=?")
-      .get(peer.hostId, peer.deviceId, op);
-    if (previous) {
-      if (previous.hash !== hash) throw new FleetError(409, "operation_conflict");
-      return this.read(peer, HOST_API + "/operations/" + op);
-    }
-    const plan = this.restorePlan(peer, id, body, true);
     let token = "";
-    this.tx(() => {
+    const plan = this.tx(() => {
+      this.assertGeneration(body);
+      const previous = this.db
+        .prepare("SELECT hash,status FROM ops WHERE host=? AND device=? AND id=?")
+        .get(peer.hostId, peer.deviceId, op);
+      if (previous) {
+        if (previous.hash !== hash) throw new FleetError(409, "operation_conflict");
+        return null;
+      }
+      // Rebuild the preview under the lock too: checkpoint/ledger cleanup in
+      // another backend must not authorize a restore from an obsolete plan.
+      const prepared = this.restorePlan(peer, id, body, true);
       token = this.reserveMaintenance("restore");
       if (Number(this.db.prepare("SELECT COUNT(*) AS n FROM ops").get()?.n) >= 50000)
         throw new FleetError(507, "receipt_capacity");
       this.db
         .prepare("INSERT INTO ops VALUES(?,?,?,?,?,?,?,'unknown')")
         .run(peer.hostId, peer.deviceId, op, hash, id, "restore", Date.now());
+      return prepared;
     });
+    if (!plan) return this.read(peer, HOST_API + "/operations/" + op);
     try {
       restoreFile(plan.workspace.root, plan.target, plan.current.fingerprint);
       this.tx(() => {

@@ -449,14 +449,12 @@ test("recovered tasks require verified process exit and a confirmed new-instruct
       /stale_approval/,
     );
     const fresh = crypto.randomUUID();
-    f.callbacks
-      .at(-1)!
-      .approval({
-        id: fresh,
-        tool: "Read",
-        input: { file_path: "new.txt" },
-        expiresAt: Date.now() + 60000,
-      });
+    f.callbacks.at(-1)!.approval({
+      id: fresh,
+      tool: "Read",
+      input: { file_path: "new.txt" },
+      expiresAt: Date.now() + 60000,
+    });
     assert.notEqual(fresh, oldApproval);
     assert.equal(
       (
@@ -510,6 +508,30 @@ test("continuation preview does not survive backend restart or changed saved con
       /continuation_preview_changed/,
     );
     assert.equal(f.sent.length, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("a request validated before another backend clears the ledger cannot recreate deleted work", () => {
+  const f = fixture();
+  try {
+    const other = f.open();
+    const validate = f.first.assertGeneration.bind(f.first);
+    let interleaved = false;
+    // Model a second process winning the database lock after the first process
+    // reads the old generation but before it acquires its mutation transaction.
+    f.first.assertGeneration = (body) => {
+      validate(body);
+      if (!interleaved) {
+        interleaved = true;
+        other.clearLedger(other.previewCleanup());
+      }
+    };
+    assert.throws(() => f.start(f.first), /operation_generation_changed/);
+    assert.equal(f.first.storage().runs, 0);
+    assert.equal(f.first.storage().receipts, 0);
+    assert.deepEqual(f.sent, []);
   } finally {
     f.close();
   }
