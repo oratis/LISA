@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import { RelayBroker } from "../remote/broker.js";
 import { RemoteHost } from "../remote/host.js";
 import { startSessionRenewal } from "../remote/session-renewal.js";
-import { FleetError, fleetRoute } from "../remote/fleet/types.js";
+import { FleetError, fleetRoute, fleetViewRoute, VIEW_API } from "../remote/fleet/types.js";
 import type { FleetApi } from "../remote/fleet/api.js";
 import { trackShutdown } from "./shutdown.js";
 import { fileURLToPath } from "node:url";
@@ -2782,6 +2782,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (url === "/fleet" || url.startsWith("/api/fleet/") || url.startsWith("/api/agent-host/")) {
       const method = req.method ?? "";
       const onMini = url.startsWith("/api/agent-host/");
+      const viewing = url.startsWith(VIEW_API + "/");
       const owner =
         !cloud &&
         !accountUid &&
@@ -2791,7 +2792,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(data));
       };
-      if (!remoteHost || cloud || (onMini ? !remoteHost.fleetPeer(req) : !owner)) {
+      if (
+        !remoteHost ||
+        cloud ||
+        (onMini ? !(viewing ? remoteHost.fleetViewer(req) : remoteHost.fleetPeer(req)) : !owner)
+      ) {
         send(403, { error: "fleet_access_denied" });
         return;
       }
@@ -2806,7 +2811,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(html);
         return;
       }
-      if (onMini && !fleetRoute(method, url)) {
+      if (onMini && !(viewing ? fleetViewRoute(method, url) : fleetRoute(method, url))) {
         send(404, { error: "route_not_found" });
         return;
       }
@@ -2818,7 +2823,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (!body) return;
       try {
         const api = await openFleet();
-        if (onMini) {
+        if (viewing) {
+          const viewer = remoteHost.fleetViewer(req);
+          if (!viewer) throw new FleetError(403, "fleet_access_denied");
+          send(200, api.host.readViewer(viewer, url));
+        } else if (onMini) {
           // Body parsing yields. The owner may have revoked the grant in the meantime.
           const peer = remoteHost.fleetPeer(req);
           if (!peer) throw new FleetError(403, "fleet_access_denied");

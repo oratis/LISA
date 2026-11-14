@@ -25,6 +25,7 @@
     connection_interrupted: "连接中断。重新连接后可查询原操作收据。",
     stale_approval: "审批已处理或已失效。",
     workspace_replaced: "目录身份已变化，请在 mini 上核对。",
+    secure_pocket_required: "请选择已通过安全配对的 Pocket；旧版配对需撤销后重新配对。",
   };
   const phase = {
     running: "执行中",
@@ -118,6 +119,20 @@
     $("notice").textContent = text;
   };
   const explain = (err) => messages[err.message] || err.message;
+  function clearWork() {
+    version++;
+    cap = null;
+    runs = [];
+    runId = "";
+    shown = "";
+    timelines.clear();
+    $("work").hidden = true;
+    $("runs").replaceChildren();
+    $("timeline").hidden = true;
+    $("timeline-list").replaceChildren();
+    $("timeline-note").textContent = "";
+    $("prompt").value = "";
+  }
   async function guard(fn) {
     try {
       await fn();
@@ -126,6 +141,7 @@
     }
   }
   async function api(url, body) {
+    const v = version;
     const res = await fetch(url, {
       method: body ? "POST" : "GET",
       cache: "no-store",
@@ -137,6 +153,14 @@
     if (!res.ok) {
       const err = Error(data.error || "请求失败");
       err.status = res.status;
+      if (
+        v === version &&
+        (url === "/api/fleet/request" || url === "/api/fleet/hosts") &&
+        (res.status === 401 || res.status === 403)
+      ) {
+        clearWork();
+        notice(explain(err));
+      }
       throw err;
     }
     return data;
@@ -157,9 +181,8 @@
     try {
       const d = await api("/api/fleet/hosts");
       if (scope && d.scope !== scope) {
-        version++;
+        clearWork();
         host = null;
-        cap = null;
         $("target").hidden = true;
       }
       scope = d.scope;
@@ -183,26 +206,22 @@
       if (!hosts.length) $("hosts").textContent = "尚未发现机器。请在 mini 上启用 LISA 账号连接。";
       const selected = hosts.find((h) => h.id === host?.id);
       if (host && !selected) {
-        version++;
+        clearWork();
         host = null;
-        cap = null;
         $("target").hidden = true;
-      } else if (selected && selected.online !== host.online) await choose(selected);
+      } else if (selected && (selected.online !== host.online || selected.paired !== host.paired)) {
+        await choose(selected);
+      }
     } finally {
       listing = false;
     }
   }
   async function choose(h) {
-    version++;
+    clearWork();
     const v = version;
     host = h;
-    cap = null;
-    runs = [];
-    runId = "";
     notice("");
-    $("prompt").value = "";
     $("target").hidden = false;
-    $("work").hidden = true;
     $("pairing").replaceChildren();
     $("name").textContent = h.name;
     $("fingerprint").textContent = h.id;
@@ -259,7 +278,6 @@
       : c.control
         ? "Claude Code · Read / Edit / Write 逐次审批。指令和获准读取的内容会发往这台 mini 配置的 Claude API。"
         : "已授予观察权限";
-    $("work").hidden = false;
     await refreshRuns(v);
   }
   async function refreshRuns(v = version) {
@@ -268,6 +286,7 @@
     if (v !== version) return;
     runs = d.runs;
     render();
+    $("work").hidden = false;
     await syncTimeline(v);
   }
   function timelineKey(id) {
@@ -280,7 +299,7 @@
       id = host.id,
       k = timelineKey(r.id);
     let t = timelines.get(k);
-    if (!t) timelines.set(k, (t = { events: [], last: 0, gap: false, busy: false }));
+    if (!t) timelines.set(k, (t = { events: [], last: 0, busy: false }));
     if (t.busy || t.last === r.lastSeq) return;
     t.busy = true;
     try {
@@ -290,11 +309,13 @@
           account,
           "/runs/" + r.id + "/events?after=" + t.last + "&limit=100",
         );
+        if (v !== version) return;
         if (d.reset) {
           t.events = [];
           t.last = 0;
+        } else if (t.events.length && t.events[0].seq < d.firstSeq) {
+          t.events = t.events.filter((e) => e.seq >= d.firstSeq);
         }
-        if (d.gap) t.gap = true;
         for (const e of d.events)
           if (e.seq > t.last) {
             t.events.push(e);
@@ -308,15 +329,16 @@
     if (v === version) renderTimeline();
   }
   function renderTimeline() {
-    const r = host && cap ? runs.find((x) => x.id === runId) : null,
+    const r = cap?.features?.includes("run-events") ? runs.find((x) => x.id === runId) : null,
       t = r && timelines.get(timelineKey(r.id)),
-      signature = t ? timelineKey(r.id) + "|" + t.last + "|" + t.gap : "";
+      first = t?.events[0]?.seq,
+      signature = t ? timelineKey(r.id) + "|" + t.last + "|" + first : "";
     if (signature === shown) return;
     shown = signature;
     $("timeline").hidden = !t || !t.events.length;
     if (!t) return;
-    $("timeline-note").textContent = t.gap
-      ? "较早的记录已超出执行机的留存范围，以下从第 " + t.events[0]?.seq + " 条开始。"
+    $("timeline-note").textContent = first > 1
+      ? "较早的记录已超出执行机的留存范围，以下从第 " + first + " 条开始。"
       : "";
     $("timeline-list").replaceChildren(
       ...t.events.map((e) => {
@@ -442,6 +464,7 @@
           if (e.status !== 404) throw e;
         }
       }
+      if (v !== version) return;
       if (!reply) reply = await remote(op.id, op.account, op.path, "POST", op.payload);
       sessionStorage.removeItem(savedKey);
       if (v !== version) return;
@@ -545,6 +568,23 @@
         return row;
       }),
     );
+    const pockets = l.devices.filter((x) => x.secure && !x.fleet);
+    $("shares").replaceChildren();
+    if (!pockets.length) $("shares").append(make("p", "请先在本机设置中安全配对 Pocket。"));
+    else if (!d.shares?.length) $("shares").append(make("p", "本机还没有可分享的 Fleet 任务。"));
+    else for (const r of d.shares) {
+      const row = make("article", "");
+      row.append(make("h4", r.workspaceName + " · " + r.id.slice(0, 8) + " · " + (phase[r.state] || r.state)),
+        make("small", "创建于 " + new Date(r.createdAt).toLocaleString()));
+      for (const p of pockets) {
+        const shared = r.viewers.includes(p.id);
+        row.append(btn((shared ? "撤销查看 · " : "允许查看 · ") + p.name + " · " + p.id.slice(0, 8), async () => {
+          await api("/api/fleet/shares", { deviceId: p.id, runId: r.id, enabled: !shared });
+          await local();
+        }));
+      }
+      $("shares").append(row);
+    }
   }
   $("local").ontoggle = () => {
     if ($("local").open) guard(local);

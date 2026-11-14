@@ -15,10 +15,13 @@ import {
   digest,
   FleetError,
   HOST_API,
+  VIEW_API,
+  fleetViewRoute,
   requiredText,
   uuid,
   type FleetGrant,
   type FleetPeer,
+  type FleetViewer,
 } from "./types.js";
 
 interface Workspace {
@@ -77,6 +80,25 @@ const MAX_EVENTS = 500,
   MAX_BLOCKED_PER_TURN = 20,
   PROMPT_EXCERPT = 500,
   RESULT_EXCERPT = 4000;
+/** Allow-list per event, including for future fields and event types. */
+function viewerEvent(e: Record<string, unknown>) {
+  const fields: Record<string, string[]> = {
+    turn_started: ["turn"],
+    approval_requested: ["turn", "tool", "target", "expiresAt"],
+    approval_resolved: ["turn", "outcome"],
+    tool_blocked: ["turn", "tool", "target"],
+    turn_completed: ["turn", "result", "truncated", "blocked"],
+    turn_failed: ["turn", "result", "truncated", "blocked"],
+    cancel_requested: ["by"],
+    run_ended: ["state", "reason"],
+    history_started: ["state"],
+  };
+  return Object.fromEntries(
+    ["seq", "at", "type", ...(fields[String(e.type)] ?? [])]
+      .filter((key) => e[key] !== undefined)
+      .map((key) => [key, e[key]]),
+  );
+}
 function inside(parent: string, entry: string) {
   return entry === parent || entry.startsWith(parent.endsWith("/") ? parent : parent + "/");
 }
@@ -105,9 +127,9 @@ function exists(id: number): boolean {
   try {
     process.kill(id, 0);
     return true;
-  } catch {
-    // ESRCH: gone. EPERM: another user's process, so not one this backend launched.
-    return false;
+  } catch (err) {
+    // Only ESRCH confirms absence. An inaccessible process or group still holds the slot.
+    return (err as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 /** `ps` reports start times to the second; the launch is recorded right after spawn. */
@@ -173,6 +195,7 @@ export class FleetHostService {
       CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT,root TEXT UNIQUE,inode TEXT);
       CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,host TEXT,device TEXT,workspace TEXT,epoch TEXT,state TEXT,result TEXT,pending TEXT,created INTEGER,pgid INTEGER,started INTEGER,backend INTEGER);
       CREATE TABLE IF NOT EXISTS ops(host TEXT,device TEXT,id TEXT,hash TEXT,run TEXT,action TEXT,at INTEGER,status TEXT,PRIMARY KEY(host,device,id));
+      CREATE TABLE IF NOT EXISTS viewers(run TEXT NOT NULL,host TEXT NOT NULL,device TEXT NOT NULL,pairing TEXT NOT NULL,PRIMARY KEY(run,host,device));
       CREATE TABLE IF NOT EXISTS events(run TEXT NOT NULL,seq INTEGER NOT NULL,at INTEGER NOT NULL,type TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run,seq)) WITHOUT ROWID;`);
     // A ledger from before process tracking gains the columns. Its runs record no
     // process group, so after a restart they still wait for the owner to check.
@@ -242,7 +265,7 @@ export class FleetHostService {
     signalGroup(o.pgid, "SIGTERM");
     if (!(await gone(this.stopGraceMs))) {
       signalGroup(o.pgid, "SIGKILL");
-      await gone(1000);
+      if (!(await gone(1000))) return; // Keep the slot for the owner to verify.
     }
     // Nobody awaits this in production, so it must not reject. If the ledger is
     // closed or busy, the next backend finds the group gone and frees the slot.
@@ -367,8 +390,8 @@ export class FleetHostService {
     };
   }
   /** One read returns the current run and the entries after the caller's cursor. */
-  private timeline(peer: FleetPeer, id: string, query: URLSearchParams) {
-    const run = this.getRun(peer, id);
+  private timeline(run: RunRow, query: URLSearchParams) {
+    const id = run.id;
     const span = this.db
       .prepare("SELECT MIN(seq) AS first,MAX(seq) AS last FROM events WHERE run=?")
       .get(id);
@@ -422,7 +445,10 @@ export class FleetHostService {
     }
     const [pathname = "", query = ""] = route.split("?");
     if (pathname.endsWith("/events"))
-      return this.timeline(peer, uuid(pathname.split("/").at(-2)), new URLSearchParams(query));
+      return this.timeline(
+        this.getRun(peer, uuid(pathname.split("/").at(-2))),
+        new URLSearchParams(query),
+      );
     const id = uuid(route.split("/").at(-1));
     if (route === HOST_API + "/operations/" + id) {
       const row = this.db
@@ -677,6 +703,86 @@ export class FleetHostService {
       if (applied) this.record(id, "cancel_requested", { by });
     });
     this.sessions.get(id)?.cancel();
+  }
+  /** Explicit task shares; they grant no workspace or controller access. */
+  share(viewer: FleetViewer, id: string, enabled: boolean) {
+    const run = this.db.prepare("SELECT id FROM runs WHERE id=? AND host=?").get(id, viewer.hostId);
+    if (!run) throw new FleetError(404, "run_not_found");
+    if (enabled)
+      this.db
+        .prepare(
+          "INSERT INTO viewers VALUES(?,?,?,?) ON CONFLICT(run,host,device) DO UPDATE SET pairing=excluded.pairing",
+        )
+        .run(id, viewer.hostId, viewer.deviceId, viewer.pairingId);
+    else
+      this.db
+        .prepare("DELETE FROM viewers WHERE run=? AND host=? AND device=?")
+        .run(id, viewer.hostId, viewer.deviceId);
+    return { shared: enabled };
+  }
+  ownerShares(hostId: string, devices: FleetViewer[]) {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM runs WHERE host=? AND (id IN (SELECT id FROM runs WHERE host=? ORDER BY created DESC LIMIT 50) OR id IN (SELECT run FROM viewers)) ORDER BY created DESC",
+      )
+      .all(hostId, hostId) as unknown as RunRow[];
+    return rows.map((r) => ({
+      ...this.viewerRun(r),
+      viewers: devices.filter((d) => this.hasShare(d, r.id)).map((d) => d.deviceId),
+    }));
+  }
+  private hasShare(viewer: FleetViewer, id: string) {
+    return !!this.db
+      .prepare("SELECT 1 FROM viewers WHERE run=? AND host=? AND device=? AND pairing=?")
+      .get(id, viewer.hostId, viewer.deviceId, viewer.pairingId);
+  }
+  private viewerRun(r: RunRow) {
+    const v = this.view(r);
+    return {
+      id: v.id,
+      hostId: v.hostId,
+      workspaceName:
+        this.db.prepare("SELECT name FROM workspaces WHERE id=?").get(r.workspace)?.name ?? "",
+      state: v.state,
+      createdAt: v.createdAt,
+      updatedAt: v.updatedAt,
+      lastSeq: v.lastSeq,
+      result: v.result.slice(-RESULT_EXCERPT),
+      truncated: v.result.length > RESULT_EXCERPT,
+      // No request ID, tool input or controller identity crosses the viewer boundary.
+      approval: v.approval
+        ? {
+            tool: v.approval.tool,
+            target: target(
+              this.workspaces().find((w) => w.id === r.workspace)!.root,
+              v.approval.input.file_path,
+            ),
+            expiresAt: v.approval.expiresAt,
+          }
+        : null,
+    };
+  }
+  readViewer(viewer: FleetViewer, route: string) {
+    if (!fleetViewRoute("GET", route)) throw new FleetError(404, "route_not_found");
+    return this.tx(() => {
+      if (route === VIEW_API + "/runs") {
+        const rows = this.db
+          .prepare(
+            "SELECT r.* FROM runs r JOIN viewers v ON v.run=r.id AND v.host=r.host WHERE v.host=? AND v.device=? AND v.pairing=? ORDER BY r.created DESC",
+          )
+          .all(viewer.hostId, viewer.deviceId, viewer.pairingId) as unknown as RunRow[];
+        return { runs: rows.map((r) => this.viewerRun(r)) };
+      }
+      const [pathname = "", query = ""] = route.split("?");
+      const id = uuid(pathname.split("/").at(-2));
+      if (!this.hasShare(viewer, id)) throw new FleetError(404, "run_not_found");
+      const run = this.db
+        .prepare("SELECT * FROM runs WHERE id=? AND host=?")
+        .get(id, viewer.hostId) as unknown as RunRow | undefined;
+      if (!run) throw new FleetError(404, "run_not_found");
+      const page = this.timeline(run, new URLSearchParams(query));
+      return { ...page, run: this.viewerRun(run), events: page.events.map(viewerEvent) };
+    });
   }
   ownerRuns() {
     const rows = this.db

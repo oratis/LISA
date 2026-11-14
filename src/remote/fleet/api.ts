@@ -55,9 +55,22 @@ export class FleetApi {
         link: link.status(),
         workspaces: this.host.workspaces(),
         runs: this.host.ownerRuns(),
+        shares: this.host.ownerShares(
+          link.status().hostId ?? "",
+          link.status().devices.flatMap((d) => {
+            const viewer = link.pocketDevice(d.id);
+            return viewer ? [viewer] : [];
+          }),
+        ),
       };
     if (method !== "POST") throw new FleetError(405, "method_not_allowed");
     switch (route) {
+      case "/api/fleet/shares": {
+        const viewer = link.pocketDevice(String(body.deviceId));
+        if (!viewer) throw new FleetError(403, "secure_pocket_required");
+        if (typeof body.enabled !== "boolean") throw new FleetError(400, "invalid_share");
+        return this.host.share(viewer, uuid(body.runId), body.enabled);
+      }
       case "/api/fleet/workspaces":
         return this.host.register(body.name, body.directory);
       case "/api/fleet/local-stop":
