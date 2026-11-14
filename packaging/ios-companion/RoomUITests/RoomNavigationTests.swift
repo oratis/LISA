@@ -23,12 +23,23 @@ final class RoomNavigationTests: XCTestCase {
         button.tap()
     }
     private func reveal(_ element: XCUIElement) {
-        let contentBottom = app.tabBars.firstMatch.frame.minY
+        let tabBar = app.tabBars.firstMatch
+        let contentBottom = tabBar.exists ? tabBar.frame.minY : app.frame.maxY - 20
         for _ in 0..<4 {
             if element.isHittable && element.frame.midY < contentBottom { return }
             app.swipeUp()
         }
         XCTAssertTrue(element.isHittable)
+    }
+
+    private func returnToRoom() {
+        let bottomTab = app.tabBars.buttons["Room"]
+        if bottomTab.exists { bottomTab.tap(); return }
+        // iPadOS places tabs in the floating bar at the top of the window.
+        let topTab = app.buttons.matching(identifier: "Room").allElementsBoundByIndex
+            .first { $0.isHittable && $0.frame.minY < 120 }
+        XCTAssertNotNil(topTab)
+        topTab?.tap()
     }
 
     private func back() {
@@ -49,7 +60,7 @@ final class RoomNavigationTests: XCTestCase {
         open("chat")
         XCTAssertTrue(app.buttons["Load earlier messages"].waitForExistence(timeout: 5))
         capture("Pocket-Chat")
-        app.tabBars.buttons["Room"].tap()
+        returnToRoom()
         open("dashboard")
         XCTAssertTrue(app.navigationBars["Dashboard"].waitForExistence(timeout: 5))
         capture("Pocket-Dashboard")
@@ -57,7 +68,7 @@ final class RoomNavigationTests: XCTestCase {
         open("control")
         XCTAssertTrue(app.navigationBars["Agents"].waitForExistence(timeout: 5))
         capture("Pocket-Agents")
-        app.tabBars.buttons["Room"].tap()
+        returnToRoom()
         open("reve")
         let reflected = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "5757")).firstMatch
         XCTAssertTrue(reflected.waitForExistence(timeout: 10))
@@ -149,8 +160,7 @@ final class RoomNavigationTests: XCTestCase {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "message": "Update Lisa's example file.",
-            "controls": ["permission": "ask"]
+            "message": "Update Lisa's example file."
         ])
         // Keep the real chat turn open while the phone inspects its pending tool call.
         let turn = URLSession.shared.dataTask(with: request)
@@ -164,6 +174,7 @@ final class RoomNavigationTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["before"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["after"].exists)
         XCTAssertTrue(app.staticTexts["example.ts"].exists)
+        capture("Room-Approval-detail")
         app.buttons["Allow once"].tap()
         XCTAssertTrue(row.waitForNonExistence(timeout: 8))
     }
@@ -174,7 +185,11 @@ final class RoomNavigationTests: XCTestCase {
         let session = app.buttons["room.session.bbbbbbbb-0000-0000-0000-000000000001"]
         reveal(session)
         XCTAssertTrue(memory.label.contains("讨论项目时"))
-        XCTAssertLessThan(tile("knowledge").frame.maxY, memory.frame.midY)
+        if app.frame.width < 760 {
+            XCTAssertLessThan(tile("knowledge").frame.maxY, memory.frame.midY)
+        } else {
+            XCTAssertLessThan(tile("knowledge").frame.maxX, memory.frame.minX)
+        }
         XCTAssertLessThan(memory.frame.maxY, session.frame.midY)
         memory.tap()
         XCTAssertTrue(app.navigationBars["Memory"].waitForExistence(timeout: 5))
@@ -206,7 +221,7 @@ final class RoomNavigationTests: XCTestCase {
         back()
         app.buttons["room.object.control"].tap()
         XCTAssertTrue(app.navigationBars["Agents"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Room"].tap()
+        returnToRoom()
         app.buttons["room.object.chat"].tap()
         XCTAssertTrue(app.buttons["Load earlier messages"].waitForExistence(timeout: 5))
         app.open(URL(string: "lisapocket://roster")!)
