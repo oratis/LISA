@@ -15,7 +15,14 @@ test.afterAll(async () => {
 });
 
 async function openTask(page: Page) {
-  const state = { lastSeq: 2, revoked: false, macBUnavailable: true };
+  const state = {
+    lastSeq: 2,
+    revoked: false,
+    macBUnavailable: true,
+    slowDiff: false,
+    cleared: false,
+  };
+  let finishDiff: (() => void) | undefined;
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
   await page.route("**/api/fleet/hosts", (route) =>
@@ -29,7 +36,7 @@ async function openTask(page: Page) {
     if (path === "/capabilities") {
       return route.fulfill({
         json: {
-          features: ["run-events"],
+          features: ["run-events", "turn-changes"],
           control: true,
           workspaces: [{ id: workspaceId, name: "Project" }],
         },
@@ -49,6 +56,34 @@ async function openTask(page: Page) {
       approval: { id: "a1", tool: "Read", input: { file_path: "test.txt" } },
     };
     if (path === "/runs") return route.fulfill({ json: { runs: [run] } });
+    if (path.endsWith("/changes"))
+      return route.fulfill({
+        json: {
+          turns: [
+            {
+              turn: 1,
+              state: state.cleared ? "cleared" : "complete",
+              available: !state.cleared,
+              reason: state.cleared ? "checkpoints_cleared" : undefined,
+            },
+          ],
+        },
+      });
+    if (path.endsWith("/changes/1"))
+      return route.fulfill({
+        json: { concurrent: true, files: [{ id: 0, path: "test.txt", status: "M" }] },
+      });
+    if (path.endsWith("/changes/1/0")) {
+      const complete = () =>
+        route.fulfill({ json: { patch: "-old\n+<script>new</script>", truncated: true } });
+      if (state.slowDiff) {
+        finishDiff = () => {
+          void complete();
+        };
+        return;
+      }
+      return complete();
+    }
     const url = new URL(path, lisa.baseURL);
     expect(url.pathname).toBe("/runs/" + runId + "/events");
     const cursor = Number(url.searchParams.get("after"));
@@ -80,11 +115,11 @@ async function openTask(page: Page) {
   await page.getByRole("button", { name: /Mac A/ }).click();
   await expect(page.getByRole("button", { name: "允许这一次" })).toBeEnabled();
   await expect(page.locator("#timeline-list li")).toHaveCount(2);
-  return state;
+  return { state, finishDiff: () => finishDiff?.() };
 }
 
 test("switching Macs clears the old approval even if the new task list fails", async ({ page }) => {
-  const state = await openTask(page);
+  const { state } = await openTask(page);
   await page.getByRole("button", { name: /Mac B/ }).click();
   await expect(page.locator("#notice")).toContainText("连接中断");
   await expect(page.locator("#name")).toHaveText("Mac B");
@@ -100,7 +135,7 @@ test("switching Macs clears the old approval even if the new task list fails", a
 test("a late poll cannot reopen the task after an approval receives a revocation", async ({
   page,
 }) => {
-  const state = await openTask(page);
+  const { state } = await openTask(page);
   // Keep a successful poll in flight while a decision discovers the revocation.
   const pendingList = page.waitForRequest(
     (request) =>
@@ -134,7 +169,7 @@ test("a late poll cannot reopen the task after an approval receives a revocation
 });
 
 test("polling a revoked task removes its details without a user action", async ({ page }) => {
-  const state = await openTask(page);
+  const { state } = await openTask(page);
   state.revoked = true;
   await page.clock.fastForward(4000);
   await expect(page.locator("#notice")).toContainText("授权工作区");
@@ -146,7 +181,7 @@ test("polling a revoked task removes its details without a user action", async (
 test("a gap replaces the cached prefix and a reset clears its retention notice", async ({
   page,
 }) => {
-  const state = await openTask(page);
+  const { state } = await openTask(page);
   const rows = page.locator("#timeline-list li");
   state.lastSeq = 505;
   await page.clock.fastForward(4000);
@@ -210,4 +245,49 @@ test("the execution Mac shares only the selected task with a securely paired Poc
   await page.getByRole("button", { name: /撤销查看 · My Pocket/ }).click();
   await expect(page.getByRole("button", { name: /允许查看 · My Pocket/ })).toBeVisible();
   expect(shared).toBe(false);
+});
+
+test("per-turn diffs label concurrent changes, render safely and clear on revocation", async ({
+  page,
+}) => {
+  const { state } = await openTask(page);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await expect(page.locator("#change-note")).toContainText("工作区同时变化");
+  await page.getByRole("button", { name: "修改 · test.txt" }).click();
+  await expect(page.locator("#change-patch")).toContainText("64 KiB");
+  await expect(page.locator("#change-patch")).toContainText("+<script>new</script>");
+  expect(await page.locator("#change-patch script").count()).toBe(0);
+  state.revoked = true;
+  await page.clock.fastForward(4000);
+  await expect(page.locator("#changes")).toBeHidden();
+  await expect(page.locator("#change-patch")).toBeEmpty();
+});
+
+test("a late diff cannot populate another Mac's task", async ({ page }) => {
+  const { state, finishDiff } = await openTask(page);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  state.slowDiff = true;
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") && r.postDataJSON()?.path?.endsWith("/changes/1/0"),
+  );
+  await page.getByRole("button", { name: "修改 · test.txt" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  finishDiff();
+  await expect(page.locator("#changes")).toBeHidden();
+  await expect(page.locator("#change-patch")).toBeEmpty();
+});
+
+test("checkpoint cleanup clears an already displayed diff on the next poll", async ({ page }) => {
+  const { state } = await openTask(page);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await page.getByRole("button", { name: "修改 · test.txt" }).click();
+  await expect(page.locator("#change-patch")).toBeVisible();
+  state.cleared = true;
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await expect(page.locator("#change-turns")).toContainText("检查点已清理");
+  await expect(page.locator("#change-patch")).toBeEmpty();
+  await expect(page.locator("#change-files")).toBeEmpty();
 });

@@ -4067,6 +4067,280 @@
           }
         }
       }
+    },
+    "/api/agent-host/v1/runs/{id}/changes": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listFleetCheckpoints",
+        "description": "List the most recent 100 turn records. Missing or interrupted snapshots are explicit. Only the initiating controller with its current workspace grant can read; Pocket grants do not include source diffs.",
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "turns"
+                  ],
+                  "properties": {
+                    "turns": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "$ref": "#/components/schemas/FleetCheckpointTurn"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/changes/{turn}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "turn",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getFleetChanges",
+        "description": "List additions, modifications and deletions between the start/end worktree snapshots of a turn, including untracked files and changes committed during that turn. Renames appear as delete/add. Untracked ignored files are excluded. No rollback.",
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetChanges"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/changes/{turn}/{file}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "turn",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "file",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getFleetFileDiff",
+        "description": "Read a bounded file diff from immutable checkpoints, by file ID returned by getFleetChanges. Never runs external diff/textconv drivers or reads the live workspace for historical diffs.",
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetFileDiff"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/worktrees": {
+      "post": {
+        "operationId": "createFleetCheckpointWorkspace",
+        "description": "Local owner only. Create a detached sibling worktree from a registered repository root at HEAD, register it as a new workspace. Source uncommitted edits are not copied. Explicit controller authorization of the new workspace is required. Checkout hooks and filter drivers are disabled.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "workspaceId"
+                ],
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "root"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "root": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/checkpoints/clear": {
+      "post": {
+        "operationId": "clearFleetCheckpoints",
+        "description": "Local owner only, finished tasks only. Delete all private checkpoint objects and refs, mark the checkpoint records cleared and notify via the timeline. Retain task state, operation receipts and workspace files.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "runId"
+                ],
+                "properties": {
+                  "runId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "cleared"
+                  ],
+                  "properties": {
+                    "cleared": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "403 unauthorized; 404 task/turn/file not found; 409 checkpoint incomplete, unavailable or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4111,6 +4385,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "checkpoints": {
+            "type": "boolean",
+            "description": "This registered workspace was created by LISA as an isolated Git worktree and supports per-turn checkpoints."
           }
         }
       },
@@ -9544,6 +9822,129 @@
           "more": {
             "type": "boolean",
             "description": "Further entries exist after this page."
+          }
+        }
+      },
+      "FleetCheckpointTurn": {
+        "type": "object",
+        "required": [
+          "turn",
+          "state",
+          "available",
+          "startedAt"
+        ],
+        "properties": {
+          "turn": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "complete",
+              "interrupted",
+              "cleared"
+            ]
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "endedAt": {
+            "type": "number"
+          }
+        }
+      },
+      "FleetChangedFile": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Opaque position in this immutable turn diff; clients never send a filesystem path."
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "A",
+              "M",
+              "D",
+              "T"
+            ]
+          }
+        }
+      },
+      "FleetChanges": {
+        "type": "object",
+        "required": [
+          "turn",
+          "state",
+          "files",
+          "concurrent"
+        ],
+        "properties": {
+          "turn": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "maxItems": 4000,
+            "items": {
+              "$ref": "#/components/schemas/FleetChangedFile"
+            }
+          },
+          "concurrent": {
+            "type": "boolean",
+            "description": "HEAD or index changed between/during captures. False does not establish exclusive agent authorship."
+          }
+        }
+      },
+      "FleetFileDiff": {
+        "type": "object",
+        "required": [
+          "turn",
+          "state",
+          "file",
+          "patch",
+          "truncated",
+          "concurrent"
+        ],
+        "properties": {
+          "turn": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/FleetChangedFile"
+          },
+          "patch": {
+            "type": "string",
+            "description": "Unified diff prefix, bounded to 64 KiB of Git output. Binary files have Git binary markers, not raw payloads."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "concurrent": {
+            "type": "boolean"
           }
         }
       }
