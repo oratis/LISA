@@ -12,11 +12,17 @@ final class RemoteDevicesWindow: NSWindowController, NSWindowDelegate {
         let window = cloudWindow(title: "Connect Lisa Pocket", height: 720)
         super.init(window: window)
         window.delegate = self
-        window.contentView = NSHostingView(rootView: CloudDevicesView(model: model) { [weak self] in
+        window.contentView = NSHostingView(rootView: CloudDevicesView(model: model, openAccount: { [weak self] in
             guard !model.preview else { return }
             AccountWindowController.shared.show()
             self?.close()
-        })
+        }, signInAgain: { [weak self] in
+            guard !model.preview else { return }
+            let account = AccountWindowController.shared
+            account.show()
+            account.model.signInAgain()
+            self?.close()
+        }))
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     func show() {
@@ -45,6 +51,7 @@ final class RemoteDevicesWindow: NSWindowController, NSWindowDelegate {
 struct CloudDevicesView: View {
     @ObservedObject var model: CloudConnectionModel
     var openAccount: () -> Void
+    var signInAgain: () -> Void
     @State private var advanced = false
     @State private var approval: CloudDevice?
     @State private var removing: CloudDevice?
@@ -72,6 +79,10 @@ struct CloudDevicesView: View {
                         }
                         if !signedIn {
                             Button("Sign in to connect") { openAccount() }.buttonStyle(CloudPrimaryButton())
+                        } else if model.loaded && model.state.needsSignIn {
+                            Button("Sign in again") { signInAgain() }
+                                .buttonStyle(CloudPrimaryButton()).disabled(model.busy)
+                                .accessibilityIdentifier("devices.sign-in-again")
                         } else if model.loaded && !online {
                             Button(model.state.enabled ? "Reconnect" : "Enable phone connections") {
                                 Task { await model.connect() }

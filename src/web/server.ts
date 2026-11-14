@@ -14,6 +14,7 @@ import { createReadStream, existsSync } from "node:fs";
 import crypto from "node:crypto";
 import { RelayBroker } from "../remote/broker.js";
 import { RemoteHost } from "../remote/host.js";
+import { startSessionRenewal } from "../remote/session-renewal.js";
 import { FleetError, fleetRoute, fleetViewRoute, VIEW_API } from "../remote/fleet/types.js";
 import type { FleetApi } from "../remote/fleet/api.js";
 import { trackShutdown } from "./shutdown.js";
@@ -214,6 +215,7 @@ import {
   touchDevice,
   listDevices,
   revokeDevice,
+  trackDeviceResponse,
 } from "./devices.js";
 import {
   loadOrCreateSessionSecret,
@@ -231,7 +233,7 @@ import {
   saveAppleAuthorization,
   deleteAccount,
   getAccount,
-  sessionAccountValid,
+  sessionAccountState,
   ensureSeededAccount,
   beginEmailVerification,
   confirmEmailVerification,
@@ -2620,6 +2622,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // session (B1). null = legacy shared-token / device-token / loopback caller.
     let accountUid: string | null = null;
     let renewedCookie = false;
+    // The session verified but the account store could not be read: 503, not 401.
+    let accountUnavailable = false;
     if (cloud || !isLoopbackAddress(remoteAddr)) {
       const presented = presentedToken(req, url);
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
@@ -2630,7 +2634,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // account record, so deleted accounts lose access immediately.
       if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
         const claims = verifySession(presented, sessionSecret);
-        if (claims && (await sessionAccountValid(claims.uid, claims.sv))) {
+        const state = claims ? await sessionAccountState(claims.uid, claims.sv) : "revoked";
+        accountUnavailable = state === "unavailable";
+        if (claims && state === "valid") {
           authed = true;
           accountUid = claims.uid;
           if (shouldRenew(claims)) {
@@ -2650,6 +2656,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (device) {
           authed = true;
           touchDevice(device.id);
+          // The token is checked only here, so a stream this request opens
+          // (/events, a PTY attach) must end when the device is revoked.
+          const untrack = trackDeviceResponse(device.id, () => res.destroy());
+          res.once("close", untrack);
         }
       }
       // Hosted edition: a credential with no account behind it (the shared
@@ -2667,6 +2677,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // answer the owner-only routes have always given it.
         res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify({ error: "untrusted_host" }));
+        return;
+      }
+      if (!authed && accountUnavailable) {
+        // Not a sign-out: a client that treats 401/403 as "session revoked" (the
+        // Mac's relay link, Pocket) must retry this one.
+        res.writeHead(503, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+          "retry-after": "5",
+        });
+        res.end(JSON.stringify({ error: "account_service_unavailable" }));
         return;
       }
       if (!authed) {
@@ -6321,12 +6342,11 @@ self.addEventListener('fetch', (event) => {
   if (cloudEdition && sessionSecret && process.env.LISA_RELAY_ENABLED === "1") {
     relayBroker = new RelayBroker(server, async (token) => {
       const claims = verifySession(token, sessionSecret);
-      if (
-        !claims ||
-        deletingAccounts.has(claims.uid) ||
-        !(await sessionAccountValid(claims.uid, claims.sv))
-      )
-        return null;
+      if (!claims || deletingAccounts.has(claims.uid)) return null;
+      const state = await sessionAccountState(claims.uid, claims.sv);
+      // The broker answers 503 (retry) for a throw, 403 (signed out) for null.
+      if (state === "unavailable") throw new Error("account_service_unavailable");
+      if (state !== "valid") return null;
       return { uid: claims.uid, expiresAt: claims.exp };
     });
   } else if (!cloudEdition) {
@@ -6340,6 +6360,10 @@ self.addEventListener('fetch', (event) => {
       void remoteHost
         .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
         .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));
+      // Renew the Mac's account session past half-life (it is not renewed by use), so
+      // the relay route and managed models outlive the 30-day session.
+      const stopRenewal = startSessionRenewal((token) => remoteHost?.setSession(token));
+      server.on("close", stopRenewal);
       // An earlier backend may have left a remote Claude process running. Opening the
       // ledger now stops it or frees its slot, instead of on the first remote request.
       if (existsSync(path.join(lisaGlobalHome(), "fleet", "runs.sqlite")))

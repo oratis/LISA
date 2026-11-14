@@ -3,6 +3,12 @@ import crypto from "node:crypto";
 /** Wire format shared with RemoteMacTransport.swift. No credentials in routing metadata. */
 export const MAX_FRAME = 1024 * 1024;
 export const MAX_BUFFER = 4 * MAX_FRAME;
+/** A registered Mac sends this exact text every 20 s. The relay answers RELAY_PONG (the
+ * Cloudflare relay without waking, via WebSocket auto-response) and drops a host that
+ * declared `heartbeat` at registration but has sent neither it nor anything else for
+ * about 45 s. Byte-exact: auto-response matches the whole message. */
+export const RELAY_PING = '{"type":"ping"}';
+export const RELAY_PONG = '{"type":"pong"}';
 export interface LinkIdentity {
   publicKey: string;
   privateKey: string;

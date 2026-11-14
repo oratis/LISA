@@ -103,6 +103,12 @@ struct CloudAccountView: View {
                 CloudStatusRow(symbol: connection.state.online && connection.available ? "checkmark.circle.fill" : "desktopcomputer",
                                title: connection.title, detail: connection.detail,
                                color: connection.state.online && connection.available ? .green : CloudStyle.accent)
+                if connection.available && connection.state.needsSignIn {
+                    Button("Sign in again") { model.signInAgain() }
+                        .buttonStyle(CloudPrimaryButton())
+                        .disabled(model.busy || model.applying || connection.busy)
+                        .accessibilityIdentifier("account.sign-in-again")
+                }
                 if let notice = connection.notice { CloudNoticeView(notice: notice) }
             }
             if let notice = model.notice { CloudNoticeView(notice: notice) }
