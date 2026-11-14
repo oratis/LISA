@@ -3,6 +3,7 @@ import path from "node:path";
 import { FleetHostService } from "./host-service.js";
 import { FleetController } from "./controller.js";
 import { LocalClaude } from "./claude.js";
+import { LocalCodexWorkspace } from "./codex-workspace.js";
 import { LocalCodex } from "./codex.js";
 import { getCurrentHub } from "../../integrations/current-hub.js";
 import {
@@ -13,6 +14,7 @@ import {
   requiredText,
   uuid,
   type FleetPeer,
+  type FleetViewer,
 } from "./types.js";
 import { selectSecretBackend } from "../../warden/secrets-open.js";
 import { KeychainSecretStore } from "../../warden/secrets-keychain.js";
@@ -25,6 +27,7 @@ export class FleetApi {
   constructor(home: string, port: number) {
     this.host = new FleetHostService(home, new LocalClaude(home, port), {
       codex: new LocalCodex(home, port),
+      codexWorkspace: new LocalCodexWorkspace(home, port),
       observed: () => getCurrentHub()?.list() ?? [],
     });
     // The controller private key must never resolve through a model-facing secret:// handle.
@@ -45,11 +48,37 @@ export class FleetApi {
   }
   peer(peer: FleetPeer, route: string, method: string, body: Record<string, unknown>) {
     const effective = { ...peer, control: peer.control && loadControlPolicy().remoteControl };
+    if (method === "POST") this.host.assertGeneration(body);
+    if (method === "POST" && route.endsWith("/continue-preview"))
+      return this.host.previewContinuation(effective, uuid(route.split("/").at(-2)), body);
     if (method === "POST" && route.endsWith("/handoff-preview"))
       return this.host.previewHandoff(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/merge-preview"))
+      return this.host.previewMerge(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/merge"))
+      return this.host.merge(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/restore-preview"))
+      return this.host.previewRestore(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/restore"))
+      return this.host.restore(effective, uuid(route.split("/").at(-2)), body);
     return method === "GET"
       ? this.host.read(effective, route)
       : this.host.mutate(effective, route, body);
+  }
+  viewer(
+    link: RemoteHost,
+    viewer: FleetViewer,
+    route: string,
+    method: string,
+    body: Record<string, unknown>,
+  ) {
+    const grant = (device: string) => {
+      const peer = link.fleetController(device);
+      return peer && { ...peer, control: peer.control && loadControlPolicy().remoteControl };
+    };
+    return method === "GET"
+      ? this.host.readViewer(viewer, route, grant)
+      : this.host.decideViewer(viewer, route, body, grant);
   }
   async owner(link: RemoteHost, route: string, method: string, body: Record<string, unknown>) {
     if (method === "GET" && route === "/api/fleet/hosts") {
@@ -63,6 +92,8 @@ export class FleetApi {
         workspaces: this.host.workspaces(),
         runs: this.host.ownerRuns(),
         checkpointRuns: this.host.checkpointRuns(),
+        storage: this.host.storage(),
+        maintenance: this.host.maintenanceStatus(),
         shares: this.host.ownerShares(
           link.status().hostId ?? "",
           link.status().devices.flatMap((d) => {
@@ -77,8 +108,18 @@ export class FleetApi {
         const viewer = link.pocketDevice(String(body.deviceId));
         if (!viewer) throw new FleetError(403, "secure_pocket_required");
         if (typeof body.enabled !== "boolean") throw new FleetError(400, "invalid_share");
-        return this.host.share(viewer, uuid(body.runId), body.enabled);
+        if (body.approve !== undefined && typeof body.approve !== "boolean")
+          throw new FleetError(400, "invalid_share");
+        return this.host.share(viewer, uuid(body.runId), body.enabled, body.approve === true);
       }
+      case "/api/fleet/maintenance/release":
+        return this.host.releaseMaintenance(body.confirmed === true);
+      case "/api/fleet/storage":
+        return this.host.configureStorage(body);
+      case "/api/fleet/ledger/preview":
+        return this.host.previewCleanup();
+      case "/api/fleet/ledger/clear":
+        return this.host.clearLedger(body);
       case "/api/fleet/worktrees":
         return this.host.createWorktree(uuid(body.workspaceId));
       case "/api/fleet/checkpoints/clear":

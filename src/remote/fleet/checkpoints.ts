@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { RestoreTarget } from "./restore.js";
 import { digest, FleetError, uuid } from "./types.js";
 
 export interface Snapshot {
@@ -32,7 +33,13 @@ const env = () => ({
   GIT_COMMITTER_NAME: "LISA",
   GIT_COMMITTER_EMAIL: "fleet@localhost",
 });
-function git(cwd: string, args: string[], input?: string | Buffer, extra = {}) {
+export function fleetGit(
+  cwd: string,
+  args: string[],
+  input?: string | Buffer,
+  extra = {},
+  maxBuffer = 4 * 1024 * 1024,
+) {
   return execFileSync(
     "git",
     [
@@ -48,11 +55,13 @@ function git(cwd: string, args: string[], input?: string | Buffer, extra = {}) {
       env: { ...env(), ...extra },
       input,
       timeout: 8000,
-      maxBuffer: 4 * 1024 * 1024,
+      maxBuffer,
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
 }
+const git = fleetGit;
+
 export function repositoryIdentity(root: string) {
   const top = git(root, ["rev-parse", "--show-toplevel"]).toString().trim();
   if (fs.realpathSync.native(top) !== root) throw new FleetError(400, "git_root_required");
@@ -62,7 +71,9 @@ export function repositoryIdentity(root: string) {
 }
 /** Only the local owner can create one. A detached checkout starts at the current commit. */
 export function createCheckpointWorkspace(source: string) {
-  repositoryIdentity(source);
+  const sourceIdentity = repositoryIdentity(source);
+  const base = git(source, ["rev-parse", "HEAD"]).toString().trim();
+  const branch = git(source, ["symbolic-ref", "HEAD"]).toString().trim();
   const root = path.join(path.dirname(source), "lisa-fleet-" + crypto.randomUUID());
   // Worktree checkout otherwise runs user-configured smudge filters. Disable each driver.
   let filters = "";
@@ -82,8 +93,16 @@ export function createCheckpointWorkspace(source: string) {
     .split("\n")
     .filter(Boolean)
     .flatMap((key) => ["-c", key + (key.endsWith(".required") ? "=false" : "=")]);
-  git(source, [...flags, "worktree", "add", "--detach", root, "HEAD"]);
-  return { root: fs.realpathSync.native(root), gitIdentity: repositoryIdentity(root) };
+  git(source, [...flags, "worktree", "add", "--detach", root, base]);
+  if (git(root, ["rev-parse", "HEAD"]).toString().trim() !== base)
+    throw new FleetError(409, "source_changed");
+  return {
+    root: fs.realpathSync.native(root),
+    gitIdentity: repositoryIdentity(root),
+    sourceIdentity,
+    base,
+    branch,
+  };
 }
 
 /** Git objects and refs are private to a task, under the agent-denied LISA home.
@@ -93,9 +112,15 @@ export class FleetCheckpoints {
   private directory(run: string) {
     return path.join(this.home, "fleet", "checkpoints", uuid(run));
   }
-  private command(run: string, args: string[], input?: string | Buffer, extra = {}) {
+  private command(
+    run: string,
+    args: string[],
+    input?: string | Buffer,
+    extra = {},
+    maxBuffer?: number,
+  ) {
     const dir = this.directory(run);
-    return git(dir, ["--git-dir=" + dir, ...args], input, extra);
+    return git(dir, ["--git-dir=" + dir, ...args], input, extra, maxBuffer);
   }
   capture(
     run: string,
@@ -103,24 +128,23 @@ export class FleetCheckpoints {
     side: "before" | "after",
     root: string,
     expected: string,
+    maxStorageBytes = Number.POSITIVE_INFINITY,
   ): Snapshot {
     const at = Date.now();
     let index: string | undefined;
     try {
       if (turn > 100) return { status: "unavailable", at, reason: "checkpoint_limit" };
+      if (this.usage() >= maxStorageBytes)
+        return { status: "unavailable", at, reason: "checkpoint_quota" };
       if (repositoryIdentity(root) !== expected) throw new Error("workspace_changed");
       const head = () => git(root, ["rev-parse", "HEAD"]).toString().trim();
       const stage = () => digest(git(root, ["ls-files", "--stage", "-z"]).toString());
       const beforeHead = head(),
         beforeIndex = stage();
-      const names = [
-        ...new Set(
-          git(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
-            .toString()
-            .split("\0")
-            .filter(Boolean),
-        ),
-      ];
+      const listing = git(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]);
+      if (!Buffer.from(listing.toString()).equals(listing))
+        throw new Error("invalid_path_encoding");
+      const names = [...new Set(listing.toString().split("\0").filter(Boolean))];
       if (names.length > MAX_FILES) return { status: "unavailable", at, reason: "snapshot_limit" };
       const files: string[] = [];
       let bytes = 0;
@@ -177,7 +201,22 @@ export class FleetCheckpoints {
       const commit = this.command(run, ["commit-tree", tree], `Fleet turn ${turn} ${side}\n`)
         .toString()
         .trim();
-      this.command(run, ["update-ref", `refs/lisa/turns/${turn}/${side}`, commit]);
+      const ref = `refs/lisa/turns/${turn}/${side}`;
+      let previous: string | undefined;
+      try {
+        previous = this.command(run, ["rev-parse", "--verify", ref]).toString().trim();
+      } catch {
+        /* new boundary */
+      }
+      this.command(run, ["update-ref", ref, commit]);
+      fs.rmSync(index, { force: true });
+      index = undefined;
+      if (this.usage() > maxStorageBytes) {
+        if (previous) this.command(run, ["update-ref", ref, previous]);
+        else this.command(run, ["update-ref", "-d", ref]);
+        this.command(run, ["prune", "--expire=now"]);
+        return { status: "unavailable", at, reason: "checkpoint_quota" };
+      }
       // A changed HEAD/index is evidence of another actor, even if its commit hid the diff.
       return {
         status: "ready",
@@ -258,6 +297,132 @@ export class FleetCheckpoints {
       if (e instanceof FleetError) throw e;
       throw new FleetError(409, "checkpoint_unavailable");
     }
+  }
+  tree(run: string, snapshot: Snapshot) {
+    if (snapshot.status !== "ready" || !snapshot.commit)
+      throw new FleetError(409, "checkpoint_unavailable");
+    return this.command(run, ["rev-parse", snapshot.commit + "^{tree}"])
+      .toString()
+      .trim();
+  }
+  probe(root: string, expected: string) {
+    const run = crypto.randomUUID();
+    try {
+      const snapshot = this.capture(run, 1, "before", root, expected);
+      if (snapshot.status !== "ready" || snapshot.changed)
+        throw new FleetError(409, "workspace_changed");
+      return { tree: this.tree(run, snapshot), head: snapshot.head!, index: snapshot.index! };
+    } finally {
+      this.clear(run);
+    }
+  }
+  /** Materialize immutable raw snapshot bytes under the private LISA home. */
+  materialize(run: string, snapshot: Snapshot, directory: string) {
+    const tree = this.tree(run, snapshot);
+    const raw = this.command(run, ["ls-tree", "-r", "-z", tree]);
+    if (!Buffer.from(raw.toString()).equals(raw))
+      throw new FleetError(409, "merge_file_unsupported");
+    const entries = raw.toString().split("\0").filter(Boolean);
+    const names: string[] = [];
+    let bytes = 0;
+    for (const row of entries) {
+      const match = /^(100644|100755|120000) blob ([a-f0-9]{40,64})\t([\s\S]+)$/.exec(row);
+      if (!match) throw new FleetError(409, "merge_file_unsupported");
+      const name = match[3]!,
+        parts = name.split("/");
+      if (
+        path.isAbsolute(name) ||
+        name.includes("\\") ||
+        parts.some((p) => !p || [".", "..", ".git"].includes(p.toLowerCase()))
+      )
+        throw new FleetError(409, "merge_file_unsupported");
+      const content = this.command(
+        run,
+        ["cat-file", "blob", match[2]!],
+        undefined,
+        {},
+        MAX_BYTES + 1,
+      );
+      bytes += content.length;
+      if (bytes > MAX_BYTES || names.length >= MAX_FILES)
+        throw new FleetError(409, "snapshot_limit");
+      let parent = directory;
+      for (const part of parts.slice(0, -1)) {
+        parent = path.join(parent, part);
+        try {
+          fs.mkdirSync(parent);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+        }
+        const stat = fs.lstatSync(parent);
+        if (!stat.isDirectory() || stat.isSymbolicLink())
+          throw new FleetError(409, "merge_file_unsupported");
+      }
+      const file = path.join(directory, name);
+      if (match[1] === "120000") {
+        if (!Buffer.from(content.toString()).equals(content))
+          throw new FleetError(409, "merge_file_unsupported");
+        fs.symlinkSync(content.toString(), file);
+      } else
+        fs.writeFileSync(file, content, {
+          flag: "wx",
+          mode: match[1] === "100755" ? 0o755 : 0o644,
+        });
+      names.push(name);
+    }
+    return names;
+  }
+  restoreTarget(run: string, before: Snapshot, after: Snapshot, file: number): RestoreTarget {
+    const list = this.diff(run, before, after);
+    if (!list.files) throw new FleetError(409, "checkpoint_unavailable");
+    const selected = list.files[file];
+    if (!selected) throw new FleetError(404, "file_not_found");
+    const row = this.command(run, [
+      "ls-tree",
+      "-z",
+      before.commit!,
+      "--",
+      selected.path,
+    ]).toString();
+    if (!row) return { path: selected.path, exists: false, content: Buffer.alloc(0), mode: 0 };
+    const match = /^(100644|100755) blob ([a-f0-9]{40,64})\t/.exec(row);
+    if (!match) throw new FleetError(409, "restore_regular_file_required");
+    const content = this.command(
+      run,
+      ["cat-file", "blob", match[2]!],
+      undefined,
+      {},
+      MAX_BYTES + 1,
+    );
+    if (content.length > MAX_BYTES) throw new FleetError(409, "restore_file_limit");
+    return {
+      path: selected.path,
+      exists: true,
+      content,
+      mode: match[1] === "100755" ? 0o755 : 0o644,
+    };
+  }
+  /** Private Git storage only; do not follow links when accounting for quota. */
+  usage() {
+    const directory = path.join(this.home, "fleet", "checkpoints");
+    const size = (entry: string): number => {
+      const st = fs.lstatSync(entry);
+      if (st.isSymbolicLink()) throw new FleetError(409, "checkpoint_storage_changed");
+      if (st.isDirectory())
+        return fs.readdirSync(entry).reduce((n, child) => n + size(path.join(entry, child)), 0);
+      if (!st.isFile()) throw new FleetError(409, "checkpoint_storage_changed");
+      return Math.max(st.size, Number.isFinite(st.blocks) ? st.blocks * 512 : st.size);
+    };
+    try {
+      return size(directory);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+      throw err;
+    }
+  }
+  clearAll() {
+    fs.rmSync(path.join(this.home, "fleet", "checkpoints"), { recursive: true, force: true });
+    fs.rmSync(path.join(this.home, "fleet", "merges"), { recursive: true, force: true });
   }
   clear(run: string) {
     fs.rmSync(this.directory(run), { recursive: true, force: true });

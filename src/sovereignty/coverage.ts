@@ -102,6 +102,11 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
     what: "conversation expression display and frequency preferences",
   },
 
+  "vision-bin": {
+    forget: "no_user_text",
+    what: "compiled screenshot context helper and build locks; no captured UI data",
+  },
+
   // ── no user text ──
   reachout: { forget: "no_user_text", what: "reach-out settings and a ledger of hashes" },
   sovereignty: { forget: "no_user_text", what: "content-free audit of export/import/forget" },

@@ -7,15 +7,18 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
-## [0.32.0] — 2026-11-14
+## [0.32.0] — 2026-11-15
 
-Fleet tasks now keep a timeline that reconnecting controllers and explicitly authorized Pocket viewers can catch up on. Review each turn's file changes in an isolated worktree, then preview exactly what a second agent will receive before handing the work over. This release also brings steadier Mac connections, renewable and revocable account sessions, selected Feishu document reads, and the source for Pocket's refreshed iPhone and iPad Room.
+Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.
 
 - Fleet timelines and read-only Pocket sharing
+- Pocket multi-Mac and task approvals
 - Per-turn checkpoints and file diffs
+- Confirmed merge, cleanup and storage limits
 - Capability-aware controls and confirmed agent handoffs
 - Connections and account recovery
 - Selected Feishu documents
+- Selected T3 projects and optional screenshot context
 - Pocket Room and iPad refresh
 - Upgrade and remaining limits
 - Included changes

@@ -80,6 +80,10 @@
                     },
                     "control": {
                       "type": "boolean"
+                    },
+                    "operationGeneration": {
+                      "type": "string",
+                      "description": "Bind new operations to this generation; keep pending operation payloads unchanged."
                     }
                   }
                 }
@@ -2010,6 +2014,7 @@
                 "notion",
                 "slack",
                 "feishu",
+                "t3",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2075,6 +2080,7 @@
                 "notion",
                 "slack",
                 "feishu",
+                "t3",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2172,6 +2178,7 @@
                 "notion",
                 "slack",
                 "feishu",
+                "t3",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2270,6 +2277,7 @@
                 "notion",
                 "slack",
                 "feishu",
+                "t3",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2356,6 +2364,7 @@
                 "notion",
                 "slack",
                 "feishu",
+                "t3",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2441,6 +2450,7 @@
                 "notion",
                 "slack",
                 "feishu",
+                "t3",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -2552,6 +2562,7 @@
                 "notion",
                 "slack",
                 "feishu",
+                "t3",
                 "todoist",
                 "outlook-mail",
                 "outlook-calendar",
@@ -3982,7 +3993,7 @@
     "/api/agent-host/v1/view/runs/{id}/events": {
       "get": {
         "operationId": "getSharedFleetRunEvents",
-        "description": "Securely paired Pocket only; rechecks the specific task share on every page. Returns 404 when unshared or revoked. Same cursor, retention and reset semantics as the controller timeline, with an allow-listed read-only projection.",
+        "description": "Securely paired Pocket only; rechecks the specific task share on every page. Returns 404 when unshared or revoked. Same cursor, retention and reset semantics as the controller timeline, with an allow-listed projection; separately authorized approvers also receive the exact current request.",
         "parameters": [
           {
             "name": "after",
@@ -4066,6 +4077,11 @@
                   },
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "approve": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Separate permission to review full pending tool input and decide this task. Omitted or false grants only read access."
                   }
                 }
               }
@@ -4576,6 +4592,788 @@
           }
         }
       }
+    },
+    "/api/agent-host/v1/view/runs/{id}/decisions": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "decideSharedFleetRun",
+        "description": "Secure Pocket pairing with a separately granted task approval permission only. Revalidates the initiating controller grant, remote-control policy, exact approval ID/digest/expiry and workspace identity. Persists a pairing-scoped receipt before acting. Repeating the same operation returns its receipt; changed payloads conflict. Each approval may be decided only once, including uncertain outcomes. Does not grant append, cancel, workspace or other-controller access.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "operationId",
+                  "approvalId",
+                  "digest",
+                  "expiresAt",
+                  "allow"
+                ],
+                "properties": {
+                  "operationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "approvalId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "expiresAt": {
+                    "type": "number"
+                  },
+                  "allow": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decision receipt. Unknown outcomes must not be replayed with a new operation ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "operationId",
+                    "status"
+                  ],
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "accepted",
+                        "unknown"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/restore-preview": {
+      "post": {
+        "operationId": "previewFleetFileRestore",
+        "description": "Preview one changed file restored to the start of the selected turn. Requires a finished task, an idle host, its initiating controller and current workspace/control grant. Binds current content, inode, permissions, ancestors and snapshot to a ten-minute signed preview.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetRestorePreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetRestoreSelection"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/restore": {
+      "post": {
+        "operationId": "restoreFleetFile",
+        "description": "Confirm the exact preview. Refuses modified content, replaced directories or revoked grants. Only regular files are restored or removed; the Git index and other files are untouched. A receipt is persisted before I/O. A lost/unknown reply must reuse the same operation ID and cannot repeat the write over later edits.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetRestoreSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "previewToken",
+                      "expiresAt"
+                    ],
+                    "properties": {
+                      "previewToken": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "expiresAt": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/fleet/storage": {
+      "post": {
+        "operationId": "configureFleetStorage",
+        "description": "Local owner only. Set cross-task quota and retention. Quota exhaustion skips the snapshot without stopping the agent or evicting prior snapshots. Retention excludes open tasks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "quotaMiB",
+                  "retentionDays"
+                ],
+                "properties": {
+                  "quotaMiB": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16384,
+                    "default": 512
+                  },
+                  "retentionDays": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3650,
+                    "default": 0,
+                    "description": "Checkpoint retention for ended tasks; zero disables it. Task payloads and receipts remain until full cleanup."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetStorage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/ledger/preview": {
+      "post": {
+        "operationId": "previewFleetLedgerCleanup",
+        "description": "Local owner only; idle host required. Preview deletion of all task contents, timelines, shares, checkpoints and receipts, bound to the database revision.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/FleetStorage"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "previewToken",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "previewToken": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/ledger/clear": {
+      "post": {
+        "operationId": "clearFleetLedger",
+        "description": "Local owner only. Confirm signed preview. Atomically rotates operationGeneration and erases tasks and receipts, then removes snapshots and compacts SQLite/WAL. Working files, workspace registrations and device grants remain. Old operations cannot replay.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "previewToken",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "previewToken": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "cleared",
+                    "compacted",
+                    "operationGeneration"
+                  ],
+                  "properties": {
+                    "cleared": {
+                      "type": "boolean"
+                    },
+                    "compacted": {
+                      "type": "boolean"
+                    },
+                    "operationGeneration": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/local": {
+      "get": {
+        "operationId": "getFleetOwnerState",
+        "description": "Local owner configuration, active tasks, shared tasks and storage usage. Requires the local loopback owner and same-origin protection.",
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "storage": {
+                      "$ref": "#/components/schemas/FleetStorage"
+                    },
+                    "link": {
+                      "type": "object"
+                    },
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "checkpointRuns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "shares": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/continue-preview": {
+      "post": {
+        "operationId": "previewFleetContinuation",
+        "description": "Preview a NEW session from saved context after an uncertain previous process has been verified stopped (automatic process tracking or explicit local-owner verification). Source outcome stays unknown. Requires original controller, current workspace/control grant, idle host and a new instruction.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetContinuationPreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetContinuationSelection"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/continue": {
+      "post": {
+        "operationId": "continueFleetRun",
+        "description": "Confirm the exact continuation preview. Starts a new task with the original adapter and fresh tool approvals. Persists a new receipt and linked timeline entries atomically before launch; repeated operations return the original new task. Never reattaches the old provider process or replays its tool calls.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetContinuationSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "previewToken",
+                      "expiresAt"
+                    ],
+                    "properties": {
+                      "previewToken": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "expiresAt": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/merge-preview": {
+      "post": {
+        "operationId": "previewFleetMerge",
+        "description": "Requires the initiating controller, control grants for both the managed worktree and source repository, a finished task and idle host. Preview all checkpoint changes as one commit on the unchanged clean source branch. Cleanup is separately selected; ignored files prevent cleanup.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMergePreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetMergeSelection"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/merge": {
+      "post": {
+        "operationId": "mergeFleetWorktree",
+        "description": "Confirm an exact ten-minute preview. Persist an unknown receipt and host maintenance reservation before filesystem changes, fast-forward one commit, and optionally remove only the verified owned worktree. Replays return the same receipt; partial failures require local-owner verification. Historical diffs remain available after cleanup.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetMergeSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "previewToken",
+                      "expiresAt"
+                    ],
+                    "properties": {
+                      "previewToken": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "expiresAt": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/fleet/maintenance/release": {
+      "post": {
+        "operationId": "releaseFleetMaintenance",
+        "description": "Local owner only. Explicitly verify uncertain/dead-backend Git or filesystem operations have ended before releasing the host reservation. Does not retry any old operation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "confirmed"
+                ],
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "released": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/vision/capture": {
+      "post": {
+        "summary": "Capture a local screenshot, with optional preview-only front-window context",
+        "description": "Local owner, loopback and same-origin only. includeContext explicitly opts into reading window/accessibility data before capture. Context is not sent to a model; the composer separately selects it on Send. Missing Accessibility access preserves the image-only flow. Coordinates are global screen points and may not describe the selected screenshot region.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LisaCaptureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Captured image or cancellation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LisaCaptureResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the local owner may capture"
+          },
+          "501": {
+            "description": "Capture unsupported on this platform"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4631,6 +5429,10 @@
           "checkpoints": {
             "type": "boolean",
             "description": "This registered workspace was created by LISA as an isolated Git worktree and supports per-turn checkpoints."
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Owned worktree was removed; history remains available, new tasks and writes are disabled."
           }
         }
       },
@@ -4683,6 +5485,10 @@
             "items": {
               "$ref": "#/components/schemas/FleetAgent"
             }
+          },
+          "operationGeneration": {
+            "type": "string",
+            "description": "Bind new operations to this generation; keep pending operation payloads unchanged."
           }
         }
       },
@@ -4778,7 +5584,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "capabilities": {
@@ -4886,7 +5693,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "sourceRunId": {
@@ -4964,6 +5772,21 @@
           },
           "run": {
             "$ref": "#/components/schemas/FleetRun"
+          },
+          "merge": {
+            "type": "object",
+            "properties": {
+              "commit": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Proposed commit, which is not proof the checkout succeeded when status is unknown."
+              },
+              "cleaned": {
+                "type": "boolean"
+              }
+            }
           }
         }
       },
@@ -4986,6 +5809,10 @@
           "hostId": {
             "type": "string",
             "pattern": "^[0-9a-f]{32}$"
+          },
+          "operationGeneration": {
+            "type": "string",
+            "description": "Generation returned by this host. Omission is accepted only before its first full ledger cleanup. Never replace this value on a pending operation; cleanup invalidates old retries."
           }
         }
       },
@@ -7706,6 +8533,7 @@
               "notion",
               "slack",
               "feishu",
+              "t3",
               "todoist",
               "outlook-mail",
               "outlook-calendar",
@@ -7745,6 +8573,7 @@
                     "notion",
                     "slack",
                     "feishu",
+                    "t3",
                     "todoist",
                     "outlook-mail",
                     "outlook-calendar",
@@ -9987,6 +10816,17 @@
                   },
                   "expiresAt": {
                     "type": "number"
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "preview": {
+                    "type": "string",
+                    "description": "Complete JSON tool input, at most 32 KiB. These three fields are returned together only when approval is currently permitted; oversized inputs require the controller."
                   }
                 }
               }
@@ -9996,7 +10836,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "capabilities": {
@@ -10004,7 +10845,7 @@
           }
         },
         "additionalProperties": false,
-        "description": "Read-only Pocket projection: result excerpt, tool/target only; no prompt, input, approval ID or controller identity."
+        "description": "Pocket projection. Read-only shares expose result excerpts and tool/target summaries, without prompt, tool input or approval ID. A separate current approval grant adds exact request ID, digest and complete input preview only while approvable."
       },
       "FleetViewerEvent": {
         "type": "object",
@@ -10025,10 +10866,7 @@
           },
           "type": {
             "type": "string",
-            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started.",
-            "enum": [
-              "handoff_started"
-            ]
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started. approval_decided records an explicit decision before the adapter call. file_restored identifies a file restored to a turn-start checkpoint. continuation_started links a new independently approved session; old outcomes stay unknown."
           },
           "turn": {
             "type": "integer",
@@ -10074,7 +10912,8 @@
               "timeout",
               "shutdown",
               "revoked",
-              "policy"
+              "policy",
+              "pocket"
             ],
             "description": "revoked: the owner revoked the device or narrowed its grant. policy: remote control was switched off on the host."
           },
@@ -10088,7 +10927,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           }
         },
@@ -10264,7 +11104,7 @@
       },
       "FleetActions": {
         "type": "object",
-        "description": "Effective operations for the current adapter, run state and authenticated caller. The host rechecks every mutation. External observations and Pocket shares are read-only. Neither Fleet adapter currently resumes lost processes.",
+        "description": "Effective operations for the current adapter, run state and authenticated caller. The host rechecks every mutation. External observations are read-only. Pocket is read-only by default; a separately granted current approval may enable approve. Neither Fleet adapter currently resumes lost processes.",
         "required": [
           "observe",
           "append",
@@ -10287,7 +11127,8 @@
             "type": "boolean"
           },
           "resume": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "A verified-stopped uncertain task can preview a new continuation session with an explicit new instruction. This does not resume the lost provider process."
           },
           "handoff": {
             "type": "boolean"
@@ -10307,7 +11148,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "mode": {
@@ -10356,7 +11198,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "state": {
@@ -10394,7 +11237,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "turn": {
@@ -10453,7 +11297,8 @@
                 "type": "string",
                 "enum": [
                   "claude-code",
-                  "codex"
+                  "codex",
+                  "codex-workspace"
                 ]
               },
               "turn": {
@@ -10487,7 +11332,8 @@
                 "type": "string",
                 "enum": [
                   "claude-code",
-                  "codex"
+                  "codex",
+                  "codex-workspace"
                 ]
               },
               "mode": {
@@ -10594,6 +11440,403 @@
           }
         },
         "additionalProperties": false
+      },
+      "FleetRestoreSelection": {
+        "type": "object",
+        "required": [
+          "hostId",
+          "workspaceId",
+          "turn",
+          "file"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "file": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1999
+          }
+        }
+      },
+      "FleetRestoreFile": {
+        "type": "object",
+        "required": [
+          "exists",
+          "bytes",
+          "mode",
+          "sha256",
+          "binary",
+          "text",
+          "truncated"
+        ],
+        "properties": {
+          "exists": {
+            "type": "boolean"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "description": "Literal file content preview, at most 64 KiB text; binary content is represented by size and digest. Mode is the permission bits (Git target: 0644 or 0755)."
+      },
+      "FleetRestorePreview": {
+        "type": "object",
+        "required": [
+          "runId",
+          "workspaceId",
+          "turn",
+          "file",
+          "path",
+          "current",
+          "target",
+          "expiresAt",
+          "previewToken"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turn": {
+            "type": "integer"
+          },
+          "file": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/FleetRestoreFile"
+          },
+          "target": {
+            "$ref": "#/components/schemas/FleetRestoreFile"
+          },
+          "expiresAt": {
+            "type": "number"
+          },
+          "previewToken": {
+            "type": "string"
+          }
+        }
+      },
+      "FleetStorage": {
+        "type": "object",
+        "required": [
+          "quotaMiB",
+          "retentionDays",
+          "usedBytes",
+          "runs",
+          "receipts"
+        ],
+        "properties": {
+          "quotaMiB": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384,
+            "default": 512
+          },
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3650,
+            "default": 0,
+            "description": "Checkpoint retention for ended tasks; zero disables it. Task payloads and receipts remain until full cleanup."
+          },
+          "usedBytes": {
+            "type": "integer"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "receipts": {
+            "type": "integer"
+          }
+        }
+      },
+      "FleetContinuationSelection": {
+        "type": "object",
+        "required": [
+          "hostId",
+          "workspaceId",
+          "text"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 16000,
+            "description": "Explicit new instruction, required even when historical context exists."
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex",
+              "codex-workspace"
+            ],
+            "description": "Must match the original task adapter. Omission preserves it."
+          },
+          "operationGeneration": {
+            "type": "string"
+          }
+        }
+      },
+      "FleetContinuationPreview": {
+        "type": "object",
+        "required": [
+          "sourceRunId",
+          "agent",
+          "prompt",
+          "previewToken",
+          "expiresAt"
+        ],
+        "properties": {
+          "sourceRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "At most 96 KiB: unknown-outcome warning, original requirement, latest stored result excerpt and new instruction. No provider state, old approval or tool input is transferred."
+          },
+          "previewToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "number"
+          }
+        }
+      },
+      "FleetMergeSelection": {
+        "type": "object",
+        "required": [
+          "hostId",
+          "workspaceId",
+          "turn",
+          "cleanup"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cleanup": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FleetMergePreview": {
+        "type": "object",
+        "required": [
+          "runId",
+          "workspaceId",
+          "sourceWorkspaceId",
+          "sourceName",
+          "branch",
+          "base",
+          "tree",
+          "turn",
+          "cleanup",
+          "expiresAt",
+          "previewToken",
+          "files",
+          "patch",
+          "truncated"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceWorkspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "base": {
+            "type": "string"
+          },
+          "tree": {
+            "type": "string"
+          },
+          "turn": {
+            "type": "integer"
+          },
+          "cleanup": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "integer"
+          },
+          "previewToken": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "status",
+                "path"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "patch": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LisaCaptureRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "interactive",
+              "full"
+            ],
+            "default": "interactive"
+          },
+          "includeContext": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "LisaCaptureResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "cancelled"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "cancelled": {
+                "const": true
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "file": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mediaType",
+                  "data"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "mediaType": {
+                    "const": "image/png"
+                  },
+                  "data": {
+                    "type": "string",
+                    "contentEncoding": "base64"
+                  },
+                  "context": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "status"
+                    ],
+                    "properties": {
+                      "status": {
+                        "enum": [
+                          "ready",
+                          "permission_required",
+                          "unavailable"
+                        ]
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 32768
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

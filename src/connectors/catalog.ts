@@ -76,6 +76,16 @@ export const CONNECTOR_CATALOG = [
     },
   },
   {
+    id: "t3",
+    name: "T3 Code",
+    access: "read",
+    authModes: ["login"],
+    example: {
+      en: "List recent threads in my selected T3 projects.",
+      "zh-CN": "查看我选定的 T3 项目最近的线程。",
+    },
+  },
+  {
     id: "feishu",
     name: "Feishu",
     access: "read",

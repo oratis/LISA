@@ -15,6 +15,8 @@ function fixture() {
     root = path.join(dir, "project");
   fs.mkdirSync(root);
   let events!: ClaudeEvents;
+  const decisions: { id: string; allow: boolean }[] = [];
+  let throwAfterDecision = false;
   const runner: ClaudeRunner = {
     reason: () => null,
     start(_, e) {
@@ -22,6 +24,8 @@ function fixture() {
       return {
         send() {},
         decide(id, allow) {
+          decisions.push({ id, allow });
+          if (throwAfterDecision) throw new Error("lost adapter reply");
           e.approval(null, { id, outcome: allow ? "allowed" : "denied" });
         },
         cancel() {
@@ -58,6 +62,10 @@ function fixture() {
     body,
     id,
     events: () => events,
+    decisions,
+    uncertain: () => {
+      throwAfterDecision = true;
+    },
     page: (after = 0, limit = 100) =>
       svc.readViewer(viewer, `${VIEW_API}/runs/${id}/events?after=${after}&limit=${limit}`),
     async close() {
@@ -203,7 +211,7 @@ test("viewer reconnect pages two turns without replay and survives restart, prun
   }
 });
 
-test("viewer route allow-list accepts only two canonical GET endpoints", () => {
+test("viewer route allow-list limits reads and the separately authorized decision endpoint", () => {
   const id = crypto.randomUUID(),
     base = `${VIEW_API}/runs/${id}`;
   for (const route of [VIEW_API + "/runs", base + "/events", base + "/events?after=0&limit=100"]) {
@@ -222,4 +230,185 @@ test("viewer route allow-list accepts only two canonical GET endpoints", () => {
     HOST_API + "/runs",
   ])
     assert.equal(fleetViewRoute("GET", route), false, route);
+});
+
+test("Pocket approval requires a separate grant, a live controller and an exact current preview", async () => {
+  const f = fixture();
+  try {
+    const route = `${VIEW_API}/runs/${f.id}/decisions`;
+    assert.equal(fleetViewRoute("POST", route), true);
+    for (const suffix of [
+      "/messages",
+      "/cancel",
+      "/handoff",
+      "/decisions?allow=true",
+      "/decisions/",
+      "/events",
+    ])
+      assert.equal(fleetViewRoute("POST", `${VIEW_API}/runs/${f.id}${suffix}`), false);
+    const approval = {
+      id: crypto.randomUUID(),
+      tool: "Edit",
+      input: { file_path: path.join(f.root, "a.txt"), old_string: "old", new_string: "new" },
+      expiresAt: Date.now() + 60_000,
+    };
+    f.events().approval(approval);
+    const grant = () => f.peer;
+    const page = () => f.svc.readViewer(f.viewer, `${VIEW_API}/runs/${f.id}/events`, grant);
+    f.svc.share(f.viewer, f.id, true);
+    assert.ok(!JSON.stringify(page()).includes('"preview"'));
+    const invalid = {
+      operationId: crypto.randomUUID(),
+      approvalId: approval.id,
+      digest: "0".repeat(64),
+      expiresAt: approval.expiresAt,
+      allow: true,
+    };
+    assert.throws(() => f.svc.decideViewer(f.viewer, route, invalid, grant), /approval_denied/);
+    f.svc.share(f.viewer, f.id, true, true);
+    const preview = page();
+    assert.ok("run" in preview && preview.run.approval);
+    assert.equal(preview.run.capabilities.approve, true);
+    assert.deepEqual(JSON.parse(preview.run.approval.preview!), approval.input);
+    const body = { ...invalid, digest: preview.run.approval.digest };
+    for (const changed of [
+      { digest: "0".repeat(64) },
+      { approvalId: crypto.randomUUID() },
+      { expiresAt: approval.expiresAt + 1 },
+    ])
+      assert.throws(
+        () => f.svc.decideViewer(f.viewer, route, { ...body, ...changed }, grant),
+        /stale_approval/,
+      );
+    for (const peer of [
+      undefined,
+      { ...f.peer, control: false },
+      { ...f.peer, workspaces: [] },
+      { ...f.peer, deviceId: "wrong" },
+    ]) {
+      assert.throws(() => f.svc.decideViewer(f.viewer, route, body, () => peer), /approval_denied/);
+      const hidden = f.svc.readViewer(f.viewer, `${VIEW_API}/runs/${f.id}/events`, () => peer);
+      assert.ok("run" in hidden && !hidden.run.capabilities.approve);
+      assert.ok(!JSON.stringify(hidden).includes('"preview"'));
+    }
+    assert.throws(
+      () => f.svc.decideViewer({ ...f.viewer, pairingId: "new" }, route, body, grant),
+      /run_not_found/,
+    );
+    f.svc.share(f.viewer, f.id, true); // revoking approval retains only the read grant
+    assert.throws(() => f.svc.decideViewer(f.viewer, route, body, grant), /approval_denied/);
+    f.svc.share(f.viewer, f.id, true, true);
+    f.events().approval({ ...approval, input: { ...approval.input, new_string: "different" } });
+    assert.throws(() => f.svc.decideViewer(f.viewer, route, body, grant), /stale_approval/);
+    f.events().approval({ ...approval, expiresAt: Date.now() - 1 });
+    assert.throws(() => f.svc.decideViewer(f.viewer, route, body, grant), /stale_approval/);
+    f.events().approval({ ...approval, input: { content: "x".repeat(40_000) } });
+    assert.ok(
+      !JSON.stringify(page()).includes('"preview"'),
+      "large requests must be reviewed on the controller",
+    );
+    assert.equal(f.decisions.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("Pocket decisions survive lost replies and never approve a later request on retry", async () => {
+  for (const uncertain of [false, true]) {
+    const f = fixture();
+    try {
+      f.svc.share(f.viewer, f.id, true, true);
+      const approval = {
+        id: crypto.randomUUID(),
+        tool: "Read",
+        input: { file_path: path.join(f.root, "a.txt") },
+        expiresAt: Date.now() + 60_000,
+      };
+      f.events().approval(approval);
+      const grant = () => f.peer,
+        route = `${VIEW_API}/runs/${f.id}/decisions`;
+      const page = f.svc.readViewer(f.viewer, `${VIEW_API}/runs/${f.id}/events`, grant);
+      assert.ok("run" in page);
+      const body = {
+        operationId: crypto.randomUUID(),
+        approvalId: approval.id,
+        digest: page.run.approval!.digest,
+        expiresAt: approval.expiresAt,
+        allow: true,
+      };
+      if (uncertain) f.uncertain();
+      const first = f.svc.decideViewer(f.viewer, route, body, grant);
+      assert.equal(first.status, uncertain ? "unknown" : "accepted");
+      assert.throws(
+        () =>
+          f.svc.decideViewer(f.viewer, route, { ...body, operationId: crypto.randomUUID() }, grant),
+        /stale_approval/,
+      );
+      assert.throws(
+        () =>
+          f.svc.mutate(
+            f.peer,
+            `${HOST_API}/runs/${f.id}/decisions`,
+            f.body({ approvalId: approval.id, allow: false }),
+          ),
+        /stale_approval/,
+      );
+      f.events().approval({ ...approval, id: crypto.randomUUID() });
+      assert.deepEqual(f.svc.decideViewer(f.viewer, route, body, grant), first);
+      assert.throws(
+        () => f.svc.decideViewer(f.viewer, route, { ...body, allow: false }, grant),
+        /operation_conflict/,
+      );
+      assert.equal(f.decisions.length, 1);
+      await f.svc.shutdown();
+      const reopened = new FleetHostService(f.home, f.runner);
+      try {
+        assert.deepEqual(reopened.decideViewer(f.viewer, route, body, grant), first);
+        reopened.share(f.viewer, f.id, false);
+        assert.throws(() => reopened.decideViewer(f.viewer, route, body, grant), /run_not_found/);
+      } finally {
+        await reopened.shutdown();
+      }
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test("Pocket cannot approve after the granted workspace was replaced", async () => {
+  const f = fixture();
+  try {
+    f.svc.share(f.viewer, f.id, true, true);
+    const approval = {
+      id: crypto.randomUUID(),
+      tool: "Write",
+      input: { content: "new" },
+      expiresAt: Date.now() + 60_000,
+    };
+    f.events().approval(approval);
+    const grant = () => f.peer;
+    const page = f.svc.readViewer(f.viewer, `${VIEW_API}/runs/${f.id}/events`, grant);
+    assert.ok("run" in page);
+    fs.renameSync(f.root, f.root + "-previous");
+    fs.mkdirSync(f.root);
+    assert.throws(
+      () =>
+        f.svc.decideViewer(
+          f.viewer,
+          `${VIEW_API}/runs/${f.id}/decisions`,
+          {
+            operationId: crypto.randomUUID(),
+            approvalId: approval.id,
+            digest: page.run.approval!.digest,
+            expiresAt: approval.expiresAt,
+            allow: true,
+          },
+          grant,
+        ),
+      /workspace_replaced/,
+    );
+    assert.equal(f.decisions.length, 0);
+  } finally {
+    await f.close();
+  }
 });

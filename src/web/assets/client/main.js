@@ -252,6 +252,15 @@ const LISA_STRINGS = {
     'session.invalidName': 'Enter a name of 1–120 characters.',
     'session.renameFailed': 'Could not save the name. Please try again.',
     'attachment.preview': 'Preview {name}',
+    'capture.withContext': 'Screenshot + front-window text',
+    'capture.review': 'Review window context',
+    'capture.include': 'Include this window context when sending',
+    'capture.explain': 'Review the front window captured before the screenshot. It may differ from the selected region. Coordinates are screen points, not image pixels. Uncheck to send the image only.',
+    'capture.permission': 'Window context unavailable: Accessibility permission is not granted. You can still send the image alone.',
+    'capture.unavailable': 'Window context unavailable. You can still send the image alone.',
+    'capture.included': 'Window context included',
+    'capture.excluded': 'Image only',
+
     'attachment.remove': 'Remove {name}',
     'attachment.close': 'Close preview',
 
@@ -284,6 +293,18 @@ const LISA_STRINGS = {
     "workspace.build": "Install Xcode Command Line Tools to build the local EventKit reader.",
     "workspace.unavailable": "Apple Calendar and Reminders are not available in this build of LISA.",
     "connector.feishuAdd": "Add document",
+    "connector.t3Detail": "Connect your configured T3 environment, choose Read only, then select projects. LISA reads project/thread lists only. Disconnect clears the local grant; revoke the upstream session in T3 Settings → Sharing & access.",
+    "connector.t3Authorize": "Choose Read only in T3. Auto/full access is rejected. Never approve writes for this connector.",
+    "connector.auth.t3": "Sign in to T3 (read only)",
+    "connector.openT3": "Open T3 authorization",
+    "connector.choose.t3": "Select T3 projects",
+    "connector.scope.t3": "Only thread-list metadata for selected projects. No thread contents, other environments or writes.",
+    "connector.error.t3_endpoint_not_configured": "Set LISA_T3_MCP_URL on this Mac to the environment’s Copy MCP URL: HTTPS or HTTP loopback ending in /mcp.",
+    "connector.error.t3_reauthorization_required": "T3 sign-in expired or was revoked. Sign in again.",
+    "connector.error.t3_read_scope_required": "T3 granted wider access. Sign in again and choose Read only; revoke the unwanted grant in T3 Settings → Sharing & access.",
+    "connector.error.t3_invalid_response": "T3 returned unsupported or inconsistent data.",
+    "connector.error.t3_project_unavailable": "A selected T3 project is unavailable or outside the bounded discovery window.",
+    "connector.error.t3_resource_mismatch": "T3 returned data outside the selected project. Nothing was forwarded.",
     "connector.feishuName": "Feishu",
     "connector.feishuDetail": "Feishu grants read access to your upgraded documents. LISA reads only documents you add here. No drive search, wiki, sheets, attachments or writes. Connecting continues the original task.",
     "connector.auth.feishu": "Sign in to Feishu (read only)",
@@ -714,6 +735,15 @@ const LISA_STRINGS = {
     'session.invalidName': '请输入 1–120 个字符的名称。',
     'session.renameFailed': '名称保存失败，请重试。',
     'attachment.preview': '预览 {name}',
+    'capture.withContext': '截图并采集前台窗口文字',
+    'capture.review': '查看窗口上下文',
+    'capture.include': '发送时附带此窗口上下文',
+    'capture.explain': '请检查截图前的前台窗口信息，它可能与所选区域不同。坐标为屏幕点，非图片像素。取消勾选即可只发图片。',
+    'capture.permission': '未获辅助功能权限，无法采集窗口上下文；仍可只发送图片。',
+    'capture.unavailable': '窗口上下文不可用；仍可只发送图片。',
+    'capture.included': '将附带窗口上下文',
+    'capture.excluded': '仅图片',
+
     'attachment.remove': '移除 {name}',
     'attachment.close': '关闭预览',
 
@@ -746,6 +776,18 @@ const LISA_STRINGS = {
     "workspace.build": "请安装 Xcode 命令行工具以构建本机 EventKit 读取程序。",
     "workspace.unavailable": "此版本的 LISA 不支持 Apple 日历和提醒事项。",
     "connector.feishuAdd": "添加文档",
+    "connector.t3Detail": "连接本机配置的 T3 环境，选择 Read only，再勾选项目。LISA 只读取项目和线程列表。断开会清除本机授权；请在 T3「Settings → Sharing & access」撤销上游会话。",
+    "connector.t3Authorize": "请在 T3 选择 Read only。Auto 或完整权限会被拒绝，此连接器不需要写入权限。",
+    "connector.auth.t3": "登录 T3（只读）",
+    "connector.openT3": "打开 T3 授权页面",
+    "connector.choose.t3": "选择 T3 项目",
+    "connector.scope.t3": "仅读取所选项目的线程列表摘要，不读取线程正文、其他环境或执行写入。",
+    "connector.error.t3_endpoint_not_configured": "请在本机设置 LISA_T3_MCP_URL，使用 T3 环境的 Copy MCP URL：以 /mcp 结尾的 HTTPS 或本机回环 HTTP 地址。",
+    "connector.error.t3_reauthorization_required": "T3 登录已过期或被撤销，请重新登录。",
+    "connector.error.t3_read_scope_required": "T3 授予了更宽权限。请重新登录并选择 Read only，同时在 T3「Settings → Sharing & access」撤销不需要的授权。",
+    "connector.error.t3_invalid_response": "T3 返回了不支持或不一致的数据。",
+    "connector.error.t3_project_unavailable": "所选 T3 项目不可用，或超出了有限的项目发现范围。",
+    "connector.error.t3_resource_mismatch": "T3 返回了所选项目以外的数据，未转发任何内容。",
     "connector.feishuName": "飞书",
     "connector.feishuDetail": "飞书授权可读取你有权限的新版文档；LISA 仅读取你在此添加的文档。不搜索云盘，不读取知识库、表格或附件，不修改内容。连接后自动继续原任务。",
     "connector.auth.feishu": "登录飞书，只读连接",
@@ -1077,6 +1119,7 @@ window.lisaAttachImage = function (file) {
     name: file.name || 'screenshot.png',
     mediaType: file.mediaType || 'image/png',
     data: file.data,
+    ...(file.context ? { context: file.context, includeContext: false } : {}),
   });
   renderAttachPreview();
   try { input.focus(); } catch (_) {}
@@ -1126,7 +1169,7 @@ window.addEventListener('message', function (e) {
 // Returns true if an image was attached, false if cancelled/failed.
 // Exposed on window so the native app's global hotkey can invoke it.
 let capturing = false;
-window.lisaCaptureAndAttach = async function (mode) {
+window.lisaCaptureAndAttach = async function (mode, includeContext) {
   if (capturing) return false;
   capturing = true;
   const btn = document.getElementById('plusBtn');
@@ -1135,7 +1178,7 @@ window.lisaCaptureAndAttach = async function (mode) {
     const res = await fetch('/api/vision/capture', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mode: mode || 'interactive' }),
+      body: JSON.stringify({ mode: mode || 'interactive', includeContext: includeContext === true }),
     });
     if (!res.ok) {
       console.warn('[vision] capture failed: HTTP ' + res.status);
@@ -1208,6 +1251,14 @@ function renderAttachPreview() {
     name.className = 'attach-name';
     name.textContent = f.name;
     chip.appendChild(name);
+    if (f.context) {
+      const context = document.createElement('button');
+      context.type = 'button'; context.className = 'capture-context-open';
+      context.textContent = tr(f.includeContext ? 'capture.included' : 'capture.excluded');
+      context.setAttribute('aria-label', tr('capture.review'));
+      context.onclick = () => showCaptureContext(f);
+      chip.appendChild(context);
+    }
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.className = 'attach-rm';
@@ -1224,6 +1275,43 @@ function renderAttachPreview() {
     };
     chip.appendChild(rm);
     attachPreview.appendChild(chip);
+  });
+}
+
+function showCaptureContext(file) {
+  const context = file.context;
+  if (!context) return;
+  const viewer = document.createElement('dialog');
+  viewer.className = 'attachment-viewer capture-context-viewer';
+  viewer.setAttribute('aria-label', tr('capture.review'));
+  const explanation = document.createElement('p');
+  explanation.textContent = tr(context.status === 'ready' ? 'capture.explain' : context.status === 'permission_required' ? 'capture.permission' : 'capture.unavailable');
+  viewer.appendChild(explanation);
+  if (context.status === 'ready' && typeof context.text === 'string') {
+    const preview = document.createElement('pre');
+    preview.textContent = context.text;
+    const label = document.createElement('label'), checkbox = document.createElement('input');
+    checkbox.type = 'checkbox'; checkbox.checked = file.includeContext === true;
+    checkbox.onchange = () => { file.includeContext = checkbox.checked; renderAttachPreview(); };
+    label.append(checkbox, document.createTextNode(tr('capture.include')));
+    viewer.append(preview, label);
+  }
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = tr('attachment.close');
+  close.onclick = () => viewer.close();
+  viewer.appendChild(close);
+  viewer.addEventListener('close', () => viewer.remove());
+  document.body.appendChild(viewer); viewer.showModal();
+}
+// Project only the approved bytes into /chat. Preview-only context never rides
+// along as an extra property, including when the image is sent without text.
+function filesForSend(files) {
+  return files.flatMap(f => {
+    const image = { name: f.name, mediaType: f.mediaType, data: f.data };
+    if (!f.includeContext || !f.context || f.context.status !== 'ready' || typeof f.context.text !== 'string') return [image];
+    const bytes = new TextEncoder().encode(f.context.text);
+    const data = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
+    return [image, { name: f.name + '.context.txt', mediaType: 'text/plain', data }];
   });
 }
 
@@ -1284,6 +1372,11 @@ if (pmAttachEl) {
     closePlusMenu();
     try { fileInput.click(); } catch (err) { console.error('[attach] fileInput.click failed:', err); }
   });
+}
+const pmContextEl = document.getElementById('pmShotContext');
+if (pmContextEl) {
+  pmContextEl.textContent = tr('capture.withContext');
+  pmContextEl.addEventListener('click', () => { closePlusMenu(); void window.lisaCaptureAndAttach('interactive', true); });
 }
 const pmShotEl = document.getElementById('pmShot');
 if (pmShotEl) {
@@ -3311,7 +3404,7 @@ async function send(message) {
     const names = pendingFiles.map(f => f.name).join(', ');
     el('span', 'msg attach-label', '📎 ' + names);
   }
-  const filesToSend = [...pendingFiles];
+  const filesToSend = filesForSend(pendingFiles);
   pendingFiles = [];
   renderAttachPreview();
   maybeOfferKbIngest(message);

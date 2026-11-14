@@ -60,6 +60,13 @@ struct RoomView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.l) {
                         roomHeader
+                        if app.connectionMode == .mac { SavedMacPicker() }
+                        if app.config.remoteMac != nil {
+                            NavigationLink { FleetPocketView() } label: {
+                                Label("Shared Fleet tasks", systemImage: "list.bullet.rectangle")
+                            }
+                            .accessibilityIdentifier("room.fleet")
+                        }
                         if portraitSpread {
                             sceneColumn
                             HStack(alignment: .top, spacing: 24) {

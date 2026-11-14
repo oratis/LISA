@@ -1,6 +1,6 @@
-# Lisa 0.32.0 — Follow the work, review each turn
+# Lisa 0.32.0 — Review, approve and finish Fleet work
 
-Fleet tasks now keep a timeline that reconnecting controllers and explicitly authorized Pocket viewers can catch up on. Review each turn's file changes in an isolated worktree, then preview exactly what a second agent will receive before handing the work over. This release also brings steadier Mac connections, renewable and revocable account sessions, selected Feishu document reads, and the source for Pocket's refreshed iPhone and iPad Room.
+Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.
 
 Status: release candidate. Publication is pending the [remaining acceptance gates](RELEASE_CHECKLIST_v0.32.0.md).
 
@@ -8,8 +8,13 @@ Status: release candidate. Publication is pending the [remaining acceptance gate
 
 - The executing Mac records task events and operation receipts together. Retrying a request cannot start the work twice; reconnecting clients page from their last sequence number. Missing or expired history is marked rather than silently hidden.
 - Task recovery releases an execution slot only after checking the old process identity. Approval outcomes remain visible after the request closes; revocation removes access on the next read and closes live device streams.
-- The owner can share a specific task with a v2-paired Pocket, including a finished task. Pocket receives the task state, agent, turn summaries and approval outcomes, with no source-code diff, tool arguments or approval controls. Revocation and re-pairing invalidate the old grant.
+- The owner can share a specific task with a v2-paired Pocket, including a finished task. Pocket receives the task state, agent, turn summaries and approval outcomes, with no source-code diff or tool arguments under the default read-only grant. A separate approval grant is described below. Revocation and re-pairing invalidate the old grant.
 - Pocket keeps its last received timeline in memory across temporary disconnections, catches up on reconnect, and clears it when the account, Mac or authorization changes. This entry requires the new Pocket binary; App Store 1.3 does not include it.
+
+## Pocket multi-Mac and task approvals
+
+- Pocket saves up to 32 Macs with separate credentials and pinned identities. Switching replaces the active connection and clears the old task view; account changes remove all account-based Macs. Single-Mac upgrades wait safely if Keychain is locked.
+- Pocket task shares remain read-only by default. A separate per-task approval grant enables complete tool-input preview and exact-request Allow/Deny decisions. The host rechecks expiry, controller authority and remote-control policy; pairing-scoped receipts and one-decision-per-request guards prevent repeated execution after lost replies. Room and Fleet include the saved-Mac switcher.
 
 ## Per-turn checkpoints and file diffs
 
@@ -17,15 +22,25 @@ Status: release candidate. Publication is pending the [remaining acceptance gate
 - Fleet captures the start and end of each turn in a private Git store without changing the user's index or branch. Cancellation records partial changes; restart marks unfinished boundaries as interrupted.
 - Inspect added, changed and deleted files, with bounded text diffs and binary-change indicators. Concurrent workspace changes are labelled: a diff shows the workspace's change, not proof that the agent made every edit.
 - Checkpoints cover the first 100 turns, at most 2,000 entries / 16 MiB per snapshot and 64 KiB per displayed diff. Unsupported or oversized snapshots show an unavailable state without stopping the task.
-- Owners can delete a finished task's checkpoint objects. This clears displayed diffs but retains workspace files, task history and operation receipts. Rollback and automatic merging are not included.
+- Owners can delete a finished task's checkpoint objects. This clears displayed diffs but retains workspace files, task history and operation receipts. Selected-file rollback now has a signed preview and explicit confirmation, with current-content, inode, permission and workspace checks. It preserves the Git index and unrelated files; receipts prevent retrying over later edits.
+
+## Confirmed merge, cleanup and storage limits
+
+- Preview a finished task's selected snapshot as one commit into its original source branch. Both workspace grants, original branch/base, clean source checkout and unchanged selected snapshot are checked again at confirmation. Hooks, filters and signing are disabled during controlled preparation and checkout.
+- Optional worktree removal is a separate checkbox bound to the preview. It only removes an owned, unchanged worktree and refuses ignored files; source files and historical task diffs remain. Existing worktrees without recorded source provenance cannot use automatic merge.
+- The default cross-task checkpoint quota is 512 MiB. Owners can adjust it and optionally retain only a chosen number of days of ended-task checkpoints. Active work is preserved.
+- Full ledger cleanup previews what it will erase, rotates the operation generation, clears task contents/shares/receipts and snapshots, then compacts SQLite/WAL. Old retries cannot recreate deleted tasks. Pairings and registered source workspaces remain.
+- Uncertain filesystem results reserve the host until the local owner verifies them. Receipts retain proposed merge commits where available; retries query the original outcome instead of applying changes again.
 
 ## Capability-aware controls and confirmed agent handoffs
 
 - Each task declares which observe, append, cancel, approve, resume and handoff actions the current device can use. The host checks the grant, adapter, task state and live process again when an action is submitted. Neither adapter claims to resume an orphaned process.
 - Authorized external Claude/Codex sessions can appear beside managed tasks as metadata-only observations, without gaining controls or exposing their transcripts.
 - Select a finished task's checkpointed turn and another agent, add optional verification notes, then preview the complete request, result and file diffs. Confirmation is bound to that exact packet and expires after ten minutes. Changed content, cleanup, revocation or a backend restart requires a fresh preview.
-- Claude keeps its independently approved Read/Edit/Write flow. Codex runs a single read-only review of the confirmed packet in an empty macOS sandbox, using the host's installed CLI and OpenAI API configuration. It does not browse the source checkout or run validation commands. Packets are limited to 20 files / 96 KiB; oversized packets are rejected.
+- Claude keeps its independently approved Read/Edit/Write flow. Codex runs a single read-only review of the confirmed packet in an empty macOS sandbox, using the host's installed CLI and OpenAI API configuration. Packet mode does not browse the source checkout or run validation commands. A separate Codex workspace mode provides List/Read/Edit/Write through Fleet approvals with file identity/content rechecks, safe path limits and follow-up turns. The native process remains isolated from the project; existing packet mode is preserved. Packets are limited to 20 files / 96 KiB; oversized packets are rejected.
 - Handoff confirmation records the new task, linked events and receipt atomically. Retrying the same operation returns the original task. Old approvals never carry into the receiving session.
+
+- Uncertain tasks can now continue through a new session after the old process has been verified stopped. A new instruction and signed context preview are required; no old tool call or approval is replayed, and the original outcome remains unverified.
 
 Setup, retention and operating limits are in the [Fleet guide](FLEET.md).
 
@@ -40,7 +55,12 @@ Setup, retention and operating limits are in the [Fleet guide](FLEET.md).
 
 ## Selected Feishu documents
 
-Feishu joins the eighteen existing read-only source connectors. A local connection card resumes the original request after OAuth and selection of docx links or IDs. Reads are scoped to the selected documents, recheck identity and document version, and limit responses to 1 MB / 30,000 characters. Disconnect revokes credentials where supported. This requires a locally configured confidential Feishu app and is unavailable to Cloud and remote devices. Automated OAuth/read regressions pass; a real-account document-read acceptance remains outstanding.
+Feishu adds selected document reads alongside the existing sources and the new T3 connector. A local connection card resumes the original request after OAuth and selection of docx links or IDs. Reads are scoped to the selected documents, recheck identity and document version, and limit responses to 1 MB / 30,000 characters. Disconnect revokes credentials where supported. This requires a locally configured confidential Feishu app and is unavailable to Cloud and remote devices. Automated OAuth/read regressions pass; a real-account document-read acceptance remains outstanding.
+
+## Selected T3 projects and optional screenshot context
+
+- The twentieth read-only connector reads project lists and thread-list metadata for explicitly selected T3 projects. Configure the environment's MCP URL, sign in with **Read only**, then choose projects. OAuth uses PKCE and issuer binding; every read rechecks the environment and scope before returning buffered data. No thread bodies, other environments or writes are exposed. Local disconnect removes the credential; T3's upstream session must be revoked in **Settings → Sharing & access**. Expired grants require sign-in again.
+- **Screenshot + front-window text** (Mac `⌃⌥⇧S`) optionally collects window title, bounded accessibility text and screen coordinates before capture. Review the exact text in the attachment preview; it is excluded until explicitly checked. Missing Accessibility permission preserves image-only capture, and the existing `⌃⌥S` stays image-only. Window context may differ from the selected image region. The signed Mac bundle includes its helper; CLI/npm needs Swift for first use.
 
 ## Pocket Room and iPad refresh
 
@@ -52,8 +72,8 @@ Pocket is published separately from this Mac/CLI version. The public App Store v
 
 - Replace Lisa.app and restart its background service (or restart the Mac) to load the bundled backend. CLI users can run `npm install -g @oratis/lisa@0.32.0` or upgrade the Homebrew formula after it is updated.
 - Existing workspaces continue to run without checkpoints until a new isolated workspace is created and granted. Older clients default to Claude; historical tasks without full saved requests cannot generate a handoff packet.
-- The private Fleet ledger retains requests/results for the first 100 turns and confirmed handoff packets. Checkpoint cleanup does not erase those records. Full ledger cleanup, cross-task storage quotas, automatic worktree removal, rollback and auto-merge remain future work.
-- Pocket currently saves one Mac profile alongside Cloud. Multi-Mac profiles and Fleet approval authority are separate future work. Cloud/Mac histories and credentials do not automatically synchronize.
+- The private Fleet ledger retains requests/results for the first 100 turns and confirmed handoff packets. Checkpoint cleanup does not erase those records. Full cleanup now erases those records, task shares and receipts, deletes snapshots and compacts SQLite/WAL. It rotates the operation generation so old requests cannot recreate tasks. Checkpoint quota defaults to 512 MiB across tasks; optional retention clears only old ended-task checkpoints. Finished tasks can preview and confirm one commit into the unchanged clean source branch, with separate source-workspace authorization and optional cleanup of the owned worktree. Cleanup retains task history and refuses ignored files or changed contents. Uncertain filesystem operations reserve the host until the owner verifies them; retries never repeat the write.
+- Pocket saves up to 32 Macs with isolated credentials and pins, explicit switching and safe single-Mac migration. Account changes remove all account-based Macs; direct LAN/QR profiles remain separate. Cloud/Mac histories and credentials do not automatically synchronize.
 - Apple Calendar and Reminders still require a Swift toolchain and are not available in the bundled Mac app. Hosted autonomous tasks remain off by default.
 - Simulator and local integration tests do not establish physical iPhone Wi-Fi/cellular switching, Mac sleep/wake on a remote machine, or a provider's live inference behavior. Current evidence and outstanding release acceptance are recorded in the [checklist](RELEASE_CHECKLIST_v0.32.0.md).
 

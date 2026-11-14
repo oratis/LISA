@@ -1606,6 +1606,269 @@
           }
         }
       }
+    },
+    "Couldn't open this saved Mac. Check your account and unlock your device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开已保存的 Mac。请检查账户并解锁设备。"
+          }
+        }
+      }
+    },
+    "Couldn't remove this connection securely. Unlock your device and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法安全移除此连接。请解锁设备后重试。"
+          }
+        }
+      }
+    },
+    "Couldn't save this Mac. Unlock your device, or remove a saved Mac if you have 32 connections.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存此 Mac。请解锁设备；如果已有 32 个连接，请先移除一个。"
+          }
+        }
+      }
+    },
+    "Saved Macs": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存的 Mac"
+          }
+        }
+      }
+    },
+    "Switch Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换 Mac"
+          }
+        }
+      }
+    },
+    "Forget %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "忘记 %@"
+          }
+        }
+      }
+    },
+    "Forget this saved Mac?": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "忘记此 Mac？"
+          }
+        }
+      }
+    },
+    "Forget": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "忘记"
+          }
+        }
+      }
+    },
+    "Removes this Mac's saved connection from Pocket. Other Macs stay saved. To revoke this phone's access, also disconnect it on the Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从 Pocket 移除此 Mac 的连接，保留其他 Mac。如需撤销此手机的访问权限，请同时在 Mac 上断开此手机。"
+          }
+        }
+      }
+    },
+    "Approval available": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可审批"
+          }
+        }
+      }
+    },
+    "Decision sent from Pocket": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已从 Pocket 发送审批决定"
+          }
+        }
+      }
+    },
+    "Tasks shared with this Pocket are read only unless the Mac separately grants approval access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共享给此 Pocket 的任务默认为只读。审批需要在 Mac 上单独授权。"
+          }
+        }
+      }
+    },
+    "Review request": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查审批请求"
+          }
+        }
+      }
+    },
+    "Expires %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有效期至 %@"
+          }
+        }
+      }
+    },
+    "Review the complete tool input before allowing or denying this request.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请检查完整的工具输入，然后允许或拒绝此请求。"
+          }
+        }
+      }
+    },
+    "Allow this request": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许此请求"
+          }
+        }
+      }
+    },
+    "This request changed, expired, or has already been answered. Close this preview and refresh the task.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求已变更、过期或已处理。请关闭预览并刷新任务。"
+          }
+        }
+      }
+    },
+    "Decision sent. Waiting for the Mac to update.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "决定已发送，正在等待 Mac 更新。"
+          }
+        }
+      }
+    },
+    "The outcome is unknown. Check the task on the Mac; this decision will not be sent again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "结果未知。请在 Mac 上检查任务，此决定不会再次发送。"
+          }
+        }
+      }
+    },
+    "This approval is no longer available. Refresh the task on the Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此审批已不可用，请在 Mac 上刷新任务。"
+          }
+        }
+      }
+    },
+    "The reply was lost. Retry the same decision to retrieve its receipt.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "响应丢失。请重试相同决定以获取回执。"
+          }
+        }
+      }
+    },
+    "A new continuation session was started": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已创建新的续接会话"
+          }
+        }
+      }
+    },
+    "A checkpoint file was restored": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已回退检查点中的文件"
+          }
+        }
+      }
+    },
+    "A workspace was merged into its source branch": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区已合并到原分支"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

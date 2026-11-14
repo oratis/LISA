@@ -1,6 +1,6 @@
 # v0.32.0 release checklist
 
-Updated November 14, 2026. Source baseline: `70fb2cb1` (PR #508 merged), following v0.31.0. This checklist separates implemented work, verified behavior and channel publication; an unchecked item is not a passing result.
+Updated November 15, 2026. Baseline: `01563b84` (PR #510 merged), followed by the complete-extension candidate. This checklist separates implemented work, verified behavior and channel publication; an unchecked item is not a passing result.
 
 ## Three-phase scope
 
@@ -11,7 +11,7 @@ Updated November 14, 2026. Source baseline: `70fb2cb1` (PR #508 merged), followi
 - [x] Preserve the merged Pocket Room/iPad refresh and structured-error handling (#509, #508).
 - [x] Restore v0.30.2 release notes, document all changes since v0.31.0, update both READMEs and correct stale publishing instructions.
 
-## Validation
+## Baseline validation (before the complete-extension candidate)
 
 - [x] Full Node suite: 4,341 passed, zero skipped/failed, including the installed Codex CLI with a deterministic local Responses fixture. No live paid inference is claimed.
 - [x] API contract, server/client/E2E type checks and backend build.
@@ -37,8 +37,21 @@ Updated November 14, 2026. Source baseline: `70fb2cb1` (PR #508 merged), followi
 - [ ] Cloud Run backend and relay published and smoke-tested, with existing deployment configuration retained.
 - [ ] Website rebuilt after the GitHub release exists, deployed and checked.
 - [ ] Pocket 1.4 uploaded and processed in TestFlight.
-- [ ] Pocket App Store submission/approval, if selected for this release. Public version at the audit was 1.3, released November 7, 2026.
+- [ ] Pocket App Store submission (explicitly requested); Apple approval remains a separate external outcome. Public version at the audit was 1.3, released November 7, 2026.
 
-## Separate follow-up proposals
+## Complete-extension scope and final validation
 
-These were explicitly deferred by the three-phase design and are not represented as complete: Pocket multi-Mac profiles and Fleet approval grants; file rollback, auto-merge and automatic worktree removal; cross-task storage quotas and full ledger/receipt cleanup; orphan-process resume; Codex source-project editing/browsing; an optional T3 read-only connector; optional screenshot window/accessibility context. Scope confirmation is pending before expanding this release to include them.
+The owner explicitly included the deferred proposals on November 14. Implementation and slice-level evidence are tracked in the [complete release execution log](EXECUTION_FLEET_COMPLETE_RELEASE_2026-11-14.md).
+
+- [x] Pocket multi-Mac profiles and independent per-task approval grants.
+- [x] Selected-file rollback, confirmed source-branch merge and optional owned-worktree removal.
+- [x] Cross-task checkpoint quota/retention and full ledger/receipt cleanup.
+- [x] New-session continuation after verifying the previous process stopped; no orphan-process reattachment or uncertain tool replay.
+- [x] Codex workspace List/Read/Edit/Write with fresh Fleet approvals, alongside existing packet review.
+- [x] Authenticated T3 selected-project/thread-list connector with local disconnect and upstream revocation detection.
+- [x] Optional screenshot window/accessibility context, previewed and separately selected before Send.
+- [x] Final local validation: 4,376 Node tests, 124 Chromium tests, 145 iPhone logic tests (one existing opt-in relay skip), three iPhone UI tests, 11 Mac tests and four relay tests passed; types/contracts/build/docs/format pass, lint has zero errors / 72 existing warnings. Focused review found and fixed a multi-backend cleanup race with a red-to-green regression.
+- [ ] CI and review on the submitted final candidate.
+- [ ] Real T3 authorization and selected-project read; the environment URL is still needed.
+
+Earlier baseline checks above are retained as evidence, not presented as full validation of these new changes. Physical iPhone/second-Mac and real-account acceptance remain unchecked until actually observed.

@@ -15,6 +15,9 @@
   const messages = {
     sign_in_to_lisa_on_this_mac: "请先在这台 Mac 的 LISA 登录。",
     workspace_grant_required: "请先在 mini 上核对验证码并授权工作区。",
+    operation_generation_changed: "执行机已清理账本，旧操作不会重放。请刷新机器后重新发起任务。",
+    cleanup_preview_changed: "账本在预览后发生了变化，请重新预览清理。",
+    ledger_compaction_pending: "任务记录已删除，但存储压缩尚未完成。请关闭其他后端后重新执行清理。",
     host_busy: "这台机器已有活动任务。",
     claude_api_key_required: "在 mini 的 LISA 后端配置 ANTHROPIC_API_KEY 后重启。",
     claude_not_installed: "mini 未检测到 Claude Code。",
@@ -29,7 +32,29 @@
     codex_not_installed: "执行机未安装 Codex CLI。",
     codex_native_binary_required: "执行机需要独立的原生 Codex CLI。",
     codex_api_key_required: "请在执行机配置 OPENAI_API_KEY 后启动 Codex 复核。",
+    continuation_unavailable: "请先在执行机核实旧进程已退出，并确认原始上下文仍保留。",
+    continuation_preview_changed: "续接上下文或指令已变化，请重新预览。",
+    continuation_too_large: "续接上下文超过 96 KiB，请整理后新建任务。",
     finish_source_first: "请先结束原任务，再预览交接。",
+    merge_source_changed: "原分支或提交已变化，请在执行机检查后手动合并。",
+    merge_source_dirty: "原仓库有未提交改动，请先在执行机处理。",
+    merge_hidden_index: "原仓库启用了隐藏索引项或稀疏检出，请先恢复完整工作区。",
+    merge_path_collision: "原仓库中有会被覆盖的忽略文件，已拒绝合并。",
+    merge_worktree_changed: "隔离工作区已变化，请选择与当前文件一致的检查点。",
+    merge_preview_changed: "合并内容或条件已变化，请重新预览。",
+    merge_origin_unavailable: "此工作区没有可验证的创建来源，不能自动合并。",
+    merge_no_changes: "此检查点与原分支没有差异。",
+    source_control_denied: "自动合并还需执行机所有者授权原仓库的控制权限。",
+    worktree_contains_ignored_files: "隔离工作区包含检查点未收录的忽略文件。请保留工作区，或在执行机手动处理这些文件。",
+    workspace_archived: "此工作区已经清理，仍可查看历史任务与 diff。",
+    maintenance_pending: "上次文件操作的结果不确定，请执行机所有者核对后解除保留。",
+    maintenance_verification_required: "文件操作尚未结束，或尚未确认核对结果。",
+    restore_preview_changed: "文件、权限或目录身份已变化，请重新预览回退。",
+    restore_file_changed: "文件发生了并发改动，请检查内容后重新预览。",
+    unsafe_restore_path: "回退只支持原目录下的普通文件，不支持符号链接、硬链接或特殊文件。",
+    restore_regular_file_required: "检查点中的此项不是普通文件，请在执行机上手动处理。",
+    restore_file_limit: "文件超过 16 MiB 回退上限。",
+    preview_expired: "预览已过期，请重新预览。",
     handoff_context_missing: "此历史任务未保存完整要求，不能生成交接包。",
     handoff_too_large: "本轮交接内容超过上限（20 个文件 / 96 KiB），请选择范围更小的一轮。",
     handoff_preview_changed: "交接内容已变化，请重新预览并确认。",
@@ -106,8 +131,16 @@
             ? "执行机后端重启后停止了上一后端留下的 Claude 进程，已释放执行位。结果待核实。"
             : "执行机后端重启时旧 Claude 进程已退出，已释放执行位。结果待核实。",
         ];
+      case "continuation_started":
+        return ["已从核实退出的任务创建独立续接会话；旧结果仍未核实。"];
       case "handoff_started":
         return ["第 " + e.turn + " 轮已交接给 " + (e.agent || "新 agent") + "；新任务独立授权。"];
+      case "approval_decided":
+        return ["Pocket 已发送审批决定 · " + e.outcome];
+      case "worktree_merged":
+        return ["工作区已合并 · " + e.commit + (e.cleaned ? " · 隔离工作区已清理" : " · 保留隔离工作区")];
+      case "file_restored":
+        return ["已将 " + e.target + " 回退到第 " + e.turn + " 轮开始时的内容。"];
       case "checkpoints_cleared":
         return ["执行机所有者已清理此任务的改动检查点。"];
       case "history_started":
@@ -119,7 +152,10 @@
   // Cursors are kept per account, Mac and task, so one Mac's history never lands on another.
   const timelines = new Map();
   let changesKey = "", changesSeq = -1, changesVersion = 0;
+  function clearRestore() { $("restore").replaceChildren(); $("restore").hidden = true; }
+  function clearMerge() { $("merge").replaceChildren(); $("merge").hidden = true; }
   function clearChanges() {
+    clearRestore(); clearMerge();
     changesVersion++;
     changesKey = ""; changesSeq = -1;
     $("changes").hidden = true;
@@ -294,12 +330,12 @@
     if (v !== version) return;
     cap = c;
     $("agent").replaceChildren(...(c.agents || [{ id: "claude-code" }]).map((a) => {
-      const option = make("option", a.id === "codex" ? "Codex · 只读交接包复核" : "Claude Code");
+      const option = make("option", a.id === "codex" ? "Codex · 只读交接包复核" : a.id === "codex-workspace" ? "Codex · 目录读写（逐次审批）" : "Claude Code");
       option.value = a.id; return option;
     }));
     $("workspace").replaceChildren(
       ...c.workspaces.map((w) => {
-        const o = make("option", w.name);
+        const o = make("option", w.name + (w.archived ? " · 已归档" : ""));
         o.value = w.id;
         return o;
       }),
@@ -313,6 +349,13 @@
     if (!host || !cap) return;
     const d = await remote(host.id, scope, "/runs");
     if (v !== version) return;
+    if (typeof d.operationGeneration === "string" && d.operationGeneration !== cap.operationGeneration) {
+      if (cap.operationGeneration !== undefined) {
+        timelines.clear(); shown = ""; clearChanges(); clearHandoff();
+        notice("执行机账本已清理。旧操作不会重放；新任务使用新的操作代次。");
+      }
+      cap.operationGeneration = d.operationGeneration;
+    }
     runs = d.runs;
     observations = d.observations || [];
     if (d.agents) cap.agents = d.agents;
@@ -338,12 +381,14 @@
       $("change-files").replaceChildren();
       $("change-patch").textContent = ""; $("change-patch").hidden = true;
       $("change-note").textContent = "检查点已由执行机所有者清理。";
+      clearRestore(); clearMerge();
     }
     $("changes").hidden = false;
     const reason = {
       managed_worktree_required: "仅 LISA 创建的隔离 Git 工作区提供检查点",
       snapshot_limit: "超过快照上限（2000 文件 / 16 MiB）",
       checkpoint_limit: "已达单任务 100 轮检查点上限",
+      checkpoint_quota: "检查点存储已达到本机总配额，任务仍继续执行",
       snapshot_unavailable: "快照未完成（目录变化、子模块或 Git 不可用）",
       workspace_replaced: "工作区已被替换",
       checkpoints_cleared: "检查点已清理",
@@ -354,22 +399,78 @@
         (reason[t.reason] || (t.state === "running" ? "本轮进行中" : "结束检查点缺失")));
       return btn("查看第 " + t.turn + " 轮改动" + (t.state === "interrupted" ? "（中断时）" : ""), async () => {
         const request = ++changesVersion;
+        clearRestore();
         $("change-files").replaceChildren(); $("change-patch").hidden = true;
         const current = () => v === version && changesKey === key && runId === run.id && changesVersion === request;
+        clearMerge();
         const route = "/runs/" + run.id + "/changes/" + t.turn;
         const files = await remote(id, account, route);
         if (!current()) return;
         $("change-note").textContent = "第 " + t.turn + " 轮 · " +
           (files.concurrent ? "工作区同时变化（HEAD 或索引改变）。" : "工作区差异，无法单独归因于 agent。") +
           (files.files.length ? "" : "本轮没有记录到文件差异。");
+        if (cap.control && cap.features.includes("worktree-merge") && !cap.workspaces.find((w) => w.id === run.workspaceId)?.archived && ["completed", "cancelled", "failed"].includes(run.state)) {
+          const section = $("merge"), cleanup = document.createElement("input"), label = make("label", "");
+          cleanup.type = "checkbox";
+          label.append(cleanup, document.createTextNode("合并后清理这个隔离工作区"));
+          const content = make("div", ""); let revision = 0;
+          cleanup.onchange = () => { revision++; content.replaceChildren(); };
+          const prepare = btn("预览合并到原分支", async () => {
+            if (!current() || busy || pending()) return;
+            const selected = ++revision, remove = cleanup.checked;
+            const packet = await remote(id, account, "/runs/" + run.id + "/merge-preview", "POST", {
+              hostId: id, workspaceId: run.workspaceId, turn: t.turn, cleanup: remove, operationGeneration: cap.operationGeneration });
+            if (!current() || selected !== revision) return;
+            const send = btn("确认合并到原分支", async () => {
+              if (!current() || selected !== revision || busy || pending()) return;
+              if (!confirm("将以下全部改动作为一个新提交合并到「" + packet.sourceName + "」的 " + packet.branch + "？" + (remove ? "确认后将清理此隔离工作区。" : "将保留此隔离工作区。"))) return;
+              if (!current() || selected !== revision) return;
+              clearMerge();
+              await mutate("/runs/" + run.id + "/merge", { turn: t.turn, cleanup: remove, previewToken: packet.previewToken, expiresAt: packet.expiresAt });
+            });
+            content.replaceChildren(make("h4", packet.sourceName + " · " + packet.branch),
+              make("p", "包含此检查点相对原分支的全部改动。原仓库须干净，且仍处于创建工作区时的提交。"),
+              make("p", "基准 " + packet.base + " · 目标树 " + packet.tree),
+              make("pre", packet.files.map((f) => f.status + " · " + f.path).join("\n")),
+              make("pre", (packet.truncated ? "差异超过 64 KiB，仅显示开头；完整文件列表和目标树如上。\n" : "") + packet.patch), send);
+          });
+          section.replaceChildren(label, prepare, content); section.hidden = false;
+        }
         $("change-files").replaceChildren(...files.files.map((f) => btn(
           ({ A: "新增", M: "修改", D: "删除", T: "类型变化" }[f.status] || f.status) + " · " + f.path, async () => {
             const fileRequest = ++changesVersion;
+            clearRestore(); clearMerge();
             $("change-patch").hidden = true;
             const diff = await remote(id, account, route + "/" + f.id);
             if (v !== version || changesKey !== key || runId !== run.id || changesVersion !== fileRequest) return;
             $("change-patch").textContent = (diff.truncated ? "差异超过 64 KiB，以下仅为开头。\n" : "") + diff.patch;
             $("change-patch").hidden = false;
+            if (!cap.workspaces.find((w) => w.id === run.workspaceId)?.archived && cap?.control && cap.features.includes("file-restore") && ["completed", "cancelled", "failed"].includes(run.state)) {
+              const section = $("restore");
+              const validRestore = () => v === version && changesKey === key && runId === run.id && changesVersion === fileRequest;
+              const prepare = btn("预览回退此文件", async () => {
+                if (!validRestore() || busy || pending()) return;
+                const packet = await remote(id, account, "/runs/" + run.id + "/restore-preview", "POST",
+                  { hostId: id, workspaceId: run.workspaceId, turn: t.turn, file: f.id, operationGeneration: cap.operationGeneration });
+                if (!validRestore()) return;
+                const describe = (side) => !side.exists ? "文件不存在" :
+                  side.bytes + " bytes · 权限 " + side.mode.toString(8) + " · SHA-256 " + side.sha256 +
+                  (side.binary ? "\n二进制文件" : "\n" + side.text + (side.truncated ? "\n内容超过 64 KiB，仅显示开头。" : ""));
+                const send = btn("确认回退此文件", async () => {
+                  if (!validRestore() || busy || pending()) return;
+                  if (!confirm("将 " + packet.path + " 回退到第 " + t.turn + " 轮开始时？当前内容将被覆盖；预览后有改动会拒绝执行。")) return;
+                  if (!validRestore()) return;
+                  clearRestore();
+                  await mutate("/runs/" + run.id + "/restore", { turn: t.turn, file: f.id,
+                    previewToken: packet.previewToken, expiresAt: packet.expiresAt });
+                });
+                section.replaceChildren(make("h4", packet.path + " · 回退预览"),
+                  make("p", "仅修改这个文件，不改变 Git 暂存区。预览有效至 " + new Date(packet.expiresAt).toLocaleString()),
+                  make("h4", "当前内容"), make("pre", describe(packet.current)),
+                  make("h4", "回退后的内容"), make("pre", describe(packet.target)), send);
+              });
+              section.replaceChildren(prepare); section.hidden = false;
+            }
           })));
       });
     }));
@@ -419,10 +520,14 @@
       t = r && timelines.get(timelineKey(r.id)),
       first = t?.events[0]?.seq,
       signature = t ? timelineKey(r.id) + "|" + t.last + "|" + first : "";
+    if (!t) {
+      shown = ""; $("timeline").hidden = true;
+      $("timeline-list").replaceChildren(); $("timeline-note").textContent = "";
+      return;
+    }
     if (signature === shown) return;
     shown = signature;
-    $("timeline").hidden = !t || !t.events.length;
-    if (!t) return;
+    $("timeline").hidden = !t.events.length;
     $("timeline-note").textContent = first > 1
       ? "较早的记录已超出执行机的留存范围，以下从第 " + first + " 条开始。"
       : "";
@@ -446,7 +551,7 @@
     if (!rows.some((r) => r.id === runId)) runId = (active || rows[0])?.id || "";
     renderTimeline();
     if (changesKey && changesKey !== timelineKey(runId)) clearChanges();
-    if (handoffKey && (handoffKey !== timelineKey(runId) || handoffSeq !== rows.find((x) => x.id === runId)?.lastSeq || !rows.find((x) => x.id === runId)?.capabilities?.handoff)) clearHandoff();
+    if (handoffKey && (handoffKey !== timelineKey(runId) || handoffSeq !== rows.find((x) => x.id === runId)?.lastSeq || !(rows.find((x) => x.id === runId)?.capabilities?.handoff || rows.find((x) => x.id === runId)?.capabilities?.resume))) clearHandoff();
     $("observations").replaceChildren(...observations.filter((o) => o.workspaceId === wid && o.capabilities?.observe).map((o) =>
       make("p", o.agent + " · 外部观察会话 · " + o.state + " · 仅观察")));
     const r = rows.find((x) => x.id === runId),
@@ -460,9 +565,10 @@
     const provider = cap.agents?.find((a) => a.id === selectedAgent);
     const unavailable = provider ? provider.unavailable : cap.unavailable;
     $("capability").textContent = unavailable ? messages[unavailable] || unavailable
-      : selectedAgent === "codex" ? "Codex 只读复核发送的文本与 diff；不读取项目、不执行验证命令，不支持追加、审批或恢复。内容使用执行机的 OpenAI API 配置发送。"
-      : "Claude Code · Read / Edit / Write 逐次审批，支持轮间追加与取消，不支持恢复。内容使用执行机的 Claude API 配置发送。";
-    $("start").disabled = blocked || !wid || !cap.control || !!unavailable ||
+      : selectedAgent === "codex" ? "Codex 只读复核发送的文本与 diff；不读取项目、不执行验证命令，不支持追加或审批；中断后可预览上下文并新建复核任务。内容使用执行机的 OpenAI API 配置发送。"
+      : selectedAgent === "codex-workspace" ? "Codex · List / Read / Edit / Write 逐次审批，支持追加与取消；仅批准的目录内普通文件，不支持点文件、链接或执行命令。内容使用执行机的 OpenAI API 配置发送。"
+      : "Claude Code · Read / Edit / Write 逐次审批，支持轮间追加与取消；确认旧进程退出后可创建续接任务。内容使用执行机的 Claude API 配置发送。";
+    $("start").disabled = blocked || !wid || cap.workspaces.find((w) => w.id === wid)?.archived || !cap.control || !!unavailable ||
       (cap.agents && !provider?.start) || runs.some((x) => ["running", "waiting", "approval", "cancelling"].includes(x.state));
     const actions = r?.capabilities || (cap.features?.includes("session-capabilities") ? {} : {
       append: cap.control && r?.state === "waiting", approve: cap.control && !!r?.approval,
@@ -521,6 +627,10 @@
       b.disabled = blocked;
       card.append(b);
     }
+    if (actions.resume && cap.features?.includes("task-continuation")) {
+      const resume = btn("从已保存上下文续接", () => openContinuation(r));
+      resume.disabled = blocked; card.append(resume);
+    }
     if (actions.handoff && cap.features?.includes("agent-handoff")) {
       const handoff = btn("预览跨 agent 交接", () => openHandoff(r));
       handoff.disabled = blocked; card.append(handoff);
@@ -531,6 +641,34 @@
   function clearHandoff() {
     handoffVersion++; handoffKey = ""; handoffSeq = -1;
     $("handoff").hidden = true; $("handoff").replaceChildren();
+  }
+  function openContinuation(run) {
+    clearHandoff();
+    const v = version, request = handoffVersion, key = timelineKey(run.id), id = host.id, account = scope;
+    handoffKey = key; handoffSeq = run.lastSeq;
+    const section = $("handoff"), instruction = document.createElement("textarea"), preview = make("pre", "");
+    instruction.maxLength = 16000; instruction.setAttribute("aria-label", "续接的新指令");
+    let generation = 0, packet = null, body = null;
+    const valid = () => v === version && request === handoffVersion && handoffKey === key && runId === run.id;
+    const send = btn("确认开始新的续接任务", async () => {
+      if (!valid() || !packet || !body || busy || pending()) return;
+      await mutate("/runs/" + run.id + "/continue", { ...body, previewToken: packet.previewToken, expiresAt: packet.expiresAt });
+    });
+    send.disabled = true;
+    const prepare = btn("预览续接上下文", async () => {
+      if (!valid() || !instruction.value.trim()) return;
+      const expected = generation;
+      const selected = { hostId: id, workspaceId: run.workspaceId, agent: run.agent, text: instruction.value };
+      const result = await remote(id, account, "/runs/" + run.id + "/continue-preview", "POST", { ...selected, operationGeneration: cap.operationGeneration });
+      if (!valid() || expected !== generation) return;
+      packet = result; body = selected; preview.textContent = result.prompt; send.disabled = false;
+    });
+    prepare.disabled = true;
+    instruction.oninput = () => { generation++; packet = null; body = null; preview.textContent = ""; send.disabled = true; prepare.disabled = !instruction.value.trim(); };
+    section.replaceChildren(make("h3", "创建新的续接任务"),
+      make("p", "旧进程已确认退出，但它的最后结果仍未核实。输入新的指令；预览只包含已保存的原始要求和最近结果摘要，不包含旧审批或工具调用。新会话需要独立审批。"),
+      instruction, prepare, preview, send);
+    section.hidden = false;
   }
   async function openHandoff(run) {
     clearHandoff();
@@ -558,7 +696,7 @@
     const prepare = btn("生成交接预览", async () => {
       invalidate(); const expected = generation;
       const body = { hostId: id, workspaceId: run.workspaceId, agent: agent.value, turn: Number(turn.value), verification: verification.value };
-      const packet = await remote(id, account, "/runs/" + run.id + "/handoff-preview", "POST", body);
+      const packet = await remote(id, account, "/runs/" + run.id + "/handoff-preview", "POST", { ...body, operationGeneration: cap.operationGeneration });
       if (v !== version || handoffKey !== key || expected !== generation || request !== handoffVersion) return;
       preview.textContent = host.name + " · " + packet.recipient.agent + "\n\n" + packet.prompt;
       send.hidden = false;
@@ -584,6 +722,7 @@
         workspaceId: $("workspace").value,
         hostId: host.id,
         operationId: crypto.randomUUID(),
+        ...(cap.operationGeneration !== undefined ? { operationGeneration: cap.operationGeneration } : {}),
       },
     };
     sessionStorage.setItem(key(), JSON.stringify(op));
@@ -616,10 +755,11 @@
       sessionStorage.removeItem(savedKey);
       if (v !== version) return;
       runId = reply.run.id;
+      if (reply.merge?.cleaned) { const w = cap.workspaces.find((w) => w.id === reply.run.workspaceId); if (w) w.archived = true; clearChanges(); }
       if (op.payload.text) $("prompt").value = "";
       notice(
         reply.status === "unknown"
-          ? "已登记，但执行结果不确定。请核对任务；原操作不会再次执行。"
+          ? "已登记，但执行结果不确定。请核对任务；原操作不会再次执行。" + (reply.merge?.commit ? "候选提交：" + reply.merge.commit + "，需在执行机核对是否已合并。" : "")
           : "操作已接收。",
       );
       await refreshRuns(v);
@@ -657,9 +797,19 @@
       l = d.link;
     $("link-status").textContent = l.online ? "已连接账号中继" : "账号中继未连接";
     $("connect").hidden = l.online;
+    $("maintenance").replaceChildren();
+    if (d.maintenance) {
+      const box = $("maintenance");
+      box.append(make("p", "文件操作：" + d.maintenance.kind + " · " + d.maintenance.phase + (d.maintenance.commit ? " · 候选提交 " + d.maintenance.commit : "") + "。为保护文件，暂不接受新任务。"));
+      if (d.maintenance.releasable) box.append(btn("核对文件操作后解除保留", async () => {
+        if (!confirm("请先确认执行机上的 Git / 文件操作已结束，检查原分支、工作区与操作收据。解除保留不会重试原操作。确认已经核对？")) return;
+        await api("/api/fleet/maintenance/release", { confirmed: true }); await local();
+      }));
+    }
     $("local-workspaces").replaceChildren(
       ...d.workspaces.map((w) => {
         const row = make("p", w.name + " · " + w.root + (w.checkpoints ? " · 检查点已启用" : ""));
+        if (w.archived) { row.append(make("span", " · 已清理，保留历史")); return row; }
         row.append(btn("从当前提交创建隔离工作区", async () => {
           await api("/api/fleet/worktrees", { workspaceId: w.id });
           await local();
@@ -680,7 +830,7 @@
         box.append(label);
         return cb;
       };
-      const options = d.workspaces.map((w) => [w.id, check(w.name)]);
+      const options = d.workspaces.filter((w) => !w.archived).map((w) => [w.id, check(w.name)]);
       const write = check("允许在选定目录启动和控制 Claude Code");
       box.append(
         btn("验证码一致，授权选中目录", async () => {
@@ -732,6 +882,28 @@
           await api("/api/fleet/checkpoints/clear", { runId: r.id }); await local();
         })); return row;
       }));
+    const storage = $("storage"); storage.hidden = !d.storage; storage.replaceChildren();
+    if (d.storage) {
+      const quota = document.createElement("input"), days = document.createElement("input");
+      quota.type = days.type = "number"; quota.min = "1"; quota.max = "16384"; days.min = "0"; days.max = "3650";
+      quota.value = String(d.storage.quotaMiB); days.value = String(d.storage.retentionDays);
+      quota.setAttribute("aria-label", "检查点配额 MiB"); days.setAttribute("aria-label", "检查点保留天数");
+      const save = btn("保存存储策略", async () => {
+        if (Number(days.value) > 0 && !confirm("自动删除已结束任务超过保留天数的检查点？工作区文件与任务账本会保留。")) return;
+        await api("/api/fleet/storage", { quotaMiB: Number(quota.value), retentionDays: Number(days.value) }); await local();
+      });
+      const cleanupPreview = make("div", "");
+      const preview = btn("预览完整账本清理", async () => {
+        const packet = await api("/api/fleet/ledger/preview", {});
+        const confirmClear = btn("确认清理全部任务记录", async () => {
+          if (!confirm("删除所有 Fleet 任务、要求、结果、时间线、分享、回执及检查点？工作区文件和设备授权会保留；旧操作将失效。")) return;
+          await api("/api/fleet/ledger/clear", { previewToken: packet.previewToken, expiresAt: packet.expiresAt }); await local();
+        });
+        cleanupPreview.replaceChildren(make("p", "清理预览：" + packet.runs + " 个任务、" + packet.receipts + " 个回执及 " + packet.usedBytes + " bytes 检查点。"), confirmClear);
+      });
+      storage.append(make("h3", "Fleet 存储"), make("p", "检查点使用 " + (d.storage.usedBytes / 1048576).toFixed(1) + " MiB；总配额达到后仅停止新增检查点。保留天数 0 表示不自动清理。"),
+        make("label", "检查点配额 MiB"), quota, make("label", "检查点保留天数"), days, save, preview, cleanupPreview);
+    }
     const pockets = l.devices.filter((x) => x.secure && !x.fleet);
     $("shares").replaceChildren();
     if (!pockets.length) $("shares").append(make("p", "请先在本机设置中安全配对 Pocket。"));
@@ -746,6 +918,14 @@
           await api("/api/fleet/shares", { deviceId: p.id, runId: r.id, enabled: !shared });
           await local();
         }));
+        if (shared) {
+          const approved = r.approvers?.includes(p.id) === true;
+          row.append(btn((approved ? "撤销审批 · " : "允许审批 · ") + p.name, async () => {
+            if (!approved && !confirm("允许此 Pocket 查看完整工具输入并审批此任务？每次审批仍需在手机上确认；查看权限本身不包含审批。")) return;
+            await api("/api/fleet/shares", { deviceId: p.id, runId: r.id, enabled: true, approve: !approved });
+            await local();
+          }));
+        }
       }
       $("shares").append(row);
     }

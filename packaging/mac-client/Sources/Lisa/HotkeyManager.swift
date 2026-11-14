@@ -21,12 +21,13 @@ final class HotkeyManager {
     static let shared = HotkeyManager()
 
     private var hotKeyRef: EventHotKeyRef?
+    private var contextHotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
-    private var onFire: (() -> Void)?
+    private var onFire: ((Bool) -> Void)?
 
     /// Register the global hotkey. Default: Control+Option+S.
     /// Safe to call once at launch; no-ops if already registered.
-    func register(onFire: @escaping () -> Void) {
+    func register(onFire: @escaping (Bool) -> Void) {
         guard hotKeyRef == nil else { return }
         self.onFire = onFire
 
@@ -49,8 +50,9 @@ final class HotkeyManager {
                 nil,
                 &hkID,
             )
-            if hkID.id == HotkeyManager.hotKeyIDValue {
-                DispatchQueue.main.async { manager.onFire?() }
+            if hkID.signature == HotkeyManager.signature && [HotkeyManager.hotKeyIDValue, 2].contains(hkID.id) {
+                let includeContext = hkID.id == 2
+                DispatchQueue.main.async { manager.onFire?(includeContext) }
             }
             return noErr
         }
@@ -74,11 +76,14 @@ final class HotkeyManager {
             0,
             &hotKeyRef,
         )
+        RegisterEventHotKey(UInt32(kVK_ANSI_S), UInt32(controlKey | optionKey | shiftKey),
+            EventHotKeyID(signature: Self.signature, id: 2), GetApplicationEventTarget(), 0, &contextHotKeyRef)
         FileHandle.standardError.write(Data("[lisa] global hotkey ⌃⌥S registered\n".utf8))
     }
 
     func unregister() {
         if let ref = hotKeyRef { UnregisterEventHotKey(ref); hotKeyRef = nil }
+        if let ref = contextHotKeyRef { UnregisterEventHotKey(ref); contextHotKeyRef = nil }
         if let handler = eventHandler { RemoveEventHandler(handler); eventHandler = nil }
     }
 

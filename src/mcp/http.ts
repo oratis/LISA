@@ -13,6 +13,9 @@ export function remoteFetch(
   signal: AbortSignal,
   network?: Pick<SafeFetchDependencies, "lookup" | "transport">,
   reauthorizationCode = "mcp_reauthorization_required",
+  /** An explicitly configured local-owner endpoint, never model-provided. Public
+   * services still require HTTPS/public DNS. Loopback is pinned without DNS. */
+  loopbackOrigin?: string,
 ): McpFetch {
   return async (raw, init = {}) => {
     try {
@@ -22,16 +25,26 @@ export function remoteFetch(
         async (deadline) => {
           const url = new URL(String(raw)),
             method = (init.method ?? "GET").toUpperCase();
+          const local =
+            loopbackOrigin === url.origin &&
+            url.protocol === "http:" &&
+            ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
           if (
-            url.protocol !== "https:" ||
+            (!local && (url.protocol !== "https:" || !!url.port)) ||
             url.username ||
             url.password ||
-            url.port ||
             url.hash ||
             !allowed(url, method)
           )
             throw new ConnectorError("mcp_invalid_endpoint");
-          const addresses = await resolvePublicAddresses(url.hostname, network?.lookup);
+          const addresses = local
+            ? [
+                {
+                  address: url.hostname === "[::1]" ? "::1" : "127.0.0.1",
+                  family: url.hostname === "[::1]" ? (6 as const) : (4 as const),
+                },
+              ]
+            : await resolvePublicAddresses(url.hostname, network?.lookup);
           deadline!.throwIfAborted();
           const res = await (network?.transport ?? pinnedTransport)(
             url.href,

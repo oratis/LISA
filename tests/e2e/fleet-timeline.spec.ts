@@ -26,9 +26,17 @@ async function openTask(page: Page, modern = false) {
     handoffs: 0,
     slowPreview: false,
     receiver: false,
+    restores: 0,
+    slowRestore: false,
+    operationGeneration: "",
+    emptyLedger: false,
+    continuations: 0,
+    slowContinuation: false,
   };
   let finishDiff: (() => void) | undefined;
   let finishPreview: (() => void) | undefined;
+  let finishRestore: (() => void) | undefined;
+  let finishContinuation: (() => void) | undefined;
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
   await page.route("**/api/fleet/hosts", (route) =>
@@ -45,17 +53,27 @@ async function openTask(page: Page, modern = false) {
           features: [
             "run-events",
             "turn-changes",
-            ...(modern ? ["session-capabilities", "agent-handoff"] : []),
+            ...(modern
+              ? [
+                  "session-capabilities",
+                  "agent-handoff",
+                  "file-restore",
+                  "task-continuation",
+                  "worktree-merge",
+                ]
+              : []),
           ],
           ...(modern
             ? {
                 agents: [
                   { id: "claude-code", start: true, mode: "workspace-edit" },
                   { id: "codex", start: true, mode: "packet-review" },
+                  { id: "codex-workspace", start: true, mode: "workspace-edit" },
                 ],
               }
             : {}),
           control: true,
+          operationGeneration: state.operationGeneration,
           workspaces: [{ id: workspaceId, name: "Project" }],
         },
       });
@@ -76,7 +94,7 @@ async function openTask(page: Page, modern = false) {
               append: false,
               cancel: state.mayControl && state.taskState === "approval",
               approve: state.mayControl && state.taskState === "approval",
-              resume: false,
+              resume: state.mayControl && state.taskState === "unknown",
               handoff: state.mayControl && state.taskState === "completed",
             },
           }
@@ -92,7 +110,8 @@ async function openTask(page: Page, modern = false) {
     if (path === "/runs")
       return route.fulfill({
         json: {
-          runs: [run],
+          runs: state.emptyLedger ? [] : [run],
+          operationGeneration: state.operationGeneration,
           ...(modern
             ? {
                 observations: [
@@ -107,6 +126,70 @@ async function openTask(page: Page, modern = false) {
             : {}),
         },
       });
+    if (path.endsWith("/continue-preview")) {
+      const complete = () =>
+        route.fulfill({
+          json: {
+            prompt:
+              "UNKNOWN old outcome\nNEW instruction: " +
+              route.request().postDataJSON().payload.text,
+            previewToken: "continuation-token",
+            expiresAt: Date.now() + 600000,
+          },
+        });
+      if (state.slowContinuation) {
+        finishContinuation = () => {
+          void complete();
+        };
+        return;
+      }
+      return complete();
+    }
+    if (path.endsWith("/continue")) {
+      expect(route.request().postDataJSON().payload.previewToken).toBe("continuation-token");
+      state.continuations++;
+      state.taskState = "running";
+      return route.fulfill({ json: { status: "accepted", run } });
+    }
+    if (path.endsWith("/restore-preview")) {
+      const complete = () =>
+        route.fulfill({
+          json: {
+            path: "test.txt",
+            turn: 1,
+            file: 0,
+            current: {
+              exists: true,
+              text: "current <script>value</script>",
+              bytes: 30,
+              mode: 420,
+              sha256: "current",
+            },
+            target: { exists: true, text: "previous", bytes: 8, mode: 420, sha256: "previous" },
+            previewToken: "restore-token",
+            expiresAt: Date.now() + 600000,
+          },
+        });
+      if (state.slowRestore) {
+        finishRestore = () => {
+          void complete();
+        };
+        return;
+      }
+      return complete();
+    }
+    if (path.endsWith("/restore")) {
+      expect(route.request().postDataJSON().payload).toMatchObject({
+        hostId: macA.id,
+        workspaceId,
+        turn: 1,
+        file: 0,
+        previewToken: "restore-token",
+      });
+      state.restores++;
+      state.lastSeq++;
+      return route.fulfill({ json: { status: "accepted", run } });
+    }
     if (path.endsWith("/handoff-preview")) {
       const complete = () =>
         route.fulfill({
@@ -195,7 +278,13 @@ async function openTask(page: Page, modern = false) {
   await page.getByRole("button", { name: /Mac A/ }).click();
   await expect(page.getByRole("button", { name: "允许这一次" })).toBeEnabled();
   await expect(page.locator("#timeline-list li")).toHaveCount(2);
-  return { state, finishDiff: () => finishDiff?.(), finishPreview: () => finishPreview?.() };
+  return {
+    state,
+    finishDiff: () => finishDiff?.(),
+    finishPreview: () => finishPreview?.(),
+    finishRestore: () => finishRestore?.(),
+    finishContinuation: () => finishContinuation?.(),
+  };
 }
 
 test("switching Macs clears the old approval even if the new task list fails", async ({ page }) => {
@@ -279,7 +368,8 @@ test("a gap replaces the cached prefix and a reset clears its retention notice",
 test("the execution Mac shares only the selected task with a securely paired Pocket and can revoke it", async ({
   page,
 }) => {
-  let shared = false;
+  let shared = false,
+    approved = false;
   const pocket = { id: "c".repeat(32), name: "My Pocket", secure: true };
   await page.route("**/api/fleet/hosts", (route) =>
     route.fulfill({ json: { scope: "account", hosts: [] } }),
@@ -301,6 +391,7 @@ test("the execution Mac shares only the selected task with a securely paired Poc
             state: "completed",
             createdAt: 1,
             viewers: shared ? [pocket.id] : [],
+            approvers: approved ? [pocket.id] : [],
           },
         ],
       },
@@ -308,12 +399,15 @@ test("the execution Mac shares only the selected task with a securely paired Poc
   );
   await page.route("**/api/fleet/shares", (route) => {
     expect(route.request().method()).toBe("POST");
-    expect(route.request().postDataJSON()).toEqual({
-      deviceId: pocket.id,
-      runId,
-      enabled: !shared,
-    });
-    shared = !shared;
+    const body = route.request().postDataJSON();
+    if (body.approve !== undefined) {
+      expect(body).toEqual({ deviceId: pocket.id, runId, enabled: true, approve: !approved });
+      approved = body.approve;
+    } else {
+      expect(body).toEqual({ deviceId: pocket.id, runId, enabled: !shared });
+      shared = !shared;
+      approved = false;
+    }
     return route.fulfill({ json: { shared } });
   });
   await page.goto(lisa.baseURL + "/fleet");
@@ -322,6 +416,17 @@ test("the execution Mac shares only the selected task with a securely paired Poc
   await expect(page.locator("#shares")).not.toContainText("Old Pocket");
   await page.getByRole("button", { name: /允许查看 · My Pocket/ }).click();
   await expect(page.getByRole("button", { name: /撤销查看 · My Pocket/ })).toBeVisible();
+  expect(approved).toBe(false);
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: /允许审批 · My Pocket/ }).click();
+  expect(approved).toBe(false);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: /允许审批 · My Pocket/ }).click();
+  await expect(page.getByRole("button", { name: /撤销审批 · My Pocket/ })).toBeVisible();
+  expect(approved).toBe(true);
+  await page.getByRole("button", { name: /撤销审批 · My Pocket/ }).click();
+  await expect(page.getByRole("button", { name: /允许审批 · My Pocket/ })).toBeVisible();
+  expect(shared).toBe(true);
   await page.getByRole("button", { name: /撤销查看 · My Pocket/ }).click();
   await expect(page.getByRole("button", { name: /允许查看 · My Pocket/ })).toBeVisible();
   expect(shared).toBe(false);
@@ -383,6 +488,32 @@ test("host actions hide unavailable controls alongside observed sessions", async
   await expect(page.locator("#follow")).toBeHidden();
 });
 
+test("Codex workspace and packet review are distinct choices with a bound start request", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  let started = false;
+  await page.route("**/api/fleet/request", (route) => {
+    const request = route.request().postDataJSON();
+    if (request.path !== "/runs" || request.method !== "POST") return route.fallback();
+    expect(request.payload.agent).toBe("codex-workspace");
+    expect(request.payload.text).toBe("Read and update the project");
+    started = true;
+    return route.fulfill({ json: { status: "accepted", run: { id: runId, workspaceId } } });
+  });
+  await page.locator("#agent").selectOption("codex-workspace");
+  await expect(page.locator("#capability")).toContainText("逐次审批");
+  await page.locator("#prompt").fill("Read and update the project");
+  await page.locator("#start").click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(started).toBe(true);
+  await page.locator("#agent").selectOption("codex");
+  await expect(page.locator("#capability")).toContainText("不读取项目");
+});
+
 test("handoff requires a preview and confirmation, and editing invalidates that preview", async ({
   page,
 }) => {
@@ -424,4 +555,271 @@ test("a late handoff preview cannot enable sending on a different Mac", async ({
   await expect(page.locator("#handoff")).toBeHidden();
   await expect(page.locator("#handoff")).toBeEmpty();
   expect(state.handoffs).toBe(0);
+});
+
+test("file restore requires exact preview and confirmation without changing other tasks", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await page.getByRole("button", { name: "修改 · test.txt" }).click();
+  await expect(page.getByRole("button", { name: "确认回退此文件" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览回退此文件" }).click();
+  await expect(page.locator("#restore")).toContainText("current <script>value</script>");
+  await expect(page.locator("#restore script")).toHaveCount(0);
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "确认回退此文件" }).click();
+  expect(state.restores).toBe(0);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "确认回退此文件" }).click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(state.restores).toBe(1);
+});
+
+test("merge requires a fresh cleanup preview and explicit confirmation; archived tasks keep history", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  let merges = 0;
+  await page.route("**/api/fleet/request", (route) => {
+    const request = route.request().postDataJSON();
+    if (request.path.endsWith("/merge-preview"))
+      return route.fulfill({
+        json: {
+          sourceName: "Source <script>unsafe()</script>",
+          branch: "refs/heads/main",
+          base: "a".repeat(40),
+          tree: "c".repeat(40),
+          files: [{ status: "M", path: "test.txt" }],
+          patch: "-before\n+after",
+          cleanup: request.payload.cleanup,
+          previewToken: request.payload.cleanup ? "cleanup-token" : "keep-token",
+          expiresAt: Date.now() + 60_000,
+        },
+      });
+    if (request.path.endsWith("/merge")) {
+      expect(request.payload.cleanup).toBe(true);
+      expect(request.payload.previewToken).toBe("cleanup-token");
+      merges++;
+      return route.fulfill({
+        json: {
+          status: "accepted",
+          run: { id: runId, workspaceId },
+          merge: { commit: "c".repeat(40), cleaned: true },
+        },
+      });
+    }
+    return route.fallback();
+  });
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await page.getByRole("button", { name: "预览合并到原分支" }).click();
+  await expect(page.locator("#merge")).toContainText("Source <script>unsafe()</script>");
+  await expect(page.locator("#merge script")).toHaveCount(0);
+  await page.getByLabel("合并后清理这个隔离工作区").check();
+  await expect(page.getByRole("button", { name: "确认合并到原分支" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览合并到原分支" }).click();
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "确认合并到原分支" }).click();
+  expect(merges).toBe(0);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "确认合并到原分支" }).click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(merges).toBe(1);
+  await expect(page.locator("#start")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "查看第 1 轮改动" })).toBeVisible();
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await expect(page.getByRole("button", { name: "预览合并到原分支" })).toHaveCount(0);
+});
+
+test("a merge preview arriving after a Mac switch cannot enable source writes", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/fleet/request", async (route) => {
+    if (!route.request().postDataJSON().path.endsWith("/merge-preview")) return route.fallback();
+    await held;
+    return route.fulfill({ json: { sourceName: "Previous Mac source", files: [], patch: "old" } });
+  });
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") && r.postDataJSON()?.path?.endsWith("/merge-preview"),
+  );
+  await page.getByRole("button", { name: "预览合并到原分支" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  release();
+  await expect(page.locator("#merge")).toBeHidden();
+  await expect(page.locator("#merge")).toBeEmpty();
+});
+
+test("a restore preview arriving after switching Macs cannot enable file writes", async ({
+  page,
+}) => {
+  const { state, finishRestore } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await page.getByRole("button", { name: "修改 · test.txt" }).click();
+  state.slowRestore = true;
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") &&
+      r.postDataJSON()?.path?.endsWith("/restore-preview"),
+  );
+  await page.getByRole("button", { name: "预览回退此文件" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  finishRestore();
+  await expect(page.locator("#restore")).toBeHidden();
+  await expect(page.locator("#restore")).toBeEmpty();
+  expect(state.restores).toBe(0);
+});
+
+test("cleanup generations invalidate old browser retries while new operations use the fresh generation", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  const payloads: { operationGeneration: string; operationId: string }[] = [];
+  let newGeneration: string | undefined;
+  await page.route("**/api/fleet/request", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.path.endsWith("/decisions")) {
+      payloads.push(body.payload);
+      if (payloads.length === 1) return route.abort();
+      return route.fulfill({ status: 409, json: { error: "operation_generation_changed" } });
+    }
+    if (body.path.startsWith("/operations/"))
+      return route.fulfill({ status: 404, json: { error: "operation_not_found" } });
+    if (body.path === "/runs" && body.method === "POST") {
+      newGeneration = body.payload.operationGeneration;
+      return route.fulfill({ json: { status: "accepted", run: { id: runId } } });
+    }
+    return route.fallback();
+  });
+  await page.getByRole("button", { name: "允许这一次" }).click();
+  await expect(page.locator("#retry")).toBeEnabled();
+  state.operationGeneration = "after-cleanup";
+  state.emptyLedger = true;
+  await page.clock.fastForward(4000);
+  await expect(page.locator("#notice")).toContainText("账本已清理");
+  await expect(page.locator("#timeline-list")).toBeEmpty();
+  await page.locator("#retry").click();
+  await expect(page.locator("#notice")).toContainText("旧操作不会重放");
+  await expect.poll(() => payloads.length).toBe(2);
+  await expect(page.locator("#retry")).toBeHidden();
+  expect(payloads[0]).toEqual(payloads[1]);
+  expect(payloads[1]!.operationGeneration).toBe("");
+  await page.locator("#prompt").fill("explicit new task");
+  await page.locator("#start").click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(newGeneration).toBe("after-cleanup");
+});
+
+test("owner storage cleanup requires a preview and explicit confirmation", async ({ page }) => {
+  let cleared = 0;
+  await page.route("**/api/fleet/hosts", (route) =>
+    route.fulfill({ json: { scope: "account", hosts: [] } }),
+  );
+  await page.route("**/api/fleet/local", (route) =>
+    route.fulfill({
+      json: {
+        link: { online: true, pending: [], devices: [] },
+        workspaces: [],
+        runs: [],
+        shares: [],
+        storage: {
+          quotaMiB: 512,
+          retentionDays: 0,
+          usedBytes: 4096,
+          runs: cleared ? 0 : 2,
+          receipts: 3,
+        },
+      },
+    }),
+  );
+  await page.route("**/api/fleet/ledger/preview", (route) =>
+    route.fulfill({
+      json: {
+        runs: 2,
+        receipts: 3,
+        usedBytes: 4096,
+        previewToken: "bound-cleanup",
+        expiresAt: Date.now() + 600000,
+      },
+    }),
+  );
+  await page.route("**/api/fleet/ledger/clear", (route) => {
+    expect(route.request().postDataJSON().previewToken).toBe("bound-cleanup");
+    cleared++;
+    return route.fulfill({ json: { cleared: true, compacted: true } });
+  });
+  await page.goto(lisa.baseURL + "/fleet");
+  await page.locator("#local summary").click();
+  await expect(page.getByRole("button", { name: "确认清理全部任务记录" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览完整账本清理" }).click();
+  await expect(page.locator("#storage")).toContainText("2 个任务、3 个回执");
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "确认清理全部任务记录" }).click();
+  expect(cleared).toBe(0);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "确认清理全部任务记录" }).click();
+  await expect(page.getByRole("button", { name: "确认清理全部任务记录" })).toHaveCount(0);
+  expect(cleared).toBe(1);
+});
+
+test("continuation requires new instructions and a fresh preview after edits", async ({ page }) => {
+  const { state } = await openTask(page, true);
+  state.taskState = "unknown";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "从已保存上下文续接" }).click();
+  await expect(page.getByRole("button", { name: "预览续接上下文" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "确认开始新的续接任务" })).toBeDisabled();
+  await page.getByLabel("续接的新指令").fill("Inspect before editing.");
+  await page.getByRole("button", { name: "预览续接上下文" }).click();
+  await expect(page.locator("#handoff pre")).toContainText("UNKNOWN old outcome");
+  await expect(page.getByRole("button", { name: "确认开始新的续接任务" })).toBeEnabled();
+  await page.getByLabel("续接的新指令").fill("Only explain.");
+  await expect(page.getByRole("button", { name: "确认开始新的续接任务" })).toBeDisabled();
+  await expect(page.locator("#handoff pre")).toBeEmpty();
+  await page.getByRole("button", { name: "预览续接上下文" }).click();
+  await page.getByRole("button", { name: "确认开始新的续接任务" }).click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(state.continuations).toBe(1);
+});
+
+test("a late continuation preview cannot start work on another Mac", async ({ page }) => {
+  const { state, finishContinuation } = await openTask(page, true);
+  state.taskState = "unknown";
+  state.lastSeq++;
+  state.slowContinuation = true;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "从已保存上下文续接" }).click();
+  await page.getByLabel("续接的新指令").fill("Inspect first.");
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") &&
+      r.postDataJSON()?.path?.endsWith("/continue-preview"),
+  );
+  await page.getByRole("button", { name: "预览续接上下文" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  finishContinuation();
+  await expect(page.locator("#handoff")).toBeEmpty();
+  expect(state.continuations).toBe(0);
 });

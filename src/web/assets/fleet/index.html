@@ -44,6 +44,8 @@
             <p id="change-note" role="status"></p>
             <div id="change-files"></div>
             <pre id="change-patch" hidden></pre>
+            <section id="restore" hidden></section>
+            <section id="merge" hidden></section>
           </section>
           <section id="handoff" hidden></section>
           <form id="task-form">
@@ -67,13 +69,15 @@
           ><label>本机项目的绝对路径<input id="directory" required /></label
           ><button>登记目录</button>
         </form>
+        <div id="maintenance"></div>
         <div id="local-workspaces"></div>
         <div id="requests"></div>
         <div id="devices"></div>
         <div id="local-runs"></div>
         <div id="checkpoint-runs"></div>
-        <h3>Pocket 只读查看</h3>
-        <p>选择已安全配对的 Pocket，授权它查看本机的指定任务及结果摘要。审批仍由发起任务的 Mac 处理。</p>
+        <section id="storage" hidden></section>
+        <h3>Pocket 任务权限</h3>
+        <p>选择已安全配对的 Pocket，授权它查看本机的指定任务及结果摘要。查看默认为只读；可单独授予或撤销此任务的审批权限。</p>
         <div id="shares"></div>
         <button id="local-refresh">刷新本机配置</button>
       </details>

@@ -19,8 +19,10 @@ export interface FleetViewer {
   pairingId: string;
 }
 export function fleetViewRoute(method: string, path: string): boolean {
-  if (method !== "GET" || !path.startsWith(VIEW_API + "/")) return false;
+  if (!path.startsWith(VIEW_API + "/")) return false;
   const suffix = path.slice(VIEW_API.length);
+  if (method === "POST") return /^\/runs\/[a-f0-9-]{36}\/decisions$/.test(suffix);
+  if (method !== "GET") return false;
   return (
     suffix === "/runs" ||
     /^\/runs\/[a-f0-9-]{36}\/events(?:\?after=\d{1,15}(?:&limit=\d{1,3})?)?$/.test(suffix)
@@ -43,7 +45,7 @@ export function uuid(value: unknown): string {
   if (typeof value !== "string" || !UUID.test(value)) throw new FleetError(400, "invalid_id");
   return value;
 }
-export function digest(value: string): string {
+export function digest(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
 export function fleetRoute(method: string, path: string): boolean {
@@ -60,6 +62,8 @@ export function fleetRoute(method: string, path: string): boolean {
   return (
     method === "POST" &&
     (suffix === "/runs" ||
-      /^\/runs\/[a-f0-9-]{36}\/(?:messages|decisions|cancel|handoff-preview|handoff)$/.test(suffix))
+      /^\/runs\/[a-f0-9-]{36}\/(?:messages|decisions|cancel|handoff-preview|handoff|restore-preview|restore|continue-preview|continue|merge-preview|merge)$/.test(
+        suffix,
+      ))
   );
 }

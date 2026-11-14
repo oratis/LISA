@@ -7,7 +7,7 @@ export interface FleetActions {
   resume: boolean;
   handoff: boolean;
 }
-export type FleetAgent = "claude-code" | "codex";
+export type FleetAgent = "claude-code" | "codex" | "codex-workspace";
 export const observedActions: FleetActions = {
   observe: true,
   append: false,
@@ -27,10 +27,10 @@ export function runActions(
   const active = control && live;
   return {
     ...observedActions,
-    append: active && agent === "claude-code" && state === "waiting",
+    append: active && agent !== "codex" && state === "waiting",
     cancel: active && ["running", "waiting", "approval"].includes(state),
-    approve: active && agent === "claude-code" && state === "approval" && pending,
-    // Neither adapter can safely resume a process lost in a backend restart.
+    approve: active && agent !== "codex" && state === "approval" && pending,
+    // The host may separately offer a new continuation after verifying the old process stopped.
     handoff: control && !live && ["completed", "cancelled", "failed"].includes(state) && context,
   };
 }

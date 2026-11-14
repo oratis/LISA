@@ -966,7 +966,7 @@ test("a renewed session moves the relay onto the new token; another account's is
   }
 });
 
-test("secure Pocket viewer requests carry the pairing identity; legacy and write routes never forward", async () => {
+test("secure Pocket routes carry the pairing identity; other writes and legacy requests never forward", async () => {
   const forwarded: string[] = [];
   const peers: unknown[] = [];
   let forwardedRequest: http.IncomingMessage | undefined;
@@ -986,20 +986,21 @@ test("secure Pocket viewer requests carry the pairing identity; legacy and write
     assert.equal(viewer.deviceId, deviceId);
     assert.match(viewer.pairingId, /^[a-f0-9-]{36}$/);
     const base = "/api/agent-host/v1/view/runs";
-    for (const [i, route] of [
-      base,
-      base + "/" + crypto.randomUUID() + "/events?after=3&limit=100",
+    for (const [i, [route, method]] of [
+      [base, "GET"],
+      [base + "/" + crypto.randomUUID() + "/events?after=3&limit=100", "GET"],
+      [base + "/" + crypto.randomUUID() + "/decisions", "POST"],
     ].entries()) {
       const ch = "viewer-read" + i;
       const p = await h.hello(ch, h.phone, false, { v: 2 });
-      h.send(ch, request(p.cipher, p.welcome.challenge, route));
+      h.send(ch, request(p.cipher, p.welcome.challenge, route!, method));
       assert.equal((await readBody(h, ch, p.cipher)).status, 200);
     }
-    assert.deepEqual(peers, [viewer, viewer]);
+    assert.deepEqual(peers, [viewer, viewer, viewer]);
     for (const [i, [route, method]] of [
       [base, "POST"],
       ["/api/agent-host/v1/runs", "GET"],
-      [base + "/" + crypto.randomUUID() + "/decisions", "POST"],
+      [base + "/" + crypto.randomUUID() + "/messages", "POST"],
       [base + "/" + crypto.randomUUID() + "/events?after=0&other=1", "GET"],
     ].entries()) {
       const ch = "viewer-denied" + i;
@@ -1007,7 +1008,7 @@ test("secure Pocket viewer requests carry the pairing identity; legacy and write
       h.send(ch, request(p.cipher, p.welcome.challenge, route!, method));
       assert.equal(await h.nextFrame(ch), "closed");
     }
-    assert.equal(forwarded.length, 2);
+    assert.equal(forwarded.length, 3);
     // Even a previously forwarded proof ceases to authorize after pairing revocation.
     h.host.revoke(deviceId);
     assert.equal(h.host.fleetViewer(forwardedRequest!), undefined);
@@ -1019,7 +1020,7 @@ test("secure Pocket viewer requests carry the pairing identity; legacy and write
     const legacyRead = await h.hello("legacy-read", legacy, false);
     h.send("legacy-read", request(legacyRead.cipher, legacyRead.welcome.challenge, base));
     assert.equal(await h.nextFrame("legacy-read"), "closed");
-    assert.equal(forwarded.length, 2);
+    assert.equal(forwarded.length, 3);
   } finally {
     await h.close();
   }

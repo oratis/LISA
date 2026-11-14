@@ -6,6 +6,7 @@ import { googleReadIntents } from "./google-driver.js";
 import { isLinearReadRequest } from "./linear-driver.js";
 import { isDriveReadRequest } from "./drive-driver.js";
 import { isNotionReadRequest } from "./notion-driver.js";
+import { isT3ReadRequest } from "./t3-driver.js";
 import { isFeishuReadRequest } from "./feishu-driver.js";
 import { isSlackReadRequest } from "./slack-driver.js";
 import { workspaceReadIntents } from "./workspace/catalog.js";
@@ -19,6 +20,7 @@ test("every directory example routes to exactly its own read connector in either
         ...(isLinearReadRequest(example) ? ["linear"] : []),
         ...(isDriveReadRequest(example) ? ["google-drive"] : []),
         ...(isNotionReadRequest(example) ? ["notion"] : []),
+        ...(isT3ReadRequest(example) ? ["t3"] : []),
         ...(isFeishuReadRequest(example) ? ["feishu"] : []),
         ...(isSlackReadRequest(example) ? ["slack"] : []),
         ...workspaceReadIntents(example),

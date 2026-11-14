@@ -81,7 +81,7 @@ export function pocket(home: string, token: string) {
         c.ws.close();
       }
     },
-    async read<T>(route: string, method = "GET", lan = false) {
+    async read<T>(route: string, method = "GET", lan = false, payload?: Record<string, unknown>) {
       const c = await channel(false, lan);
       try {
         if (!c.welcome.authorized) throw Error("not_paired");
@@ -94,7 +94,7 @@ export function pocket(home: string, token: string) {
               expiresAt: Date.now() + 60000,
               method,
               path: route,
-              body: "",
+              body: payload ? Buffer.from(JSON.stringify(payload)).toString("base64") : "",
             }),
           ),
         );

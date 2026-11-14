@@ -20,13 +20,15 @@ private struct FleetPocketContent: View {
     @EnvironmentObject var app: AppState
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = FleetPocketModel()
+    @State private var reviewing: FleetTask?
     private var active: Bool { scenePhase == .active && !app.locked }
 
     var body: some View {
         List {
             Section {
                 Text("Current Mac: \(macName)")
-                Text("Read-only tasks shared with this Pocket. Approvals are handled on the Mac that started the task.")
+                SavedMacPicker()
+                Text("Tasks shared with this Pocket are read only unless the Mac separately grants approval access.")
                     .font(.footnote).foregroundStyle(.secondary)
                 if let message = model.message { Text(message).font(.footnote) }
             }
@@ -49,7 +51,8 @@ private struct FleetPocketContent: View {
         .navigationDestination(item: $model.selection) { _ in
             List {
                 Section {
-                    Text("\(macName) · Read only")
+                    Text(macName + " · " + (model.timeline.run?.accessLabel ?? String(localized: "Read only")))
+                    if let message = model.decisionMessage { Text(message).font(.footnote) }
                     if let message = model.message { Text(message).font(.footnote) }
                     if let run = model.timeline.run {
                         Text(run.workspaceName + " · " + (run.agent ?? "claude-code") + " · " + run.state)
@@ -57,8 +60,14 @@ private struct FleetPocketContent: View {
                             .font(.caption).foregroundStyle(.secondary)
                         if let approval = run.approval {
                             Text("Waiting for approval: \(approval.tool) \(approval.target)")
-                            Text("Open Fleet on the Mac that started this task to respond.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                            if run.canApprove {
+                                Button("Review request") { reviewing = run }
+                                    .disabled(!active || !model.canDecide(run))
+                                    .accessibilityIdentifier("fleet.review-approval")
+                            } else {
+                                Text("Open Fleet on the Mac that started this task to respond.")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
                         }
                         if !run.result.isEmpty {
                             Text((run.truncated ? "… " : "") + run.result).textSelection(.enabled)
@@ -85,6 +94,51 @@ private struct FleetPocketContent: View {
         }
         .refreshable { await model.refresh(client) }
         .task(id: active) { await poll() }
+        .sheet(item: $reviewing) { run in approvalSheet(run) }
+        .onChange(of: active) { _, active in if !active { reviewing = nil } }
+        .onChange(of: model.selection) { _, _ in reviewing = nil }
+    }
+
+    private func approvalSheet(_ run: FleetTask) -> some View {
+        NavigationStack {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(macName + " · " + run.workspaceName + " · " + run.id.prefix(8))
+                        if let approval = run.approval {
+                            Text(approval.tool + " · " + approval.target).font(.headline)
+                            Text("Expires \(Date(timeIntervalSince1970: approval.expiresAt / 1000).formatted())")
+                                .font(.caption)
+                            Text("Review the complete tool input before allowing or denying this request.")
+                            Text(approval.preview ?? "").font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                            if let message = model.decisionMessage { Text(message).foregroundStyle(.secondary) }
+                            if !model.canDecide(run) && !model.deciding {
+                                Text("This request changed, expired, or has already been answered. Close this preview and refresh the task.")
+                            }
+                            HStack {
+                                Button("Deny", role: .destructive) { sendDecision(run, allow: false) }
+                                    .disabled(!active || !model.canDecide(run, allow: false))
+                                    .accessibilityIdentifier("fleet.deny")
+                                Spacer()
+                                Button("Allow this request") { sendDecision(run, allow: true) }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(!active || !model.canDecide(run, allow: true))
+                                    .accessibilityIdentifier("fleet.allow")
+                            }
+                        }
+                    }.padding()
+                }
+            }
+            .navigationTitle("Review request")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { reviewing = nil } } }
+        }
+    }
+    private func sendDecision(_ run: FleetTask, allow: Bool) {
+        guard active else { return }
+        Task {
+            if await model.decide(client, run: run, allow: allow) { reviewing = nil }
+            await model.refresh(client)
+        }
     }
 
     private func poll() async {

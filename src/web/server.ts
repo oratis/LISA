@@ -75,6 +75,12 @@ import {
   connectorCatalogReply,
   type ConnectorProvider,
 } from "../connectors/catalog.js";
+import {
+  T3ReadonlyDriver,
+  isT3ReadRequest,
+  type T3Account,
+  type T3Resource,
+} from "../connectors/t3-driver.js";
 import type { ReadonlyDriver } from "../connectors/types.js";
 import { handleConnectorApi } from "./connectors-api.js";
 import { GitHubConnector, isGitHubReadRequest } from "../connectors/github.js";
@@ -182,7 +188,7 @@ import type { SuggestionCategory, SuggestedAction, Urgency } from "../advisor/ty
 import { recordEvent } from "../orchestrator/journal.js";
 import { buildRecap, formatRecap } from "../orchestrator/recap.js";
 import type { AgentSession } from "../integrations/types.js";
-import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
+import { captureScreenshot, captureSupported } from "../vision/capture.js";
 import {
   AudioValidationError,
   prepareTranscription,
@@ -430,6 +436,7 @@ export interface WebServerOptions {
   workspaceDrivers?: Partial<
     Record<WorkspaceId, ReadonlyDriver<WorkspaceResource, WorkspaceResource>>
   >;
+  t3Driver?: ReadonlyDriver<T3Account, T3Resource>;
   feishuDriver?: ReadonlyDriver<FeishuAccount, FeishuResource>;
   slackDriver?: ReadonlyDriver<SlackAccount, SlackResource>;
   notionDriver?: ReadonlyDriver<NotionAccount, NotionResource>;
@@ -1228,6 +1235,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         secrets: connectorSecrets,
         changed: (sessionId) =>
           broadcast({ type: "connector_connection_changed", sessionId, provider: "notion" }, null),
+        resume: resumeConnector,
+      }),
+    );
+    taskConnectors.set(
+      "t3",
+      new ReadonlyConnector({
+        home: lisaHome(),
+        driver: opts.t3Driver ?? new T3ReadonlyDriver(),
+        secrets: connectorSecrets,
+        changed: (sessionId) =>
+          broadcast({ type: "connector_connection_changed", sessionId, provider: "t3" }, null),
         resume: resumeConnector,
       }),
     );
@@ -2934,7 +2952,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (viewing) {
           const viewer = remoteHost.fleetViewer(req);
           if (!viewer) throw new FleetError(403, "fleet_access_denied");
-          send(200, api.host.readViewer(viewer, url));
+          send(200, api.viewer(remoteHost, viewer, url, method, body));
         } else if (onMini) {
           // Body parsing yields. The owner may have revoked the grant in the meantime.
           const peer = remoteHost.fleetPeer(req);
@@ -3676,35 +3694,51 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
-    // Vision: capture a screenshot via the macOS screencapture utility and
-
-    // return it as a chat attachment. {cancelled:true} when the user hits
-
-    // Escape. 501 on non-macOS. Body: { mode?: "interactive" | "full" }.
-
+    // Explicit local-owner capture only. Optional context stays in the composer
+    // preview until the user chooses to attach it and sends the message.
     if (req.method === "POST" && url === "/api/vision/capture") {
+      if (
+        cloud ||
+        accountUid ||
+        !isLoopbackAddress(remoteAddr) ||
+        capabilityProfile !== "local-owner" ||
+        crossSiteProblem(req, true, null)
+      ) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "capture_local_owner_required" }));
+        return;
+      }
+      if (req.headers["content-type"]?.split(";")[0] !== "application/json") {
+        res.writeHead(415, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "json_required" }));
+        return;
+      }
       if (!captureSupported()) {
         res.writeHead(501, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "screen capture is only supported on macOS" }));
         return;
       }
-      const visionBody = await readRequestText(req, res);
-      if (visionBody === null) return;
-      logInfo("[vision] capture requested");
-      let mode: CaptureMode = "interactive";
-      try {
-        const parsed = visionBody ? (JSON.parse(visionBody) as { mode?: CaptureMode }) : {};
-        if (parsed.mode === "full" || parsed.mode === "interactive") mode = parsed.mode;
-      } catch {
-        /* default interactive */
+      const parsed = await readJsonBody(req, res, 4096);
+      if (!parsed) return;
+      if (
+        Object.keys(parsed).some((key) => !["mode", "includeContext"].includes(key)) ||
+        (parsed.mode !== undefined && parsed.mode !== "full" && parsed.mode !== "interactive") ||
+        (parsed.includeContext !== undefined && typeof parsed.includeContext !== "boolean")
+      ) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_capture_options" }));
+        return;
       }
       try {
-        const shot = await captureScreenshot(mode);
-        res.writeHead(200, { "content-type": "application/json" });
+        const shot = await captureScreenshot(
+          parsed.mode ?? "interactive",
+          parsed.includeContext === true,
+        );
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(shot ? { file: shot } : { cancelled: true }));
-      } catch (err) {
+      } catch {
         res.writeHead(500, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: (err as Error).message }));
+        res.end(JSON.stringify({ error: "screen_capture_failed" }));
       }
       return;
     }
@@ -6086,6 +6120,7 @@ self.addEventListener('fetch', (event) => {
             ...(isLinearReadRequest(message) ? ["linear" as const] : []),
             ...(isDriveReadRequest(message) ? ["google-drive" as const] : []),
             ...(isNotionReadRequest(message) ? ["notion" as const] : []),
+            ...(isT3ReadRequest(message) ? ["t3" as const] : []),
             ...(isFeishuReadRequest(message) ? ["feishu" as const] : []),
             ...(isSlackReadRequest(message) ? ["slack" as const] : []),
           ];
