@@ -36,6 +36,14 @@
             <p id="timeline-note"></p>
             <ol id="timeline-list"></ol>
           </div>
+          <section id="changes" hidden>
+            <h3>每轮改动</h3>
+            <p>比较该轮开始和结束时的工作区。差异可能包含同时发生的人工改动；未跟踪且被 Git 忽略的文件不在快照中。</p>
+            <div id="change-turns"></div>
+            <p id="change-note" role="status"></p>
+            <div id="change-files"></div>
+            <pre id="change-patch" hidden></pre>
+          </section>
           <form id="task-form">
             <label for="prompt">给 Claude Code 的指令</label>
             <textarea id="prompt" required maxlength="16000" rows="3"></textarea>
@@ -60,6 +68,10 @@
         <div id="requests"></div>
         <div id="devices"></div>
         <div id="local-runs"></div>
+        <div id="checkpoint-runs"></div>
+        <h3>Pocket 只读查看</h3>
+        <p>选择已安全配对的 Pocket，授权它查看本机的指定任务及结果摘要。审批仍由发起任务的 Mac 处理。</p>
+        <div id="shares"></div>
         <button id="local-refresh">刷新本机配置</button>
       </details>
     </main>
