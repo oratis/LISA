@@ -28,6 +28,8 @@ async function openTask(page: Page, modern = false) {
     receiver: false,
     restores: 0,
     slowRestore: false,
+    operationGeneration: "",
+    emptyLedger: false,
   };
   let finishDiff: (() => void) | undefined;
   let finishPreview: (() => void) | undefined;
@@ -59,6 +61,7 @@ async function openTask(page: Page, modern = false) {
               }
             : {}),
           control: true,
+          operationGeneration: state.operationGeneration,
           workspaces: [{ id: workspaceId, name: "Project" }],
         },
       });
@@ -95,7 +98,8 @@ async function openTask(page: Page, modern = false) {
     if (path === "/runs")
       return route.fulfill({
         json: {
-          runs: [run],
+          runs: state.emptyLedger ? [] : [run],
+          operationGeneration: state.operationGeneration,
           ...(modern
             ? {
                 observations: [
@@ -533,4 +537,96 @@ test("a restore preview arriving after switching Macs cannot enable file writes"
   await expect(page.locator("#restore")).toBeHidden();
   await expect(page.locator("#restore")).toBeEmpty();
   expect(state.restores).toBe(0);
+});
+
+test("cleanup generations invalidate old browser retries while new operations use the fresh generation", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  const payloads: { operationGeneration: string; operationId: string }[] = [];
+  let newGeneration: string | undefined;
+  await page.route("**/api/fleet/request", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.path.endsWith("/decisions")) {
+      payloads.push(body.payload);
+      if (payloads.length === 1) return route.abort();
+      return route.fulfill({ status: 409, json: { error: "operation_generation_changed" } });
+    }
+    if (body.path.startsWith("/operations/"))
+      return route.fulfill({ status: 404, json: { error: "operation_not_found" } });
+    if (body.path === "/runs" && body.method === "POST") {
+      newGeneration = body.payload.operationGeneration;
+      return route.fulfill({ json: { status: "accepted", run: { id: runId } } });
+    }
+    return route.fallback();
+  });
+  await page.getByRole("button", { name: "允许这一次" }).click();
+  await expect(page.locator("#retry")).toBeEnabled();
+  state.operationGeneration = "after-cleanup";
+  state.emptyLedger = true;
+  await page.clock.fastForward(4000);
+  await expect(page.locator("#notice")).toContainText("账本已清理");
+  await expect(page.locator("#timeline-list")).toBeEmpty();
+  await page.locator("#retry").click();
+  await expect(page.locator("#notice")).toContainText("旧操作不会重放");
+  await expect.poll(() => payloads.length).toBe(2);
+  await expect(page.locator("#retry")).toBeHidden();
+  expect(payloads[0]).toEqual(payloads[1]);
+  expect(payloads[1]!.operationGeneration).toBe("");
+  await page.locator("#prompt").fill("explicit new task");
+  await page.locator("#start").click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(newGeneration).toBe("after-cleanup");
+});
+
+test("owner storage cleanup requires a preview and explicit confirmation", async ({ page }) => {
+  let cleared = 0;
+  await page.route("**/api/fleet/hosts", (route) =>
+    route.fulfill({ json: { scope: "account", hosts: [] } }),
+  );
+  await page.route("**/api/fleet/local", (route) =>
+    route.fulfill({
+      json: {
+        link: { online: true, pending: [], devices: [] },
+        workspaces: [],
+        runs: [],
+        shares: [],
+        storage: {
+          quotaMiB: 512,
+          retentionDays: 0,
+          usedBytes: 4096,
+          runs: cleared ? 0 : 2,
+          receipts: 3,
+        },
+      },
+    }),
+  );
+  await page.route("**/api/fleet/ledger/preview", (route) =>
+    route.fulfill({
+      json: {
+        runs: 2,
+        receipts: 3,
+        usedBytes: 4096,
+        previewToken: "bound-cleanup",
+        expiresAt: Date.now() + 600000,
+      },
+    }),
+  );
+  await page.route("**/api/fleet/ledger/clear", (route) => {
+    expect(route.request().postDataJSON().previewToken).toBe("bound-cleanup");
+    cleared++;
+    return route.fulfill({ json: { cleared: true, compacted: true } });
+  });
+  await page.goto(lisa.baseURL + "/fleet");
+  await page.locator("#local summary").click();
+  await expect(page.getByRole("button", { name: "确认清理全部任务记录" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览完整账本清理" }).click();
+  await expect(page.locator("#storage")).toContainText("2 个任务、3 个回执");
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "确认清理全部任务记录" }).click();
+  expect(cleared).toBe(0);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "确认清理全部任务记录" }).click();
+  await expect(page.getByRole("button", { name: "确认清理全部任务记录" })).toHaveCount(0);
+  expect(cleared).toBe(1);
 });

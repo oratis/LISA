@@ -35,6 +35,8 @@ Pocket saves up to 32 Macs with separate credentials and pins. Use the Mac switc
 
 ## Retention and boundaries
 
-The owner can clean checkpoints for a finished task. This deletes private snapshot objects and clears displayed diffs, while keeping workspace files, receipts and the timeline. Fleet also keeps full requests/results for the first 100 turns and confirmed handoff packets in its private ledger; checkpoint cleanup does not delete them.
+The owner can set a cross-task checkpoint quota (default 512 MiB) and retention in days (default 0, disabled). Quota exhaustion skips the new snapshot while the agent continues and preserves existing checkpoints. Retention clears old ended-task checkpoints, never an open session. The owner can also clean checkpoints for a finished task. This deletes private snapshot objects and clears displayed diffs, while keeping workspace files, receipts and the timeline. Fleet also keeps full requests/results for the first 100 turns and confirmed handoff packets in its private ledger; checkpoint cleanup does not delete them.
 
-Automatic merge, automatic worktree deletion, full ledger cleanup, storage quotas across tasks are not part of these three phases. Optional T3 connectors and screenshot window context are separate proposals. Detailed implementation and acceptance scenarios are in the [workflow plan](PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md).
+For complete deletion, use **Preview full ledger cleanup**, review the counts and confirm while the host is idle. This erases task requests/results, timelines, shares, operation receipts and private checkpoints, then compacts SQLite/WAL. Workspace files, registrations and paired-device configuration remain. Cleanup rotates the operation generation; old clients must update, and pending requests keep their old generation so retries cannot recreate deleted tasks.
+
+Automatic merge and automatic worktree deletion remain in progress for the complete release. Optional T3 connectors and screenshot window context are separate proposals. Detailed implementation and acceptance scenarios are in the [workflow plan](PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md).

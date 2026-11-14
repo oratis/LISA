@@ -116,11 +116,14 @@ export class FleetCheckpoints {
     side: "before" | "after",
     root: string,
     expected: string,
+    maxStorageBytes = Number.POSITIVE_INFINITY,
   ): Snapshot {
     const at = Date.now();
     let index: string | undefined;
     try {
       if (turn > 100) return { status: "unavailable", at, reason: "checkpoint_limit" };
+      if (this.usage() >= maxStorageBytes)
+        return { status: "unavailable", at, reason: "checkpoint_quota" };
       if (repositoryIdentity(root) !== expected) throw new Error("workspace_changed");
       const head = () => git(root, ["rev-parse", "HEAD"]).toString().trim();
       const stage = () => digest(git(root, ["ls-files", "--stage", "-z"]).toString());
@@ -190,7 +193,22 @@ export class FleetCheckpoints {
       const commit = this.command(run, ["commit-tree", tree], `Fleet turn ${turn} ${side}\n`)
         .toString()
         .trim();
-      this.command(run, ["update-ref", `refs/lisa/turns/${turn}/${side}`, commit]);
+      const ref = `refs/lisa/turns/${turn}/${side}`;
+      let previous: string | undefined;
+      try {
+        previous = this.command(run, ["rev-parse", "--verify", ref]).toString().trim();
+      } catch {
+        /* new boundary */
+      }
+      this.command(run, ["update-ref", ref, commit]);
+      fs.rmSync(index, { force: true });
+      index = undefined;
+      if (this.usage() > maxStorageBytes) {
+        if (previous) this.command(run, ["update-ref", ref, previous]);
+        else this.command(run, ["update-ref", "-d", ref]);
+        this.command(run, ["prune", "--expire=now"]);
+        return { status: "unavailable", at, reason: "checkpoint_quota" };
+      }
       // A changed HEAD/index is evidence of another actor, even if its commit hid the diff.
       return {
         status: "ready",
@@ -301,6 +319,27 @@ export class FleetCheckpoints {
       content,
       mode: match[1] === "100755" ? 0o755 : 0o644,
     };
+  }
+  /** Private Git storage only; do not follow links when accounting for quota. */
+  usage() {
+    const directory = path.join(this.home, "fleet", "checkpoints");
+    const size = (entry: string): number => {
+      const st = fs.lstatSync(entry);
+      if (st.isSymbolicLink()) throw new FleetError(409, "checkpoint_storage_changed");
+      if (st.isDirectory())
+        return fs.readdirSync(entry).reduce((n, child) => n + size(path.join(entry, child)), 0);
+      if (!st.isFile()) throw new FleetError(409, "checkpoint_storage_changed");
+      return Math.max(st.size, Number.isFinite(st.blocks) ? st.blocks * 512 : st.size);
+    };
+    try {
+      return size(directory);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+      throw err;
+    }
+  }
+  clearAll() {
+    fs.rmSync(path.join(this.home, "fleet", "checkpoints"), { recursive: true, force: true });
   }
   clear(run: string) {
     fs.rmSync(this.directory(run), { recursive: true, force: true });

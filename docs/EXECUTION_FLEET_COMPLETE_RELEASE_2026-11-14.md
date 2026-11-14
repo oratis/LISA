@@ -8,7 +8,7 @@ The owner confirmed on November 14, 2026 that this release includes the follow-u
 - [x] Pocket: separately granted Fleet approval authority with exact-request binding, expiry and server-side revalidation; read-only shares stay read-only.
 - [x] Checkpoints: preview and restore selected files with concurrent-edit protection.
 - [ ] Worktrees: preview/confirm automatic merge into the source branch, refuse conflicts or changed source state, optionally clean up owned worktrees safely.
-- [ ] Storage: cross-task checkpoint quotas, retention controls and complete content/receipt cleanup with an explicit operation generation so old retries cannot restart deleted tasks.
+- [x] Storage: cross-task checkpoint quotas, retention controls and complete content/receipt cleanup with an explicit operation generation so old retries cannot restart deleted tasks.
 - [ ] Recovery: explicit continuation from saved task context after the previous process has been verified stopped; never silently replay uncertain tool calls.
 - [ ] Codex: scoped workspace browsing/editing and fresh approval requests, preserving the existing packet-only review option.
 - [ ] T3: authenticated read-only project/thread-list connector, exact selected-project scoping, pagination, cancellation and revocation.
@@ -44,3 +44,10 @@ New destructive product actions require a user-visible preview and explicit conf
 - Ten checkpoint tests passed, including content/inode races, grants, expiry, links, deletion/recreation, index preservation and unknown-receipt retry. Thirteen browser regressions passed, including explicit confirmation and a late preview after switching Macs. Logs: `/private/tmp/lisa-complete-restore.log`, `/private/tmp/lisa-complete-restore-browser.log`.
 
 - Combined Fleet/host suite after restore: 64 passed, zero skips, including the installed native Codex fixture. Log: `/private/tmp/lisa-complete-fleet-all.log`.
+
+## Implementation evidence: storage and full cleanup
+
+- Default 512 MiB across checkpoint repositories; owner-configurable quota and optional retention. New snapshots that exceed quota are discarded while older refs and the running agent remain intact. A minute maintenance pass removes only ended-task checkpoints older than the configured interval.
+- Full cleanup requires an idle host and a signed preview bound to the database revision. It rotates the operation generation before deleting task contents, shares and all receipts, removes snapshots, then securely deletes/compacts SQLite and truncates WAL. Workspace registrations/files and pairings remain.
+- Regression verifies cleanup leaves no sentinel task content in SQLite/WAL, old retries are rejected even after restart, explicit new-generation tasks work, active snapshots survive retention, and quota applies across multiple tasks.
+- Combined Fleet/host suite: 67 passed, zero skips. Browser: 15 passed, including preview/confirmation, emptying old timeline DOM and preserving the old generation on uncertain retries. Types/contracts pass; lint remains zero errors / 72 pre-existing warnings. Logs: `/private/tmp/lisa-complete-storage-all.log`, `/private/tmp/lisa-complete-storage-browser.log`, `/private/tmp/lisa-complete-storage-final.log`.

@@ -80,6 +80,10 @@
                     },
                     "control": {
                       "type": "boolean"
+                    },
+                    "operationGeneration": {
+                      "type": "string",
+                      "description": "Bind new operations to this generation; keep pending operation payloads unchanged."
                     }
                   }
                 }
@@ -4795,6 +4799,246 @@
           }
         }
       ]
+    },
+    "/api/fleet/storage": {
+      "post": {
+        "operationId": "configureFleetStorage",
+        "description": "Local owner only. Set cross-task quota and retention. Quota exhaustion skips the snapshot without stopping the agent or evicting prior snapshots. Retention excludes open tasks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "quotaMiB",
+                  "retentionDays"
+                ],
+                "properties": {
+                  "quotaMiB": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16384,
+                    "default": 512
+                  },
+                  "retentionDays": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3650,
+                    "default": 0,
+                    "description": "Checkpoint retention for ended tasks; zero disables it. Task payloads and receipts remain until full cleanup."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetStorage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/ledger/preview": {
+      "post": {
+        "operationId": "previewFleetLedgerCleanup",
+        "description": "Local owner only; idle host required. Preview deletion of all task contents, timelines, shares, checkpoints and receipts, bound to the database revision.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/FleetStorage"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "previewToken",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "previewToken": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/ledger/clear": {
+      "post": {
+        "operationId": "clearFleetLedger",
+        "description": "Local owner only. Confirm signed preview. Atomically rotates operationGeneration and erases tasks and receipts, then removes snapshots and compacts SQLite/WAL. Working files, workspace registrations and device grants remain. Old operations cannot replay.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "previewToken",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "previewToken": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "cleared",
+                    "compacted",
+                    "operationGeneration"
+                  ],
+                  "properties": {
+                    "cleared": {
+                      "type": "boolean"
+                    },
+                    "compacted": {
+                      "type": "boolean"
+                    },
+                    "operationGeneration": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fleet/local": {
+      "get": {
+        "operationId": "getFleetOwnerState",
+        "description": "Local owner configuration, active tasks, shared tasks and storage usage. Requires the local loopback owner and same-origin protection.",
+        "responses": {
+          "200": {
+            "description": "Authorized local owner response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "storage": {
+                      "$ref": "#/components/schemas/FleetStorage"
+                    },
+                    "link": {
+                      "type": "object"
+                    },
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "checkpointRuns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "shares": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, unauthorized or stale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4902,6 +5146,10 @@
             "items": {
               "$ref": "#/components/schemas/FleetAgent"
             }
+          },
+          "operationGeneration": {
+            "type": "string",
+            "description": "Bind new operations to this generation; keep pending operation payloads unchanged."
           }
         }
       },
@@ -5205,6 +5453,10 @@
           "hostId": {
             "type": "string",
             "pattern": "^[0-9a-f]{32}$"
+          },
+          "operationGeneration": {
+            "type": "string",
+            "description": "Generation returned by this host. Omission is accepted only before its first full ledger cleanup. Never replace this value on a pending operation; cleanup invalidates old retries."
           }
         }
       },
@@ -10929,6 +11181,40 @@
           },
           "previewToken": {
             "type": "string"
+          }
+        }
+      },
+      "FleetStorage": {
+        "type": "object",
+        "required": [
+          "quotaMiB",
+          "retentionDays",
+          "usedBytes",
+          "runs",
+          "receipts"
+        ],
+        "properties": {
+          "quotaMiB": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384,
+            "default": 512
+          },
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3650,
+            "default": 0,
+            "description": "Checkpoint retention for ended tasks; zero disables it. Task payloads and receipts remain until full cleanup."
+          },
+          "usedBytes": {
+            "type": "integer"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "receipts": {
+            "type": "integer"
           }
         }
       }

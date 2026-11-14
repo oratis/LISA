@@ -46,6 +46,7 @@ export class FleetApi {
   }
   peer(peer: FleetPeer, route: string, method: string, body: Record<string, unknown>) {
     const effective = { ...peer, control: peer.control && loadControlPolicy().remoteControl };
+    if (method === "POST") this.host.assertGeneration(body);
     if (method === "POST" && route.endsWith("/handoff-preview"))
       return this.host.previewHandoff(effective, uuid(route.split("/").at(-2)), body);
     if (method === "POST" && route.endsWith("/restore-preview"))
@@ -83,6 +84,7 @@ export class FleetApi {
         workspaces: this.host.workspaces(),
         runs: this.host.ownerRuns(),
         checkpointRuns: this.host.checkpointRuns(),
+        storage: this.host.storage(),
         shares: this.host.ownerShares(
           link.status().hostId ?? "",
           link.status().devices.flatMap((d) => {
@@ -101,6 +103,12 @@ export class FleetApi {
           throw new FleetError(400, "invalid_share");
         return this.host.share(viewer, uuid(body.runId), body.enabled, body.approve === true);
       }
+      case "/api/fleet/storage":
+        return this.host.configureStorage(body);
+      case "/api/fleet/ledger/preview":
+        return this.host.previewCleanup();
+      case "/api/fleet/ledger/clear":
+        return this.host.clearLedger(body);
       case "/api/fleet/worktrees":
         return this.host.createWorktree(uuid(body.workspaceId));
       case "/api/fleet/checkpoints/clear":

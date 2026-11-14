@@ -15,6 +15,9 @@
   const messages = {
     sign_in_to_lisa_on_this_mac: "请先在这台 Mac 的 LISA 登录。",
     workspace_grant_required: "请先在 mini 上核对验证码并授权工作区。",
+    operation_generation_changed: "执行机已清理账本，旧操作不会重放。请刷新机器后重新发起任务。",
+    cleanup_preview_changed: "账本在预览后发生了变化，请重新预览清理。",
+    ledger_compaction_pending: "任务记录已删除，但存储压缩尚未完成。请关闭其他后端后重新执行清理。",
     host_busy: "这台机器已有活动任务。",
     claude_api_key_required: "在 mini 的 LISA 后端配置 ANTHROPIC_API_KEY 后重启。",
     claude_not_installed: "mini 未检测到 Claude Code。",
@@ -325,6 +328,13 @@
     if (!host || !cap) return;
     const d = await remote(host.id, scope, "/runs");
     if (v !== version) return;
+    if (typeof d.operationGeneration === "string" && d.operationGeneration !== cap.operationGeneration) {
+      if (cap.operationGeneration !== undefined) {
+        timelines.clear(); shown = ""; clearChanges(); clearHandoff();
+        notice("执行机账本已清理。旧操作不会重放；新任务使用新的操作代次。");
+      }
+      cap.operationGeneration = d.operationGeneration;
+    }
     runs = d.runs;
     observations = d.observations || [];
     if (d.agents) cap.agents = d.agents;
@@ -357,6 +367,7 @@
       managed_worktree_required: "仅 LISA 创建的隔离 Git 工作区提供检查点",
       snapshot_limit: "超过快照上限（2000 文件 / 16 MiB）",
       checkpoint_limit: "已达单任务 100 轮检查点上限",
+      checkpoint_quota: "检查点存储已达到本机总配额，任务仍继续执行",
       snapshot_unavailable: "快照未完成（目录变化、子模块或 Git 不可用）",
       workspace_replaced: "工作区已被替换",
       checkpoints_cleared: "检查点已清理",
@@ -391,7 +402,7 @@
               const prepare = btn("预览回退此文件", async () => {
                 if (!validRestore() || busy || pending()) return;
                 const packet = await remote(id, account, "/runs/" + run.id + "/restore-preview", "POST",
-                  { hostId: id, workspaceId: run.workspaceId, turn: t.turn, file: f.id });
+                  { hostId: id, workspaceId: run.workspaceId, turn: t.turn, file: f.id, operationGeneration: cap.operationGeneration });
                 if (!validRestore()) return;
                 const describe = (side) => !side.exists ? "文件不存在" :
                   side.bytes + " bytes · 权限 " + side.mode.toString(8) + " · SHA-256 " + side.sha256 +
@@ -460,10 +471,14 @@
       t = r && timelines.get(timelineKey(r.id)),
       first = t?.events[0]?.seq,
       signature = t ? timelineKey(r.id) + "|" + t.last + "|" + first : "";
+    if (!t) {
+      shown = ""; $("timeline").hidden = true;
+      $("timeline-list").replaceChildren(); $("timeline-note").textContent = "";
+      return;
+    }
     if (signature === shown) return;
     shown = signature;
-    $("timeline").hidden = !t || !t.events.length;
-    if (!t) return;
+    $("timeline").hidden = !t.events.length;
     $("timeline-note").textContent = first > 1
       ? "较早的记录已超出执行机的留存范围，以下从第 " + first + " 条开始。"
       : "";
@@ -599,7 +614,7 @@
     const prepare = btn("生成交接预览", async () => {
       invalidate(); const expected = generation;
       const body = { hostId: id, workspaceId: run.workspaceId, agent: agent.value, turn: Number(turn.value), verification: verification.value };
-      const packet = await remote(id, account, "/runs/" + run.id + "/handoff-preview", "POST", body);
+      const packet = await remote(id, account, "/runs/" + run.id + "/handoff-preview", "POST", { ...body, operationGeneration: cap.operationGeneration });
       if (v !== version || handoffKey !== key || expected !== generation || request !== handoffVersion) return;
       preview.textContent = host.name + " · " + packet.recipient.agent + "\n\n" + packet.prompt;
       send.hidden = false;
@@ -625,6 +640,7 @@
         workspaceId: $("workspace").value,
         hostId: host.id,
         operationId: crypto.randomUUID(),
+        ...(cap.operationGeneration !== undefined ? { operationGeneration: cap.operationGeneration } : {}),
       },
     };
     sessionStorage.setItem(key(), JSON.stringify(op));
@@ -773,6 +789,28 @@
           await api("/api/fleet/checkpoints/clear", { runId: r.id }); await local();
         })); return row;
       }));
+    const storage = $("storage"); storage.hidden = !d.storage; storage.replaceChildren();
+    if (d.storage) {
+      const quota = document.createElement("input"), days = document.createElement("input");
+      quota.type = days.type = "number"; quota.min = "1"; quota.max = "16384"; days.min = "0"; days.max = "3650";
+      quota.value = String(d.storage.quotaMiB); days.value = String(d.storage.retentionDays);
+      quota.setAttribute("aria-label", "检查点配额 MiB"); days.setAttribute("aria-label", "检查点保留天数");
+      const save = btn("保存存储策略", async () => {
+        if (Number(days.value) > 0 && !confirm("自动删除已结束任务超过保留天数的检查点？工作区文件与任务账本会保留。")) return;
+        await api("/api/fleet/storage", { quotaMiB: Number(quota.value), retentionDays: Number(days.value) }); await local();
+      });
+      const cleanupPreview = make("div", "");
+      const preview = btn("预览完整账本清理", async () => {
+        const packet = await api("/api/fleet/ledger/preview", {});
+        const confirmClear = btn("确认清理全部任务记录", async () => {
+          if (!confirm("删除所有 Fleet 任务、要求、结果、时间线、分享、回执及检查点？工作区文件和设备授权会保留；旧操作将失效。")) return;
+          await api("/api/fleet/ledger/clear", { previewToken: packet.previewToken, expiresAt: packet.expiresAt }); await local();
+        });
+        cleanupPreview.replaceChildren(make("p", "清理预览：" + packet.runs + " 个任务、" + packet.receipts + " 个回执及 " + packet.usedBytes + " bytes 检查点。"), confirmClear);
+      });
+      storage.append(make("h3", "Fleet 存储"), make("p", "检查点使用 " + (d.storage.usedBytes / 1048576).toFixed(1) + " MiB；总配额达到后仅停止新增检查点。保留天数 0 表示不自动清理。"),
+        make("label", "检查点配额 MiB"), quota, make("label", "检查点保留天数"), days, save, preview, cleanupPreview);
+    }
     const pockets = l.devices.filter((x) => x.secure && !x.fleet);
     $("shares").replaceChildren();
     if (!pockets.length) $("shares").append(make("p", "请先在本机设置中安全配对 Pocket。"));

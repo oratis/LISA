@@ -194,6 +194,7 @@ export class FleetHostService {
   private readonly sessions = new Map<string, ClaudeSession>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly turns = new Map<string, number>();
+  private retentionTimer?: NodeJS.Timeout;
   private closing = false;
   private closed = false;
   private drained!: () => void;
@@ -216,6 +217,7 @@ export class FleetHostService {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(path.join(dir, "runs.sqlite"));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;
+      CREATE TABLE IF NOT EXISTS fleet_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT,root TEXT UNIQUE,inode TEXT);
       CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,host TEXT,device TEXT,workspace TEXT,epoch TEXT,state TEXT,result TEXT,pending TEXT,created INTEGER,pgid INTEGER,started INTEGER,backend INTEGER);
       CREATE TABLE IF NOT EXISTS ops(host TEXT,device TEXT,id TEXT,hash TEXT,run TEXT,action TEXT,at INTEGER,status TEXT,PRIMARY KEY(host,device,id));
@@ -290,6 +292,15 @@ export class FleetHostService {
       }
     });
     this.recovered = Promise.all(live.map((o) => this.stopOrphan(o))).then(() => undefined);
+    this.retentionTimer = setInterval(() => {
+      if (!this.closing)
+        try {
+          this.applyRetention();
+        } catch {
+          /* Retry maintenance; never interrupt an agent. */
+        }
+    }, 60_000);
+    this.retentionTimer.unref();
   }
   /**
    * Whether the group's leader is the agent this ledger launched: it started
@@ -556,10 +567,12 @@ export class FleetHostService {
           "session-capabilities",
           "agent-handoff",
           "file-restore",
+          "operation-generation",
         ],
         agents: this.agents(peer),
         hostId: peer.hostId,
         instanceId: this.epoch,
+        operationGeneration: this.operationGeneration(),
         control: peer.control,
         unavailable: this.runner.reason(),
         workspaces: this.workspaces()
@@ -574,6 +587,7 @@ export class FleetHostService {
         runs: all
           .filter((r) => peer.workspaces.includes(r.workspace))
           .map((r) => this.view(r, peer)),
+        operationGeneration: this.operationGeneration(),
         observations: this.observations(peer),
         agents: this.agents(peer),
         control: peer.control,
@@ -610,6 +624,7 @@ export class FleetHostService {
     return { run: this.view(this.getRun(peer, id), peer) };
   }
   mutate(peer: FleetPeer, route: string, body: Body): unknown {
+    this.assertGeneration(body);
     const op = uuid(body.operationId);
     const workspaceId = uuid(body.workspaceId);
     if (body.hostId !== peer.hostId || !peer.control || !peer.workspaces.includes(workspaceId))
@@ -1016,6 +1031,132 @@ export class FleetHostService {
       .run(workspace.id, created.gitIdentity);
     return { ...workspace, root: created.root };
   }
+  private setting(key: string, fallback: string) {
+    return String(
+      this.db.prepare("SELECT value FROM fleet_settings WHERE key=?").get(key)?.value ?? fallback,
+    );
+  }
+  private setSetting(key: string, value: string) {
+    this.db
+      .prepare(
+        "INSERT INTO fleet_settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
+      .run(key, value);
+  }
+  operationGeneration() {
+    return this.setting("operation_generation", "");
+  }
+  assertGeneration(body: Body) {
+    const expected = this.operationGeneration();
+    if (
+      (expected && body.operationGeneration !== expected) ||
+      (!expected && body.operationGeneration != null && body.operationGeneration !== "")
+    )
+      throw new FleetError(409, "operation_generation_changed");
+  }
+  storage() {
+    return {
+      quotaMiB: Number(this.setting("checkpoint_quota_mib", "512")),
+      retentionDays: Number(this.setting("checkpoint_retention_days", "0")),
+      usedBytes: this.checkpoints.usage(),
+      runs: Number(this.db.prepare("SELECT COUNT(*) AS n FROM runs").get()?.n),
+      receipts: Number(
+        this.db
+          .prepare("SELECT (SELECT COUNT(*) FROM ops)+(SELECT COUNT(*) FROM viewer_ops) AS n")
+          .get()?.n,
+      ),
+    };
+  }
+  configureStorage(body: Body) {
+    const quota = body.quotaMiB,
+      days = body.retentionDays;
+    if (
+      typeof quota !== "number" ||
+      !Number.isInteger(quota) ||
+      quota < 1 ||
+      quota > 16384 ||
+      typeof days !== "number" ||
+      !Number.isInteger(days) ||
+      days < 0 ||
+      days > 3650
+    )
+      throw new FleetError(400, "invalid_retention_policy");
+    this.tx(() => {
+      this.setSetting("checkpoint_quota_mib", String(quota));
+      this.setSetting("checkpoint_retention_days", String(days));
+    });
+    this.applyRetention();
+    return this.storage();
+  }
+  applyRetention(now = Date.now()) {
+    const days = Number(this.setting("checkpoint_retention_days", "0"));
+    if (!days) return;
+    const rows = this.db
+      .prepare(
+        `SELECT r.id FROM runs r WHERE r.state NOT IN ${ACTIVE}
+      AND COALESCE((SELECT MAX(at) FROM events WHERE run=r.id),r.created) < ?
+      AND EXISTS(SELECT 1 FROM checkpoints c WHERE c.run=r.id AND c.state!='cleared')`,
+      )
+      .all(now - days * 86400_000);
+    for (const row of rows)
+      if (!this.sessions.has(String(row.id))) this.clearCheckpoints(String(row.id));
+  }
+  private cleanupPlan(expiresAt: number) {
+    if (this.hostBusy()) throw new FleetError(409, "host_busy");
+    if (
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now() ||
+      expiresAt > Date.now() + 10 * 60_000
+    )
+      throw new FleetError(409, "preview_expired");
+    const packet = { ...this.storage(), expiresAt };
+    const revision = [
+      this.db.prepare("SELECT total_changes() AS n").get()?.n,
+      this.db.prepare("PRAGMA data_version").get()?.data_version,
+    ];
+    const previewToken = crypto
+      .createHmac("sha256", this.handoffKey)
+      .update(JSON.stringify([this.epoch, this.operationGeneration(), revision, packet]))
+      .digest("hex");
+    return { ...packet, previewToken };
+  }
+  previewCleanup() {
+    return this.cleanupPlan(Date.now() + 10 * 60_000);
+  }
+  clearLedger(body: Body) {
+    const generation = crypto.randomUUID();
+    this.db.exec("PRAGMA secure_delete=ON");
+    this.tx(() => {
+      const preview = this.cleanupPlan(Number(body.expiresAt));
+      if (
+        typeof body.previewToken !== "string" ||
+        !/^[a-f0-9]{64}$/.test(body.previewToken) ||
+        !crypto.timingSafeEqual(
+          Buffer.from(body.previewToken, "hex"),
+          Buffer.from(preview.previewToken, "hex"),
+        )
+      )
+        throw new FleetError(409, "cleanup_preview_changed");
+      this.setSetting("operation_generation", generation);
+      // Configuration and paired-device grants remain; every task payload and receipt goes.
+      for (const table of [
+        "events",
+        "turn_context",
+        "checkpoints",
+        "viewers",
+        "viewer_ops",
+        "ops",
+        "runs",
+      ])
+        this.db.exec(`DELETE FROM ${table}`);
+    });
+    crypto.randomFillSync(this.handoffKey);
+    this.checkpoints.clearAll();
+    this.db.exec("VACUUM");
+    const compact = this.db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+    if (Number(compact?.busy ?? 0)) throw new FleetError(503, "ledger_compaction_pending");
+    return { cleared: true, compacted: true, operationGeneration: generation };
+  }
   private captureCheckpoint(
     run: string,
     turn: number,
@@ -1033,7 +1174,15 @@ export class FleetHostService {
         inode(workspace.root) !== workspace.inode
       )
         throw new Error();
-      return this.checkpoints.capture(run, turn, side, workspace.root, String(managed.identity));
+      this.applyRetention();
+      return this.checkpoints.capture(
+        run,
+        turn,
+        side,
+        workspace.root,
+        String(managed.identity),
+        Number(this.setting("checkpoint_quota_mib", "512")) * 1024 * 1024,
+      );
     } catch {
       return { status: "unavailable", at: Date.now(), reason: "workspace_replaced" };
     }
@@ -1182,6 +1331,7 @@ export class FleetHostService {
     return this.restorePlan(peer, id, body, false).packet;
   }
   restore(peer: FleetPeer, id: string, body: Body) {
+    this.assertGeneration(body);
     const op = uuid(body.operationId),
       run = this.getRun(peer, id);
     if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== run.workspace)
@@ -1504,6 +1654,7 @@ export class FleetHostService {
   /** Stop every agent. Settles once their processes have exited and the ledger is closed. */
   shutdown(): Promise<void> {
     this.closing = true;
+    clearInterval(this.retentionTimer);
     for (const id of this.sessions.keys()) this.stopRun(id, "shutdown");
     this.finishShutdown();
     return this.stopped;

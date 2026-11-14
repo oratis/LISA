@@ -487,3 +487,119 @@ test("an uncertain restore receipt prevents retry from overwriting a subsequent 
     await f.close();
   }
 });
+
+test("global checkpoint quota refuses new snapshots without losing old diffs or stopping the agent", async () => {
+  const f = fixture();
+  try {
+    f.svc.configureStorage({ quotaMiB: 1, retentionDays: 0 });
+    f.svc.mutate(f.peer, HOST_API + "/runs", f.start);
+    fs.writeFileSync(path.join(f.root, "noise.bin"), crypto.randomBytes(900_000));
+    f.events().result("first", false);
+    assert.equal(f.read().turns[0]!.available, true);
+    const first = f.read("/1").files;
+    f.svc.mutate(f.peer, f.route + "/messages", f.body({ text: "second" }));
+    fs.writeFileSync(path.join(f.root, "noise.bin"), crypto.randomBytes(900_000));
+    f.events().result("second", false);
+    assert.equal(f.read().turns[0]!.reason, "checkpoint_quota");
+    assert.deepEqual(f.read("/1").files, first);
+    assert.ok(f.svc.storage().usedBytes <= 1024 * 1024);
+    assert.equal((f.svc.read(f.peer, f.route) as { run: { state: string } }).run.state, "waiting");
+    f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+    const next = f.body({ text: "new task shares the same quota" });
+    f.svc.mutate(f.peer, HOST_API + "/runs", next);
+    f.events().result("still executes", false);
+    const history = f.svc.read(f.peer, `${HOST_API}/runs/${next.operationId}/changes`) as {
+      turns: { reason: string }[];
+    };
+    assert.equal(history.turns[0]!.reason, "checkpoint_quota");
+    assert.deepEqual(f.read("/1").files, first);
+  } finally {
+    await f.close();
+  }
+});
+
+test("retention removes only old ended-task checkpoints and preserves task receipts", async () => {
+  const f = fixture();
+  try {
+    f.svc.configureStorage({ quotaMiB: 512, retentionDays: 1 });
+    f.svc.mutate(f.peer, HOST_API + "/runs", f.start);
+    fs.writeFileSync(path.join(f.root, "a.txt"), "keep workspace\n");
+    f.events().result("keep ledger", false);
+    f.svc.applyRetention(Date.now() + 2 * 86400_000);
+    assert.equal(
+      f.read().turns[0]!.available,
+      true,
+      "an open provider session must retain its snapshots",
+    );
+    f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+    f.svc.applyRetention(Date.now() + 2 * 86400_000);
+    assert.equal(f.read().turns[0]!.state, "cleared");
+    assert.equal(f.svc.storage().usedBytes, 0);
+    assert.ok(f.svc.storage().receipts > 0);
+    assert.equal(fs.readFileSync(path.join(f.root, "a.txt"), "utf8"), "keep workspace\n");
+    assert.equal(
+      (f.svc.read(f.peer, f.route) as { run: { result: string } }).run.result,
+      "keep ledger",
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("complete ledger cleanup requires a current preview and rotates generation before removing receipts", async () => {
+  const f = fixture();
+  try {
+    f.svc.mutate(f.peer, HOST_API + "/runs", f.start);
+    assert.throws(() => f.svc.previewCleanup(), /host_busy/);
+    f.events().result("DELETE_ME_FLEET_SECRET_46b17f", false);
+    f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+    const stale = f.svc.previewCleanup();
+    f.svc.configureStorage({ quotaMiB: 256, retentionDays: 0 });
+    assert.throws(() => f.svc.clearLedger(stale), /cleanup_preview_changed/);
+    const preview = f.svc.previewCleanup();
+    assert.equal(preview.runs, 1);
+    assert.ok(preview.receipts > 0);
+    f.svc.storage(); // Read-only polling does not invalidate a preview.
+    const cleared = f.svc.clearLedger(preview);
+    assert.equal(cleared.compacted, true);
+    assert.equal(f.svc.storage().runs, 0);
+    assert.equal(f.svc.storage().receipts, 0);
+    assert.equal(f.svc.storage().usedBytes, 0);
+    assert.equal(f.svc.workspaces().length, 2);
+    assert.equal(fs.readFileSync(path.join(f.root, "a.txt"), "utf8"), "original\n");
+    for (const file of ["runs.sqlite", "runs.sqlite-wal"]) {
+      const filename = path.join(f.home, "fleet", file);
+      if (fs.existsSync(filename))
+        assert.ok(
+          !fs.readFileSync(filename).includes(Buffer.from("DELETE_ME_FLEET_SECRET_46b17f")),
+        );
+    }
+    assert.throws(
+      () => f.svc.mutate(f.peer, HOST_API + "/runs", f.start),
+      /operation_generation_changed/,
+    );
+    assert.throws(
+      () => f.svc.mutate(f.peer, HOST_API + "/runs", { ...f.start, operationGeneration: "old" }),
+      /operation_generation_changed/,
+    );
+    await f.svc.shutdown();
+    const reopened = new FleetHostService(f.home, f.runner);
+    try {
+      assert.equal(reopened.operationGeneration(), cleared.operationGeneration);
+      assert.throws(
+        () => reopened.mutate(f.peer, HOST_API + "/runs", f.start),
+        /operation_generation_changed/,
+      );
+      reopened.mutate(
+        f.peer,
+        HOST_API + "/runs",
+        f.body({ text: "explicit new task", operationGeneration: cleared.operationGeneration }),
+      );
+      assert.equal(reopened.storage().runs, 1);
+    } finally {
+      await reopened.shutdown();
+    }
+  } finally {
+    await f.close();
+  }
+});
