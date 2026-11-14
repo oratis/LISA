@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// Home — a glanceable dashboard of Lisa (redesign direction B): her mood + what
-/// she did while you were away, what she's wanting, the agents at a glance, recent
-/// activity, advisor tips, and a way into her mind (Soul/Memory/Skills/Tools).
-/// Replaces the old List-dump 'Lisa' tab with designed, hierarchical cards.
+/// Operational overview opened from the Room launcher.
 struct HomeView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.scenePhase) private var scenePhase
@@ -11,7 +8,10 @@ struct HomeView: View {
     @State private var ping: IslandPing?
     @State private var recap = ""
     @State private var suggestions: [AdvisorSuggestion] = []
-    @State private var counts = AgentSnapshot.empty
+    @State private var counts: AgentSnapshot?
+    @State private var dispatches: [DispatchView]?
+    @State private var signalCount: Int?
+    @State private var showDelegate = false
     @State private var window = 120
     @State private var error: String?
     @State private var mailDigest: MailDigest?
@@ -20,7 +20,7 @@ struct HomeView: View {
     private let windows: [(String, Int)] = [("2h", 120), ("8h", 480), ("24h", 1440)]
 
     var body: some View {
-        NavigationStack {
+        Group {
             Group {
                 if !app.config.isConfigured {
                     ContentUnavailableView {
@@ -34,27 +34,39 @@ struct HomeView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: Theme.Space.m) {
-                            connectionCard
-                            assistantStarters
                             moodHero
+                            if app.connectionMode == .mac {
+                                operationLinks
+                                if app.proactiveAvailable { ProactiveBanner() }
+                            }
                             if let d = ping?.current_desire, !d.isEmpty { wantsCard(d) }
-                            if app.connectionMode == .mac { agentsCard }
+                            if let counts, counts.stuck > 0 { agentsCard(counts) }
                             if mailAccounts > 0, let m = mailDigest { mailCard(m) }
                             if app.connectionMode == .mac { recapCard }
                             if !suggestions.isEmpty { suggestionsCard }
+                            assistantStarters
                             mindCard
                             if let error {
                                 Text(error).font(.caption).foregroundStyle(Theme.tertiary)
                                     .frame(maxWidth: .infinity)
                             }
                         }
-                        .padding()
+                        .padding(Theme.Space.l).frame(maxWidth: Theme.readingWidth)
+                        .frame(maxWidth: .infinity)
                     }
                     .scrollContentBackground(.hidden)
                 }
             }
             .background(Theme.bgDeep.ignoresSafeArea())
-            .navigationTitle("Lisa")
+            .navigationTitle("Dashboard")
+            .toolbar {
+                if app.connectionMode == .mac && app.config.isConfigured {
+                    Button { showDelegate = true } label: { Label("Delegate a task", systemImage: "plus") }
+                }
+            }
+            .sheet(isPresented: $showDelegate) {
+                DelegateSheet { Task { await load() } }
+            }
             .refreshable { await load() }
             .task(id: HomeLoadKey(window: window, configured: app.config.isConfigured)) { await load() }
             .onChange(of: scenePhase) { _, p in if p == .active { Task { await load() } } }
@@ -62,15 +74,6 @@ struct HomeView: View {
     }
 
     // ── cards ──────────────────────────────────────────────────────────
-
-    private var connectionCard: some View {
-        HStack {
-            Label(app.connectionMode.label, systemImage: app.connectionMode == .cloud ? "cloud" : "desktopcomputer")
-                .font(.subheadline.weight(.semibold))
-            Spacer()
-            Button("Manage") { app.selectedTab = 3 }
-        }.consoleCard()
-    }
 
     private var assistantStarters: some View {
         cardShell("What can I help with?", "sparkles") {
@@ -88,21 +91,33 @@ struct HomeView: View {
     }
 
     private var moodHero: some View {
-        HStack(spacing: Theme.Space.m) {
-            portrait(72)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(moodLine).font(.title3.weight(.semibold)).foregroundStyle(Theme.text)
-                if let note = ping?.last_idle_message_text, !note.isEmpty {
-                    Text(note).font(.subheadline).foregroundStyle(Theme.secondary).lineLimit(3)
-                } else {
-                    Text("Born \(ping.map { _ in "and growing" } ?? "—") · tap her mind below")
-                        .font(.subheadline).foregroundStyle(Theme.secondary)
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            HStack(spacing: Theme.Space.m) {
+                portrait(64)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Lisa").font(Theme.title(.title)).foregroundStyle(Theme.text)
+                    if let mood = ping?.mood, !mood.isEmpty {
+                        Text(verbatim: mood.replacingOccurrences(of: "-", with: " "))
+                            .font(.subheadline).foregroundStyle(Theme.secondary)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            if let note = ping?.last_idle_message_text, !note.isEmpty {
+                Text(note).font(.body).foregroundStyle(Theme.text).lineLimit(3)
+            }
+            Divider()
+            Button { app.openRoomSettings() } label: {
+                HStack {
+                    Label(LocalizedStringKey(app.connectionMode.label), systemImage: app.connectionMode == .cloud ? "icloud" : "desktopcomputer")
+                    Spacer()
+                    Text("Manage")
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                }.font(.subheadline.weight(.medium)).frame(minHeight: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).foregroundStyle(Theme.accent)
         }
-        .consoleCard()
-        .accessibilityElement(children: .combine)
+        .padding(.horizontal, Theme.Space.l).padding(.top, Theme.Space.m).padding(.bottom, 4)
+        .background(Theme.sage, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
     }
 
     private func wantsCard(_ desire: String) -> some View {
@@ -111,7 +126,21 @@ struct HomeView: View {
         }
     }
 
-    private var agentsCard: some View {
+    private var operationLinks: some View {
+        HStack(spacing: 8) {
+            Button { app.selectedTab = 2 } label: {
+                StatCell(value: counts?.total, label: "Agents", tint: Theme.accent)
+            }
+            NavigationLink { DispatchLedgerView() } label: {
+                StatCell(value: dispatches.map { $0.filter(\.alive).count }, label: "Running tasks", tint: Theme.accent)
+            }
+            NavigationLink { SenseView() } label: {
+                StatCell(value: signalCount, label: "Signals", tint: Theme.accent)
+            }
+        }.buttonStyle(.plain)
+    }
+
+    private func agentsCard(_ counts: AgentSnapshot) -> some View {
         Button { app.selectedTab = 2 } label: {
             HStack(spacing: Theme.Space.m) {
                 Image(systemName: "cpu").font(.title3).foregroundStyle(Theme.accent)
@@ -199,7 +228,7 @@ struct HomeView: View {
     private func mindRow<D: View>(_ title: String, _ icon: String, @ViewBuilder dest: @escaping () -> D) -> some View {
         NavigationLink { dest() } label: {
             HStack {
-                Label(title, systemImage: icon).foregroundStyle(Theme.text)
+                Label(LocalizedStringKey(title), systemImage: icon).foregroundStyle(Theme.text)
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.tertiary)
             }
@@ -208,10 +237,10 @@ struct HomeView: View {
     }
 
     // ── shared card chrome ──
-    private func cardShell<C: View>(_ title: String, _ icon: String, @ViewBuilder content: () -> C) -> some View {
+    private func cardShell<C: View>(_ title: LocalizedStringKey, _ icon: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold)).foregroundStyle(Theme.secondary)
+                .font(.headline).foregroundStyle(Theme.text).accessibilityAddTraits(.isHeader)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,11 +256,6 @@ struct HomeView: View {
         // The portrait IS the mood readout — an unlabeled AsyncImage would drop
         // it entirely from the combined hero element (D6).
         .accessibilityLabel("Lisa's portrait, \(ping?.mood.isEmpty == false ? ping!.mood.replacingOccurrences(of: "-", with: " ") : "neutral")")
-    }
-
-    private var moodLine: String {
-        guard let m = ping?.mood, !m.isEmpty else { return "Lisa" }
-        return "She's \(m.replacingOccurrences(of: "-", with: " "))"
     }
 
     private func load() async {
@@ -259,14 +283,20 @@ struct HomeView: View {
         async let mailDigestResult = client.mailDigest()
         async let mailAccountsResult = client.mailAccounts()
         async let sessionsResult = client.sessions()
+        async let dispatchResult = client.dispatchList()
+        async let signalsResult = client.senseRecent()
+        async let proactive: Void = app.loadProactive()
         let values = await (try? recapResult, try? advisorResult, try? mailDigestResult,
-                            try? mailAccountsResult, try? sessionsResult)
+                            try? mailAccountsResult, try? sessionsResult, try? dispatchResult, try? signalsResult)
+        await proactive
         guard !Task.isCancelled, app.config == expected else { return }
         recap = values.0?.text ?? ""
         suggestions = values.1?.suggestions ?? []
         mailDigest = values.2
         mailAccounts = values.3?.accounts.count ?? 0
-        counts = rosterCounts(values.4 ?? [])
+        counts = values.4.map { rosterCounts($0) }
+        dispatches = values.5
+        signalCount = values.6?.count
     }
 
     private func dismiss(_ s: AdvisorSuggestion) {

@@ -14,7 +14,7 @@ settings:
     # Must be >= the app's App Store version (currently 1.0, PREPARE_FOR_SUBMISSION).
     # A lower CFBundleShortVersionString (this was "0.1.0") is silently REJECTED by
     # App Store Connect at ingestion — upload "succeeds" but no build ever appears.
-    MARKETING_VERSION: "1.3"
+    MARKETING_VERSION: "1.4"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1,2"
     # Automatic signing for device archives (testflight.sh): Xcode picks the
@@ -32,6 +32,12 @@ targets:
     sources:
       - path: Sources
       - path: Shared
+      - path: ../../src/web/assets/visuals/soft-ink-v1
+        includes: ["sunroom.webp", "room.webp", "poses.webp", "stickers/lisa-make-a-plan.png"]
+        buildPhase: resources
+      - path: ../../src/web/assets/visuals/soft-ink-room-v2
+        includes: ["read.webp", "work.webp", "tea.webp", "sleep.webp"]
+        buildPhase: resources
     dependencies:
       - target: LisaPocketWidgets
     info:
@@ -146,6 +152,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main.uitests
         GENERATE_INFOPLIST_FILE: YES
 
+  LisaPocketRoomUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [RoomUITests]
+    dependencies:
+      - target: LisaPocket
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main.room-uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: LisaPocket
+
 schemes:
   LisaPocket:
     build:
@@ -161,3 +179,12 @@ schemes:
       targets:
         - LisaPocketTests
         - LisaPocketUITests
+
+  LisaPocketRoomAcceptance:
+    build:
+      targets:
+        LisaPocket: all
+    test:
+      targets:
+        - LisaPocketTests
+        - LisaPocketRoomUITests

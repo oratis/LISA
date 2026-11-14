@@ -32,14 +32,13 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Group {
             Form {
-                ExpressionSettingsSection()
                 Section {
                     Picker("Connect to", selection: Binding(
                         get: { app.connectionMode },
                         set: { app.setConnectionMode($0) })) {
-                        ForEach(ConnectionMode.allCases) { m in Text(m.label).tag(m) }
+                        ForEach(ConnectionMode.allCases) { m in Text(LocalizedStringKey(m.label)).tag(m) }
                     }
                     .pickerStyle(.segmented)
                 } footer: {
@@ -73,23 +72,6 @@ struct SettingsView: View {
                 }
 
                 if app.connectionMode == .mac && app.config.remoteMac == nil {
-                    Section("Connection") {
-                        TextField("Host (IP or tailnet name)", text: $host)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                        TextField("Port", text: $portText)
-                            .keyboardType(.numberPad)
-                        SecureField("Device token", text: $token)
-                        Button("Save") {
-                            let saved = app.update(host: host, port: Int(portText) ?? 5757,
-                                                   token: token.isEmpty ? nil : token, scheme: app.config.scheme)
-                            // Saving isn't connecting: check it, like Apply pairing does (#495).
-                            if saved { verifyAndReport(prefix: "Saved") }
-                            else { status = "Couldn't save securely. Try again." }
-                        }
-                        .disabled(connectBusy)
-                    }
-
                     Section("Pair from QR / URL") {
                         Button {
                             showScanner = true
@@ -111,6 +93,29 @@ struct SettingsView: View {
                         .disabled(pairText.isEmpty || connectBusy)
                         Text("Run `lisa pair` on your Mac and scan the QR — over the same Wi-Fi (LAN) or a Tailscale tailnet name.")
                             .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Section {
+                        DisclosureGroup("Manual connection") {
+                            LabeledContent("Host") {
+                                TextField("IP or tailnet name", text: $host)
+                                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            LabeledContent("Port") {
+                                TextField("Port", text: $portText)
+                                    .keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                            }
+                            LabeledContent("Device token") {
+                                SecureField("Device token", text: $token).multilineTextAlignment(.trailing)
+                            }
+                            Button("Save") {
+                                let saved = app.update(host: host, port: Int(portText) ?? 5757,
+                                                       token: token.isEmpty ? nil : token, scheme: app.config.scheme)
+                                if saved { verifyAndReport(prefix: "Saved") }
+                                else { status = "Couldn't save securely. Try again." }
+                            }
+                            .disabled(connectBusy)
+                        }
                     }
                 } else if app.connectionMode == .cloud {
                     // Cloud data plane: LISA accounts are the primary flow (B1) —
@@ -271,6 +276,8 @@ struct SettingsView: View {
 
                 }
 
+                ExpressionSettingsSection()
+
                 Section("Appearance") {
                     Picker("Theme", selection: Binding(
                         get: { app.appearance },
@@ -341,6 +348,7 @@ struct SettingsView: View {
                     Section { Text(status).font(.caption).foregroundStyle(.secondary) }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .consoleBackground()
             .navigationTitle("Settings")
             .onAppear(perform: syncFromConfig)

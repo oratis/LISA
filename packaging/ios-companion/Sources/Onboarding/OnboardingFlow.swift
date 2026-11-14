@@ -23,7 +23,7 @@ struct OnboardingFlow: View {
     var body: some View {
         ZStack {
             Theme.bgDeep.ignoresSafeArea()
-            content
+            content.frame(maxWidth: step == .scan ? .infinity : Theme.readingWidth)
         }
         .preferredColorScheme(app.preferredScheme)
         .tint(Theme.accent)
@@ -59,12 +59,13 @@ struct OnboardingFlow: View {
             OnboardingTopBar(step: nil, onSkip: skip)
             ScrollableCenter {
                 VStack(spacing: 22) {
-                    Image(systemName: "macbook.and.iphone")
-                        .font(.system(size: 72, weight: .light))
-                        .foregroundStyle(Theme.accent)
+                    RoomScene(interior: .sunroom, mood: "idle")
+                        .aspectRatio(1.5, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius))
+                        .padding(.horizontal, 24)
                     VStack(spacing: 10) {
                         Text("Meet Lisa")
-                            .font(.largeTitle.weight(.bold)).foregroundStyle(Theme.text)
+                            .font(Theme.title(.largeTitle)).foregroundStyle(Theme.text)
                         Text("Your personal AI assistant for plans, writing, and everyday questions. Use LISA Cloud anywhere, or connect your own Mac.")
                             .font(.body).foregroundStyle(Theme.secondary)
                             .multilineTextAlignment(.center)

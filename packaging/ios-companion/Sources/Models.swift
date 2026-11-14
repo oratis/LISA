@@ -26,6 +26,8 @@ struct AgentSession: Codable, Identifiable, Hashable {
 
     var id: String { "\(agent)/\(sessionId)" }
 
+    var needsAttention: Bool { activity?.pendingPermission != nil || state == "waiting" || state == "error" }
+
     init(agent: String, sessionId: String, project: String, cwd: String? = nil,
          state: String, stateReason: String, lastMtime: String? = nil,
          activity: SessionActivity? = nil, controllable: String? = nil,

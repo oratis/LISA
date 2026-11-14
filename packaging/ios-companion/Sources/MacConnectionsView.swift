@@ -109,6 +109,7 @@ struct MacConnectionsView: View {
             }
             if !status.isEmpty { Section { Text(status).font(.footnote).foregroundStyle(.secondary) } }
         }
+        .consoleBackground()
         .navigationTitle("Connect your Mac")
         // Keep the list current while it's on screen: a Mac waking up appears
         // without a manual Refresh (#494). Pauses while pairing.

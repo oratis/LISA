@@ -520,6 +520,35 @@ final class LisaClient: FleetReading {
         let enc = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
         return try await decode("/api/dispatch/status?id=\(enc)", as: DispatchStatus.self)
     }
+    func roomDreams() async throws -> [RoomDream] {
+        struct Reply: Decodable { let dreams: [RoomDream] }
+        return try await decode("/api/reve/dreams?limit=20", as: Reply.self).dreams
+    }
+
+    func reflections() async throws -> RoomReflectionLog {
+        try await decode("/api/reve?days=7", as: RoomReflectionLog.self)
+    }
+
+    func knowledge(query: String) async throws -> [RoomKnowledgeItem] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if term.isEmpty {
+            struct Listing: Decodable { let entries: [RoomKnowledgeItem] }
+            return try await decode("/api/kb", as: Listing.self).entries
+        }
+        struct Results: Decodable { let hits: [RoomKnowledgeItem] }
+        return try await decode("/api/kb/search?q=" + queryValue(term), as: Results.self).hits
+    }
+
+    func knowledgeEntry(_ item: RoomKnowledgeItem) async throws -> RoomKnowledgeItem? {
+        struct Reply: Decodable { let entry: RoomKnowledgeItem? }
+        let path = "/api/kb/entry?layer=" + queryValue(item.layer) + "&slug=" + queryValue(item.slug)
+        return try await decode(path, as: Reply.self).entry
+    }
+
+    private func queryValue(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+    }
+
     func islandPing() async throws -> IslandPing { try await decode("/api/island/ping", as: IslandPing.self) }
 
     // ── read: mail (read-only digest) ──
@@ -534,6 +563,38 @@ final class LisaClient: FleetReading {
     // ── read: inspection ──
     func soul() async throws -> SoulResponse { try await decode("/api/soul", as: SoulResponse.self) }
     func memory() async throws -> MemoryResponse { try await decode("/api/memory", as: MemoryResponse.self) }
+    func roomUnderstanding() async throws -> [String] {
+        let response: RoomMemoryStores
+        do {
+            response = try await decode("/api/memory/entries", as: RoomMemoryStores.self)
+        } catch where error.httpStatus == 404 {
+            // Legacy instances keep Lisa’s user facts as Markdown bullets in USER.md.
+            let document = try await memory().user
+            return document.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+                let text = line.trimmingCharacters(in: .whitespaces)
+                guard ["- ", "* ", "+ "].contains(where: text.hasPrefix) else { return nil }
+                return String(text.dropFirst(2))
+            }.suffix(2).map { $0 }
+        }
+        guard let user = response.stores.first(where: { $0.store == "user" }), !user.corrupt else { throw LisaError.decode }
+        return user.entries.filter { $0.kind == "bullet" || $0.kind == "text" }.suffix(2).map(\.text)
+    }
+
+    func roomInbox() async throws -> RoomInbox { try await decode("/api/approvals", as: RoomInbox.self) }
+
+    func roomRequestDetail(_ id: String) async throws -> RoomRequestDetail {
+        try await decode("/api/approvals/" + queryValue(id), as: RoomRequestDetail.self)
+    }
+
+    func answerRoomRequest(_ id: String, digest: String?) async throws {
+        let path = "/api/approvals/" + queryValue(id)
+        if let digest {
+            try await fire(path + "/approve", json: ["scope": "once", "digest": digest])
+        } else {
+            try await fire(path + "/deny", json: [:])
+        }
+    }
+
     func skills() async throws -> [NamedItem] { try await decode("/api/skills", as: SkillsResponse.self).skills }
     func tools() async throws -> [NamedItem] { try await decode("/api/tools", as: ToolsResponse.self).tools }
 

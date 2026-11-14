@@ -86,6 +86,12 @@ final class AppState: ObservableObject {
     @Published var connectionMode: ConnectionMode
     /// Drives the TabView selection (0=Dispatch … 4=Settings) — deep-links set it.
     @Published var selectedTab = 0
+    @Published var roomPath: [RoomDestination] = []
+
+    func openRoomSettings() {
+        roomPath = [.settings]
+        selectedTab = 0
+    }
     /// Set by a `lisapocket://session?…` deep-link; RosterView consumes + clears it.
     @Published var pendingSession: PendingNav?
     /// Optional Face ID / passcode gate over the app (token grants full control).
@@ -154,7 +160,9 @@ final class AppState: ObservableObject {
                 cfg = ServerConfig(host: p[0], port: Int(p[1]) ?? 5757, token: p[2], scheme: p.count > 3 ? p[3] : "http")
             }
         }
-        if let t = ProcessInfo.processInfo.environment["LISA_DEV_TAB"], let n = Int(t) { selectedTab = n }
+        if let t = ProcessInfo.processInfo.environment["LISA_DEV_TAB"], let n = Int(t) {
+            if n == 3 { roomPath = [.settings] } else { selectedTab = n }
+        }
         #endif
         self.config = cfg
         self.client = LisaClient(config: cfg)
@@ -270,7 +278,7 @@ final class AppState: ObservableObject {
             setConnectionMode(.cloud)
         }
         account = LisaClient.AccountMe(signedIn: false)
-        selectedTab = 3
+        openRoomSettings()
     }
 
     /// Chat hands over what was typed when the session expired; it comes back
@@ -338,7 +346,7 @@ final class AppState: ObservableObject {
     /// (A seamless reconnect to a *remembered* cloud config is R4/C3.)
     func switchToCloud() {
         setConnectionMode(.cloud)
-        selectedTab = 3   // Settings → LISA Cloud
+        openRoomSettings()
     }
 
     /// Paired to a home-Wi-Fi address but currently on cellular → that Mac is
@@ -371,6 +379,7 @@ final class AppState: ObservableObject {
         client = LisaClient(config: cfg)
         wireClient()
         account = nil
+        if roomPath != [.settings] { roomPath = [] }
         pendingSession = nil
         chatDraft = ""
         pushStatus = ""
@@ -631,7 +640,7 @@ final class AppState: ObservableObject {
     func finishOnboarding(paired: Bool) {
         onboarded = true
         showOnboarding = false
-        if paired { selectedTab = 0 }   // land on Home (the overview)
+        if paired { roomPath = []; selectedTab = 0 }   // land on Home (the overview)
     }
 
     /// Probe the saved config before declaring success, so a bad token / unreachable

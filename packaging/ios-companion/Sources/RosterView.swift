@@ -269,8 +269,8 @@ struct RosterView: View {
     }
 
     private var agentSections: some View {
-        let needs = model.sessions.filter(needsYou)
-        let kinds = groupByKindAndProject(model.sessions.filter { !needsYou($0) })
+        let needs = model.sessions.filter(\.needsAttention)
+        let kinds = groupByKindAndProject(model.sessions.filter { !$0.needsAttention })
         return List {
             if !needs.isEmpty {
                 Section {
@@ -336,9 +336,6 @@ struct RosterView: View {
         .consoleBackground()
     }
 
-    private func needsYou(_ s: AgentSession) -> Bool {
-        s.activity?.pendingPermission != nil || s.state == "waiting" || s.state == "error"
-    }
 }
 
 // ── Tree grouping (v1.1 F7) — pure, unit-testable ────────────────────
@@ -665,6 +662,7 @@ struct DelegateSheet: View {
                     Section { Text(status).font(.caption).foregroundStyle(.red) }
                 }
             }
+            .consoleBackground()
             .navigationTitle("Delegate a task")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -731,6 +729,7 @@ struct SessionDetailView: View {
                 Section { Text(status).font(.caption).foregroundStyle(.secondary) }
             }
         }
+.consoleBackground()
         .navigationTitle(current.project)
         .navigationBarTitleDisplayMode(.inline)
         .task { policy = try? await app.client.controlPolicy() }   // gate remote control (A8)

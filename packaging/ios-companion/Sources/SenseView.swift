@@ -14,7 +14,7 @@ struct SenseView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
+        Group {
             Group {
                 if !app.config.isConfigured {
                     ContentUnavailableView("Not paired", systemImage: "wifi.slash",
@@ -76,9 +76,11 @@ struct SenseView: View {
         guard app.config.isConfigured else { return }
         async let g = app.client.consent()
         async let e = app.client.senseRecent()
-        grants = (try? await g) ?? []
-        events = (try? await e) ?? []
-        error = grants.isEmpty && events.isEmpty ? "Couldn't reach Lisa." : nil
+        let fetched = await (try? g, try? e)
+        guard !Task.isCancelled else { return }
+        grants = fetched.0 ?? []
+        events = fetched.1 ?? []
+        error = fetched.0 == nil || fetched.1 == nil ? "Couldn't load all signals. Pull to retry." : nil
     }
 
     // A silently-failed revoke is dangerous — the user believes a privacy signal
