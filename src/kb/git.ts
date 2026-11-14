@@ -1,59 +1,90 @@
-/**
- * Best-effort git provenance for the knowledge base.
- *
- * The KB is its own git repo at ~/.lisa/kb/.git (separate from soul's). Every
- * mutation records a commit so the user can see how their knowledge evolved.
- * This is entirely best-effort: git may be missing, the repo may be in a weird
- * state, hooks may fail — none of that must ever break a KB write, so every
- * call swallows its errors. Callers already hold the KB write-lock, so commits
- * are serialized (no separate git lock needed).
- *
- * Set LISA_KB_NO_GIT=1 to disable entirely (tests, or users who don't want a repo).
+/** Best-effort Git provenance confined to each knowledge base's own repository.
+ * Callers hold that KB's write lock. A failed initialization must never fall
+ * back to a parent repository or prevent the actual knowledge-base write.
+ * Set LISA_KB_NO_GIT=1 to disable provenance entirely.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { ensureDir, pathExists } from "../fs-utils.js";
+import { ensureDir } from "../fs-utils.js";
 import { kbDir } from "./paths.js";
 
 const pexec = promisify(execFile);
+const gitDisabled = () => process.env.LISA_KB_NO_GIT === "1";
 
-function gitDisabled(): boolean {
-  return process.env.LISA_KB_NO_GIT === "1";
-}
-
-async function git(args: string[]): Promise<void> {
+async function git(root: string, args: string[]): Promise<boolean> {
+  // Git's environment overrides can redirect even an explicit cwd or index.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+  );
   try {
-    await pexec("git", args, { cwd: kbDir(), timeout: 10_000 });
+    await pexec(
+      "git",
+      [
+        "--git-dir=" + path.join(root, ".git"),
+        "--work-tree=" + root,
+        "-c",
+        "core.hooksPath=" + os.devNull,
+        "-c",
+        "core.fsmonitor=false",
+        ...args,
+      ],
+      {
+        cwd: root,
+        timeout: 10_000,
+        env: {
+          ...env,
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_CONFIG_GLOBAL: os.devNull,
+          GIT_ATTR_NOSYSTEM: "1",
+          GIT_TERMINAL_PROMPT: "0",
+        },
+      },
+    );
+    return true;
   } catch {
-    // best-effort — provenance is a nicety, never a blocker
+    return false;
   }
 }
 
-let repoReady = false;
-
-/** Idempotent: create the KB dir and init a git repo with a stable identity. */
-export async function ensureKbRepo(): Promise<void> {
-  if (repoReady || gitDisabled()) return;
-  repoReady = true;
+async function ensureRepo(root: string): Promise<boolean> {
   try {
-    await ensureDir(kbDir());
-    if (!(await pathExists(path.join(kbDir(), ".git")))) {
-      await git(["init", "-q"]);
-      await git(["config", "user.name", "Lisa"]);
-      await git(["config", "user.email", "lisa@self"]);
-      await git(["config", "commit.gpgsign", "false"]);
+    await ensureDir(root);
+    const dotGit = path.join(root, ".git");
+    let exists = false;
+    try {
+      const entry = await fs.lstat(dotGit);
+      // KB provenance owns a standalone repository, never a linked worktree
+      // or a symlink into another project's Git directory.
+      if (!entry.isDirectory() || entry.isSymbolicLink()) return false;
+      exists = true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") return false;
     }
+    if (!exists) {
+      if (!(await git(root, ["init", "-q"]))) return false;
+      if (!(await git(root, ["config", "user.name", "Lisa"]))) return false;
+      if (!(await git(root, ["config", "user.email", "lisa@self"]))) return false;
+      if (!(await git(root, ["config", "commit.gpgsign", "false"]))) return false;
+    }
+    // Do not cache readiness across homes, failed init or deletion/recreation.
+    return await git(root, ["rev-parse", "--git-dir"]);
   } catch {
-    // ignore — commitKb calls are also best-effort
+    return false;
   }
 }
 
-/** Stage everything under the KB and commit. No-op if nothing changed. */
+/** Idempotent and best-effort; each active home gets its own repository. */
+export async function ensureKbRepo(): Promise<void> {
+  if (!gitDisabled()) await ensureRepo(kbDir());
+}
+
 export async function commitKb(message: string): Promise<void> {
   if (gitDisabled()) return;
-  await ensureKbRepo();
-  await git(["add", "-A"]);
-  // `git commit` exits non-zero when there's nothing staged — swallowed by git().
-  await git(["commit", "-q", "-m", message, "--no-gpg-sign"]);
+  const root = kbDir();
+  if (!(await ensureRepo(root))) return;
+  if (!(await git(root, ["add", "-A", "--", "."]))) return;
+  await git(root, ["commit", "-q", "-m", message, "--no-gpg-sign"]);
 }

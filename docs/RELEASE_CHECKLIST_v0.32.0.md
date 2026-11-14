@@ -29,14 +29,16 @@ Updated November 15, 2026. Baseline: `01563b84` (PR #510 merged), followed by th
 
 ## Publication
 
-- [ ] Release PR reviewed, CI passed and merged.
+- [x] Complete-extension PR #511 reviewed locally, CI passed and merged. Devin full review was unavailable (expired credits).
+- [ ] Final knowledge-base Git isolation follow-up PR CI/review and merge.
 - [ ] v0.32.0 tag points at the reviewed merge commit.
 - [ ] GitHub artifacts/checksums and npm publication verified.
 - [ ] Signed/notarized Mac DMG verified.
 - [ ] Homebrew formula updated from the published npm tarball.
 - [ ] Cloud Run backend and relay published and smoke-tested, with existing deployment configuration retained.
 - [ ] Website rebuilt after the GitHub release exists, deployed and checked.
-- [ ] Pocket 1.4 uploaded and processed in TestFlight.
+- [x] Pocket 1.4 (1794678341) uploaded successfully through CI on November 15.
+- [ ] Verify Apple processing completed and the build is available in TestFlight.
 - [ ] Pocket App Store submission (explicitly requested); Apple approval remains a separate external outcome. Public version at the audit was 1.3, released November 7, 2026.
 
 ## Complete-extension scope and final validation
@@ -50,8 +52,9 @@ The owner explicitly included the deferred proposals on November 14. Implementat
 - [x] Codex workspace List/Read/Edit/Write with fresh Fleet approvals, alongside existing packet review.
 - [x] Authenticated T3 selected-project/thread-list connector with local disconnect and upstream revocation detection.
 - [x] Optional screenshot window/accessibility context, previewed and separately selected before Send.
-- [x] Final local validation: 4,376 Node tests, 124 Chromium tests, 145 iPhone logic tests (one existing opt-in relay skip), three iPhone UI tests, 11 Mac tests and four relay tests passed; types/contracts/build/docs/format pass, lint has zero errors / 72 existing warnings. Focused review found and fixed a multi-backend cleanup race with a red-to-green regression.
-- [ ] CI and review on the submitted final candidate.
+- [x] Final local validation: 4,379 Node tests after the final KB isolation fix, 124 Chromium tests, 145 iPhone logic tests (one existing opt-in relay skip), three iPhone UI tests, 11 Mac tests and four relay tests passed; types/contracts/build/docs/format pass, lint has zero errors / 72 existing warnings. Focused review found and fixed a multi-backend cleanup race with a red-to-green regression.
+- [x] Complete-extension candidate CI passed on PR #511.
+- [ ] Final knowledge-base isolation follow-up CI/review.
 - [ ] Real T3 authorization and selected-project read; the environment URL is still needed.
 
 Earlier baseline checks above are retained as evidence, not presented as full validation of these new changes. Physical iPhone/second-Mac and real-account acceptance remain unchecked until actually observed.
