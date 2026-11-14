@@ -73,6 +73,7 @@ final class FleetTests: XCTestCase {
         var pages: [FleetPage] = []
         var cursors: [Int] = []
         var error: Error?
+        var pageError: Error?
         var beforePage: (() -> Void)?
         func fleetTasks() async throws -> [FleetTask] {
             if let error { throw error }
@@ -81,6 +82,7 @@ final class FleetTests: XCTestCase {
         func fleetEvents(_ id: String, after: Int) async throws -> FleetPage {
             cursors.append(after)
             beforePage?()
+            if let pageError { throw pageError }
             return pages.removeFirst()
         }
     }
@@ -128,5 +130,42 @@ final class FleetTests: XCTestCase {
         await model.refresh(client)
         XCTAssertNil(model.timeline.run)
         XCTAssertEqual(model.timeline.cursor, 0)
+    }
+    @MainActor func testStructuredAuthorizationFailuresClearCachedListAndPageDetails() async {
+        for status in [401, 403, 404] {
+            for failsOnPage in [false, true] {
+                let client = Client(), model = FleetPocketModel()
+                client.runs = [run()]; client.pages = [page([1])]
+                model.selection = "task-a"
+                await model.refresh(client)
+                XCTAssertFalse(model.timeline.entries.isEmpty)
+                let error = LisaError.server(ServerFailure(status: status))
+                if failsOnPage { client.pageError = error } else { client.error = error }
+                await model.refresh(client)
+                XCTAssertTrue(model.runs.isEmpty, "HTTP \(status) must revoke cached access")
+                XCTAssertNil(model.selection)
+                XCTAssertTrue(model.timeline.entries.isEmpty)
+                XCTAssertEqual(model.message, "Access unavailable. Check the task share and secure pairing on this Mac, and update LISA if needed.")
+            }
+        }
+    }
+    @MainActor func testStructuredServerOutageKeepsCachedDetailsForReconnect() async {
+        for failsOnPage in [false, true] {
+            let client = Client(), model = FleetPocketModel()
+            client.runs = [run()]; client.pages = [page([1])]
+            model.selection = "task-a"
+            await model.refresh(client)
+            let error = LisaError.server(ServerFailure(status: 503))
+            if failsOnPage { client.pageError = error } else { client.error = error }
+            await model.refresh(client)
+            XCTAssertEqual(model.runs.count, 1)
+            XCTAssertEqual(model.selection, "task-a")
+            XCTAssertEqual(model.timeline.entries.map(\.seq), [1])
+            XCTAssertEqual(model.message, "Connection interrupted. Showing the last received update; retrying automatically.")
+            client.error = nil; client.pageError = nil; client.pages = [page([2])]
+            await model.refresh(client)
+            XCTAssertEqual(model.timeline.entries.map(\.seq), [1, 2])
+            XCTAssertNil(model.message)
+        }
     }
 }

@@ -152,7 +152,7 @@ final class FleetPocketModel: ObservableObject {
     }
 
     private static func accessLost(_ error: Error) -> Bool {
-        if case LisaError.http(let code) = error { return [401, 403, 404].contains(code) }
+        if let code = (error as? LisaError)?.httpStatus { return [401, 403, 404].contains(code) }
         if let link = error as? RemoteLinkError {
             switch link {
             case .notAllowed, .signIn, .invalidPeer: return true
