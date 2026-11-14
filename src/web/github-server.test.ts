@@ -254,6 +254,7 @@ test("cloud edition refuses the shared token without the demo opt-in", async () 
     assert.deepEqual(await response.json(), {
       error: "unauthorized",
       reason: "account_session_required",
+      message: "Your session has ended. Sign in again to continue.",
     });
   } finally {
     await server.close();

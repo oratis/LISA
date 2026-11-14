@@ -166,7 +166,9 @@ test("a turn that fails after its first call is still billed for what it used", 
     },
   ];
   const body = await chat(token);
-  assert.ok(body.includes("upstream stream cut"));
+  // Hosted users get a coded, generic error; the provider's detail is logged only.
+  assert.ok(body.includes('"code":"provider_error"'));
+  assert.ok(!body.includes("upstream stream cut"));
   assert.equal(callIndex, 2);
   // The first call as reported, plus a byte estimate for the cut one.
   assert.ok((await charged(uid)) > costMicroUSD(MODEL, usage(20_000, 500)));

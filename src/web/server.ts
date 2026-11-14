@@ -158,9 +158,12 @@ import {
 import {
   agentSessionsResponse,
   apiAgentSession,
-  applyApiVersionHeader,
   writeApiError,
+  applyApiVersionHeader,
+  isVersionedApiSurface,
 } from "./api-contract.js";
+import { enforceErrorShape, errorBody, errorMessage } from "./error-shape.js";
+import { closeInterruptedToolCalls, unfinishedTurnIndex } from "./chat-retry.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
@@ -234,6 +237,10 @@ import {
   verifySession,
   looksLikeSession,
   shouldRenew,
+  SESSION_RENEWAL_HEADER,
+  SESSION_TTL_MS,
+  sessionId,
+  type SessionClaims,
 } from "./sessions-auth.js";
 import {
   AccountError,
@@ -245,6 +252,8 @@ import {
   deleteAccount,
   getAccount,
   sessionAccountState,
+  revokeSession,
+  revokeAccountSessions,
   ensureSeededAccount,
   beginEmailVerification,
   confirmEmailVerification,
@@ -488,16 +497,35 @@ export function isRequestAuthorized(
  * cookie by opening http://host:5757/?token=...).
  */
 function presentedToken(req: http.IncomingMessage, url: string): string | null {
+  return presentedCredential(req, url)?.token ?? null;
+}
+
+/**
+ * The presented token plus the channel it arrived on. The channel decides how
+ * a renewed account session goes back (#484: header for Bearer clients, cookie
+ * for cookie clients) and whether the token may be pinned as a cookie at all
+ * (#493: only a `?token=` bootstrap is).
+ */
+function presentedCredential(
+  req: http.IncomingMessage,
+  url: string,
+): { token: string; source: "bearer" | "cookie" | "query" } | null {
   const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
+  if (auth?.startsWith("Bearer ")) {
+    const token = auth.slice("Bearer ".length).trim();
+    return token ? { token, source: "bearer" } : null;
+  }
   const cookies = req.headers.cookie ?? "";
   const m = /(?:^|;\s*)lisa_token=([^;]+)/.exec(cookies);
-  if (m) return decodeURIComponent(m[1]!).trim() || null;
+  if (m) {
+    const token = decodeURIComponent(m[1]!).trim();
+    return token ? { token, source: "cookie" } : null;
+  }
   try {
     // Trim: tokens arrive by copy-paste (App Review pastes the demo URL), and a
     // stray trailing space/newline must not fail the exact comparison.
     const q = new URL(url, "http://localhost").searchParams.get("token")?.trim();
-    if (q) return q;
+    if (q) return { token: q, source: "query" };
   } catch {
     /* fall through */
   }
@@ -512,6 +540,10 @@ const AUTH_IP_WINDOW_MS = 10 * 60_000;
 // signup costs a birth LLM call + a free window; no human needs more.
 const REG_IP_LIMIT = 5;
 const REG_IP_WINDOW_MS = 60 * 60_000;
+// Session refresh (#484) is per account: a client needs one every few weeks,
+// so this only stops a loop from minting tokens without end.
+const REFRESH_LIMIT = 20;
+const REFRESH_WINDOW_MS = 10 * 60_000;
 // KB ingest does 2-3 outbound fetches + a yt-dlp subprocess per call, so it is a
 // far heavier route than the auth ones — a tighter per-IP ceiling on the cloud
 // edition (loopback Mac is exempt) keeps it from becoming an amplifier / DoS.
@@ -1904,6 +1936,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
+    // #485/#487: every error on the client-facing surfaces leaves as
+    // {error, message} JSON, whichever route wrote it (see error-shape.ts).
+    if (isVersionedApiSurface(url)) enforceErrorShape(req, res);
     // T-10: every response — HTML shell, JSON, SSE, assets, 404s — carries the
     // baseline hardening headers. Set before any route so writeHead() merges
     // them in rather than a route having to remember.
@@ -1997,21 +2032,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/auth/apple") {
       const cfg = appleSignInConfig();
       if (!cloud || !cfg.enabled) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("apple sign-in not available");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       if (!sessionSecret) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end("cloud sign-in misconfigured (no session secret)");
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       const payload = await readJsonBody(req, res);
       if (!payload) return; // 413 already sent
       const idToken = typeof payload.identityToken === "string" ? payload.identityToken : "";
       if (!idToken) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("identityToken required");
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("identity_token_required")));
         return;
       }
       // Web tokens (Apple JS popup on the login page, B8b) carry the Services
@@ -2020,8 +2055,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const client = payload.client === "web" ? ("web" as const) : ("native" as const);
       const audience = audienceForClient(cfg, client);
       if (!audience) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("apple sign-in not available for this client");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       // Replay guard (#261): the client mints a raw nonce, sends SHA-256 of it
@@ -2041,8 +2076,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           ...(nonce ? { expectedNonce: nonce } : {}),
         });
         if (!subAllowed(id.sub, cfg)) {
-          res.writeHead(403, { "content-type": "text/plain" });
-          res.end("this Apple ID is not allowed on this LISA Cloud instance");
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify(errorBody("sign_in_not_allowed")));
           return;
         }
         // B1: mint a per-uid account session (no longer the shared LISA_WEB_TOKEN).
@@ -2089,8 +2124,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid }));
       } catch (e) {
         const msg = e instanceof AppleAuthError ? e.message : "verification failed";
-        res.writeHead(401, { "content-type": "text/plain" });
-        res.end(`apple sign-in rejected: ${msg}`);
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_rejected", { reason: `apple: ${msg}` })));
       }
       return;
     }
@@ -2103,13 +2138,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/auth/google") {
       const gcfg = googleSignInConfig();
       if (!cloud || !gcfg.enabled) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("google sign-in not available");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       if (!sessionSecret) {
-        res.writeHead(503, { "content-type": "text/plain" });
-        res.end("cloud sign-in misconfigured (no session secret)");
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_unavailable")));
         return;
       }
       if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
@@ -2155,8 +2190,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           return;
         }
         const msg = e instanceof GoogleAuthError ? e.message : "verification failed";
-        res.writeHead(401, { "content-type": "text/plain" });
-        res.end(`google sign-in rejected: ${msg}`);
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("sign_in_rejected", { reason: `google: ${msg}` })));
       }
       return;
     }
@@ -2282,8 +2317,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // posture as /api/auth/apple. 404 outside the cloud edition.
     if (req.method === "POST" && (url === "/api/auth/register" || url === "/api/auth/login")) {
       if (!cloud || !sessionSecret) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("accounts not available on this edition");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("accounts_unavailable")));
         return;
       }
       // Per-IP cap (#260). /register had no throttle at all — the per-email one
@@ -2366,8 +2401,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           res.end(JSON.stringify({ error: e.code }));
           return;
         }
-        res.writeHead(500, { "content-type": "text/plain" });
-        res.end("account operation failed");
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("account_operation_failed")));
       }
       return;
     }
@@ -2382,8 +2417,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       (url === "/api/auth/otp/request" || url === "/api/auth/otp/verify")
     ) {
       if (!cloud || !sessionSecret) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("accounts not available on this edition");
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("accounts_unavailable")));
         return;
       }
       // Same coarse per-IP backstop as register/login (#260): the real guards
@@ -2478,8 +2513,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           res.end(JSON.stringify({ error: e.code }));
           return;
         }
-        res.writeHead(500, { "content-type": "text/plain" });
-        res.end("account operation failed");
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("account_operation_failed")));
       }
       return;
     }
@@ -2623,25 +2658,54 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
 
     if (req.method === "POST" && url === "/api/auth/logout") {
-      // Stateless sessions: logout = drop the credential client-side; here we
-      // just expire the cookie for browsers. (Account-wide revocation is the
-      // sessionVersion bump; per-device logout needs no server state.)
+      // Sign out THIS session only (#493): the presented account session —
+      // Bearer or cookie — is recorded as revoked until it would have expired.
+      // The Mac and the person's other devices share the account, so this is
+      // never the account-wide sessionVersion bump (that is /logout-all).
+      // Browsers also lose the cookie. Any other credential has nothing
+      // server-side to revoke and just gets the cookie cleared.
+      const clearCookie = `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`;
+      const presented = presentedToken(req, url);
+      const claims =
+        presented && sessionSecret && looksLikeSession(presented)
+          ? verifySession(presented, sessionSecret)
+          : null;
+      let revoked = false;
+      if (claims) {
+        try {
+          revoked = await revokeSession(claims.uid, claims.sv, sessionId(claims), claims.exp);
+        } catch (err) {
+          logError(`[accounts] sign-out not recorded: ${(err as Error).message}`);
+          res.writeHead(503, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+            "set-cookie": clearCookie,
+          });
+          res.end(JSON.stringify({ error: "account_store_unavailable" }));
+          return;
+        }
+      }
       res.writeHead(200, {
         "content-type": "application/json",
-        "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        "cache-control": "no-store",
+        "set-cookie": clearCookie,
       });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, revoked }));
       return;
     }
 
     // uid of the authenticated LISA account, when the caller used an account
     // session (B1). null = legacy shared-token / device-token / loopback caller.
     let accountUid: string | null = null;
-    let renewedCookie = false;
-    // The session verified but the account store could not be read: 503, not 401.
+    // The verified claims of that account session and the channel it came on
+    // (/api/auth/refresh and /api/auth/me read them).
+    let accountClaims: SessionClaims | null = null;
+    let credentialSource: "bearer" | "cookie" | "query" | null = null;
     let accountUnavailable = false;
     if (cloud || !isLoopbackAddress(remoteAddr)) {
-      const presented = presentedToken(req, url);
+      const credential = presentedCredential(req, url);
+      const presented = credential?.token ?? null;
+      credentialSource = credential?.source ?? null;
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
       let authed =
         isRequestAuthorized(remoteAddr, webToken, presented, !cloud) ||
@@ -2650,20 +2714,30 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // account record, so deleted accounts lose access immediately.
       if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
         const claims = verifySession(presented, sessionSecret);
-        const state = claims ? await sessionAccountState(claims.uid, claims.sv) : "revoked";
+        const state = claims
+          ? await sessionAccountState(claims.uid, claims.sv, sessionId(claims))
+          : "revoked";
         accountUnavailable = state === "unavailable";
         if (claims && state === "valid") {
           authed = true;
           accountUid = claims.uid;
+          accountClaims = claims;
           if (shouldRenew(claims)) {
-            // Sliding renewal for cookie clients (web). Bearer clients (iOS)
-            // keep their token until expiry and re-run sign-in then.
-            const fresh = mintSession(claims.uid, sessionSecret, { sv: claims.sv });
-            res.setHeader(
-              "set-cookie",
-              `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
-            );
-            renewedCookie = true;
+            // Sliding renewal (#484). The fresh token goes back the way the old
+            // one came: a header for Bearer clients (Pocket, the Mac), which
+            // store it in place of the old one; a cookie for cookie clients.
+            const fresh = mintSession(claims.uid, sessionSecret, {
+              sv: claims.sv,
+              jti: sessionId(claims),
+            });
+            if (credential?.source === "bearer") {
+              res.setHeader(SESSION_RENEWAL_HEADER, fresh);
+            } else if (credential?.source === "cookie") {
+              res.setHeader(
+                "set-cookie",
+                `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+              );
+            }
           }
         }
       }
@@ -2730,10 +2804,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       // Token arrived via query param (first open from a phone): pin it as a
       // cookie so subsequent same-origin fetch/EventSource calls authenticate.
-      // presented is non-null here — isRequestAuthorized returned true for a
-      // non-loopback caller, which requires a matching token. (Skip when the
-      // sliding renewal above already set a fresher cookie.)
-      if (presented && !renewedCookie && !req.headers.cookie?.includes("lisa_token=")) {
+      // Only then (#493): a Bearer client's HTTP stack would otherwise keep
+      // its token in a cookie jar that outlives sign-out and unpairing, and a
+      // cookie client already has its cookie (renewed above when due).
+      if (presented && credential?.source === "query") {
         res.setHeader(
           "set-cookie",
           `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
@@ -2937,10 +3011,75 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 email: acct.email ?? null,
                 verified: acct.verified,
                 plan: "free",
+                // Expiry of the token this request presented (#484), so a
+                // Bearer client can refresh before it lapses.
+                ...(accountClaims ? { sessionExpiresAt: accountClaims.exp } : {}),
               }
             : { signedIn: false },
         ),
       );
+      return;
+    }
+
+    // ── Session refresh for Bearer clients (#484) ─────────────────────────────
+    // Always mints a fresh 30-day session for the account session presented as
+    // Bearer. Cookie clients renew by the sliding cookie instead, so a cookie or
+    // any non-account credential is refused like any other unauthenticated call.
+    if (req.method === "POST" && url === "/api/auth/refresh") {
+      if (!sessionSecret || !accountUid || !accountClaims || credentialSource !== "bearer") {
+        res.writeHead(401, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "unauthorized", reason: "account_session_required" }));
+        return;
+      }
+      if (!ipRateOk(`refresh:${accountUid}`, REFRESH_LIMIT, REFRESH_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(
+          JSON.stringify({
+            error: "rate_limited",
+            retryAfterSec: Math.ceil(REFRESH_WINDOW_MS / 1000),
+          }),
+        );
+        return;
+      }
+      const now = Date.now();
+      const token = mintSession(accountUid, sessionSecret, {
+        sv: accountClaims.sv,
+        now,
+        jti: sessionId(accountClaims),
+      });
+      // The gate may already have put a sliding renewal in the header; answer
+      // with one token, not two different ones.
+      res.setHeader(SESSION_RENEWAL_HEADER, token);
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ token, expiresAt: now + SESSION_TTL_MS }));
+      return;
+    }
+
+    // ── Sign out everywhere (#493) ──────────────────────────────────────────
+    // Bumps the account's session version: every session of this account —
+    // this device, the Mac, every other phone — stops working at once.
+    if (req.method === "POST" && url === "/api/auth/logout-all") {
+      if (!accountUid) {
+        res.writeHead(401, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "unauthorized", reason: "account_session_required" }));
+        return;
+      }
+      try {
+        await revokeAccountSessions(accountUid);
+      } catch (err) {
+        logError(`[accounts] sign-out everywhere failed: ${(err as Error).message}`);
+        res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "account_store_unavailable" }));
+        return;
+      }
+      // The renewal header (if any) carries the old version; drop it.
+      res.removeHeader(SESSION_RENEWAL_HEADER);
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+      });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -3358,11 +3497,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     };
     const denyRemote = (need: "control" | "adoptExternal"): boolean => {
       if (remoteControlAllowed(need)) return false;
-      res.writeHead(403, { "content-type": "text/plain" });
+      res.writeHead(403, { "content-type": "application/json" });
       res.end(
-        need === "adoptExternal"
-          ? "adopting external sessions from a remote device is disabled — enable remoteAdoptExternal on the Mac (POST /api/control/policy from localhost)"
-          : "remote control is disabled — enable remoteControl on the Mac (POST /api/control/policy from localhost)",
+        JSON.stringify(
+          errorBody(need === "adoptExternal" ? "remote_adopt_disabled" : "remote_control_disabled"),
+        ),
       );
       return true;
     };
@@ -3488,8 +3627,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         remote === "::ffff:127.0.0.1" ||
         remote.startsWith("127.");
       if (!isLoopback) {
-        res.writeHead(403, { "content-type": "text/plain" });
-        res.end("screen-advisor config only accepted from localhost");
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("local_owner_required")));
         return;
       }
       const saBody = await readRequestText(req, res);
@@ -4172,8 +4311,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
     if (req.method === "POST" && url === "/api/control/policy") {
       if (!isLoopbackAddress(remoteAddr)) {
-        res.writeHead(403, { "content-type": "text/plain" });
-        res.end("control policy can only be changed from the Mac (localhost)");
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("local_owner_required")));
         return;
       }
       const cpBody = await readRequestText(req, res);
@@ -5482,8 +5621,8 @@ self.addEventListener('fetch', (event) => {
         remote === "::ffff:127.0.0.1" ||
         remote.startsWith("127.");
       if (!isLoopback) {
-        res.writeHead(403, { "content-type": "text/plain" });
-        res.end("config save only accepted from localhost");
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify(errorBody("local_owner_required")));
         return;
       }
       const body = await readRequestText(req, res);
@@ -5741,7 +5880,7 @@ self.addEventListener('fetch', (event) => {
         }
       } catch (err) {
         res.writeHead(400, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
+        res.end(JSON.stringify(errorBody("bad_request", { reason: (err as Error).message })));
         return;
       }
       // Cloud setup may call AI; do it only after an explicit chat request,
@@ -5845,6 +5984,19 @@ self.addEventListener('fetch', (event) => {
         if (res.writableEnded || res.destroyed) return;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
+      // A failed turn's `error` event (#485/#487): a contract code plus a
+      // message. On a Mac the detail is the owner's own (their key, their
+      // provider account) and is shown as is. A hosted user gets a sentence
+      // they can act on; the provider's raw error (which can name keys,
+      // quotas or internal hosts) goes to the log only.
+      const sendTurnError = (code: "provider_error" | "turn_failed", detail: string) => {
+        if (cloud) {
+          logError(`[chat] ${code} for ${redactId(accountUid ?? "shared")}: ${detail}`);
+          send({ type: "error", code, message: errorMessage(code) });
+        } else {
+          send({ type: "error", code, message: detail || errorMessage(code) });
+        }
+      };
       // Keep-alive (T-11): a long tool call or a thinking model can leave this
       // stream silent well past a proxy's idle timeout, and a reconnect drops
       // the half-streamed answer.
@@ -5876,6 +6028,10 @@ self.addEventListener('fetch', (event) => {
         // the client disconnecting. Settled once, on success AND on failure —
         // a turn that throws after its model calls began still used them.
         const turnCalls: ProviderUsage[] = [];
+        // What this run wrote to the transcript (#491), so a turn that fails
+        // part-way still leaves the in-memory history matching the file.
+        const persisted: StoredMessage[] = [];
+        let historySynced = false;
         let turnSettled = false;
         const settleTurn = async (usage: ProviderUsage): Promise<void> => {
           if (!cloud || turnSettled) return;
@@ -5982,6 +6138,17 @@ self.addEventListener('fetch', (event) => {
             send({ type: "done" });
             return;
           }
+          // A retry of a turn a disconnect cut short (#491): the transcript
+          // already holds this message, maybe with tool calls after it, and no
+          // reply. Continue that turn instead of adding the message again.
+          const resuming = unfinishedTurnIndex(chat.history, message, files?.length ?? 0) >= 0;
+          if (resuming) {
+            const closing = closeInterruptedToolCalls(chat.history);
+            if (closing) {
+              await chat.session.appendMessage(closing);
+              chat.history.push(closing);
+            }
+          }
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
           const fresh = await rebuildPrompt();
@@ -5995,8 +6162,8 @@ self.addEventListener('fetch', (event) => {
           const modelContext = selectWebModelContextForTurn({
             history: chat.history,
             systemPrompt: fresh.text + expressions.prompt,
-            text: message,
-            files,
+            text: resuming ? "" : message,
+            files: resuming ? undefined : files,
             budgetTokens: webContextBudgetTokens(),
             latestReflection: chat.reflectionSummary,
             // Start where the previous turn's window started while that still
@@ -6040,8 +6207,9 @@ self.addEventListener('fetch', (event) => {
               approval: wardenTurn?.approval ?? webApproval,
             },
             history: modelContext.history,
-            userMessage: message,
-            userFiles: files,
+            // Resuming: the message is already the last turn in the history.
+            userMessage: resuming ? "" : message,
+            userFiles: resuming ? undefined : files,
             model: activeModel,
             thinking: policy.thinking,
             compaction: policy.compaction,
@@ -6089,7 +6257,7 @@ self.addEventListener('fetch', (event) => {
                 send({ type: "soul_reload", message: ev.message ?? "" });
               if (ev.type === "error") {
                 errorSent = true;
-                send({ type: "error", message: ev.message ?? "" });
+                sendTurnError("provider_error", ev.message ?? "");
               }
             },
             // Same plugin hook wiring as the CLI turn — PreToolUse can block,
@@ -6133,7 +6301,10 @@ self.addEventListener('fetch', (event) => {
                     );
                     if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
                   },
-            onMessagePersist: (m) => chat.session.appendMessage(m),
+            onMessagePersist: async (m) => {
+              await chat.session.appendMessage(m);
+              persisted.push(m);
+            },
             onPromptPersist: (text, reason) => chat.session.appendPrompt(text, reason),
             hotReload: {
               initialFingerprint: fresh.fingerprint,
@@ -6150,6 +6321,7 @@ self.addEventListener('fetch', (event) => {
           // session transcript keep the complete history. Append just the new
           // user/assistant/tool messages produced by this run.
           chat.history.push(...result.history.slice(modelContext.history.length));
+          historySynced = true;
           // Metering (B3): price the turn into the ACTIVE home's ledger — the
           // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
           // is not metered. Never throws.
@@ -6196,7 +6368,23 @@ self.addEventListener('fetch', (event) => {
               logError(`[billing] failed chat turn not settled: ${(settleErr as Error).message}`);
             }
           }
-          if (!errorSent) send({ type: "error", message: (err as Error).message });
+          // Keep what this run already wrote (#491): memory matches the
+          // transcript, and a retry of the same message continues the turn.
+          if (!historySynced && persisted.length > 0) {
+            chat.history.push(...persisted);
+            const closing = closeInterruptedToolCalls(chat.history);
+            if (closing) {
+              try {
+                await chat.session.appendMessage(closing);
+                chat.history.push(closing);
+              } catch (persistErr) {
+                logError(
+                  `[chat] interrupted tool calls not closed: ${(persistErr as Error).message}`,
+                );
+              }
+            }
+          }
+          if (!errorSent) sendTurnError("turn_failed", (err as Error).message);
         } finally {
           moodBus.off("mood", onMood);
           stopChatHeartbeat();
@@ -6406,7 +6594,7 @@ self.addEventListener('fetch', (event) => {
     relayBroker = new RelayBroker(server, async (token) => {
       const claims = verifySession(token, sessionSecret);
       if (!claims || deletingAccounts.has(claims.uid)) return null;
-      const state = await sessionAccountState(claims.uid, claims.sv);
+      const state = await sessionAccountState(claims.uid, claims.sv, sessionId(claims));
       // The broker answers 503 (retry) for a throw, 403 (signed out) for null.
       if (state === "unavailable") throw new Error("account_service_unavailable");
       if (state !== "valid") return null;
