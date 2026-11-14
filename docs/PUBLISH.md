@@ -78,39 +78,36 @@ npm login         # if needed
 
 The package name is **scoped** (`@oratis/lisa`), so npm won't conflict with the global `lisa` namespace. It also implies the package is publicly published under your scope.
 
-### Per-release
+### Normal releases and manual recovery
+
+For normal releases, use the reviewed-merge/tag sequence in the quick reference. The tag workflow publishes npm; there is no second local publish step.
+
+Manual recovery is only for a failed npm-publish job after confirming no other publisher is running and the version is absent from the registry. Work from the exact reviewed tag with its matching package version; do not bump again or move the tag:
 
 ```sh
-# 1. Bump the version in package.json (semver: bug fix → patch, new feature → minor, breaking → major).
-npm version patch              # or minor / major / 0.3.0
-git push --follow-tags
-
-# 2. Verify the tarball before publishing.
-npm pack --dry-run | tail -10  # confirm size + file count look sane
-
-# 3. Publish (this fires `prepublishOnly` first, which:
-#    - runs `npm run build`
-#    - replaces dist/web/assets symlink with a real copy of src/web/assets
-#    so the tarball has the 114 mood portraits inlined).
+npm ci
+npm pack --dry-run | tail -10
+# Confirm the registry does not already contain this exact version before continuing.
+npm view @oratis/lisa@X.Y.Z version
+# Only when that exact version is absent and authenticated npm access is available:
 npm publish --access public
-
-# 4. After publish, npm fires `postpublish` which restores the dev symlink.
-#    If for some reason it didn't, just run:
-npm run copy-assets
 ```
+
+`prepublishOnly` checks the API contract, types and tests, builds the package and materializes the web assets. `postpublish` restores the development asset symlink. If interrupted after publication, `npm run copy-assets` restores it manually; do not republish an existing version.
 
 ### What the tarball contains
 
 `files` field in `package.json` whitelists:
 
 - `dist/` (compiled JS + d.ts + sourcemaps + bundled web assets)
+- `contracts/`, `packaging/eventkit/` and `scripts/fix-node-pty-perms.mjs`
 - `channels.example.json`
 - `completions/` (bash/zsh/fish)
 - `LICENSE`, `README.md`, `README.zh-CN.md`
 
 Excluded by default (and double-excluded via `.npmignore`):
 
-- `src/`, `scripts/`, `docs/`, `website/`, `reference/`
+- `src/`, other `scripts/`, `docs/`, `website/`, `reference/`
 - `node_modules/`, `.git/`, dotfiles, env files
 
 Tarball size: ~30 MB (the bulk is the 114 pixel-art mood portraits;
