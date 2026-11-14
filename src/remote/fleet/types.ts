@@ -52,6 +52,7 @@ export function fleetRoute(method: string, path: string): boolean {
   if (method === "GET")
     return (
       ["/capabilities", "/runs"].includes(suffix) ||
+      /^\/runs\/[a-f0-9-]{36}\/changes(?:\/\d{1,6}(?:\/\d{1,4})?)?$/.test(suffix) ||
       /^\/(?:runs|operations)\/[a-f0-9-]{36}$/.test(suffix) ||
       // The cursor has one canonical spelling, so the allow-list stays an exact match.
       /^\/runs\/[a-f0-9-]{36}\/events(?:\?after=\d{1,15}(?:&limit=\d{1,3})?)?$/.test(suffix)

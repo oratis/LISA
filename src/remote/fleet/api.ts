@@ -55,6 +55,7 @@ export class FleetApi {
         link: link.status(),
         workspaces: this.host.workspaces(),
         runs: this.host.ownerRuns(),
+        checkpointRuns: this.host.checkpointRuns(),
         shares: this.host.ownerShares(
           link.status().hostId ?? "",
           link.status().devices.flatMap((d) => {
@@ -71,6 +72,10 @@ export class FleetApi {
         if (typeof body.enabled !== "boolean") throw new FleetError(400, "invalid_share");
         return this.host.share(viewer, uuid(body.runId), body.enabled);
       }
+      case "/api/fleet/worktrees":
+        return this.host.createWorktree(uuid(body.workspaceId));
+      case "/api/fleet/checkpoints/clear":
+        return this.host.clearCheckpoints(uuid(body.runId));
       case "/api/fleet/workspaces":
         return this.host.register(body.name, body.directory);
       case "/api/fleet/local-stop":
