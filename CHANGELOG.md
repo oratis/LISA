@@ -20,6 +20,7 @@ Fleet now carries work from an isolated task through per-turn review, selected-f
 - Selected Feishu documents
 - Selected T3 projects and optional screenshot context
 - Pocket Room and iPad refresh
+- Knowledge-base history isolation
 - Upgrade and remaining limits
 - Included changes
 

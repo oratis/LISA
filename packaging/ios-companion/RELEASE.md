@@ -71,6 +71,15 @@ git push origin pocket-v1.4.0
 gh workflow run release-ios-testflight.yml --repo oratis/LISA
 ```
 
+To inspect processing without uploading another binary (using the same CI credentials):
+
+```sh
+gh workflow run release-ios-testflight.yml --repo oratis/LISA \
+  -f operation=status -f build_number=1794678341
+```
+
+The read-only job reports build processing and store-version state, with no API key or review credentials in its artifact. An upload success is not proof that processing or App Review has completed.
+
 Watch the run under **Actions**; on success the build appears in App Store
 Connect → TestFlight after Apple finishes processing (a few minutes). The build
 number is the Unix timestamp of the build (set automatically); the marketing

@@ -68,6 +68,10 @@ Pocket 1.4 source opens into Room with nine destinations, real memory/request/se
 
 Pocket is published separately from this Mac/CLI version. The public App Store version was **1.3** when checked on November 14, 2026. TestFlight upload, App Store submission and approval are separate states; see the [release checklist](RELEASE_CHECKLIST_v0.32.0.md).
 
+## Knowledge-base history isolation
+
+Knowledge-base Git history now binds every command to that instance's own repository and ignores inherited Git directory/index overrides. Initialization failures and switching between instances can no longer make a knowledge-base save commit unrelated files in an enclosing project. Linked Git directories are refused, and failed initialization can be retried safely.
+
 ## Upgrade and remaining limits
 
 - Replace Lisa.app and restart its background service (or restart the Mac) to load the bundled backend. CLI users can run `npm install -g @oratis/lisa@0.32.0` or upgrade the Homebrew formula after it is updated.

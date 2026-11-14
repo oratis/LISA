@@ -23,15 +23,43 @@ on:
       - "pocket-v*.*.*"
   workflow_dispatch:
     inputs:
+      operation:
+        description: "Upload a build, or only inspect App Store processing/release state"
+        type: choice
+        options: [upload, status]
+        default: upload
       build_number:
-        description: "Override build number (default: timestamp)"
+        description: "Upload override (default: timestamp), or exact build number to inspect"
         required: false
 
 permissions:
   contents: read
 
 jobs:
+  status:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'status' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Read build and store state
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: node scripts/app-store-status.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-store-status
+          path: app-store-status.json
+          retention-days: 14
+
   testflight:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.operation != 'status' }}
     runs-on: macos-latest
     timeout-minutes: 45
     env:
