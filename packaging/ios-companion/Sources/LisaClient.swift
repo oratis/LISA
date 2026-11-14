@@ -71,7 +71,7 @@ enum LisaAPICompatibility {
 
 /// Thin async client for the Lisa web API. Plain class (Swift 5 mode); pass a fresh
 /// instance when the config changes.
-final class LisaClient: FleetReading {
+final class LisaClient: FleetReading, FleetDecisionSending {
     var config: ServerConfig
     private let session: URLSession
     private let remote: RemoteMacTransport?
@@ -139,6 +139,14 @@ final class LisaClient: FleetReading {
     func fleetEvents(_ id: String, after: Int) async throws -> FleetPage {
         guard UUID(uuidString: id) != nil else { throw LisaError.decode }
         return try await decode("/api/agent-host/v1/view/runs/\(id.lowercased())/events?after=\(max(0, after))&limit=100", as: FleetPage.self)
+    }
+
+    func fleetDecide(_ id: String, decision: FleetDecision) async throws -> FleetDecisionReceipt {
+        guard UUID(uuidString: id) != nil, UUID(uuidString: decision.approvalId) != nil else { throw LisaError.decode }
+        return try await decode("/api/agent-host/v1/view/runs/\(id.lowercased())/decisions", method: "POST",
+                                json: ["operationId": decision.operationId, "approvalId": decision.approvalId,
+                                       "digest": decision.digest, "expiresAt": decision.expiresAt, "allow": decision.allow],
+                                as: FleetDecisionReceipt.self)
     }
 
     func data(for request: URLRequest, path: String) async throws -> (Data, URLResponse) {

@@ -530,8 +530,59 @@ test(
         }),
         /stale_approval/,
       );
-      await remote(0, "/runs/" + id + "/decisions", "POST", decision);
-      await remote(0, "/runs/" + id + "/decisions", "POST", decision);
+      const pocketDecisionPath = VIEW_API + "/runs/" + id + "/decisions";
+      const readOnlyDecision = {
+        operationId: crypto.randomUUID(),
+        approvalId: pending.approval.id,
+        allow: true,
+        digest: "0".repeat(64),
+        expiresAt: Date.now() + 60_000,
+      };
+      assert.equal(
+        (await phone.read(pocketDecisionPath, "POST", false, readOnlyDecision)).status,
+        403,
+      );
+      await assert.rejects(
+        api(m.port, "/api/fleet/shares", {
+          deviceId: phone.deviceId,
+          runId: id,
+          enabled: true,
+          approve: "yes",
+        }),
+        /invalid_share/,
+      );
+      await api(m.port, "/api/fleet/shares", {
+        deviceId: phone.deviceId,
+        runId: id,
+        enabled: true,
+        approve: true,
+      });
+      const preview = await phone.read<{
+        run: {
+          capabilities: { approve: boolean };
+          approval: { id: string; digest: string; expiresAt: number; preview: string };
+        };
+      }>(viewerPath);
+      assert.equal(preview.data.run.capabilities.approve, true);
+      assert.match(preview.data.run.approval.preview, /approved.txt/);
+      const pocketDecision = {
+        ...readOnlyDecision,
+        digest: preview.data.run.approval.digest,
+        expiresAt: preview.data.run.approval.expiresAt,
+      };
+      const receipt = await phone.read<{ status: string }>(
+        pocketDecisionPath,
+        "POST",
+        true,
+        pocketDecision,
+      );
+      assert.equal(receipt.status, 200);
+      assert.equal(receipt.data.status, "accepted");
+      assert.deepEqual(
+        await phone.read(pocketDecisionPath, "POST", false, pocketDecision),
+        receipt,
+        "LAN reply lost: cloud retry returns the same receipt",
+      );
       await until(run, (r) => r.state === "waiting" && r.result === "first complete");
       assert.equal(fs.readFileSync(path.join(project1, "approved.txt"), "utf8"), "approved");
       const changes = await remote<{ files: { id: number; path: string; status: string }[] }>(
@@ -549,13 +600,19 @@ test(
       await remote(0, "/runs/" + id + "/messages", "POST", follow);
       await remote(0, "/runs/" + id + "/messages", "POST", follow);
       await until(run, (r) => r.state === "waiting" && r.result === "followup 2");
-      // Pocket was disconnected while the controller approved and completed two turns.
+      // Pocket catches up after its approval and two completed turns.
       const caughtUp = await phone.read<Timeline>(viewerPath + "?after=" + phoneCursor);
       assert.equal(caughtUp.status, 200);
       assert.equal(caughtUp.data.events[0]!.seq, phoneCursor + 1);
       assert.deepEqual(
         caughtUp.data.events.filter((e) => e.type !== "tool_blocked").map((e) => e.type),
-        ["approval_resolved", "turn_completed", "turn_started", "turn_completed"],
+        [
+          "approval_decided",
+          "approval_resolved",
+          "turn_completed",
+          "turn_started",
+          "turn_completed",
+        ],
       );
       assert.equal(caughtUp.data.run.approval, null);
       await api(m.port, "/api/fleet/shares", {
@@ -597,6 +654,7 @@ test(
       assert.deepEqual(
         steps.map((e) => e.type),
         [
+          "approval_decided",
           "approval_resolved",
           "turn_completed",
           "turn_started",
@@ -607,7 +665,7 @@ test(
         ],
       );
       assert.deepEqual(
-        [steps[0]!.outcome, steps[1]!.result, steps[3]!.result, steps[6]!.state],
+        [steps[1]!.outcome, steps[2]!.result, steps[4]!.result, steps[7]!.state],
         ["allowed", "first complete", "followup 2", "cancelled"],
       );
       assert.deepEqual([missed.gap, missed.more, missed.run.state], [false, false, "cancelled"]);

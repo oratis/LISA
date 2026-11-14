@@ -15,6 +15,9 @@ struct FleetTask: Decodable, Identifiable, Equatable {
         let tool: String
         let target: String
         let expiresAt: Double
+        var id: String? = nil
+        var digest: String? = nil
+        var preview: String? = nil
     }
     let id: String
     let hostId: String
@@ -28,9 +31,13 @@ struct FleetTask: Decodable, Identifiable, Equatable {
     let approval: Approval?
     var agent: String? = nil
     var capabilities: FleetActions? = nil
-    // This Pocket route supports observation only, even if a future host offers more.
+    // Approval requires both an explicit capability and the complete bound request.
     var canObserve: Bool { capabilities?.observe ?? true }
-    var accessLabel: String { canObserve ? "Read only" : "Access unavailable" }
+    var canApprove: Bool {
+        capabilities?.approve == true && approval?.id != nil && approval?.digest != nil
+            && approval?.preview != nil && (approval?.expiresAt ?? 0) > Date().timeIntervalSince1970 * 1000
+    }
+    var accessLabel: String { canObserve ? (canApprove ? String(localized: "Approval available") : String(localized: "Read only")) : String(localized: "Access unavailable") }
 }
 
 struct FleetEntry: Decodable, Identifiable, Equatable {
@@ -55,6 +62,7 @@ struct FleetEntry: Decodable, Identifiable, Equatable {
         case "turn_completed": return "Turn \(turn ?? 0) completed"
         case "turn_failed": return "Turn \(turn ?? 0) failed"
         case "approval_requested": return "Approval requested · \(tool ?? "") \(target ?? "")"
+        case "approval_decided": return String(localized: "Decision sent from Pocket")
         case "approval_resolved": return "Approval · \(outcome ?? "resolved")"
         case "tool_blocked": return "Policy blocked · \(tool ?? "") \(target ?? "")"
         case "cancel_requested": return "Stop requested · \(by ?? "")"
@@ -104,14 +112,73 @@ protocol FleetReading {
     func fleetEvents(_ id: String, after: Int) async throws -> FleetPage
 }
 
+struct FleetDecision: Encodable, Equatable {
+    let operationId: String
+    let approvalId: String
+    let digest: String
+    let expiresAt: Double
+    let allow: Bool
+}
+struct FleetDecisionReceipt: Decodable {
+    let operationId: String
+    let status: String
+}
+protocol FleetDecisionSending {
+    func fleetDecide(_ id: String, decision: FleetDecision) async throws -> FleetDecisionReceipt
+}
+
 @MainActor
 final class FleetPocketModel: ObservableObject {
     @Published private(set) var runs: [FleetTask] = []
     @Published private(set) var timeline = FleetTimeline()
     @Published private(set) var message: String?
-    @Published var selection: String? { didSet { if oldValue != selection { generation += 1; timeline = FleetTimeline() } } }
+    @Published var selection: String? { didSet { if oldValue != selection { generation += 1; timeline = FleetTimeline(); decisionMessage = nil } } }
     private var generation = 0
     private var refreshing = false
+    @Published private(set) var deciding = false
+    @Published private(set) var decisionMessage: String?
+    private var attempts: [String: FleetDecision] = [:]
+    private var settled: Set<String> = []
+
+    private func requestKey(_ run: FleetTask) -> String {
+        "\(run.hostId)|\(run.id)|\(run.approval?.id ?? "")|\(run.approval?.digest ?? "")"
+    }
+    func canDecide(_ run: FleetTask, allow: Bool? = nil) -> Bool {
+        guard !deciding, run.canApprove, selection == run.id,
+              timeline.run?.hostId == run.hostId, timeline.run?.approval == run.approval,
+              timeline.run?.canApprove == true, !settled.contains(requestKey(run)) else { return false }
+        if let allow, let attempt = attempts[requestKey(run)], attempt.allow != allow { return false }
+        return true
+    }
+    @discardableResult
+    func decide(_ client: FleetDecisionSending, run: FleetTask, allow: Bool) async -> Bool {
+        guard canDecide(run, allow: allow), let approval = run.approval,
+              let id = approval.id, let digest = approval.digest else { return false }
+        let expected = generation, key = requestKey(run)
+        let decision = attempts[key] ?? FleetDecision(operationId: UUID().uuidString.lowercased(), approvalId: id,
+                                                      digest: digest, expiresAt: approval.expiresAt, allow: allow)
+        attempts[key] = decision
+        deciding = true; decisionMessage = nil
+        defer { deciding = false }
+        do {
+            let receipt = try await client.fleetDecide(run.id, decision: decision)
+            guard !Task.isCancelled, expected == generation else { return false }
+            guard receipt.operationId == decision.operationId, ["accepted", "unknown"].contains(receipt.status) else { throw LisaError.decode }
+            settled.insert(key)
+            decisionMessage = receipt.status == "accepted" ? String(localized: "Decision sent. Waiting for the Mac to update.")
+                : String(localized: "The outcome is unknown. Check the task on the Mac; this decision will not be sent again.")
+            return true
+        } catch {
+            guard !Task.isCancelled, expected == generation else { return false }
+            if Self.accessLost(error) || (error as? LisaError)?.httpStatus == 409 {
+                settled.insert(key)
+                decisionMessage = String(localized: "This approval is no longer available. Refresh the task on the Mac.")
+            } else {
+                decisionMessage = String(localized: "The reply was lost. Retry the same decision to retrieve its receipt.")
+            }
+            return false
+        }
+    }
 
     func refresh(_ client: FleetReading) async {
         guard !refreshing else { return }

@@ -2934,7 +2934,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (viewing) {
           const viewer = remoteHost.fleetViewer(req);
           if (!viewer) throw new FleetError(403, "fleet_access_denied");
-          send(200, api.host.readViewer(viewer, url));
+          send(200, api.viewer(remoteHost, viewer, url, method, body));
         } else if (onMini) {
           // Body parsing yields. The owner may have revoked the grant in the meantime.
           const peer = remoteHost.fleetPeer(req);

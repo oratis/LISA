@@ -3982,7 +3982,7 @@
     "/api/agent-host/v1/view/runs/{id}/events": {
       "get": {
         "operationId": "getSharedFleetRunEvents",
-        "description": "Securely paired Pocket only; rechecks the specific task share on every page. Returns 404 when unshared or revoked. Same cursor, retention and reset semantics as the controller timeline, with an allow-listed read-only projection.",
+        "description": "Securely paired Pocket only; rechecks the specific task share on every page. Returns 404 when unshared or revoked. Same cursor, retention and reset semantics as the controller timeline, with an allow-listed projection; separately authorized approvers also receive the exact current request.",
         "parameters": [
           {
             "name": "after",
@@ -4066,6 +4066,11 @@
                   },
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "approve": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Separate permission to review full pending tool input and decide this task. Omitted or false grants only read access."
                   }
                 }
               }
@@ -4573,6 +4578,99 @@
           },
           "503": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/view/runs/{id}/decisions": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "decideSharedFleetRun",
+        "description": "Secure Pocket pairing with a separately granted task approval permission only. Revalidates the initiating controller grant, remote-control policy, exact approval ID/digest/expiry and workspace identity. Persists a pairing-scoped receipt before acting. Repeating the same operation returns its receipt; changed payloads conflict. Each approval may be decided only once, including uncertain outcomes. Does not grant append, cancel, workspace or other-controller access.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "operationId",
+                  "approvalId",
+                  "digest",
+                  "expiresAt",
+                  "allow"
+                ],
+                "properties": {
+                  "operationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "approvalId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "expiresAt": {
+                    "type": "number"
+                  },
+                  "allow": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decision receipt. Unknown outcomes must not be replayed with a new operation ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "operationId",
+                    "status"
+                  ],
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "accepted",
+                        "unknown"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -9987,6 +10085,17 @@
                   },
                   "expiresAt": {
                     "type": "number"
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "preview": {
+                    "type": "string",
+                    "description": "Complete JSON tool input, at most 32 KiB. These three fields are returned together only when approval is currently permitted; oversized inputs require the controller."
                   }
                 }
               }
@@ -10004,7 +10113,7 @@
           }
         },
         "additionalProperties": false,
-        "description": "Read-only Pocket projection: result excerpt, tool/target only; no prompt, input, approval ID or controller identity."
+        "description": "Pocket projection. Read-only shares expose result excerpts and tool/target summaries, without prompt, tool input or approval ID. A separate current approval grant adds exact request ID, digest and complete input preview only while approvable."
       },
       "FleetViewerEvent": {
         "type": "object",
@@ -10025,10 +10134,7 @@
           },
           "type": {
             "type": "string",
-            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started.",
-            "enum": [
-              "handoff_started"
-            ]
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started. approval_decided records an explicit decision before the adapter call."
           },
           "turn": {
             "type": "integer",
@@ -10074,7 +10180,8 @@
               "timeout",
               "shutdown",
               "revoked",
-              "policy"
+              "policy",
+              "pocket"
             ],
             "description": "revoked: the owner revoked the device or narrowed its grant. policy: remote control was switched off on the host."
           },
@@ -10264,7 +10371,7 @@
       },
       "FleetActions": {
         "type": "object",
-        "description": "Effective operations for the current adapter, run state and authenticated caller. The host rechecks every mutation. External observations and Pocket shares are read-only. Neither Fleet adapter currently resumes lost processes.",
+        "description": "Effective operations for the current adapter, run state and authenticated caller. The host rechecks every mutation. External observations are read-only. Pocket is read-only by default; a separately granted current approval may enable approve. Neither Fleet adapter currently resumes lost processes.",
         "required": [
           "observe",
           "append",

@@ -38,6 +38,20 @@ enum TokenStore {
         return token
     }
 
+    /// A missing item is different from an inaccessible Keychain during migration.
+    static func canRead(account: String) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let result = SecItemCopyMatching(query as CFDictionary, &item)
+        return result == errSecSuccess || result == errSecItemNotFound
+    }
+
     static func delete(account: String = "default") {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

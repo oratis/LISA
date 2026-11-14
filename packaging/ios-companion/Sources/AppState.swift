@@ -28,6 +28,7 @@ enum ConnectionMode: String, CaseIterable, Identifiable {
 @MainActor
 final class AppState: ObservableObject {
     private let profiles: ConnectionProfiles
+    @Published private(set) var savedMacProfiles: [SavedMacProfile] = []
     @Published var expressionPreferences = ExpressionPreferences()
     @Published var chatDraft = ""
     @Published var aiConsent = AISharingConsent()
@@ -167,6 +168,7 @@ final class AppState: ObservableObject {
         self.config = cfg
         self.client = LisaClient(config: cfg)
         self.connectionMode = mode
+        self.savedMacProfiles = profiles.savedMacs
         // Older builds let URLSession.shared keep a `lisa_token` cookie (#493).
         LisaClient.forgetCookies(for: cfg)
         self.appearance = d.string(forKey: "lisa.appearance") ?? "auto"
@@ -391,16 +393,54 @@ final class AppState: ObservableObject {
 
     var savedCloudConfig: ServerConfig { profiles.load(.cloud) }
 
-    func connectRemoteMac(_ target: RemoteMacTarget) {
+    var availableMacProfiles: [SavedMacProfile] {
+        let cloud = savedCloudConfig
+        return savedMacProfiles.filter { profile in
+            guard let remote = profile.remoteMac else { return true }
+            return SessionToken.claims(cloud.token)?.uid == remote.accountUID
+                && cloud.baseURL?.absoluteString == remote.cloudOrigin
+        }
+    }
+
+    var selectedMacProfileID: String? { profiles.activeMacID }
+
+    func selectSavedMac(_ id: String) {
+        guard availableMacProfiles.contains(where: { $0.id == id }), profiles.selectMac(id) else {
+            notify(String(localized: "Couldn't open this saved Mac. Check your account and unlock your device."), ok: false)
+            return
+        }
+        profiles.activeMode = .mac
+        connectionMode = .mac
+        savedMacProfiles = profiles.savedMacs
+        activate(profiles.load(.mac))
+    }
+
+    func forgetSavedMac(_ id: String) {
+        let active = profiles.activeMacID == id
+        guard profiles.forgetMac(id) else {
+            notify(String(localized: "Couldn't remove this connection securely. Unlock your device and try again."), ok: false)
+            return
+        }
+        savedMacProfiles = profiles.savedMacs
+        if active && connectionMode == .mac { activate(profiles.load(.mac)) }
+    }
+
+    @discardableResult
+    func connectRemoteMac(_ target: RemoteMacTarget) -> Bool {
+        guard SessionToken.claims(savedCloudConfig.token)?.uid == target.accountUID,
+              savedCloudConfig.baseURL?.absoluteString == target.cloudOrigin else { return false }
         var config = ServerConfig(host: "\(target.id).lisa.invalid", port: 443, token: nil, scheme: "https")
         config.remoteMac = target
         guard profiles.save(config, for: .mac) else {
-            notify("Couldn't save this Mac securely.", ok: false); return
+            notify(String(localized: "Couldn't save this Mac. Unlock your device, or remove a saved Mac if you have 32 connections."), ok: false)
+            return false
         }
+        savedMacProfiles = profiles.savedMacs
         profiles.activeMode = .mac
         connectionMode = .mac
         activate(config)
         notify("Connected to \(target.name).")
+        return true
     }
 
     @discardableResult
@@ -412,6 +452,7 @@ final class AppState: ObservableObject {
             notify("Couldn't save the connection securely. Unlock your device and try again.", ok: false)
             return false
         }
+        savedMacProfiles = profiles.savedMacs
         profiles.activeMode = target
         connectionMode = target
         activate(cfg)
@@ -573,9 +614,8 @@ final class AppState: ObservableObject {
     /// Drop the account session locally. Callers that can wait use
     /// `signOut(everywhere:)`, which also revokes it on the server.
     func signOutCloud() {
-        if profiles.load(.mac).remoteMac != nil {
-            _ = profiles.save(ServerConfig(host: "", port: 5757, token: nil), for: .mac)
-        }
+        profiles.reconcileRemoteMacs(with: ServerConfig(host: "", port: 443, token: nil, scheme: "https"))
+        savedMacProfiles = profiles.savedMacs
         LisaClient.forgetCookies(for: profiles.load(.cloud))
         sessionExpired = false
         if update(host: "", port: 443, token: nil, scheme: "https", mode: .cloud) { account = nil }

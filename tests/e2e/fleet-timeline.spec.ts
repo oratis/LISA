@@ -279,7 +279,8 @@ test("a gap replaces the cached prefix and a reset clears its retention notice",
 test("the execution Mac shares only the selected task with a securely paired Pocket and can revoke it", async ({
   page,
 }) => {
-  let shared = false;
+  let shared = false,
+    approved = false;
   const pocket = { id: "c".repeat(32), name: "My Pocket", secure: true };
   await page.route("**/api/fleet/hosts", (route) =>
     route.fulfill({ json: { scope: "account", hosts: [] } }),
@@ -301,6 +302,7 @@ test("the execution Mac shares only the selected task with a securely paired Poc
             state: "completed",
             createdAt: 1,
             viewers: shared ? [pocket.id] : [],
+            approvers: approved ? [pocket.id] : [],
           },
         ],
       },
@@ -308,12 +310,15 @@ test("the execution Mac shares only the selected task with a securely paired Poc
   );
   await page.route("**/api/fleet/shares", (route) => {
     expect(route.request().method()).toBe("POST");
-    expect(route.request().postDataJSON()).toEqual({
-      deviceId: pocket.id,
-      runId,
-      enabled: !shared,
-    });
-    shared = !shared;
+    const body = route.request().postDataJSON();
+    if (body.approve !== undefined) {
+      expect(body).toEqual({ deviceId: pocket.id, runId, enabled: true, approve: !approved });
+      approved = body.approve;
+    } else {
+      expect(body).toEqual({ deviceId: pocket.id, runId, enabled: !shared });
+      shared = !shared;
+      approved = false;
+    }
     return route.fulfill({ json: { shared } });
   });
   await page.goto(lisa.baseURL + "/fleet");
@@ -322,6 +327,17 @@ test("the execution Mac shares only the selected task with a securely paired Poc
   await expect(page.locator("#shares")).not.toContainText("Old Pocket");
   await page.getByRole("button", { name: /允许查看 · My Pocket/ }).click();
   await expect(page.getByRole("button", { name: /撤销查看 · My Pocket/ })).toBeVisible();
+  expect(approved).toBe(false);
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: /允许审批 · My Pocket/ }).click();
+  expect(approved).toBe(false);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: /允许审批 · My Pocket/ }).click();
+  await expect(page.getByRole("button", { name: /撤销审批 · My Pocket/ })).toBeVisible();
+  expect(approved).toBe(true);
+  await page.getByRole("button", { name: /撤销审批 · My Pocket/ }).click();
+  await expect(page.getByRole("button", { name: /允许审批 · My Pocket/ })).toBeVisible();
+  expect(shared).toBe(true);
   await page.getByRole("button", { name: /撤销查看 · My Pocket/ }).click();
   await expect(page.getByRole("button", { name: /允许查看 · My Pocket/ })).toBeVisible();
   expect(shared).toBe(false);

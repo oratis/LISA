@@ -13,6 +13,7 @@ import {
   requiredText,
   uuid,
   type FleetPeer,
+  type FleetViewer,
 } from "./types.js";
 import { selectSecretBackend } from "../../warden/secrets-open.js";
 import { KeychainSecretStore } from "../../warden/secrets-keychain.js";
@@ -51,6 +52,21 @@ export class FleetApi {
       ? this.host.read(effective, route)
       : this.host.mutate(effective, route, body);
   }
+  viewer(
+    link: RemoteHost,
+    viewer: FleetViewer,
+    route: string,
+    method: string,
+    body: Record<string, unknown>,
+  ) {
+    const grant = (device: string) => {
+      const peer = link.fleetController(device);
+      return peer && { ...peer, control: peer.control && loadControlPolicy().remoteControl };
+    };
+    return method === "GET"
+      ? this.host.readViewer(viewer, route, grant)
+      : this.host.decideViewer(viewer, route, body, grant);
+  }
   async owner(link: RemoteHost, route: string, method: string, body: Record<string, unknown>) {
     if (method === "GET" && route === "/api/fleet/hosts") {
       const directory = await this.controller.list();
@@ -77,7 +93,9 @@ export class FleetApi {
         const viewer = link.pocketDevice(String(body.deviceId));
         if (!viewer) throw new FleetError(403, "secure_pocket_required");
         if (typeof body.enabled !== "boolean") throw new FleetError(400, "invalid_share");
-        return this.host.share(viewer, uuid(body.runId), body.enabled);
+        if (body.approve !== undefined && typeof body.approve !== "boolean")
+          throw new FleetError(400, "invalid_share");
+        return this.host.share(viewer, uuid(body.runId), body.enabled, body.approve === true);
       }
       case "/api/fleet/worktrees":
         return this.host.createWorktree(uuid(body.workspaceId));

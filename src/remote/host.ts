@@ -438,6 +438,13 @@ export class RemoteHost {
     if (grant?.fleet && grant.pairing === 2)
       return { ...grant.fleet, deviceId: grant.id, hostId: keyId(this.stored.identity.publicKey) };
   }
+  /** Internal lookup: current authority of the controller that owns a shared task. */
+  fleetController(id: string): FleetPeer | undefined {
+    if (!this.stored?.enabled) return;
+    const grant = this.stored.grants.find((g) => g.id === id);
+    if (grant?.pairing === 2 && grant.fleet)
+      return { ...grant.fleet, deviceId: grant.id, hostId: keyId(this.stored.identity.publicKey) };
+  }
   pocketDevice(id: string): FleetViewer | undefined {
     if (!this.stored?.enabled) return;
     const grant = this.stored.grants.find((g) => g.id === id);

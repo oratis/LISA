@@ -25,12 +25,14 @@ Codex reviews only this packet in an empty sandbox; it cannot inspect the source
 
 ## Share a task with Pocket
 
-On the executing Mac's local configuration page, use **Pocket read-only viewing** to share one task with a securely paired phone. Finished tasks can also be shared. In the updated Pocket, open **Room → Agents → Shared Fleet tasks** for the currently selected Mac.
+On the executing Mac's local configuration page, use **Pocket task access** to share one task with a securely paired phone. Finished tasks can also be shared. In the updated Pocket, open **Room → Shared Fleet tasks** (also available under Agents) for the currently selected Mac.
 
-Pocket shows summaries and approval outcomes, never source diffs, full tool arguments or Fleet approval buttons. Foreground polling and reconnect catch up from the last sequence. Data stays in memory; switching account/Mac or losing authorization clears it. A new pairing does not restore an old task share. Revoke one task's share on the Mac, or disconnect the phone to revoke all its access. App Store 1.3 predates this entry; install the new Pocket release when available.
+Shares default to read-only summaries and approval outcomes. To allow decisions, separately enable approval for that Pocket and task on the executing Mac. Pocket then shows the complete pending tool input (up to 32 KiB), request expiry and explicit Allow/Deny buttons. The host rechecks the pairing, task grant, controller authority, remote-control policy and exact request. Changed, expired or oversized requests require the controller. Lost replies retry the same receipt; uncertain decisions cannot be executed again. Foreground polling and reconnect catch up from the last sequence. Data stays in memory; switching account/Mac or losing authorization clears it. A new pairing does not restore an old task share. Revoke one task's share on the Mac, or disconnect the phone to revoke all its access. App Store 1.3 predates this entry; install the new Pocket release when available.
+
+Pocket saves up to 32 Macs with separate credentials and pins. Use the Mac switcher in Room/Fleet or Settings → Connect your Mac. Switching clears the old Mac’s in-memory task state; signing out or changing Cloud accounts removes every account-based Mac, while direct LAN/QR connections stay separate. Forgetting one Mac does not select another.
 
 ## Retention and boundaries
 
 The owner can clean checkpoints for a finished task. This deletes private snapshot objects and clears displayed diffs, while keeping workspace files, receipts and the timeline. Fleet also keeps full requests/results for the first 100 turns and confirmed handoff packets in its private ledger; checkpoint cleanup does not delete them.
 
-Rollback, automatic merge, automatic worktree deletion, full ledger cleanup, storage quotas across tasks, multiple saved Mac profiles in Pocket and Pocket Fleet approval authority are not part of these three phases. Optional T3 connectors and screenshot window context are separate proposals. Detailed implementation and acceptance scenarios are in the [workflow plan](PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md).
+Rollback, automatic merge, automatic worktree deletion, full ledger cleanup, storage quotas across tasks are not part of these three phases. Optional T3 connectors and screenshot window context are separate proposals. Detailed implementation and acceptance scenarios are in the [workflow plan](PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md).

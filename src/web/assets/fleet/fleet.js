@@ -746,6 +746,14 @@
           await api("/api/fleet/shares", { deviceId: p.id, runId: r.id, enabled: !shared });
           await local();
         }));
+        if (shared) {
+          const approved = r.approvers?.includes(p.id) === true;
+          row.append(btn((approved ? "撤销审批 · " : "允许审批 · ") + p.name, async () => {
+            if (!approved && !confirm("允许此 Pocket 查看完整工具输入并审批此任务？每次审批仍需在手机上确认；查看权限本身不包含审批。")) return;
+            await api("/api/fleet/shares", { deviceId: p.id, runId: r.id, enabled: true, approve: !approved });
+            await local();
+          }));
+        }
       }
       $("shares").append(row);
     }

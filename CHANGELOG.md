@@ -12,6 +12,7 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 Fleet tasks now keep a timeline that reconnecting controllers and explicitly authorized Pocket viewers can catch up on. Review each turn's file changes in an isolated worktree, then preview exactly what a second agent will receive before handing the work over. This release also brings steadier Mac connections, renewable and revocable account sessions, selected Feishu document reads, and the source for Pocket's refreshed iPhone and iPad Room.
 
 - Fleet timelines and read-only Pocket sharing
+- Pocket multi-Mac and task approvals
 - Per-turn checkpoints and file diffs
 - Capability-aware controls and confirmed agent handoffs
 - Connections and account recovery

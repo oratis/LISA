@@ -23,12 +23,34 @@ struct MacConnectionsView: View {
     @State private var selected: RemoteMacTarget?
     @State private var transport: RemoteMacTransport?
     @State private var loading = false
+    @State private var forgetting: SavedMacProfile?
 
     var body: some View {
         List {
             Section {
                 Text("Sign in to the same LISA account on your Mac, then open Connect iPhone from its menu.")
                     .foregroundStyle(.secondary)
+            }
+            if !app.availableMacProfiles.isEmpty {
+                Section("Saved Macs") {
+                    ForEach(app.availableMacProfiles) { profile in
+                        HStack {
+                            Button { app.selectSavedMac(profile.id) } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Label(profile.name, systemImage: app.connectionMode == .mac && app.selectedMacProfileID == profile.id
+                                          ? "checkmark.circle.fill" : "desktopcomputer")
+                                    Text(profile.remoteMac.map { String($0.id.prefix(8)) } ?? profile.host)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .disabled(selected != nil)
+                            Spacer()
+                            Button { forgetting = profile } label: { Image(systemName: "trash") }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(Text("Forget \(profile.name)"))
+                        }
+                    }
+                }
             }
             if app.savedCloudConfig.token == nil {
                 Section {
@@ -111,9 +133,22 @@ struct MacConnectionsView: View {
         }
         .consoleBackground()
         .navigationTitle("Connect your Mac")
+        .confirmationDialog("Forget this saved Mac?", isPresented: Binding(
+            get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }), titleVisibility: .visible) {
+                Button("Forget", role: .destructive) {
+                    if let forgetting { app.forgetSavedMac(forgetting.id) }
+                    forgetting = nil
+                }
+                Button("Cancel", role: .cancel) { forgetting = nil }
+            } message: {
+                Text("Removes this Mac's saved connection from Pocket. Other Macs stay saved. To revoke this phone's access, also disconnect it on the Mac.")
+            }
         // Keep the list current while it's on screen: a Mac waking up appears
         // without a manual Refresh (#494). Pauses while pairing.
-        .task(id: selected == nil) {
+        .onChange(of: app.savedCloudConfig) { _, _ in
+            cancelPairing(); hosts = []; accountUID = ""; accountEmail = ""
+        }
+        .task(id: "\(selected == nil)|\(app.savedCloudConfig)") {
             while selected == nil && !Task.isCancelled {
                 await refresh()
                 do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
@@ -126,7 +161,9 @@ struct MacConnectionsView: View {
         while !Task.isCancelled {
             do {
                 let pairing = try await transport.pairingStatus()
-                guard selected == target else { return }
+                guard selected == target, !Task.isCancelled,
+                      SessionToken.claims(app.savedCloudConfig.token)?.uid == target.accountUID,
+                      app.savedCloudConfig.baseURL?.absoluteString == target.cloudOrigin else { return }
                 // A confirmation only ever covers the code the user actually saw.
                 if pairing.code != code { confirmed = false }
                 code = pairing.code; secure = pairing.secure; authorized = pairing.authorized
@@ -138,7 +175,7 @@ struct MacConnectionsView: View {
                 }
                 if (!pairing.secure && requireSecurePairing) || !pairing.comparable { status = ""; return }
                 if pairing.mayConnect(confirmed: confirmed, requireSecure: requireSecurePairing) {
-                    app.connectRemoteMac(target)
+                    guard app.connectRemoteMac(target) else { return }
                     self.selected = nil; self.transport = nil
                     await transport.invalidate()
                     return
@@ -165,7 +202,8 @@ struct MacConnectionsView: View {
         comparable = true
     }
     private func select(_ host: LisaClient.RelayHost) {
-        guard let origin = app.savedCloudConfig.baseURL?.absoluteString, !accountUID.isEmpty else { return }
+        guard let origin = app.savedCloudConfig.baseURL?.absoluteString, !accountUID.isEmpty,
+              SessionToken.claims(app.savedCloudConfig.token)?.uid == accountUID else { return }
         if let transport { Task { await transport.cancelPairing(); await transport.invalidate() } }
         let target = RemoteMacTarget(id: host.id, name: host.name, publicKey: host.publicKey,
                                      cloudOrigin: origin, accountUID: accountUID)
@@ -191,15 +229,20 @@ struct MacConnectionsView: View {
         let client = LisaClient(config: config)
         do {
             let me = try await client.authMe()
+            guard app.savedCloudConfig == config, !Task.isCancelled else { return }
             guard me.signedIn, let uid = me.uid else { throw RemoteLinkError.signIn }
+            let next = try await client.remoteMacs()
+            guard app.savedCloudConfig == config, !Task.isCancelled else { return }
             accountUID = uid
             accountEmail = me.email ?? ""
             needsSignIn = false
-            hosts = try await client.remoteMacs()
+            hosts = next
             status = ""
         } catch let error where Self.macConnectionsUnavailable(error) {
+            guard app.savedCloudConfig == config, !Task.isCancelled else { return }
             hosts = []; status = "This cloud service hasn't enabled Mac connections yet."
         } catch {
+            guard app.savedCloudConfig == config, !Task.isCancelled else { return }
             let problem = ConnectionProblem.classify(error, config: config)
             if problem == .signInRequired {
                 needsSignIn = true
@@ -209,6 +252,27 @@ struct MacConnectionsView: View {
             if problem == .cancelled { return }
             // Keep the last list on a brief network blip; say why it may be stale.
             status = problem.sentence ?? error.localizedDescription
+        }
+    }
+}
+
+/// The same explicit switcher is available from Room and a task's Fleet page.
+struct SavedMacPicker: View {
+    @EnvironmentObject private var app: AppState
+    var body: some View {
+        if app.availableMacProfiles.count > 1 {
+            Menu {
+                ForEach(app.availableMacProfiles) { profile in
+                    Button { app.selectSavedMac(profile.id) } label: {
+                        Label(profile.name + " · " + (profile.remoteMac.map { String($0.id.prefix(8)) } ?? profile.host),
+                              systemImage: app.connectionMode == .mac && app.selectedMacProfileID == profile.id
+                              ? "checkmark" : "desktopcomputer")
+                    }
+                }
+            } label: {
+                Label(app.config.remoteMac?.name ?? String(localized: "Switch Mac"), systemImage: "desktopcomputer")
+            }
+            .accessibilityIdentifier("mac.saved-switcher")
         }
     }
 }

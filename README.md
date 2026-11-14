@@ -89,7 +89,7 @@ The latest published core version is **v0.31.0**. The **v0.32.0 release candidat
 | iOS App Store | **1.3 is live**, released November 7 and checked November 14, 2026; the source’s 1.4 features are not part of that binary |
 | Warden, durable goals, routines and watchers | Available; Warden web policy is opt-in and hosted tasks remain off by default |
 | Model routing and costs | Purpose-based routing and opt-in estimated budgets; these are not a universal spending ceiling |
-| Next steps | Pocket multi-Mac profiles, file rollback, automatic merge, full Fleet ledger cleanup, cross-device memory and write connectors remain future work |
+| Next steps | file rollback, automatic merge, full Fleet ledger cleanup, cross-device memory and write connectors remain future work |
 
 Product research on Muse and other personal assistants informs the direction, with implementation boundaries documented in the [Muse review](docs/RESEARCH_MUSE_2026-09-27.md), [always-on research](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md) and [upgrade plan](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md). LISA is an independent project.
 

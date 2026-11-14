@@ -67,9 +67,11 @@ export interface FleetHostOptions {
   stopGraceMs?: number;
 }
 type Body = Record<string, unknown>;
+type ControllerGrant = (device: string) => FleetPeer | undefined;
 type EventType =
   | "turn_started"
   | "approval_requested"
+  | "approval_decided"
   | "approval_resolved"
   | "tool_blocked"
   | "turn_completed"
@@ -95,6 +97,7 @@ function viewerEvent(e: Record<string, unknown>) {
     turn_started: ["turn"],
     approval_requested: ["turn", "tool", "target", "expiresAt"],
     approval_resolved: ["turn", "outcome"],
+    approval_decided: ["turn", "outcome", "by"],
     tool_blocked: ["turn", "tool", "target"],
     turn_completed: ["turn", "result", "truncated", "blocked"],
     turn_failed: ["turn", "result", "truncated", "blocked"],
@@ -212,6 +215,7 @@ export class FleetHostService {
       CREATE TABLE IF NOT EXISTS checkpoint_workspaces(workspace TEXT PRIMARY KEY,identity TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS checkpoints(run TEXT NOT NULL,turn INTEGER NOT NULL,before TEXT NOT NULL,after TEXT,state TEXT NOT NULL,PRIMARY KEY(run,turn));
       CREATE TABLE IF NOT EXISTS viewers(run TEXT NOT NULL,host TEXT NOT NULL,device TEXT NOT NULL,pairing TEXT NOT NULL,PRIMARY KEY(run,host,device));
+      CREATE TABLE IF NOT EXISTS viewer_ops(host TEXT,device TEXT,pairing TEXT,id TEXT,run TEXT,hash TEXT,status TEXT,at INTEGER,approval TEXT,PRIMARY KEY(host,device,pairing,id));
       CREATE TABLE IF NOT EXISTS events(run TEXT NOT NULL,seq INTEGER NOT NULL,at INTEGER NOT NULL,type TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run,seq)) WITHOUT ROWID;`);
     // A ledger from before process tracking gains the columns. Its runs record no
     // process group, so after a restart they still wait for the owner to check.
@@ -225,6 +229,23 @@ export class FleetHostService {
       if (!columns.has(column)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${column} INTEGER`);
     if (!columns.has("agent"))
       this.db.exec("ALTER TABLE runs ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude-code'");
+    if (
+      !this.db
+        .prepare("PRAGMA table_info(viewers)")
+        .all()
+        .some((c) => c.name === "approve")
+    )
+      this.db.exec("ALTER TABLE viewers ADD COLUMN approve INTEGER NOT NULL DEFAULT 0");
+    if (
+      !this.db
+        .prepare("PRAGMA table_info(viewer_ops)")
+        .all()
+        .some((c) => c.name === "approval")
+    )
+      this.db.exec("ALTER TABLE viewer_ops ADD COLUMN approval TEXT");
+    this.db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS viewer_approval_once ON viewer_ops(run,approval)",
+    );
     // An unfinished boundary cannot be reconstructed after a backend restart.
     this.db.exec(
       "UPDATE checkpoints SET state='interrupted' WHERE after IS NULL AND state='running'",
@@ -462,7 +483,11 @@ export class FleetHostService {
         unknown ? "unknown" : r.state,
         this.sessions.has(r.id),
         peer?.control === true,
-        !!r.pending && Number(JSON.parse(r.pending).expiresAt) > Date.now(),
+        !!r.pending &&
+          Number(JSON.parse(r.pending).expiresAt) > Date.now() &&
+          !this.db
+            .prepare("SELECT 1 FROM viewer_ops WHERE run=? AND approval=?")
+            .get(r.id, JSON.parse(r.pending).id),
         !!recipient &&
           !recipient.reason() &&
           !this.hostBusy() &&
@@ -655,6 +680,13 @@ export class FleetHostService {
         if (action === "messages" && r.agent !== "claude-code")
           throw new FleetError(409, "append_unavailable");
         if (action === "cancel" && !actions.cancel) throw new FleetError(409, "run_not_active");
+        if (
+          action === "decisions" &&
+          this.db
+            .prepare("SELECT 1 FROM viewer_ops WHERE run=? AND approval=?")
+            .get(runId, approvalId!)
+        )
+          throw new FleetError(409, "stale_approval");
         if (action === "decisions" && !actions.approve) throw new FleetError(409, "stale_approval");
         if (action === "messages" && r.state !== "waiting")
           throw new FleetError(409, "turn_in_progress");
@@ -1087,15 +1119,15 @@ export class FleetHostService {
     return { cleared: true };
   }
   /** Explicit task shares; they grant no workspace or controller access. */
-  share(viewer: FleetViewer, id: string, enabled: boolean) {
+  share(viewer: FleetViewer, id: string, enabled: boolean, approve = false) {
     const run = this.db.prepare("SELECT id FROM runs WHERE id=? AND host=?").get(id, viewer.hostId);
     if (!run) throw new FleetError(404, "run_not_found");
     if (enabled)
       this.db
         .prepare(
-          "INSERT INTO viewers VALUES(?,?,?,?) ON CONFLICT(run,host,device) DO UPDATE SET pairing=excluded.pairing",
+          "INSERT INTO viewers(run,host,device,pairing,approve) VALUES(?,?,?,?,?) ON CONFLICT(run,host,device) DO UPDATE SET pairing=excluded.pairing,approve=excluded.approve",
         )
-        .run(id, viewer.hostId, viewer.deviceId, viewer.pairingId);
+        .run(id, viewer.hostId, viewer.deviceId, viewer.pairingId, Number(approve));
     else
       this.db
         .prepare("DELETE FROM viewers WHERE run=? AND host=? AND device=?")
@@ -1111,6 +1143,7 @@ export class FleetHostService {
     return rows.map((r) => ({
       ...this.viewerRun(r),
       viewers: devices.filter((d) => this.hasShare(d, r.id)).map((d) => d.deviceId),
+      approvers: devices.filter((d) => this.approvalShare(d, r.id)).map((d) => d.deviceId),
     }));
   }
   private hasShare(viewer: FleetViewer, id: string) {
@@ -1118,13 +1151,53 @@ export class FleetHostService {
       .prepare("SELECT 1 FROM viewers WHERE run=? AND host=? AND device=? AND pairing=?")
       .get(id, viewer.hostId, viewer.deviceId, viewer.pairingId);
   }
-  private viewerRun(r: RunRow) {
+  private approvalShare(viewer: FleetViewer, id: string) {
+    return !!this.db
+      .prepare(
+        "SELECT 1 FROM viewers WHERE run=? AND host=? AND device=? AND pairing=? AND approve=1",
+      )
+      .get(id, viewer.hostId, viewer.deviceId, viewer.pairingId);
+  }
+  private approvalAuthority(viewer: FleetViewer, r: RunRow, grant?: ControllerGrant) {
+    const peer = grant?.(r.device);
+    return this.approvalShare(viewer, r.id) &&
+      peer?.hostId === r.host &&
+      peer.deviceId === r.device &&
+      peer.control &&
+      peer.workspaces.includes(r.workspace)
+      ? peer
+      : undefined;
+  }
+  private approvalPreview(viewer: FleetViewer, r: RunRow, grant?: ControllerGrant) {
+    const peer = this.approvalAuthority(viewer, r, grant);
+    const v = this.view(r, peer);
+    if (!v.capabilities.approve || !v.approval) return;
+    const preview = JSON.stringify(v.approval.input, null, 2);
+    // Never present a shortened tool input as an approvable request.
+    if (Buffer.byteLength(preview) > 32 * 1024) return;
+    return {
+      id: v.approval.id,
+      preview,
+      digest: digest(
+        JSON.stringify([
+          r.host,
+          r.id,
+          v.approval.id,
+          v.approval.expiresAt,
+          v.approval.tool,
+          preview,
+        ]),
+      ),
+    };
+  }
+  private viewerRun(r: RunRow, viewer?: FleetViewer, grant?: ControllerGrant) {
     const v = this.view(r);
+    const approval = viewer && this.approvalPreview(viewer, r, grant);
     return {
       id: v.id,
       hostId: v.hostId,
       agent: v.agent,
-      capabilities: observedActions,
+      capabilities: { ...observedActions, approve: !!approval },
       workspaceName:
         this.db.prepare("SELECT name FROM workspaces WHERE id=?").get(r.workspace)?.name ?? "",
       state: v.state,
@@ -1133,9 +1206,10 @@ export class FleetHostService {
       lastSeq: v.lastSeq,
       result: v.result.slice(-RESULT_EXCERPT),
       truncated: v.result.length > RESULT_EXCERPT,
-      // No request ID, tool input or controller identity crosses the viewer boundary.
+      // Only a separately granted approver receives the exact pending request.
       approval: v.approval
         ? {
+            ...approval,
             tool: v.approval.tool,
             target: target(
               this.workspaces().find((w) => w.id === r.workspace)!.root,
@@ -1146,7 +1220,7 @@ export class FleetHostService {
         : null,
     };
   }
-  readViewer(viewer: FleetViewer, route: string) {
+  readViewer(viewer: FleetViewer, route: string, grant?: ControllerGrant) {
     if (!fleetViewRoute("GET", route)) throw new FleetError(404, "route_not_found");
     return this.tx(() => {
       if (route === VIEW_API + "/runs") {
@@ -1155,7 +1229,7 @@ export class FleetHostService {
             "SELECT r.* FROM runs r JOIN viewers v ON v.run=r.id AND v.host=r.host WHERE v.host=? AND v.device=? AND v.pairing=? ORDER BY r.created DESC",
           )
           .all(viewer.hostId, viewer.deviceId, viewer.pairingId) as unknown as RunRow[];
-        return { runs: rows.map((r) => this.viewerRun(r)) };
+        return { runs: rows.map((r) => this.viewerRun(r, viewer, grant)) };
       }
       const [pathname = "", query = ""] = route.split("?");
       const id = uuid(pathname.split("/").at(-2));
@@ -1165,8 +1239,96 @@ export class FleetHostService {
         .get(id, viewer.hostId) as unknown as RunRow | undefined;
       if (!run) throw new FleetError(404, "run_not_found");
       const page = this.timeline(run, new URLSearchParams(query));
-      return { ...page, run: this.viewerRun(run), events: page.events.map(viewerEvent) };
+      return {
+        ...page,
+        run: this.viewerRun(run, viewer, grant),
+        events: page.events.map(viewerEvent),
+      };
     });
+  }
+  /** Persist the receipt before the side effect; a lost response is safe to retry. */
+  decideViewer(viewer: FleetViewer, route: string, body: Body, grant: ControllerGrant) {
+    if (!fleetViewRoute("POST", route)) throw new FleetError(404, "route_not_found");
+    const id = uuid(route.split("/").at(-2)),
+      op = uuid(body.operationId);
+    const approvalId = uuid(body.approvalId);
+    if (
+      typeof body.allow !== "boolean" ||
+      typeof body.expiresAt !== "number" ||
+      !Number.isFinite(body.expiresAt) ||
+      typeof body.digest !== "string" ||
+      !/^[a-f0-9]{64}$/.test(body.digest)
+    )
+      throw new FleetError(400, "invalid_decision");
+    const hash = digest(
+      JSON.stringify([route, approvalId, body.allow, body.digest, body.expiresAt]),
+    );
+    const key = [viewer.hostId, viewer.deviceId, viewer.pairingId, op];
+    const existing = this.tx(() => {
+      const run = this.db
+        .prepare("SELECT * FROM runs WHERE id=? AND host=?")
+        .get(id, viewer.hostId) as unknown as RunRow | undefined;
+      if (!run || !this.hasShare(viewer, id)) throw new FleetError(404, "run_not_found");
+      if (!this.approvalAuthority(viewer, run, grant)) throw new FleetError(403, "approval_denied");
+      const receipt = this.db
+        .prepare(
+          "SELECT hash,status FROM viewer_ops WHERE host=? AND device=? AND pairing=? AND id=?",
+        )
+        .get(...key);
+      if (receipt) {
+        if (receipt.hash !== hash) throw new FleetError(409, "operation_conflict");
+        return String(receipt.status);
+      }
+      if (
+        this.db.prepare("SELECT 1 FROM viewer_ops WHERE run=? AND approval=?").get(id, approvalId)
+      )
+        throw new FleetError(409, "stale_approval");
+      const pending = this.approvalPreview(viewer, run, grant);
+      if (
+        !pending ||
+        pending.id !== approvalId ||
+        pending.digest !== body.digest ||
+        !run.pending ||
+        JSON.parse(run.pending).expiresAt !== body.expiresAt
+      )
+        throw new FleetError(409, "stale_approval");
+      const workspace = this.workspaces().find((w) => w.id === run.workspace)!;
+      let valid = false;
+      try {
+        valid =
+          fs.realpathSync.native(workspace.root) === workspace.root &&
+          inode(workspace.root) === workspace.inode;
+      } catch {
+        /* moved */
+      }
+      if (!valid) throw new FleetError(409, "workspace_replaced");
+      if (Number(this.db.prepare("SELECT COUNT(*) AS n FROM viewer_ops").get()?.n) >= 50000)
+        throw new FleetError(507, "receipt_capacity");
+      this.db
+        .prepare(
+          "INSERT INTO viewer_ops(host,device,pairing,id,run,hash,status,at,approval) VALUES(?,?,?,?,?,?,'unknown',?,?)",
+        )
+        .run(...key, id, hash, Date.now(), approvalId);
+      this.record(id, "approval_decided", {
+        turn: this.turns.get(id),
+        by: "pocket",
+        outcome: body.allow ? "allowed" : "denied",
+      });
+      return undefined;
+    });
+    if (existing) return { operationId: op, status: existing };
+    try {
+      this.sessions.get(id)!.decide(approvalId, body.allow);
+      this.db
+        .prepare(
+          "UPDATE viewer_ops SET status='accepted' WHERE host=? AND device=? AND pairing=? AND id=?",
+        )
+        .run(...key);
+      return { operationId: op, status: "accepted" };
+    } catch {
+      // The adapter may have acted before throwing. Do not issue the decision again.
+      return { operationId: op, status: "unknown" };
+    }
   }
   ownerRuns() {
     const rows = this.db

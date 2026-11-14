@@ -11,6 +11,11 @@ Status: release candidate. Publication is pending the [remaining acceptance gate
 - The owner can share a specific task with a v2-paired Pocket, including a finished task. Pocket receives the task state, agent, turn summaries and approval outcomes, with no source-code diff, tool arguments or approval controls. Revocation and re-pairing invalidate the old grant.
 - Pocket keeps its last received timeline in memory across temporary disconnections, catches up on reconnect, and clears it when the account, Mac or authorization changes. This entry requires the new Pocket binary; App Store 1.3 does not include it.
 
+## Pocket multi-Mac and task approvals
+
+- Pocket saves up to 32 Macs with separate credentials and pinned identities. Switching replaces the active connection and clears the old task view; account changes remove all account-based Macs. Single-Mac upgrades wait safely if Keychain is locked.
+- Pocket task shares remain read-only by default. A separate per-task approval grant enables complete tool-input preview and exact-request Allow/Deny decisions. The host rechecks expiry, controller authority and remote-control policy; pairing-scoped receipts and one-decision-per-request guards prevent repeated execution after lost replies. Room and Fleet include the saved-Mac switcher.
+
 ## Per-turn checkpoints and file diffs
 
 - Create an isolated worktree from a registered Git repository's current commit, then explicitly grant it to a controller. Uncommitted source-directory changes stay in the source directory.
@@ -53,7 +58,7 @@ Pocket is published separately from this Mac/CLI version. The public App Store v
 - Replace Lisa.app and restart its background service (or restart the Mac) to load the bundled backend. CLI users can run `npm install -g @oratis/lisa@0.32.0` or upgrade the Homebrew formula after it is updated.
 - Existing workspaces continue to run without checkpoints until a new isolated workspace is created and granted. Older clients default to Claude; historical tasks without full saved requests cannot generate a handoff packet.
 - The private Fleet ledger retains requests/results for the first 100 turns and confirmed handoff packets. Checkpoint cleanup does not erase those records. Full ledger cleanup, cross-task storage quotas, automatic worktree removal, rollback and auto-merge remain future work.
-- Pocket currently saves one Mac profile alongside Cloud. Multi-Mac profiles and Fleet approval authority are separate future work. Cloud/Mac histories and credentials do not automatically synchronize.
+- Pocket saves up to 32 Macs with isolated credentials and pins, explicit switching and safe single-Mac migration. Account changes remove all account-based Macs; direct LAN/QR profiles remain separate. Cloud/Mac histories and credentials do not automatically synchronize.
 - Apple Calendar and Reminders still require a Swift toolchain and are not available in the bundled Mac app. Hosted autonomous tasks remain off by default.
 - Simulator and local integration tests do not establish physical iPhone Wi-Fi/cellular switching, Mac sleep/wake on a remote machine, or a provider's live inference behavior. Current evidence and outstanding release acceptance are recorded in the [checklist](RELEASE_CHECKLIST_v0.32.0.md).
 
