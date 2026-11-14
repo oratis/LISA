@@ -122,9 +122,9 @@ several are cited by name from source comments.
 
 - [v0.32.0 — Follow the work, review each turn](./RELEASE_v0.32.0.md) · [release checklist](./RELEASE_CHECKLIST_v0.32.0.md)
 - [v0.31.0 — Your other Macs, more of your apps](./RELEASE_v0.31.0.md)
-- [v0.30.3 — Mac appearance and account improvements](./RELEASE_v0.30.3.md)
+- [v0.30.3 — A clearer account and Pocket experience](./RELEASE_v0.30.3.md)
 - [v0.30.2 — A clearer account and Pocket experience](./RELEASE_v0.30.2.md)
-- [v0.30.1 — Mac account and pairing fixes](./RELEASE_v0.30.1.md)
+- [v0.30.1 — a clearer everyday view](./RELEASE_v0.30.1.md)
 - [v0.30.0 — Yours to see, keep and undo](./RELEASE_v0.30.0.md)
 - [v0.29.1 — Mac connection security and reliability](./RELEASE_v0.29.1.md)
 - [v0.29.0 — Pocket connects to your Mac anywhere](./RELEASE_v0.29.0.md)
