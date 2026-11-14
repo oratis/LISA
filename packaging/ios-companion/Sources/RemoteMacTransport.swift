@@ -12,8 +12,12 @@ struct RemoteMacTarget: Codable, Hashable, Identifiable {
 
 enum RemoteLinkError: LocalizedError {
     case signIn, notAllowed, invalidPeer, interrupted, pairingRestarted, pairingAborted
+    /// The relay has no connection from this Mac (asleep, off, LISA stopped, or
+    /// phone connections turned off), or it didn't answer in time.
+    case macOffline
     var errorDescription: String? {
         switch self {
+        case .macOffline: return "Your Mac isn't connected right now. Wake it and make sure LISA is running with phone connections on."
         case .signIn: return "Sign in to the same LISA account again to connect your Mac."
         case .notAllowed: return "Your Mac no longer allows this iPhone. Pair it again from Settings → Connect your Mac."
         case .invalidPeer: return "This connection couldn't verify your Mac. Pair it again from Settings."
@@ -140,6 +144,14 @@ protocol RemoteConnection: AnyObject {
     func close()
 }
 
+/// Set once by a connect deadline, read after the attempt fails.
+private final class TimeoutFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    func set() { lock.lock(); fired = true; lock.unlock() }
+    var value: Bool { lock.lock(); defer { lock.unlock() }; return fired }
+}
+
 private final class RemoteSocket: RemoteConnection {
     let task: URLSessionWebSocketTask
     let cipher: RemoteLinkCipher
@@ -253,8 +265,9 @@ actor RemoteMacTransport {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let task = session.webSocketTask(with: request)
         let socket = RemoteSocket(task: task, cipher: cipher)
+        let timedOut = TimeoutFlag()
         let deadline = Task {
-            do { try await Task.sleep(nanoseconds: timeout); socket.close() } catch { }
+            do { try await Task.sleep(nanoseconds: timeout); timedOut.set(); socket.close() } catch { }
         }
         defer { deadline.cancel() }
         task.resume()
@@ -268,7 +281,22 @@ actor RemoteMacTransport {
                 try Self.verifyWelcome(socket.welcome, host: hostKey, client: key.publicKey.rawRepresentation)
                 return socket
             }, onCancel: { socket.close() })
-        } catch { socket.close(); throw error }
+        } catch {
+            socket.close()
+            throw Self.openFailure(error, status: (task.response as? HTTPURLResponse)?.statusCode,
+                                   closeCode: task.closeCode.rawValue, timedOut: timedOut.value)
+        }
+    }
+
+    /// What a failed relay connection means to the user (#487). The Worker
+    /// answers 503 before the upgrade when the Mac isn't connected; the Node relay
+    /// upgrades and closes with 1013. A 401/403 is the account session.
+    static func openFailure(_ error: Error, status: Int?, closeCode: Int, timedOut: Bool) -> Error {
+        if error is CancellationError || error is RemoteLinkError || error is LisaError { return error }
+        if status == 401 || status == 403 { return RemoteLinkError.signIn }
+        if let status, [502, 503, 504].contains(status) { return RemoteLinkError.macOffline }
+        if closeCode == 1013 || timedOut { return RemoteLinkError.macOffline }
+        return error
     }
     /// A v2 Mac never sends the uncommitted v1 code; a v1 Mac's must match both keys.
     static func verifyWelcome(_ welcome: [String: Any], host: Data, client: Data) throws {
@@ -286,7 +314,8 @@ actor RemoteMacTransport {
         var fields: [String: Any] = ["v": RemoteLinkCipher.pairingVersion, "pair": false]
         fields.merge(hello) { _, field in field }
         // Pairing verifies a Mac picked from the cloud list, so it only uses the cloud route.
-        if !pairing && Date() >= nextLANProbe {
+        // On cellular only, a private LAN address can't answer: skip the probe (#495).
+        if !pairing && !NetworkPathState.cellularOnly && Date() >= nextLANProbe {
             nextLANProbe = Date().addingTimeInterval(20)
             for url in lanURLs.prefix(2) {
                 do {
@@ -304,7 +333,13 @@ actor RemoteMacTransport {
         parts.scheme = "wss"; parts.path = "/api/relay/client"
         parts.queryItems = [URLQueryItem(name: "host", value: target.id)]
         guard let url = parts.url else { throw RemoteLinkError.invalidPeer }
-        let socket = try await open(url: url, token: token, timeout: 10_000_000_000, fields: fields)
+        let socket: any RemoteConnection
+        do {
+            socket = try await open(url: url, token: token, timeout: 10_000_000_000, fields: fields)
+        } catch {
+            if !(error is CancellationError) { reportFailure(error) }
+            throw error
+        }
         let wasEmpty = lanURLs.isEmpty
         lanURLs = (socket.welcome["lanURLs"] as? [String] ?? []).compactMap(Self.validLANURL)
         if wasEmpty && !lanURLs.isEmpty { nextLANProbe = .distantPast }
@@ -314,6 +349,23 @@ actor RemoteMacTransport {
     }
     private func report(_ route: String) {
         NotificationCenter.default.post(name: .lisaRemoteRoute, object: target.id, userInfo: ["route": route])
+    }
+    /// Tell Settings why the Mac can't be reached, instead of "Connecting…" forever (#494).
+    private func reportFailure(_ error: Error) {
+        guard !pairing else { return }
+        NotificationCenter.default.post(name: .lisaRemoteRoute, object: target.id,
+                                        userInfo: ["route": "Unavailable", "error": error])
+    }
+    /// The user cancelled pairing on the phone: tell the Mac to drop the request so
+    /// it can't be approved for a phone that never confirmed the code (#494).
+    /// Best effort; an older Mac just closes the channel.
+    func cancelPairing() async {
+        guard pairing, attempt.macNonce != nil || attempt.code != nil else { return }
+        do {
+            let socket = try await connection(hello: ["pair": false])
+            defer { socket.close() }
+            try await socket.send(["type": "cancel"])
+        } catch { }
     }
     /// One poll of the pairing screen. Until a code exists this runs the v2 commitment
     /// round (or reads an older Mac's v1 code); afterwards it only asks for approval.
@@ -423,6 +475,8 @@ actor RemoteMacTransport {
                 // Once sent, never retry on another path: a mutation may already have executed.
                 try await socket.send(request)
                 var response: HTTPURLResponse?
+                // A refused stream's body is the refusal, not SSE: keep it for the error.
+                var refusal: Data?
                 while true {
                     let frame = try await socket.receive()
                     switch frame["type"] as? String {
@@ -431,14 +485,19 @@ actor RemoteMacTransport {
                               let url = URL(string: target.cloudOrigin) else { throw RemoteLinkError.invalidPeer }
                         response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1",
                             headerFields: frame["headers"] as? [String: String])
-                        if requireSuccess && !(200..<300).contains(status) { throw LisaError.http(status) }
+                        if requireSuccess && !(200..<300).contains(status) { refusal = Data() }
                         if let response { try LisaAPICompatibility.validate(response) }
                     case "chunk":
                         guard response != nil, let raw = frame["body"] as? String,
                               let data = Data(base64Encoded: raw) else { throw RemoteLinkError.invalidPeer }
-                        try consume(data)
+                        if refusal != nil {
+                            if refusal!.count < 8192 { refusal!.append(data) }
+                        } else {
+                            try consume(data)
+                        }
                     case "end":
                         guard let response else { throw RemoteLinkError.interrupted }
+                        if let refusal { throw LisaError.server(.from(response, body: refusal)) }
                         return response
                     default: throw RemoteLinkError.invalidPeer
                     }

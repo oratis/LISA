@@ -120,12 +120,31 @@ final class CreditsStore: ObservableObject {
                 message = "Credits added."
                 await app.refreshAccount()
             } else {
-                message = "Couldn't credit the purchase (\(r.error ?? "error"))."
+                // Left unfinished either way: a purchase bound to another account
+                // credits once that account signs in, and support can resolve the
+                // rest from the transaction id (#486).
+                message = Self.refusalMessage(code: r.error, transactionID: tx.id)
             }
+        } catch let error where (error.httpStatus ?? 500) < 500 && error.httpStatus != nil {
+            message = Self.refusalMessage(code: error.serverFailure?.code, transactionID: tx.id)
         } catch {
-            // Leave the transaction unfinished — StoreKit re-delivers it and the
-            // server dedup makes the retry safe.
-            message = "Couldn't reach the server — the purchase will be credited automatically."
+            // Offline or a server error: StoreKit re-delivers the unfinished
+            // transaction and the server dedup makes the retry safe.
+            message = "Couldn't reach LISA Cloud — the purchase will be credited automatically when it's back."
+        }
+    }
+
+    /// What to tell someone whose purchase the server refused. Only these
+    /// answers are final; a retry can't change them.
+    static func refusalMessage(code: String?, transactionID: UInt64) -> String {
+        switch code ?? "" {
+        case "wrong_account", "unbound_transaction":
+            return "This purchase belongs to a different LISA account. Sign in to that account to receive its credits."
+        case "sandbox_rejected":
+            return "This is a test purchase, so LISA Cloud can't credit it."
+        default:
+            let reason = (code ?? "").isEmpty ? "" : " (\(code!))"
+            return "LISA Cloud couldn't credit this purchase\(reason). Contact support at meetlisa.ai/support and include transaction \(transactionID). Apple keeps the purchase on record."
         }
     }
 
