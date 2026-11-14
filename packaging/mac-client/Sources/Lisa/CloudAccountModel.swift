@@ -217,6 +217,15 @@ final class CloudAccountModel: ObservableObject {
             }
         }
     }
+    /// Show the sign-in form for the saved account, e.g. after Lisa Cloud refused the Mac's
+    /// session. A verification still in flight cannot bring the account screen back.
+    func signInAgain() {
+        guard !preview, !busy, !applying else { return }
+        accountTask?.cancel(); checkingAccount = false
+        needsSignIn = true; accountVerified = false; step = .email; code = ""; password = ""
+        if email.isEmpty { email = accountEmail }
+        notice = CloudNotice(text: "Sign in again so Lisa Pocket can reach this Mac away from home.", kind: .warning)
+    }
     private func verifyAccount(token: String) {
         accountTask?.cancel()
         guard let base = CloudAccountRules.serverURL(server) else { return }

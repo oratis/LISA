@@ -43,7 +43,8 @@ likewise closes the `/events` and PTY streams that device still has open.
 If the relay refuses the Mac's account session (403, for example once the session has
 expired), phone connections stay on: the Mac keeps retrying with backoff, LAN devices
 keep working, and the status reports `sign_in_required` (and `sessionExpired` once the
-session's expiry has passed) until you sign in again. **Reconnect** checks the account
+session's expiry has passed) until you sign in again. The Mac app then shows **Sign in
+again** under **Connect iPhone…** and in the account window. **Reconnect** checks the account
 first; if the cloud cannot be reached, the running LAN listener and retry loop are kept.
 
 The Mac renews its account session itself: on start and every 6 hours, once the session
