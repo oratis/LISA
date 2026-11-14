@@ -164,6 +164,7 @@ Point-in-time assessments. Each names its baseline commit; read the newest first
 
 | Review | Baseline |
 |---|---|
+| [REVIEW_DESIGN_MAC_WEB_v0.31.0.md](./REVIEW_DESIGN_MAC_WEB_v0.31.0.md) | v0.31.0 (`ae84d9a7`), 2026-11-13: visual and interaction design of the Mac app and the web shell. 20 findings with before/after [mockups](./design/2026-11-13-mac-web-review/README.md). Proposals only, awaiting confirmation. |
 | [REVIEW_SKILLS_IMPORT_2026-11-07.md](./REVIEW_SKILLS_IMPORT_2026-11-07.md) | Installed Mac backend 0.29.1: 28 personal skill entries deduplicated to 17; two skill executions in one real chat. |
 | [PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md](./PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md) | Whole-project review, 2026-07-26. |
 | [REVIEW_IOS_APP_v1.0.md](./REVIEW_IOS_APP_v1.0.md) | Lisa Pocket layout + functionality. |

@@ -75,6 +75,13 @@ export const CONNECTOR_CATALOG = [
       "zh-CN": "总结我选定的 Notion 页面内容。",
     },
   },
+  {
+    id: "feishu",
+    name: "Feishu",
+    access: "read",
+    authModes: ["login"],
+    example: { en: "Summarize my selected Feishu documents.", "zh-CN": "总结我选定的飞书文档。" },
+  },
   ...workspaceIds.map((id) => {
     const { name, vendor, unit, hint, example } = workspaceApps[id];
     return {

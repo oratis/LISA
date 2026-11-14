@@ -6,6 +6,7 @@ import { googleReadIntents } from "./google-driver.js";
 import { isLinearReadRequest } from "./linear-driver.js";
 import { isDriveReadRequest } from "./drive-driver.js";
 import { isNotionReadRequest } from "./notion-driver.js";
+import { isFeishuReadRequest } from "./feishu-driver.js";
 import { isSlackReadRequest } from "./slack-driver.js";
 import { workspaceReadIntents } from "./workspace/catalog.js";
 
@@ -18,6 +19,7 @@ test("every directory example routes to exactly its own read connector in either
         ...(isLinearReadRequest(example) ? ["linear"] : []),
         ...(isDriveReadRequest(example) ? ["google-drive"] : []),
         ...(isNotionReadRequest(example) ? ["notion"] : []),
+        ...(isFeishuReadRequest(example) ? ["feishu"] : []),
         ...(isSlackReadRequest(example) ? ["slack"] : []),
         ...workspaceReadIntents(example),
       ];
@@ -47,6 +49,7 @@ test("the directory only offers sources this install can serve", () => {
     "google-drive",
     "slack",
     "notion",
+    "feishu",
   ]);
   const onlyBuiltIns = (id: string) => builtIns.has(id);
   const reply = connectorCatalogReply("/connectors", "en", onlyBuiltIns)!;

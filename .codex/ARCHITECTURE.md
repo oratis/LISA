@@ -33,7 +33,7 @@ flowchart LR
 
 ## Agent 循环
 
-2026-11 本机只读连接：`src/connectors/service.ts` 为 GitHub、Google Calendar、Gmail、Linear、Google Drive、Notion、Slack 共享持久请求、授权尝试隔离、资源确认、取消、恢复租约和结果提交；`types.ts` 定义经过审查的只读适配器契约。`github.ts` 保留旧 API 的兼容包装。Google 驱动将日历忙闲、日程详情和 Gmail 标签读取限制为固定操作、固定 Google 主机、DNS 固定、无重定向和有界响应。仅 `local-owner` Web 开放 `/api/connectors` 及其子路径，Cloud/远程设备拒绝。
+2026-11 本机只读连接：`src/connectors/service.ts` 为 GitHub、Google Calendar、Gmail、Linear、Google Drive、Notion、Slack、飞书共享持久请求、授权尝试隔离、资源确认、取消、恢复租约和结果提交；`types.ts` 定义经过审查的只读适配器契约。`github.ts` 保留旧 API 的兼容包装。Google 驱动将日历忙闲、日程详情和 Gmail 标签读取限制为固定操作、固定 Google 主机、DNS 固定、无重定向和有界响应。仅 `local-owner` Web 开放 `/api/connectors` 及其子路径，Cloud/远程设备拒绝。
 
 明确的只读聊天会先保存原文和附件、展示统一连接卡，再在同一 session 队列自动恢复。恢复重新构造工具集合：对应 provider 的单一读取工具；仅 GitHub 原请求明确涉及本机文件时加 `read/ls/grep`。不带 Shell、旧版写工具、插件 Hook 或子代理。新用户消息取消未完成的连接任务。本切片每 provider 一个账号，每个任务一个来源；混合来源请求提示拆分，不静默完成一部分。正常通用聊天仍沿用原注册表。
 
@@ -48,6 +48,8 @@ Notion 使用 confidential OAuth + state + 预注册 localhost 回调；不假�
 Slack 使用注册桌面应用的 PKCE + user OAuth 和轮换令牌，无客户端密钥；四项频道读取 scope 精确匹配，实时 scope 头与刷新响应仅额外允许隐式 `identify`。`slack_read` 固定 Web API 读取所选成员频道的历史/讨论串，禁止私信、共享频道、搜索、文件和写入；不是官方 MCP 透传。默认七天、最多 31 天、100 条/40,000 字符，读取前后检查账号/频道，结果一律不可信。成员列表可省略 `is_member`，但确认和读取的频道详情必须明确为 true。配置、边界及真实验收见 `docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md` 第 11 节。
 
 工作应用连接器在 `src/connectors/workspace/` 实现。9 个云来源使用固定供应商 REST 调用，2 个 Apple 来源通过随包的 EventKit 助手在本机执行。所有来源复用 `ReadonlyConnector`，范围由供应商身份与已确认资源 ID 约束。只有已配置 OAuth 客户端的云来源（Todoist 自行注册公共客户端）和助手可运行时的 Apple 来源会在启动时注册并参与聊天路由；Lisa.app 内嵌运行时不含助手源码，Apple 来源在其中不可用。本机聊天通过 `GET /api/connectors?sessionId=…` 一次恢复非 GitHub 连接卡，GitHub 继续走兼容路由。授权配置及平台前置条件见 [接入方案第 13 节](../docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md)。
+
+飞书首批使用自建 confidential 应用的用户 OAuth（S256/state、v3 token、精确下收敛 scope），仅请求 `docx:document:readonly` 与 `offline_access`。绑定企业/用户；手动添加 docx 链接或 ID，后端确认访问后，仅开放 `feishu_read` 的 list/metadata/content。固定飞书 API、DNS 固定、无重定向，30,000 字符/1 MB 上限；读取前后复核身份和文档版本。单次刷新令牌串行持久化，断开尽力撤销 access 与 refresh；客户端密钥仅放本机私有配置/SecretStore。第八项目录，沿用统一生命周期，不开 Cloud、远程或任意 MCP。配置与验收见接入方案第 12 节。
 
 `src/agent.ts` 的核心职责：
 
