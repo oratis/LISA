@@ -181,15 +181,24 @@ struct RoomRequestView: View {
                         Section { Text(verbatim: field.value).textSelection(.enabled) }
                             header: { Text(verbatim: field.key).textCase(nil) }
                     }
-                    Section {
-                        if detail.approval.scopes.contains("once"), !detail.approval.digest.isEmpty {
-                            Button("Allow once") { answer(digest: detail.approval.digest) }
-                        }
-                        Button("Deny", role: .destructive) { answer(digest: nil) }
-                    }.disabled(busy)
                 } else { ProgressView() }
             }
             .consoleBackground()
+            .safeAreaInset(edge: .bottom) {
+                if canAnswer, item.kind == "approval", error == nil, let detail {
+                    HStack(spacing: 12) {
+                        Button("Deny", role: .destructive) { answer(digest: nil) }
+                            .buttonStyle(.bordered).frame(minHeight: 44)
+                        Spacer(minLength: 0)
+                        if detail.approval.scopes.contains("once"), !detail.approval.digest.isEmpty {
+                            Button("Allow once") { answer(digest: detail.approval.digest) }
+                                .buttonStyle(.borderedProminent).frame(minHeight: 44)
+                        }
+                    }
+                    .disabled(busy).padding(16)
+                    .background(Theme.panel)
+                }
+            }
             .navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .task(id: retry) {

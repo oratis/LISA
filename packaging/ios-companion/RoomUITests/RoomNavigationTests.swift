@@ -44,7 +44,9 @@ final class RoomNavigationTests: XCTestCase {
 
     private func back() {
         let bar = app.navigationBars.firstMatch
-        bar.buttons.element(boundBy: 0).tap()
+        let backButton = bar.buttons["BackButton"]
+        if backButton.exists { backButton.tap() }
+        else { bar.buttons.element(boundBy: 0).tap() }
     }
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
