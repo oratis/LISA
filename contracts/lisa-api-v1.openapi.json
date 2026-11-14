@@ -3903,6 +3903,170 @@
           }
         }
       }
+    },
+    "/api/agent-host/v1/view/runs": {
+      "get": {
+        "operationId": "getSharedFleetRuns",
+        "description": "Securely paired Pocket only. Returns tasks explicitly shared by this Mac owner with this pairing. An unshared task is absent. Pairing revocation/replacement invalidates all its shares.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runs"
+                  ],
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetViewerRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/view/runs/{id}/events": {
+      "get": {
+        "operationId": "getSharedFleetRunEvents",
+        "description": "Securely paired Pocket only; rechecks the specific task share on every page. Returns 404 when unshared or revoked. Same cursor, retention and reset semantics as the controller timeline, with an allow-listed read-only projection.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "Last sequence number the client holds. Entries after it are returned. Defaults to 0.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size, at most 100. Only accepted together with `after`, in that order.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetViewerEvents"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/fleet/shares": {
+      "post": {
+        "operationId": "setFleetTaskShare",
+        "description": "Local owner only, protected by loopback and same-origin checks. Grant or revoke one run for an already v2 paired non-controller device. Grants bind the local host, task and pairing instance; re-pairing does not restore them.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "deviceId",
+                  "runId",
+                  "enabled"
+                ],
+                "properties": {
+                  "deviceId": {
+                    "type": "string"
+                  },
+                  "runId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Share updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "shared"
+                  ],
+                  "properties": {
+                    "shared": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7031,10 +7195,17 @@
                 "example": {
                   "type": "object",
                   "properties": {
-                    "en": { "type": "string" },
-                    "zh-CN": { "type": "string" }
+                    "en": {
+                      "type": "string"
+                    },
+                    "zh-CN": {
+                      "type": "string"
+                    }
                   },
-                  "required": ["en", "zh-CN"],
+                  "required": [
+                    "en",
+                    "zh-CN"
+                  ],
                   "additionalProperties": false
                 },
                 "authModes": {
@@ -9163,6 +9334,218 @@
           }
         },
         "additionalProperties": true
+      },
+      "FleetViewerRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "hostId",
+          "state",
+          "result",
+          "createdAt",
+          "updatedAt",
+          "lastSeq",
+          "workspaceName",
+          "truncated",
+          "approval"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "approval",
+              "waiting",
+              "cancelling",
+              "completed",
+              "cancelled",
+              "failed",
+              "unknown"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "updatedAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds of the newest timeline entry."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sequence number of the newest timeline entry. A client reads the timeline when this moves past its cursor."
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "approval": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tool",
+                  "target",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "tool": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "number"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "Read-only Pocket projection: result excerpt, tool/target only; no prompt, input, approval ID or controller identity."
+      },
+      "FleetViewerEvent": {
+        "type": "object",
+        "description": "One timeline entry. Entries carry display summaries only: a bounded instruction excerpt, the tool and target of a permission request, and a bounded result excerpt. Tool input stays on the run's pending approval. Clients show an unknown `type` by name.",
+        "required": [
+          "seq",
+          "at",
+          "type"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "type": {
+            "type": "string",
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started."
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tool": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Path relative to the workspace, or the requested path when it lies outside."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix time in milliseconds."
+          },
+          "outcome": {
+            "enum": [
+              "allowed",
+              "denied",
+              "expired",
+              "withdrawn",
+              "invalid",
+              "cancelled"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "description": "Last 4,000 characters of the turn's result."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Tool calls the workspace policy refused during the turn."
+          },
+          "by": {
+            "enum": [
+              "controller",
+              "owner",
+              "timeout",
+              "shutdown",
+              "revoked",
+              "policy"
+            ],
+            "description": "revoked: the owner revoked the device or narrowed its grant. policy: remote control was switched off on the host."
+          },
+          "state": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FleetViewerEvents": {
+        "type": "object",
+        "required": [
+          "run",
+          "events",
+          "firstSeq",
+          "lastSeq",
+          "gap",
+          "reset",
+          "more"
+        ],
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/FleetViewerRun"
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/FleetViewerEvent"
+            }
+          },
+          "firstSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Oldest retained sequence number. The host keeps the newest 500 entries of a task."
+          },
+          "lastSeq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gap": {
+            "type": "boolean",
+            "description": "Entries between the cursor and `firstSeq` are no longer retained."
+          },
+          "reset": {
+            "type": "boolean",
+            "description": "The cursor was ahead of this ledger. The client discards its copy."
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Further entries exist after this page."
+          }
+        }
       }
     }
   }

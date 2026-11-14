@@ -25,6 +25,7 @@
     connection_interrupted: "连接中断。重新连接后可查询原操作收据。",
     stale_approval: "审批已处理或已失效。",
     workspace_replaced: "目录身份已变化，请在 mini 上核对。",
+    secure_pocket_required: "请选择已通过安全配对的 Pocket；旧版配对需撤销后重新配对。",
   };
   const phase = {
     running: "执行中",
@@ -567,6 +568,23 @@
         return row;
       }),
     );
+    const pockets = l.devices.filter((x) => x.secure && !x.fleet);
+    $("shares").replaceChildren();
+    if (!pockets.length) $("shares").append(make("p", "请先在本机设置中安全配对 Pocket。"));
+    else if (!d.shares?.length) $("shares").append(make("p", "本机还没有可分享的 Fleet 任务。"));
+    else for (const r of d.shares) {
+      const row = make("article", "");
+      row.append(make("h4", r.workspaceName + " · " + r.id.slice(0, 8) + " · " + (phase[r.state] || r.state)),
+        make("small", "创建于 " + new Date(r.createdAt).toLocaleString()));
+      for (const p of pockets) {
+        const shared = r.viewers.includes(p.id);
+        row.append(btn((shared ? "撤销查看 · " : "允许查看 · ") + p.name + " · " + p.id.slice(0, 8), async () => {
+          await api("/api/fleet/shares", { deviceId: p.id, runId: r.id, enabled: !shared });
+          await local();
+        }));
+      }
+      $("shares").append(row);
+    }
   }
   $("local").ontoggle = () => {
     if ($("local").open) guard(local);

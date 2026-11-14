@@ -724,3 +724,102 @@ test("downgrade: a key-substituting relay that speaks v1 to the Mac is flagged, 
     await h.close();
   }
 });
+
+test("secure Pocket viewer requests carry the pairing identity; legacy and write routes never forward", async () => {
+  const forwarded: string[] = [];
+  const peers: unknown[] = [];
+  let forwardedRequest: http.IncomingMessage | undefined;
+  const h = await harness((req, res) => {
+    forwarded.push(req.url!);
+    forwardedRequest = req;
+    peers.push(h.host.fleetViewer(req));
+    assert.equal(h.host.fleetPeer(req), undefined);
+    res.end("ok");
+  });
+  try {
+    const pairing = await pairV2(h, "viewer-pair");
+    const deviceId = keyId(h.phone.publicKey);
+    h.host.approve(deviceId, String(pairing.code));
+    const viewer = h.host.pocketDevice(deviceId)!;
+    assert.equal(viewer.hostId, keyId(h.hostKey));
+    assert.equal(viewer.deviceId, deviceId);
+    assert.match(viewer.pairingId, /^[a-f0-9-]{36}$/);
+    const base = "/api/agent-host/v1/view/runs";
+    for (const [i, route] of [
+      base,
+      base + "/" + crypto.randomUUID() + "/events?after=3&limit=100",
+    ].entries()) {
+      const ch = "viewer-read" + i;
+      const p = await h.hello(ch, h.phone, false, { v: 2 });
+      h.send(ch, request(p.cipher, p.welcome.challenge, route));
+      assert.equal((await readBody(h, ch, p.cipher)).status, 200);
+    }
+    assert.deepEqual(peers, [viewer, viewer]);
+    for (const [i, [route, method]] of [
+      [base, "POST"],
+      ["/api/agent-host/v1/runs", "GET"],
+      [base + "/" + crypto.randomUUID() + "/decisions", "POST"],
+      [base + "/" + crypto.randomUUID() + "/events?after=0&other=1", "GET"],
+    ].entries()) {
+      const ch = "viewer-denied" + i;
+      const p = await h.hello(ch, h.phone, false, { v: 2 });
+      h.send(ch, request(p.cipher, p.welcome.challenge, route!, method));
+      assert.equal(await h.nextFrame(ch), "closed");
+    }
+    assert.equal(forwarded.length, 2);
+    // Even a previously forwarded proof ceases to authorize after pairing revocation.
+    h.host.revoke(deviceId);
+    assert.equal(h.host.fleetViewer(forwardedRequest!), undefined);
+    assert.equal(h.host.pocketDevice(deviceId), undefined);
+    const legacy = identity();
+    const p = await h.hello("legacy-pair", legacy);
+    h.host.approve(keyId(legacy.publicKey), String(p.welcome.code));
+    assert.equal(h.host.pocketDevice(keyId(legacy.publicKey)), undefined);
+    const legacyRead = await h.hello("legacy-read", legacy, false);
+    h.send("legacy-read", request(legacyRead.cipher, legacyRead.welcome.challenge, base));
+    assert.equal(await h.nextFrame("legacy-read"), "closed");
+    assert.equal(forwarded.length, 2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("an existing v2 Pocket pairing keeps a stable viewer identity across upgrades and restarts", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-existing-pocket-"));
+  const phone = identity(),
+    mac = identity();
+  const grant = {
+    id: keyId(phone.publicKey),
+    publicKey: phone.publicKey,
+    name: "Existing Pocket",
+    createdAt: 12345,
+    pairing: 2,
+  };
+  const file = path.join(home, "remote-link.json");
+  try {
+    // Pre-1B files have no pairingId. No re-pairing or account migration is required.
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        enabled: true,
+        uid: "alice",
+        base: "https://cloud.example",
+        identity: mac,
+        grants: [grant],
+      }),
+    );
+    const first = new RemoteHost(home, 0).pocketDevice(grant.id);
+    assert.deepEqual(first, {
+      deviceId: grant.id,
+      hostId: keyId(mac.publicKey),
+      pairingId: "legacy:12345",
+    });
+    const restarted = new RemoteHost(home, 0);
+    assert.deepEqual(restarted.pocketDevice(grant.id), first);
+    restarted.revoke(grant.id);
+    assert.equal(new RemoteHost(home, 0).pocketDevice(grant.id), undefined);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

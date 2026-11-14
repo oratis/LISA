@@ -13,7 +13,8 @@ import { setTimeout as wait } from "node:timers/promises";
 import { RelayBroker } from "../broker.js";
 import { FleetHostService } from "./host-service.js";
 import type { ClaudeEvents, ClaudeRunner } from "./claude.js";
-import { HOST_API } from "./types.js";
+import { HOST_API, VIEW_API } from "./types.js";
+import { pocket } from "../../../tests/fixtures/fleet/pocket.js";
 
 test("operation receipts outlive a backend, reject changed payloads, and never replay a start", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-journal-"));
@@ -448,6 +449,33 @@ test(
       } finally {
         ledger.close();
       }
+      // A securely paired Pocket gets only the one task explicitly shared by the owner.
+      const phone = pocket(path.join(dir, "mac-1"), "test-session");
+      await api(m.port, "/api/remote/approve", { id: phone.deviceId, code: await phone.pair() });
+      const viewerPath = VIEW_API + "/runs/" + id + "/events";
+      assert.equal((await phone.read(viewerPath)).status, 404);
+      await api(m.port, "/api/fleet/shares", {
+        deviceId: phone.deviceId,
+        runId: id,
+        enabled: true,
+      });
+      const phoneInitial = await phone.read<Timeline>(viewerPath);
+      assert.equal(phoneInitial.status, 200);
+      assert.equal(phoneInitial.data.run.state, "approval");
+      assert.equal(phoneInitial.data.events.at(-1)!.type, "approval_requested");
+      for (const secret of [pending.approval.id, "fleet-first", "approvalId", "file_path"])
+        assert.ok(!JSON.stringify(phoneInitial.data).includes(secret), secret);
+      const phoneCursor = phoneInitial.data.lastSeq;
+      assert.equal((await phone.read(viewerPath, "GET", true)).status, 200);
+      assert.deepEqual(
+        (await phone.read<{ runs: Run[] }>(VIEW_API + "/runs")).data.runs.map((r) => r.id),
+        [id],
+      );
+      // Local HTTP cannot spoof the bridge; regular Pocket cannot call controller or owner APIs.
+      await assert.rejects(api(m.port, viewerPath), /fleet_access_denied/);
+      await assert.rejects(phone.read(HOST_API + "/runs"), /link_closed/);
+      await assert.rejects(phone.read(viewerPath, "POST"), /link_closed/);
+      assert.equal((await phone.read("/api/fleet/shares", "POST")).status, 403);
       // The controller's cursor before it loses the connection.
       const seen = (await remote<Timeline>(0, "/runs/" + id + "/events")).lastSeq;
       await api(m.port, "/api/remote/disconnect", {});
@@ -486,6 +514,36 @@ test(
       await remote(0, "/runs/" + id + "/messages", "POST", follow);
       await remote(0, "/runs/" + id + "/messages", "POST", follow);
       await until(run, (r) => r.state === "waiting" && r.result === "followup 2");
+      // Pocket was disconnected while the controller approved and completed two turns.
+      const caughtUp = await phone.read<Timeline>(viewerPath + "?after=" + phoneCursor);
+      assert.equal(caughtUp.status, 200);
+      assert.equal(caughtUp.data.events[0]!.seq, phoneCursor + 1);
+      assert.deepEqual(
+        caughtUp.data.events.filter((e) => e.type !== "tool_blocked").map((e) => e.type),
+        ["approval_resolved", "turn_completed", "turn_started", "turn_completed"],
+      );
+      assert.equal(caughtUp.data.run.approval, null);
+      await api(m.port, "/api/fleet/shares", {
+        deviceId: phone.deviceId,
+        runId: id,
+        enabled: false,
+      });
+      assert.equal((await phone.read(viewerPath + "?after=" + phoneCursor)).status, 404);
+      assert.deepEqual((await phone.read<{ runs: Run[] }>(VIEW_API + "/runs")).data.runs, []);
+      await api(m.port, "/api/fleet/shares", {
+        deviceId: phone.deviceId,
+        runId: id,
+        enabled: true,
+      });
+      await api(m.port, "/api/remote/revoke", { id: phone.deviceId });
+      await assert.rejects(phone.read(viewerPath), /not_paired/);
+      await api(m.port, "/api/remote/approve", { id: phone.deviceId, code: await phone.pair() });
+      assert.equal(
+        (await phone.read(viewerPath)).status,
+        404,
+        "re-pairing cannot revive a task share",
+      );
+      await api(m.port, "/api/remote/revoke", { id: phone.deviceId });
       await remote(0, "/runs/" + id + "/messages", "POST", {
         ...start,
         operationId: crypto.randomUUID(),
