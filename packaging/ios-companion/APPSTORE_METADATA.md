@@ -1,4 +1,4 @@
-# Lisa Pocket — App Store metadata (2026-10-07)
+# Lisa Pocket — App Store metadata (1.4 candidate, 2026-11-15)
 
 > 2026-11-07: the description's data paragraph and review note 6 now describe agent-task consent, which ships in the build after 1.3 (1.3 asks only before chat). Use this text from that build on.
 
@@ -28,8 +28,8 @@ Sign in with your LISA account and use the assistant without setting up a Mac or
 CONNECT YOUR MAC
 Pair your own Mac running LISA to chat with that instance and manage its coding agents. Local integrations, agent controls, activity notifications, widgets and Live Activities depend on your Mac configuration and permissions. Sign in to the same LISA account on both devices, compare the pairing codes and approve the phone on the Mac. Pocket prefers your local network and falls back to the encrypted cloud relay. The Mac must be awake with LISA running; legacy network/tailnet connections remain available.
 
-TWO SAVED CONNECTIONS
-Switch between Cloud and My Mac without re-entering the other connection. Each instance has its own conversations and assistant data; switching does not automatically copy them.
+CLOUD AND SAVED MACS
+Switch between Cloud and up to 32 saved Macs, each with separate credentials and pinned identity. Explicitly shared Fleet tasks show their timelines and catch up after reconnecting. Shares are read-only by default; a separate task grant allows you to review the exact tool input and approve or deny that request. Each instance has its own conversations and assistant data; switching does not automatically copy them.
 
 YOUR DATA AND CHOICES
 Before sending a chat message, or a task or follow-up to an agent on your Mac, the app explains which configured AI services can process it and asks for permission; chat and agent tasks ask separately. Cancel keeps your draft or task unsent. Withdraw AI consent in Settings to stop an active request and require permission again. Local mode may also use a remote AI provider, depending on your setup. Read the privacy policy, unpair your Mac, or delete your cloud account from Settings. For adults 18 and older. AI can make mistakes; review important results.
@@ -44,6 +44,8 @@ Learn more at meetlisa.ai.
 4. To inspect in-app purchases, open Settings → LISA account → Add credits. Starter, Plus and Max packs are consumable credits. This entry does not depend on the allowance request succeeding. Refresh credit balance reads the remaining balance from the LISA account without Apple authentication. Unused credits remain with that account across devices/reinstalls; spent consumables are not restored. Unfinished verified transactions reconcile automatically. The review account must be sandbox-allowlisted on the backend before submission.
 5. Account deletion: Settings → LISA account → Delete account → Delete account and data. Successful deletion removes the cloud account and its data and signs out. Apple authorization is revoked when a saved authorization token is available; earlier Apple sign-ins display the official manual unlinking instructions after Lisa data is deleted. A failed cleanup remains retryable. Mac unpairing is separate.
 6. My Mac features require the user's own reachable Mac. In cloud mode the Agents destination explains the optional setup; it does not attempt unsupported host-control APIs. With a paired Mac, starting a task from Agents → +, sending an agent a follow-up, or Adopt shows the same AI data sharing sheet, worded for agent tasks, before anything is sent; chat permission alone does not cover it. When the Mac runs coding agents (LISA_PTY_AGENTS=1), Claude Code and Codex are listed as separate recipients.
+
+7. Shared Fleet tasks require an updated Mac and an explicit per-task share to this paired phone. Room/Agents links to them and the saved-Mac switcher. A default share has no approval buttons or raw tool input. Separate approval access shows exact input and expiry before Allow/Deny; changing accounts or Macs clears the previous task view.
 
 ## Submission gates
 
@@ -61,7 +63,8 @@ October 5 rejected build 1790567703 under 3.1.1 and 5.1.1/5.1.2. The next binary
 
 - A refreshed Room brings chat, memory, knowledge, agents and settings together, with layouts for iPhone and iPad.
 - Start with an editable draft, dismiss the chat keyboard easily, and recover from connection problems without losing what you wrote.
-- On an updated Mac, explicitly shared Fleet tasks show their progress and catch up after reconnecting. This view is read-only.
+- Save and switch between Macs with separate connections and credentials.
+- On an updated Mac, shared Fleet tasks catch up after reconnecting. They remain read-only unless the owner separately grants approval access; review the exact request before allowing or denying it.
 - Clearer Mac pairing, session renewal and sign-in recovery help keep Cloud and My Mac connections understandable.
 
 This text describes the 1.4 source. It does not claim that the build is uploaded, approved or public. Replace store screenshots with verified captures of the submitted binary.

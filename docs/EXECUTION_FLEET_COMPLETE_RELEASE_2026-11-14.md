@@ -12,12 +12,13 @@ The owner confirmed on November 14, 2026 that this release includes the follow-u
 - [x] Recovery: explicit continuation from saved task context after the previous process has been verified stopped; never silently replay uncertain tool calls.
 - [x] Codex: scoped workspace browsing/editing and fresh approval requests, preserving the existing packet-only review option.
 - [x] T3: authenticated read-only project/thread-list connector, exact selected-project scoping, pagination, cancellation, local disconnect and upstream revocation detection.
-- [ ] Screenshots: opt-in window/accessibility context in the attachment preview, with useful fallback when permission is absent or the user excludes text.
-- [ ] Update API contracts, Web/Pocket/Mac UI, translations, guides, README and release notes to match implemented behavior.
+- [x] Screenshots: opt-in window/accessibility context in the attachment preview, with useful fallback when permission is absent or the user excludes text.
+- [x] Update API contracts, Web/Pocket/Mac UI, translations, guides, README and release notes to match implemented behavior.
 
 ## Acceptance and publication
 
-- [ ] Run targeted regressions for each change, then full Node/native/browser/relay checks and independent review of the final diff.
+- [x] Run targeted regressions, final full Node/native/browser/relay checks and focused review of the final diff.
+- [ ] Observe CI and review on the submitted PR; any unavailable external review must be recorded as unavailable, not passing.
 - [ ] Physical iPhone network handoff, Mac sleep/wake/firewall and independent remote-Mac Fleet acceptance. The owner is connecting devices; the first refreshed inventory still reported the iPhone unavailable.
 - [ ] Feishu real-account authorization and selected-document read; live T3 authorization for its new connector.
 - [ ] Verify live provider paths and production relay after deployment.
@@ -79,3 +80,26 @@ New destructive product actions require a user-visible preview and explicit conf
 - T3 does not expose refresh or self-revocation for this grant. Local disconnect deletes credentials and cancels pending work; users revoke the upstream session in T3 Settings → Sharing & access. Revoked/expired upstream grants fail closed.
 - Seven T3 protocol/lifecycle/transport regressions pass, including revocation during a buffered read and disconnect during an in-flight continuation. Two browser regressions cover callback, project selection, original-task resumption exactly once, reuse, disconnect and cancellation. Shared MCP/API/type checks pass. Logs: `/private/tmp/lisa-complete-t3-tests.log`, `/private/tmp/lisa-complete-t3-service.log`, `/private/tmp/lisa-complete-t3-browser.log`.
 - These use deterministic protocol fixtures. Real-account authorization remains an explicit acceptance item; no T3 environment URL has been supplied yet.
+
+## Implementation evidence: optional screenshot context
+
+- The default screenshot path never calls Accessibility APIs. The explicit context action / Mac `⌃⌥⇧S` collects a bounded front-window snapshot before capture, without prompting for permission; the existing `⌃⌥S` remains image-only.
+- Preview shows the exact title/text/coordinates, explains that global screen points may differ from the selected image region, and defaults to excluding context. Only checking the preview option adds a UTF-8 text attachment at Send. Secure-entry controls are skipped; missing permission/helper returns image-only fallback. No UI text is logged or saved before Send; capture files live in a private unique temporary directory removed on success/cancel/failure.
+- Nine vision tests and nine browser/attachment regressions pass, including opt-in call ordering, permission fallback, secure controls/bounds, UTF-8 delivery, exclusion, cross-site refusal and existing pasted-image behavior. Native Mac account suite: 11 passed; Swift helper compiles. Release Mac packaging now includes a prebuilt universal helper and explicitly signs it inside-out; CLI/npm compiles shipped source on first opted-in use when a Swift toolchain exists.
+- Logs: `/private/tmp/lisa-complete-capture-tests.log`, `/private/tmp/lisa-complete-capture-browser.log`, `/private/tmp/lisa-complete-capture-swift.log`. Final notarized build verification remains part of publication.
+
+## Final review: multi-backend cleanup race
+
+- Review found that a request could pass generation preflight, then wait while another backend cleared the ledger, and recreate work after cleanup. A deterministic interleaving regression reproduced the failure before the fix (`/private/tmp/lisa-complete-review-race-red.log`).
+- Mutation, merge and restore now revalidate the operation generation under the same SQLite write transaction as their receipts. Restore also rebuilds its signed preview under that lock, so concurrent cleanup cannot leave a stale restore plan authorized.
+
+- The new interleaving regression now passes; Fleet/host regressions: 83 passed, zero skipped. Logs: `/private/tmp/lisa-complete-review-race-green.log`, `/private/tmp/lisa-complete-review-types.log`.
+
+## Final local validation (November 15)
+
+- Full Node suite after the review fix: **4,376 passed, zero failures/skips**, including the installed native Codex protocol fixture (`/private/tmp/lisa-complete-final-node3.log`). This is not a live OpenAI inference test.
+- Full Chromium suite: **124 passed** (`/private/tmp/lisa-complete-final-browser.log`).
+- iPhone simulator: **145 logic tests, one existing opt-in production-relay skip, zero failures; three UI tests passed** (`/private/tmp/lisa-complete-final-ios.log`). Native Mac: **11 passed**; the candidate app and universal context helper built successfully with ad-hoc signing. Release signing/notarization has not run.
+- API contracts, server/client/E2E type checks, format, build and documentation/link checks pass. Full lint has zero errors and 72 existing warnings. Relay type/build/dry-run and four integration tests pass.
+- Generated native build output was moved outside the checkout before the source-only telemetry scan; no test rule was relaxed. Physical-device, second-Mac, live Feishu/T3, post-deployment relay and store acceptance remain open.
+- App Store Connect's existing Chrome tab is signed out; the local API credential returned 401. The owner was asked to restore login while PR and screenshot preparation continue. No TestFlight upload or App Store submission is claimed.
