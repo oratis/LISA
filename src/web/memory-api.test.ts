@@ -15,6 +15,7 @@ let forgetApplied: string[];
 let previousHome: string | undefined;
 let server: http.Server;
 let origin: string;
+const pendingRequests = new Set<Promise<void>>();
 
 /**
  * The harness stands in for server.ts's auth gate: tests declare the caller
@@ -26,7 +27,7 @@ beforeEach(async () => {
   process.env.LISA_HOME = home;
   forgetApplied = [];
   server = http.createServer((req, res) => {
-    void (async () => {
+    const pending = (async () => {
       const handled = await handleMemoryApi(req, res, req.url ?? "/", {
         cloud: req.headers["x-test-cloud"] === "1",
         accountUid: (req.headers["x-test-uid"] as string | undefined) ?? null,
@@ -40,6 +41,8 @@ beforeEach(async () => {
         res.end("unhandled");
       }
     })();
+    pendingRequests.add(pending);
+    void pending.finally(() => pendingRequests.delete(pending));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -49,6 +52,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  // Export writes its audit record after the HTTP stream has finished.
+  await Promise.all(pendingRequests);
   if (previousHome === undefined) delete process.env.LISA_HOME;
   else process.env.LISA_HOME = previousHome;
   fs.rmSync(home, { recursive: true, force: true });
