@@ -161,6 +161,13 @@ struct RosterView: View {
             .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    if app.config.remoteMac != nil {
+                        NavigationLink { FleetPocketView() } label: {
+                            Image(systemName: "desktopcomputer")
+                        }.accessibilityLabel("Shared Fleet tasks")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showDelegate = true } label: { Image(systemName: "plus") }
                         .disabled(!app.config.isConfigured)
                         .accessibilityLabel("Delegate a task")

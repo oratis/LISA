@@ -25,6 +25,9 @@
     connection_interrupted: "连接中断。重新连接后可查询原操作收据。",
     stale_approval: "审批已处理或已失效。",
     workspace_replaced: "目录身份已变化，请在 mini 上核对。",
+    git_worktree_unavailable: "请确认登记的是 Git 仓库根目录，且已有提交。",
+    checkpoint_unavailable: "检查点不完整或已清理，无法展示差异。",
+    secure_pocket_required: "请选择已通过安全配对的 Pocket；旧版配对需撤销后重新配对。",
   };
   const phase = {
     running: "执行中",
@@ -95,6 +98,8 @@
             ? "执行机后端重启后停止了上一后端留下的 Claude 进程，已释放执行位。结果待核实。"
             : "执行机后端重启时旧 Claude 进程已退出，已释放执行位。结果待核实。",
         ];
+      case "checkpoints_cleared":
+        return ["执行机所有者已清理此任务的改动检查点。"];
       case "history_started":
         return ["此任务早于任务经过功能，记录从「" + (phase[e.state] || e.state) + "」开始。"];
       default:
@@ -103,6 +108,17 @@
   }
   // Cursors are kept per account, Mac and task, so one Mac's history never lands on another.
   const timelines = new Map();
+  let changesKey = "", changesSeq = -1, changesVersion = 0;
+  function clearChanges() {
+    changesVersion++;
+    changesKey = ""; changesSeq = -1;
+    $("changes").hidden = true;
+    $("change-turns").replaceChildren();
+    $("change-files").replaceChildren();
+    $("change-note").textContent = "";
+    $("change-patch").textContent = "";
+    $("change-patch").hidden = true;
+  }
   let shown = "";
   let hosts = [],
     scope = "",
@@ -118,6 +134,21 @@
     $("notice").textContent = text;
   };
   const explain = (err) => messages[err.message] || err.message;
+  function clearWork() {
+    version++;
+    cap = null;
+    runs = [];
+    runId = "";
+    shown = "";
+    timelines.clear();
+    clearChanges();
+    $("work").hidden = true;
+    $("runs").replaceChildren();
+    $("timeline").hidden = true;
+    $("timeline-list").replaceChildren();
+    $("timeline-note").textContent = "";
+    $("prompt").value = "";
+  }
   async function guard(fn) {
     try {
       await fn();
@@ -126,6 +157,7 @@
     }
   }
   async function api(url, body) {
+    const v = version;
     const res = await fetch(url, {
       method: body ? "POST" : "GET",
       cache: "no-store",
@@ -137,6 +169,14 @@
     if (!res.ok) {
       const err = Error(data.error || "请求失败");
       err.status = res.status;
+      if (
+        v === version &&
+        (url === "/api/fleet/request" || url === "/api/fleet/hosts") &&
+        (res.status === 401 || res.status === 403)
+      ) {
+        clearWork();
+        notice(explain(err));
+      }
       throw err;
     }
     return data;
@@ -157,9 +197,8 @@
     try {
       const d = await api("/api/fleet/hosts");
       if (scope && d.scope !== scope) {
-        version++;
+        clearWork();
         host = null;
-        cap = null;
         $("target").hidden = true;
       }
       scope = d.scope;
@@ -183,26 +222,22 @@
       if (!hosts.length) $("hosts").textContent = "尚未发现机器。请在 mini 上启用 LISA 账号连接。";
       const selected = hosts.find((h) => h.id === host?.id);
       if (host && !selected) {
-        version++;
+        clearWork();
         host = null;
-        cap = null;
         $("target").hidden = true;
-      } else if (selected && selected.online !== host.online) await choose(selected);
+      } else if (selected && (selected.online !== host.online || selected.paired !== host.paired)) {
+        await choose(selected);
+      }
     } finally {
       listing = false;
     }
   }
   async function choose(h) {
-    version++;
+    clearWork();
     const v = version;
     host = h;
-    cap = null;
-    runs = [];
-    runId = "";
     notice("");
-    $("prompt").value = "";
     $("target").hidden = false;
-    $("work").hidden = true;
     $("pairing").replaceChildren();
     $("name").textContent = h.name;
     $("fingerprint").textContent = h.id;
@@ -259,7 +294,6 @@
       : c.control
         ? "Claude Code · Read / Edit / Write 逐次审批。指令和获准读取的内容会发往这台 mini 配置的 Claude API。"
         : "已授予观察权限";
-    $("work").hidden = false;
     await refreshRuns(v);
   }
   async function refreshRuns(v = version) {
@@ -268,7 +302,62 @@
     if (v !== version) return;
     runs = d.runs;
     render();
+    $("work").hidden = false;
     await syncTimeline(v);
+    await syncChanges(v);
+  }
+  async function syncChanges(v = version) {
+    const run = runs.find((r) => r.id === runId);
+    if (!host || !run || !cap?.features?.includes("turn-changes")) { clearChanges(); return; }
+    const key = timelineKey(run.id);
+    if (changesKey !== key) { clearChanges(); changesKey = key; }
+    if (changesSeq === run.lastSeq) return;
+    const cv = changesVersion, id = host.id, account = scope;
+    const valid = () => v === version && cv === changesVersion && runId === run.id;
+    const d = await remote(id, account, "/runs/" + run.id + "/changes");
+    if (!valid()) return;
+    changesSeq = run.lastSeq;
+    if (d.turns.some((t) => t.state === "cleared")) {
+      changesVersion++;
+      $("change-files").replaceChildren();
+      $("change-patch").textContent = ""; $("change-patch").hidden = true;
+      $("change-note").textContent = "检查点已由执行机所有者清理。";
+    }
+    $("changes").hidden = false;
+    const reason = {
+      managed_worktree_required: "仅 LISA 创建的隔离 Git 工作区提供检查点",
+      snapshot_limit: "超过快照上限（2000 文件 / 16 MiB）",
+      checkpoint_limit: "已达单任务 100 轮检查点上限",
+      snapshot_unavailable: "快照未完成（目录变化、子模块或 Git 不可用）",
+      workspace_replaced: "工作区已被替换",
+      checkpoints_cleared: "检查点已清理",
+      snapshot_interrupted: "快照曾被中断",
+    };
+    $("change-turns").replaceChildren(...d.turns.map((t) => {
+      if (!t.available) return make("p", "第 " + t.turn + " 轮 · " +
+        (reason[t.reason] || (t.state === "running" ? "本轮进行中" : "结束检查点缺失")));
+      return btn("查看第 " + t.turn + " 轮改动" + (t.state === "interrupted" ? "（中断时）" : ""), async () => {
+        const request = ++changesVersion;
+        $("change-files").replaceChildren(); $("change-patch").hidden = true;
+        const current = () => v === version && changesKey === key && runId === run.id && changesVersion === request;
+        const route = "/runs/" + run.id + "/changes/" + t.turn;
+        const files = await remote(id, account, route);
+        if (!current()) return;
+        $("change-note").textContent = "第 " + t.turn + " 轮 · " +
+          (files.concurrent ? "工作区同时变化（HEAD 或索引改变）。" : "工作区差异，无法单独归因于 agent。") +
+          (files.files.length ? "" : "本轮没有记录到文件差异。");
+        $("change-files").replaceChildren(...files.files.map((f) => btn(
+          ({ A: "新增", M: "修改", D: "删除", T: "类型变化" }[f.status] || f.status) + " · " + f.path, async () => {
+            const fileRequest = ++changesVersion;
+            $("change-patch").hidden = true;
+            const diff = await remote(id, account, route + "/" + f.id);
+            if (v !== version || changesKey !== key || runId !== run.id || changesVersion !== fileRequest) return;
+            $("change-patch").textContent = (diff.truncated ? "差异超过 64 KiB，以下仅为开头。\n" : "") + diff.patch;
+            $("change-patch").hidden = false;
+          })));
+      });
+    }));
+    if (!d.turns.length) $("change-turns").textContent = "此任务没有检查点记录。";
   }
   function timelineKey(id) {
     return scope + "|" + host.id + "|" + id;
@@ -280,7 +369,7 @@
       id = host.id,
       k = timelineKey(r.id);
     let t = timelines.get(k);
-    if (!t) timelines.set(k, (t = { events: [], last: 0, gap: false, busy: false }));
+    if (!t) timelines.set(k, (t = { events: [], last: 0, busy: false }));
     if (t.busy || t.last === r.lastSeq) return;
     t.busy = true;
     try {
@@ -290,11 +379,13 @@
           account,
           "/runs/" + r.id + "/events?after=" + t.last + "&limit=100",
         );
+        if (v !== version) return;
         if (d.reset) {
           t.events = [];
           t.last = 0;
+        } else if (t.events.length && t.events[0].seq < d.firstSeq) {
+          t.events = t.events.filter((e) => e.seq >= d.firstSeq);
         }
-        if (d.gap) t.gap = true;
         for (const e of d.events)
           if (e.seq > t.last) {
             t.events.push(e);
@@ -308,15 +399,16 @@
     if (v === version) renderTimeline();
   }
   function renderTimeline() {
-    const r = host && cap ? runs.find((x) => x.id === runId) : null,
+    const r = cap?.features?.includes("run-events") ? runs.find((x) => x.id === runId) : null,
       t = r && timelines.get(timelineKey(r.id)),
-      signature = t ? timelineKey(r.id) + "|" + t.last + "|" + t.gap : "";
+      first = t?.events[0]?.seq,
+      signature = t ? timelineKey(r.id) + "|" + t.last + "|" + first : "";
     if (signature === shown) return;
     shown = signature;
     $("timeline").hidden = !t || !t.events.length;
     if (!t) return;
-    $("timeline-note").textContent = t.gap
-      ? "较早的记录已超出执行机的留存范围，以下从第 " + t.events[0]?.seq + " 条开始。"
+    $("timeline-note").textContent = first > 1
+      ? "较早的记录已超出执行机的留存范围，以下从第 " + first + " 条开始。"
       : "";
     $("timeline-list").replaceChildren(
       ...t.events.map((e) => {
@@ -337,6 +429,7 @@
       active = rows.find((r) => ["running", "waiting", "approval", "cancelling"].includes(r.state));
     if (!rows.some((r) => r.id === runId)) runId = (active || rows[0])?.id || "";
     renderTimeline();
+    if (changesKey && changesKey !== timelineKey(runId)) clearChanges();
     const r = rows.find((x) => x.id === runId),
       saved = pending(),
       blocked = busy || !!saved;
@@ -375,7 +468,7 @@
     select.onchange = () => {
       runId = select.value;
       render();
-      guard(syncTimeline);
+      guard(async () => { await syncTimeline(); await syncChanges(); });
     };
     list.append(select);
     const card = make("article", "");
@@ -442,6 +535,7 @@
           if (e.status !== 404) throw e;
         }
       }
+      if (v !== version) return;
       if (!reply) reply = await remote(op.id, op.account, op.path, "POST", op.payload);
       sessionStorage.removeItem(savedKey);
       if (v !== version) return;
@@ -472,7 +566,7 @@
     runId = "";
     $("prompt").value = "";
     render();
-    guard(syncTimeline);
+    guard(async () => { await syncTimeline(); await syncChanges(); });
   };
   $("retry").onclick = () => guard(() => submit(pending(), true));
   $("refresh").onclick = () =>
@@ -487,7 +581,15 @@
     $("link-status").textContent = l.online ? "已连接账号中继" : "账号中继未连接";
     $("connect").hidden = l.online;
     $("local-workspaces").replaceChildren(
-      ...d.workspaces.map((w) => make("p", w.name + " · " + w.root)),
+      ...d.workspaces.map((w) => {
+        const row = make("p", w.name + " · " + w.root + (w.checkpoints ? " · 检查点已启用" : ""));
+        row.append(btn("从当前提交创建隔离工作区", async () => {
+          await api("/api/fleet/worktrees", { workspaceId: w.id });
+          await local();
+          notice("已创建独立工作区。请将新工作区授权给控制端；原目录未提交的内容不会带入。");
+        }));
+        return row;
+      }),
     );
     $("requests").replaceChildren();
     for (const p of l.pending.filter((x) => x.fleet && !x.waiting)) {
@@ -545,6 +647,31 @@
         return row;
       }),
     );
+    $("checkpoint-runs").replaceChildren(...(d.checkpointRuns || []).filter((r) =>
+      !["running", "waiting", "approval", "cancelling"].includes(r.state)).map((r) => {
+        const row = make("p", "任务 " + r.id.slice(0, 8) + " · ");
+        row.append(btn("删除此任务的改动检查点", async () => {
+          if (!confirm("删除该任务的所有检查点和 diff？任务时间线和工作区文件会保留。")) return;
+          await api("/api/fleet/checkpoints/clear", { runId: r.id }); await local();
+        })); return row;
+      }));
+    const pockets = l.devices.filter((x) => x.secure && !x.fleet);
+    $("shares").replaceChildren();
+    if (!pockets.length) $("shares").append(make("p", "请先在本机设置中安全配对 Pocket。"));
+    else if (!d.shares?.length) $("shares").append(make("p", "本机还没有可分享的 Fleet 任务。"));
+    else for (const r of d.shares) {
+      const row = make("article", "");
+      row.append(make("h4", r.workspaceName + " · " + r.id.slice(0, 8) + " · " + (phase[r.state] || r.state)),
+        make("small", "创建于 " + new Date(r.createdAt).toLocaleString()));
+      for (const p of pockets) {
+        const shared = r.viewers.includes(p.id);
+        row.append(btn((shared ? "撤销查看 · " : "允许查看 · ") + p.name + " · " + p.id.slice(0, 8), async () => {
+          await api("/api/fleet/shares", { deviceId: p.id, runId: r.id, enabled: !shared });
+          await local();
+        }));
+      }
+      $("shares").append(row);
+    }
   }
   $("local").ontoggle = () => {
     if ($("local").open) guard(local);
