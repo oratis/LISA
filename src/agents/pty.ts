@@ -19,6 +19,9 @@
  *    folded into the structural cross-agent roster.
  */
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
 import { detectPlan } from "../model/plans.js";
 import { childEnv } from "../child-env.js";
 
@@ -87,6 +90,26 @@ export interface PtyModuleLike {
       env?: Record<string, string | undefined>;
     },
   ): IPtyLike;
+}
+
+/**
+ * Why a PTY agent could not start. `code` is the stable `error` field of the
+ * JSON body `POST /api/agents/pty/start` returns, so a client can say the right
+ * thing instead of guessing from the status code:
+ *  - "pty_disabled" — LISA_PTY_AGENTS is not 1 on the Mac;
+ *  - "cli_missing"  — no claude/codex executable was found;
+ *  - "spawn_failed" — anything else (node-pty absent, posix_spawnp failed, …);
+ *    the message carries the cause.
+ */
+export type PtyStartErrorCode = "pty_disabled" | "cli_missing" | "spawn_failed";
+
+export class PtyStartError extends Error {
+  readonly code: PtyStartErrorCode;
+  constructor(code: PtyStartErrorCode, message: string) {
+    super(message);
+    this.name = "PtyStartError";
+    this.code = code;
+  }
 }
 
 /** Is the PTY-agent spike enabled? Off unless LISA_PTY_AGENTS=1. */
@@ -171,14 +194,94 @@ async function loadPty(): Promise<PtyModuleLike | null> {
   }
 }
 
+/** node-pty's package directory, or null when it is not installed. */
+function nodePtyDir(): string | null {
+  try {
+    return path.dirname(createRequire(import.meta.url).resolve("node-pty/package.json"));
+  } catch {
+    return null;
+  }
+}
+
+export interface SpawnHelperCheck {
+  /** The helper node-pty will exec, relative to node-pty's package dir (never
+   *  an absolute path: it can reach a paired phone in an error message). Null
+   *  when there is none to check — not macOS, or node-pty is absent. */
+  helper: string | null;
+  executable: boolean;
+  /** This call added the missing exec bit. */
+  fixed: boolean;
+}
+
+/**
+ * On macOS node-pty does not exec the CLI directly: it posix_spawn()s its own
+ * `spawn-helper`, which then execs the CLI. node-pty 1.1.0's npm tarball ships
+ * `prebuilds/darwin-<arch>/spawn-helper` as 0644, so on an npm or Homebrew
+ * install every PTY agent died with "posix_spawnp failed." (#489). The root
+ * postinstall (scripts/fix-node-pty-perms.mjs) fixes it at install time; this
+ * repeats the fix right before a spawn, for installs that skipped lifecycle
+ * scripts (Homebrew's `--ignore-scripts`, `npm config set ignore-scripts true`).
+ *
+ * Checks the helper node-pty will actually use (its native-module search order:
+ * build/Release, build/Debug, prebuilds/<platform>-<arch>) and adds the exec bit
+ * when it is missing. Never throws; a read-only install reports executable:false.
+ */
+export function ensureSpawnHelperExecutable(
+  ptyDir: string | null = nodePtyDir(),
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): SpawnHelperCheck {
+  const none: SpawnHelperCheck = { helper: null, executable: true, fixed: false };
+  if (platform !== "darwin" || !ptyDir) return none;
+  for (const dir of ["build/Release", "build/Debug", `prebuilds/${platform}-${arch}`]) {
+    if (!fs.existsSync(path.join(ptyDir, dir, "pty.node"))) continue;
+    const helper = `${dir}/spawn-helper`;
+    const abs = path.join(ptyDir, dir, "spawn-helper");
+    const isExecutable = (): boolean => {
+      try {
+        fs.accessSync(abs, fs.constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (isExecutable()) return { helper, executable: true, fixed: false };
+    try {
+      fs.chmodSync(abs, fs.statSync(abs).mode | 0o111);
+    } catch {
+      /* read-only install or a missing file — reported as not executable */
+    }
+    const executable = isExecutable();
+    return { helper, executable, fixed: executable };
+  }
+  return none;
+}
+
+/**
+ * What a client needs to explain a PTY start before trying one:
+ *  - enabled:false                       → start answers `pty_disabled`;
+ *  - agents[i].available:false           → start with that agent answers `cli_missing`;
+ *  - installed:false or
+ *    spawnHelperExecutable:false         → start answers `spawn_failed`.
+ * `reason` names the first blocker: "disabled" | "missing-module" |
+ * "spawn-helper-not-executable" | null.
+ */
 export async function ptyAvailability() {
   const enabled = ptyEnabled();
   const installed = !!(await loadPty());
+  const helperOk = !installed || ensureSpawnHelperExecutable().executable;
   return {
     enabled,
     installed,
-    available: enabled && installed,
-    reason: !enabled ? "disabled" : !installed ? "missing-module" : null,
+    spawnHelperExecutable: helperOk,
+    available: enabled && installed && helperOk,
+    reason: !enabled
+      ? "disabled"
+      : !installed
+        ? "missing-module"
+        : !helperOk
+          ? "spawn-helper-not-executable"
+          : null,
     agents: ["claude", "codex"].map((id) => ({
       id,
       available: detectPlan(id as "claude" | "codex").available,
@@ -235,11 +338,10 @@ export class PtyAgent {
   /** Spawn a real CLI under a PTY and type the initial task. */
   static async start(opts: PtyStartOpts): Promise<PtyAgent> {
     if (!ptyEnabled()) {
-      throw new Error("PTY agents are disabled — set LISA_PTY_AGENTS=1 to enable this spike");
-    }
-    const pty = opts.ptyModule ?? (await loadPty());
-    if (!pty) {
-      throw new Error("node-pty is not installed — run `npm i node-pty` to enable PTY agents");
+      throw new PtyStartError(
+        "pty_disabled",
+        "PTY agents are disabled on this Mac — set LISA_PTY_AGENTS=1 and restart `lisa serve --web`",
+      );
     }
     const kind = normalizeAgentKind(opts.agent);
     // Resume-adopt is claude-only. The codex CLI *does* support `codex resume
@@ -258,21 +360,45 @@ export class PtyAgent {
     const cli =
       opts.cli ?? (kind === "claude-code" ? detectClaudeBinary() : resolveCli(opts.agent));
     if (!cli) {
-      throw new Error(
-        `No executable found for ${opts.agent}. Check Coding plans and refresh detection.`,
+      throw new PtyStartError(
+        "cli_missing",
+        `No executable found for ${opts.agent} on this Mac. Install it (or set ` +
+          "LISA_PTY_CLAUDE_CMD / LISA_PTY_CODEX_CMD), then refresh detection in Coding plans.",
       );
     }
+    const pty = opts.ptyModule ?? (await loadPty());
+    if (!pty) {
+      throw new PtyStartError(
+        "spawn_failed",
+        "node-pty is not installed in this LISA install — reinstall LISA (or run `npm i node-pty`) to enable PTY agents",
+      );
+    }
+    // Only the real module has a spawn-helper to heal; an injected one is a test fake.
+    const helper = opts.ptyModule ? null : ensureSpawnHelperExecutable();
     // Adopt an existing session by id: `claude --resume <id>` (claude-only, guarded above).
     const resumeArgs = opts.resumeSessionId ? ["--resume", opts.resumeSessionId] : [];
     const args = [...resumeArgs, ...(opts.args ?? [])];
     const now = opts.now ?? Date.now;
-    const proc = pty.spawn(cli, args, {
-      name: "xterm-256color",
-      cols: opts.cols ?? 120,
-      rows: opts.rows ?? 32,
-      cwd: opts.cwd,
-      env: childEnv(),
-    });
+    let proc: IPtyLike;
+    try {
+      proc = pty.spawn(cli, args, {
+        name: "xterm-256color",
+        cols: opts.cols ?? 120,
+        rows: opts.rows ?? 32,
+        cwd: opts.cwd,
+        env: childEnv(),
+      });
+    } catch (err) {
+      const hint =
+        helper && !helper.executable
+          ? ` (node-pty's ${helper.helper} is not executable and LISA could not fix it: ` +
+            "reinstall LISA, or chmod +x that file inside LISA's node_modules/node-pty)"
+          : "";
+      throw new PtyStartError(
+        "spawn_failed",
+        `Couldn't start ${path.basename(cli)}: ${(err as Error).message}${hint}`,
+      );
+    }
     const id = "p" + (++counter).toString(36) + "-" + Date.now().toString(36).slice(-4);
     const agent = new PtyAgent(id, opts, cli, proc, now);
     if (opts.task) agent.send(opts.task);

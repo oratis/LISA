@@ -12,16 +12,24 @@ describe("parsePairArgs", () => {
   });
 
   test("--host / --port / --name (space and = forms)", () => {
-    assert.deepEqual(parsePairArgs(["--host", "mac.tailnet.ts.net", "--port", "6000", "--name", "iPhone"]), {
-      host: "mac.tailnet.ts.net",
-      port: 6000,
-      name: "iPhone",
-    });
+    assert.deepEqual(
+      parsePairArgs(["--host", "mac.tailnet.ts.net", "--port", "6000", "--name", "iPhone"]),
+      {
+        host: "mac.tailnet.ts.net",
+        port: 6000,
+        name: "iPhone",
+      },
+    );
     assert.deepEqual(parsePairArgs(["--host=10.0.0.5", "--port=8080", "--name=Pixel"]), {
       host: "10.0.0.5",
       port: 8080,
       name: "Pixel",
     });
+  });
+
+  test("--help / -h → help (not an unknown-argument error)", () => {
+    assert.deepEqual(parsePairArgs(["--help"]), { help: true });
+    assert.deepEqual(parsePairArgs(["--host", "h", "-h"]), { help: true });
   });
 
   test("missing value / bad port / unknown arg → error", () => {

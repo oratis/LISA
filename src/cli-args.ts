@@ -85,7 +85,18 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", 
  * global flags (`mail connect --host/--port/--provider …`), which would
  * otherwise be swallowed as global settings and never reach the handler.
  */
-const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing", "approvals", "warden", "reve"]);
+const PASSTHROUGH_SUBCOMMANDS = new Set([
+  "mail",
+  "kb",
+  "billing",
+  "approvals",
+  "warden",
+  "reve",
+  // `pair --host <tailnet> --port N --name <label>`: --host/--port are global
+  // flags too, so without passthrough they were silently eaten (and --name /
+  // --port=N rejected as unknown) before `pair` ever saw them.
+  "pair",
+]);
 
 /**
  * Data commands (memory sovereignty). A one-shot prompt can start with these

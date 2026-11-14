@@ -33,6 +33,12 @@ class Lisa < Formula
     system "npm", "install", "--omit=dev", "--no-audit", "--no-fund",
                              "--no-package-lock", "--ignore-scripts"
 
+    # node-pty's npm tarball ships its macOS spawn-helper without the exec bit,
+    # and --ignore-scripts skips Lisa's postinstall that fixes it — without this
+    # every PTY agent fails with "posix_spawnp failed." (lisa also self-heals
+    # before the first spawn; this keeps a fresh install right from the start).
+    chmod 0755, Dir["node_modules/node-pty/prebuilds/darwin-*/spawn-helper"]
+
     # IMPORTANT: completions must be installed BEFORE libexec.install Dir["*"]
     # because that move-step consumes the buildpath's `completions/` dir.
     bash_completion.install "completions/lisa.bash" => "lisa"
