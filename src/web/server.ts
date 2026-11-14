@@ -160,6 +160,7 @@ import {
   isVersionedApiSurface,
 } from "./api-contract.js";
 import { enforceErrorShape, errorBody, errorMessage } from "./error-shape.js";
+import { closeInterruptedToolCalls, unfinishedTurnIndex } from "./chat-retry.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
@@ -5929,6 +5930,10 @@ self.addEventListener('fetch', (event) => {
         // the client disconnecting. Settled once, on success AND on failure —
         // a turn that throws after its model calls began still used them.
         const turnCalls: ProviderUsage[] = [];
+        // What this run wrote to the transcript (#491), so a turn that fails
+        // part-way still leaves the in-memory history matching the file.
+        const persisted: StoredMessage[] = [];
+        let historySynced = false;
         let turnSettled = false;
         const settleTurn = async (usage: ProviderUsage): Promise<void> => {
           if (!cloud || turnSettled) return;
@@ -6035,6 +6040,17 @@ self.addEventListener('fetch', (event) => {
             send({ type: "done" });
             return;
           }
+          // A retry of a turn a disconnect cut short (#491): the transcript
+          // already holds this message, maybe with tool calls after it, and no
+          // reply. Continue that turn instead of adding the message again.
+          const resuming = unfinishedTurnIndex(chat.history, message, files?.length ?? 0) >= 0;
+          if (resuming) {
+            const closing = closeInterruptedToolCalls(chat.history);
+            if (closing) {
+              await chat.session.appendMessage(closing);
+              chat.history.push(closing);
+            }
+          }
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
           const fresh = await rebuildPrompt();
@@ -6048,8 +6064,8 @@ self.addEventListener('fetch', (event) => {
           const modelContext = selectWebModelContextForTurn({
             history: chat.history,
             systemPrompt: fresh.text + expressions.prompt,
-            text: message,
-            files,
+            text: resuming ? "" : message,
+            files: resuming ? undefined : files,
             budgetTokens: webContextBudgetTokens(),
             latestReflection: chat.reflectionSummary,
             // Start where the previous turn's window started while that still
@@ -6093,8 +6109,9 @@ self.addEventListener('fetch', (event) => {
               approval: wardenTurn?.approval ?? webApproval,
             },
             history: modelContext.history,
-            userMessage: message,
-            userFiles: files,
+            // Resuming: the message is already the last turn in the history.
+            userMessage: resuming ? "" : message,
+            userFiles: resuming ? undefined : files,
             model: activeModel,
             thinking: policy.thinking,
             compaction: policy.compaction,
@@ -6186,7 +6203,10 @@ self.addEventListener('fetch', (event) => {
                     );
                     if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
                   },
-            onMessagePersist: (m) => chat.session.appendMessage(m),
+            onMessagePersist: async (m) => {
+              await chat.session.appendMessage(m);
+              persisted.push(m);
+            },
             onPromptPersist: (text, reason) => chat.session.appendPrompt(text, reason),
             hotReload: {
               initialFingerprint: fresh.fingerprint,
@@ -6203,6 +6223,7 @@ self.addEventListener('fetch', (event) => {
           // session transcript keep the complete history. Append just the new
           // user/assistant/tool messages produced by this run.
           chat.history.push(...result.history.slice(modelContext.history.length));
+          historySynced = true;
           // Metering (B3): price the turn into the ACTIVE home's ledger — the
           // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
           // is not metered. Never throws.
@@ -6247,6 +6268,22 @@ self.addEventListener('fetch', (event) => {
               await settleTurn(sumUsage(turnCalls));
             } catch (settleErr) {
               logError(`[billing] failed chat turn not settled: ${(settleErr as Error).message}`);
+            }
+          }
+          // Keep what this run already wrote (#491): memory matches the
+          // transcript, and a retry of the same message continues the turn.
+          if (!historySynced && persisted.length > 0) {
+            chat.history.push(...persisted);
+            const closing = closeInterruptedToolCalls(chat.history);
+            if (closing) {
+              try {
+                await chat.session.appendMessage(closing);
+                chat.history.push(closing);
+              } catch (persistErr) {
+                logError(
+                  `[chat] interrupted tool calls not closed: ${(persistErr as Error).message}`,
+                );
+              }
             }
           }
           if (!errorSent) sendTurnError("turn_failed", (err as Error).message);
