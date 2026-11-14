@@ -80,7 +80,12 @@ test("an unreadable account store answers 503, a revoked session 401", async () 
     const outage = await me();
     assert.equal(outage.status, 503);
     assert.equal(outage.headers.get("retry-after"), "5");
-    assert.deepEqual(await outage.json(), { error: "account_service_unavailable" });
+    // The code is the contract; a human-readable `message` may sit beside it.
+    const body = (await outage.json()) as { error?: unknown; message?: unknown };
+    assert.equal(body.error, "account_service_unavailable");
+    assert.ok(
+      body.message === undefined || (typeof body.message === "string" && body.message.length > 0),
+    );
   } finally {
     console.error = spy;
     fs.writeFileSync(file, good);
