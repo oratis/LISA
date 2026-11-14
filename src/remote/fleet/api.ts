@@ -48,6 +48,10 @@ export class FleetApi {
     const effective = { ...peer, control: peer.control && loadControlPolicy().remoteControl };
     if (method === "POST" && route.endsWith("/handoff-preview"))
       return this.host.previewHandoff(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/restore-preview"))
+      return this.host.previewRestore(effective, uuid(route.split("/").at(-2)), body);
+    if (method === "POST" && route.endsWith("/restore"))
+      return this.host.restore(effective, uuid(route.split("/").at(-2)), body);
     return method === "GET"
       ? this.host.read(effective, route)
       : this.host.mutate(effective, route, body);

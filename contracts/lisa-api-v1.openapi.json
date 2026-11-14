@@ -4674,6 +4674,127 @@
           }
         }
       }
+    },
+    "/api/agent-host/v1/runs/{id}/restore-preview": {
+      "post": {
+        "operationId": "previewFleetFileRestore",
+        "description": "Preview one changed file restored to the start of the selected turn. Requires a finished task, an idle host, its initiating controller and current workspace/control grant. Binds current content, inode, permissions, ancestors and snapshot to a ten-minute signed preview.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetRestorePreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetRestoreSelection"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/restore": {
+      "post": {
+        "operationId": "restoreFleetFile",
+        "description": "Confirm the exact preview. Refuses modified content, replaced directories or revoked grants. Only regular files are restored or removed; the Git index and other files are untouched. A receipt is persisted before I/O. A lost/unknown reply must reuse the same operation ID and cannot repeat the write over later edits.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetRestoreSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "previewToken",
+                      "expiresAt"
+                    ],
+                    "properties": {
+                      "previewToken": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "expiresAt": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     }
   },
   "components": {
@@ -10134,7 +10255,7 @@
           },
           "type": {
             "type": "string",
-            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started. approval_decided records an explicit decision before the adapter call."
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started. approval_decided records an explicit decision before the adapter call. file_restored identifies a file restored to a turn-start checkpoint."
           },
           "turn": {
             "type": "integer",
@@ -10701,6 +10822,115 @@
           }
         },
         "additionalProperties": false
+      },
+      "FleetRestoreSelection": {
+        "type": "object",
+        "required": [
+          "hostId",
+          "workspaceId",
+          "turn",
+          "file"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "file": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1999
+          }
+        }
+      },
+      "FleetRestoreFile": {
+        "type": "object",
+        "required": [
+          "exists",
+          "bytes",
+          "mode",
+          "sha256",
+          "binary",
+          "text",
+          "truncated"
+        ],
+        "properties": {
+          "exists": {
+            "type": "boolean"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "description": "Literal file content preview, at most 64 KiB text; binary content is represented by size and digest. Mode is the permission bits (Git target: 0644 or 0755)."
+      },
+      "FleetRestorePreview": {
+        "type": "object",
+        "required": [
+          "runId",
+          "workspaceId",
+          "turn",
+          "file",
+          "path",
+          "current",
+          "target",
+          "expiresAt",
+          "previewToken"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turn": {
+            "type": "integer"
+          },
+          "file": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/FleetRestoreFile"
+          },
+          "target": {
+            "$ref": "#/components/schemas/FleetRestoreFile"
+          },
+          "expiresAt": {
+            "type": "number"
+          },
+          "previewToken": {
+            "type": "string"
+          }
+        }
       }
     }
   }

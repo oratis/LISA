@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { RestoreTarget } from "./restore.js";
 import { digest, FleetError, uuid } from "./types.js";
 
 export interface Snapshot {
@@ -32,7 +33,13 @@ const env = () => ({
   GIT_COMMITTER_NAME: "LISA",
   GIT_COMMITTER_EMAIL: "fleet@localhost",
 });
-function git(cwd: string, args: string[], input?: string | Buffer, extra = {}) {
+function git(
+  cwd: string,
+  args: string[],
+  input?: string | Buffer,
+  extra = {},
+  maxBuffer = 4 * 1024 * 1024,
+) {
   return execFileSync(
     "git",
     [
@@ -48,7 +55,7 @@ function git(cwd: string, args: string[], input?: string | Buffer, extra = {}) {
       env: { ...env(), ...extra },
       input,
       timeout: 8000,
-      maxBuffer: 4 * 1024 * 1024,
+      maxBuffer,
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
@@ -93,9 +100,15 @@ export class FleetCheckpoints {
   private directory(run: string) {
     return path.join(this.home, "fleet", "checkpoints", uuid(run));
   }
-  private command(run: string, args: string[], input?: string | Buffer, extra = {}) {
+  private command(
+    run: string,
+    args: string[],
+    input?: string | Buffer,
+    extra = {},
+    maxBuffer?: number,
+  ) {
     const dir = this.directory(run);
-    return git(dir, ["--git-dir=" + dir, ...args], input, extra);
+    return git(dir, ["--git-dir=" + dir, ...args], input, extra, maxBuffer);
   }
   capture(
     run: string,
@@ -258,6 +271,36 @@ export class FleetCheckpoints {
       if (e instanceof FleetError) throw e;
       throw new FleetError(409, "checkpoint_unavailable");
     }
+  }
+  restoreTarget(run: string, before: Snapshot, after: Snapshot, file: number): RestoreTarget {
+    const list = this.diff(run, before, after);
+    if (!list.files) throw new FleetError(409, "checkpoint_unavailable");
+    const selected = list.files[file];
+    if (!selected) throw new FleetError(404, "file_not_found");
+    const row = this.command(run, [
+      "ls-tree",
+      "-z",
+      before.commit!,
+      "--",
+      selected.path,
+    ]).toString();
+    if (!row) return { path: selected.path, exists: false, content: Buffer.alloc(0), mode: 0 };
+    const match = /^(100644|100755) blob ([a-f0-9]{40,64})\t/.exec(row);
+    if (!match) throw new FleetError(409, "restore_regular_file_required");
+    const content = this.command(
+      run,
+      ["cat-file", "blob", match[2]!],
+      undefined,
+      {},
+      MAX_BYTES + 1,
+    );
+    if (content.length > MAX_BYTES) throw new FleetError(409, "restore_file_limit");
+    return {
+      path: selected.path,
+      exists: true,
+      content,
+      mode: match[1] === "100755" ? 0o755 : 0o644,
+    };
   }
   clear(run: string) {
     fs.rmSync(this.directory(run), { recursive: true, force: true });

@@ -356,3 +356,134 @@ test("a follow-up captures its baseline before dispatch, even with an immediate 
     await f.close();
   }
 });
+
+test("file restore previews exact bytes, preserves the index and never replays over later edits", async () => {
+  const f = fixture();
+  try {
+    f.svc.mutate(f.peer, HOST_API + "/runs", f.start);
+    fs.writeFileSync(path.join(f.root, "a.txt"), "changed\n");
+    fs.unlinkSync(path.join(f.root, "delete.txt"));
+    fs.writeFileSync(path.join(f.root, "new.bin"), Buffer.from([0, 1, 2]));
+    f.events().result("done", false);
+    const id = f.start.operationId;
+    const selection = (name: string) =>
+      f.body({ turn: 1, file: f.read("/1").files.find((file) => file.path === name)!.id });
+    assert.throws(() => f.svc.previewRestore(f.peer, id, selection("a.txt")), /run_not_finished/);
+    f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+    const index = git(f.root, "ls-files", "--stage");
+    const request = selection("a.txt"),
+      preview = f.svc.previewRestore(f.peer, id, request);
+    assert.equal(preview.current.text, "changed\n");
+    assert.equal(preview.target.text, "original\n");
+    const command = {
+      ...request,
+      previewToken: preview.previewToken,
+      expiresAt: preview.expiresAt,
+    };
+    const receipt = f.svc.restore(f.peer, id, command) as { status: string };
+    assert.equal(receipt.status, "accepted");
+    assert.equal(fs.readFileSync(path.join(f.root, "a.txt"), "utf8"), "original\n");
+    fs.writeFileSync(path.join(f.root, "a.txt"), "later human edit\n");
+    assert.equal((f.svc.restore(f.peer, id, command) as { status: string }).status, "accepted");
+    assert.equal(fs.readFileSync(path.join(f.root, "a.txt"), "utf8"), "later human edit\n");
+    assert.throws(() => f.svc.restore(f.peer, id, { ...command, file: 999 }), /operation_conflict/);
+    for (const name of ["delete.txt", "new.bin"]) {
+      const body = selection(name),
+        p = f.svc.previewRestore(f.peer, id, body);
+      assert.equal(
+        (
+          f.svc.restore(f.peer, id, {
+            ...body,
+            previewToken: p.previewToken,
+            expiresAt: p.expiresAt,
+          }) as { status: string }
+        ).status,
+        "accepted",
+      );
+    }
+    assert.equal(fs.readFileSync(path.join(f.root, "delete.txt"), "utf8"), "delete me\n");
+    assert.equal(fs.existsSync(path.join(f.root, "new.bin")), false);
+    assert.equal(git(f.root, "ls-files", "--stage"), index);
+    assert.equal(fs.readFileSync(path.join(f.source, "a.txt"), "utf8"), "original\n");
+    await f.svc.shutdown();
+    const reopened = new FleetHostService(f.home, f.runner);
+    try {
+      assert.equal(
+        (reopened.restore(f.peer, id, command) as { status: string }).status,
+        "accepted",
+      );
+      assert.equal(fs.readFileSync(path.join(f.root, "a.txt"), "utf8"), "later human edit\n");
+    } finally {
+      await reopened.shutdown();
+    }
+  } finally {
+    await f.close();
+  }
+});
+
+test("restore rejects changed content, inode, preview expiry, grants and unsafe link targets", async () => {
+  const f = fixture();
+  try {
+    f.svc.mutate(f.peer, HOST_API + "/runs", f.start);
+    const file = path.join(f.root, "a.txt");
+    fs.writeFileSync(file, "agent\n");
+    f.events().result("done", false);
+    f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+    const id = f.start.operationId,
+      body = f.body({ turn: 1, file: 0 });
+    const p = f.svc.previewRestore(f.peer, id, body);
+    const command = { ...body, expiresAt: p.expiresAt, previewToken: p.previewToken };
+    assert.throws(
+      () => f.svc.previewRestore({ ...f.peer, control: false }, id, body),
+      /control_denied/,
+    );
+    assert.throws(() => f.svc.restore({ ...f.peer, workspaces: [] }, id, command), /run_not_found/);
+    assert.throws(() => f.svc.restore(f.peer, id, { ...command, expiresAt: 1 }), /preview_expired/);
+    fs.writeFileSync(file, "human\n");
+    assert.throws(() => f.svc.restore(f.peer, id, command), /restore_preview_changed/);
+    assert.equal(fs.readFileSync(file, "utf8"), "human\n");
+    const fresh = f.svc.previewRestore(f.peer, id, body);
+    fs.renameSync(file, file + ".old");
+    fs.writeFileSync(file, "human\n");
+    assert.throws(
+      () => f.svc.restore(f.peer, id, { ...command, ...fresh }),
+      /restore_preview_changed/,
+    );
+    fs.unlinkSync(file);
+    fs.symlinkSync(path.join(f.source, "a.txt"), file);
+    assert.throws(() => f.svc.previewRestore(f.peer, id, body), /unsafe_restore_path/);
+    fs.unlinkSync(file);
+    fs.linkSync(path.join(f.source, "a.txt"), file);
+    assert.throws(() => f.svc.previewRestore(f.peer, id, body), /unsafe_restore_path/);
+    assert.equal(fs.readFileSync(path.join(f.source, "a.txt"), "utf8"), "original\n");
+  } finally {
+    await f.close();
+  }
+});
+
+test("an uncertain restore receipt prevents retry from overwriting a subsequent edit", async () => {
+  const f = fixture();
+  const sync = fs.fsyncSync;
+  try {
+    f.svc.mutate(f.peer, HOST_API + "/runs", f.start);
+    const file = path.join(f.root, "a.txt");
+    fs.writeFileSync(file, "agent\n");
+    f.events().result("done", false);
+    f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+    const id = f.start.operationId,
+      body = f.body({ turn: 1, file: 0 });
+    const preview = f.svc.previewRestore(f.peer, id, body);
+    const command = { ...body, expiresAt: preview.expiresAt, previewToken: preview.previewToken };
+    fs.fsyncSync = () => {
+      throw new Error("simulated I/O failure");
+    };
+    assert.equal((f.svc.restore(f.peer, id, command) as { status: string }).status, "unknown");
+    fs.fsyncSync = sync;
+    fs.writeFileSync(file, "human after failure\n");
+    assert.equal((f.svc.restore(f.peer, id, command) as { status: string }).status, "unknown");
+    assert.equal(fs.readFileSync(file, "utf8"), "human after failure\n");
+  } finally {
+    fs.fsyncSync = sync;
+    await f.close();
+  }
+});

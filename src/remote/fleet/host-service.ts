@@ -6,7 +6,13 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AgentSession } from "../../integrations/types.js";
 import { observedActions, runActions, type FleetAgent } from "./capabilities.js";
-import { FleetCheckpoints, createCheckpointWorkspace, type Snapshot } from "./checkpoints.js";
+import {
+  FleetCheckpoints,
+  createCheckpointWorkspace,
+  repositoryIdentity,
+  type Snapshot,
+} from "./checkpoints.js";
+import { fileSummary, restoreFile, restoreState } from "./restore.js";
 import { setTimeout as wait } from "node:timers/promises";
 import {
   type Approval,
@@ -83,7 +89,8 @@ type EventType =
   | "orphan_released"
   | "history_started"
   | "checkpoints_cleared"
-  | "handoff_started";
+  | "handoff_started"
+  | "file_restored";
 const ACTIVE = "('running','waiting','approval','cancelling')";
 // Timeline bounds. A long run drops its oldest entries and reports the gap.
 const MAX_EVENTS = 500,
@@ -105,6 +112,7 @@ function viewerEvent(e: Record<string, unknown>) {
     run_ended: ["state", "reason"],
     history_started: ["state"],
     handoff_started: ["turn", "agent"],
+    file_restored: ["turn", "target"],
   };
   return Object.fromEntries(
     ["seq", "at", "type", ...(fields[String(e.type)] ?? [])]
@@ -542,7 +550,13 @@ export class FleetHostService {
     if (route === HOST_API + "/capabilities")
       return {
         version: 1,
-        features: ["run-events", "turn-changes", "session-capabilities", "agent-handoff"],
+        features: [
+          "run-events",
+          "turn-changes",
+          "session-capabilities",
+          "agent-handoff",
+          "file-restore",
+        ],
         agents: this.agents(peer),
         hostId: peer.hostId,
         instanceId: this.epoch,
@@ -1087,6 +1101,131 @@ export class FleetHostService {
         file,
       ),
     };
+  }
+  private restorePlan(peer: FleetPeer, id: string, body: Body, confirming: boolean) {
+    const run = this.getRun(peer, id);
+    if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== run.workspace)
+      throw new FleetError(403, "control_denied");
+    if (this.hostBusy() || !["completed", "cancelled", "failed"].includes(run.state))
+      throw new FleetError(409, "run_not_finished");
+    const turn = Number(body.turn),
+      file = Number(body.file);
+    if (
+      !Number.isInteger(turn) ||
+      turn < 1 ||
+      turn > 100 ||
+      !Number.isInteger(file) ||
+      file < 0 ||
+      file >= 2000
+    )
+      throw new FleetError(400, "invalid_checkpoint_selection");
+    const workspace = this.workspaces().find((w) => w.id === run.workspace)!;
+    const managed = this.db
+      .prepare("SELECT identity FROM checkpoint_workspaces WHERE workspace=?")
+      .get(run.workspace);
+    try {
+      if (
+        !managed ||
+        fs.realpathSync.native(workspace.root) !== workspace.root ||
+        inode(workspace.root) !== workspace.inode ||
+        repositoryIdentity(workspace.root) !== managed.identity
+      )
+        throw new Error("changed");
+    } catch {
+      throw new FleetError(409, "workspace_replaced");
+    }
+    const row = this.db
+      .prepare("SELECT before,after FROM checkpoints WHERE run=? AND turn=?")
+      .get(id, turn);
+    if (!row?.after) throw new FleetError(409, "checkpoint_unavailable");
+    const target = this.checkpoints.restoreTarget(
+      id,
+      JSON.parse(String(row.before)),
+      JSON.parse(String(row.after)),
+      file,
+    );
+    const current = restoreState(workspace.root, target.path);
+    const expiresAt = confirming ? Number(body.expiresAt) : Date.now() + 10 * 60_000;
+    if (
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now() ||
+      expiresAt > Date.now() + 10 * 60_000
+    )
+      throw new FleetError(409, "preview_expired");
+    const packet = {
+      runId: id,
+      workspaceId: run.workspace,
+      turn,
+      file,
+      path: target.path,
+      current: fileSummary(current),
+      target: fileSummary(target),
+      expiresAt,
+    };
+    const previewToken = crypto
+      .createHmac("sha256", this.handoffKey)
+      .update(JSON.stringify([packet, current.fingerprint, workspace.inode, this.epoch]))
+      .digest("hex");
+    if (
+      confirming &&
+      (typeof body.previewToken !== "string" ||
+        !/^[a-f0-9]{64}$/.test(body.previewToken) ||
+        !crypto.timingSafeEqual(
+          Buffer.from(body.previewToken, "hex"),
+          Buffer.from(previewToken, "hex"),
+        ))
+    )
+      throw new FleetError(409, "restore_preview_changed");
+    return { packet: { ...packet, previewToken }, target, current, workspace };
+  }
+  previewRestore(peer: FleetPeer, id: string, body: Body) {
+    return this.restorePlan(peer, id, body, false).packet;
+  }
+  restore(peer: FleetPeer, id: string, body: Body) {
+    const op = uuid(body.operationId),
+      run = this.getRun(peer, id);
+    if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== run.workspace)
+      throw new FleetError(403, "control_denied");
+    const hash = digest(
+      JSON.stringify([
+        "restore",
+        id,
+        run.workspace,
+        body.turn,
+        body.file,
+        body.expiresAt,
+        body.previewToken,
+      ]),
+    );
+    const previous = this.db
+      .prepare("SELECT hash,status FROM ops WHERE host=? AND device=? AND id=?")
+      .get(peer.hostId, peer.deviceId, op);
+    if (previous) {
+      if (previous.hash !== hash) throw new FleetError(409, "operation_conflict");
+      return this.read(peer, HOST_API + "/operations/" + op);
+    }
+    const plan = this.restorePlan(peer, id, body, true);
+    this.tx(() => {
+      if (Number(this.db.prepare("SELECT COUNT(*) AS n FROM ops").get()?.n) >= 50000)
+        throw new FleetError(507, "receipt_capacity");
+      this.db
+        .prepare("INSERT INTO ops VALUES(?,?,?,?,?,?,?,'unknown')")
+        .run(peer.hostId, peer.deviceId, op, hash, id, "restore", Date.now());
+    });
+    try {
+      restoreFile(plan.workspace.root, plan.target, plan.current.fingerprint);
+      this.tx(() => {
+        this.db
+          .prepare("UPDATE ops SET status='accepted' WHERE host=? AND device=? AND id=?")
+          .run(peer.hostId, peer.deviceId, op);
+        this.record(id, "file_restored", { turn: plan.packet.turn, target: plan.target.path });
+      });
+      return this.read(peer, HOST_API + "/operations/" + op);
+    } catch {
+      // A process or I/O failure can leave a partially written file. Preserve uncertainty;
+      // a retry must never overwrite an intervening user edit.
+      return this.read(peer, HOST_API + "/operations/" + op);
+    }
   }
   checkpointRuns() {
     return this.db

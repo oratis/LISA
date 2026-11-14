@@ -45,7 +45,7 @@ export function uuid(value: unknown): string {
   if (typeof value !== "string" || !UUID.test(value)) throw new FleetError(400, "invalid_id");
   return value;
 }
-export function digest(value: string): string {
+export function digest(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
 export function fleetRoute(method: string, path: string): boolean {
@@ -62,6 +62,8 @@ export function fleetRoute(method: string, path: string): boolean {
   return (
     method === "POST" &&
     (suffix === "/runs" ||
-      /^\/runs\/[a-f0-9-]{36}\/(?:messages|decisions|cancel|handoff-preview|handoff)$/.test(suffix))
+      /^\/runs\/[a-f0-9-]{36}\/(?:messages|decisions|cancel|handoff-preview|handoff|restore-preview|restore)$/.test(
+        suffix,
+      ))
   );
 }

@@ -30,6 +30,12 @@
     codex_native_binary_required: "执行机需要独立的原生 Codex CLI。",
     codex_api_key_required: "请在执行机配置 OPENAI_API_KEY 后启动 Codex 复核。",
     finish_source_first: "请先结束原任务，再预览交接。",
+    restore_preview_changed: "文件、权限或目录身份已变化，请重新预览回退。",
+    restore_file_changed: "文件发生了并发改动，请检查内容后重新预览。",
+    unsafe_restore_path: "回退只支持原目录下的普通文件，不支持符号链接、硬链接或特殊文件。",
+    restore_regular_file_required: "检查点中的此项不是普通文件，请在执行机上手动处理。",
+    restore_file_limit: "文件超过 16 MiB 回退上限。",
+    preview_expired: "预览已过期，请重新预览。",
     handoff_context_missing: "此历史任务未保存完整要求，不能生成交接包。",
     handoff_too_large: "本轮交接内容超过上限（20 个文件 / 96 KiB），请选择范围更小的一轮。",
     handoff_preview_changed: "交接内容已变化，请重新预览并确认。",
@@ -108,6 +114,10 @@
         ];
       case "handoff_started":
         return ["第 " + e.turn + " 轮已交接给 " + (e.agent || "新 agent") + "；新任务独立授权。"];
+      case "approval_decided":
+        return ["Pocket 已发送审批决定 · " + e.outcome];
+      case "file_restored":
+        return ["已将 " + e.target + " 回退到第 " + e.turn + " 轮开始时的内容。"];
       case "checkpoints_cleared":
         return ["执行机所有者已清理此任务的改动检查点。"];
       case "history_started":
@@ -119,7 +129,9 @@
   // Cursors are kept per account, Mac and task, so one Mac's history never lands on another.
   const timelines = new Map();
   let changesKey = "", changesSeq = -1, changesVersion = 0;
+  function clearRestore() { $("restore").replaceChildren(); $("restore").hidden = true; }
   function clearChanges() {
+    clearRestore();
     changesVersion++;
     changesKey = ""; changesSeq = -1;
     $("changes").hidden = true;
@@ -338,6 +350,7 @@
       $("change-files").replaceChildren();
       $("change-patch").textContent = ""; $("change-patch").hidden = true;
       $("change-note").textContent = "检查点已由执行机所有者清理。";
+      clearRestore();
     }
     $("changes").hidden = false;
     const reason = {
@@ -354,6 +367,7 @@
         (reason[t.reason] || (t.state === "running" ? "本轮进行中" : "结束检查点缺失")));
       return btn("查看第 " + t.turn + " 轮改动" + (t.state === "interrupted" ? "（中断时）" : ""), async () => {
         const request = ++changesVersion;
+        clearRestore();
         $("change-files").replaceChildren(); $("change-patch").hidden = true;
         const current = () => v === version && changesKey === key && runId === run.id && changesVersion === request;
         const route = "/runs/" + run.id + "/changes/" + t.turn;
@@ -365,11 +379,38 @@
         $("change-files").replaceChildren(...files.files.map((f) => btn(
           ({ A: "新增", M: "修改", D: "删除", T: "类型变化" }[f.status] || f.status) + " · " + f.path, async () => {
             const fileRequest = ++changesVersion;
+            clearRestore();
             $("change-patch").hidden = true;
             const diff = await remote(id, account, route + "/" + f.id);
             if (v !== version || changesKey !== key || runId !== run.id || changesVersion !== fileRequest) return;
             $("change-patch").textContent = (diff.truncated ? "差异超过 64 KiB，以下仅为开头。\n" : "") + diff.patch;
             $("change-patch").hidden = false;
+            if (cap?.control && cap.features.includes("file-restore") && ["completed", "cancelled", "failed"].includes(run.state)) {
+              const section = $("restore");
+              const validRestore = () => v === version && changesKey === key && runId === run.id && changesVersion === fileRequest;
+              const prepare = btn("预览回退此文件", async () => {
+                if (!validRestore() || busy || pending()) return;
+                const packet = await remote(id, account, "/runs/" + run.id + "/restore-preview", "POST",
+                  { hostId: id, workspaceId: run.workspaceId, turn: t.turn, file: f.id });
+                if (!validRestore()) return;
+                const describe = (side) => !side.exists ? "文件不存在" :
+                  side.bytes + " bytes · 权限 " + side.mode.toString(8) + " · SHA-256 " + side.sha256 +
+                  (side.binary ? "\n二进制文件" : "\n" + side.text + (side.truncated ? "\n内容超过 64 KiB，仅显示开头。" : ""));
+                const send = btn("确认回退此文件", async () => {
+                  if (!validRestore() || busy || pending()) return;
+                  if (!confirm("将 " + packet.path + " 回退到第 " + t.turn + " 轮开始时？当前内容将被覆盖；预览后有改动会拒绝执行。")) return;
+                  if (!validRestore()) return;
+                  clearRestore();
+                  await mutate("/runs/" + run.id + "/restore", { turn: t.turn, file: f.id,
+                    previewToken: packet.previewToken, expiresAt: packet.expiresAt });
+                });
+                section.replaceChildren(make("h4", packet.path + " · 回退预览"),
+                  make("p", "仅修改这个文件，不改变 Git 暂存区。预览有效至 " + new Date(packet.expiresAt).toLocaleString()),
+                  make("h4", "当前内容"), make("pre", describe(packet.current)),
+                  make("h4", "回退后的内容"), make("pre", describe(packet.target)), send);
+              });
+              section.replaceChildren(prepare); section.hidden = false;
+            }
           })));
       });
     }));

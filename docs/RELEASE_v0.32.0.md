@@ -22,7 +22,7 @@ Status: release candidate. Publication is pending the [remaining acceptance gate
 - Fleet captures the start and end of each turn in a private Git store without changing the user's index or branch. Cancellation records partial changes; restart marks unfinished boundaries as interrupted.
 - Inspect added, changed and deleted files, with bounded text diffs and binary-change indicators. Concurrent workspace changes are labelled: a diff shows the workspace's change, not proof that the agent made every edit.
 - Checkpoints cover the first 100 turns, at most 2,000 entries / 16 MiB per snapshot and 64 KiB per displayed diff. Unsupported or oversized snapshots show an unavailable state without stopping the task.
-- Owners can delete a finished task's checkpoint objects. This clears displayed diffs but retains workspace files, task history and operation receipts. Rollback and automatic merging are not included.
+- Owners can delete a finished task's checkpoint objects. This clears displayed diffs but retains workspace files, task history and operation receipts. Selected-file rollback now has a signed preview and explicit confirmation, with current-content, inode, permission and workspace checks. It preserves the Git index and unrelated files; receipts prevent retrying over later edits. Automatic merging remains in progress.
 
 ## Capability-aware controls and confirmed agent handoffs
 
@@ -57,7 +57,7 @@ Pocket is published separately from this Mac/CLI version. The public App Store v
 
 - Replace Lisa.app and restart its background service (or restart the Mac) to load the bundled backend. CLI users can run `npm install -g @oratis/lisa@0.32.0` or upgrade the Homebrew formula after it is updated.
 - Existing workspaces continue to run without checkpoints until a new isolated workspace is created and granted. Older clients default to Claude; historical tasks without full saved requests cannot generate a handoff packet.
-- The private Fleet ledger retains requests/results for the first 100 turns and confirmed handoff packets. Checkpoint cleanup does not erase those records. Full ledger cleanup, cross-task storage quotas, automatic worktree removal, rollback and auto-merge remain future work.
+- The private Fleet ledger retains requests/results for the first 100 turns and confirmed handoff packets. Checkpoint cleanup does not erase those records. Full ledger cleanup, cross-task storage quotas, automatic worktree removal and auto-merge remain future work.
 - Pocket saves up to 32 Macs with isolated credentials and pins, explicit switching and safe single-Mac migration. Account changes remove all account-based Macs; direct LAN/QR profiles remain separate. Cloud/Mac histories and credentials do not automatically synchronize.
 - Apple Calendar and Reminders still require a Swift toolchain and are not available in the bundled Mac app. Hosted autonomous tasks remain off by default.
 - Simulator and local integration tests do not establish physical iPhone Wi-Fi/cellular switching, Mac sleep/wake on a remote machine, or a provider's live inference behavior. Current evidence and outstanding release acceptance are recorded in the [checklist](RELEASE_CHECKLIST_v0.32.0.md).

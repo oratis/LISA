@@ -19,6 +19,8 @@ The executing Mac keeps the task state, receipts and ordered timeline. Reconnect
 
 Open a turn's checkpoint to list changed files and view a diff. Ordinary directories have no checkpoints. Each snapshot holds up to 2,000 entries / 16 MiB, the first 100 turns are captured, and a displayed file diff is capped at 64 KiB. Ignored untracked files are excluded. Binary changes, concurrent edits, interrupted turns and unavailable snapshots have explicit labels. The diff cannot independently attribute changes to the agent.
 
+After the task ends, select a changed file and choose **Preview file restore**. Review its current and turn-start contents, then confirm. Fleet refuses a changed file, inode, permissions or workspace, and never restores through symlinks or hardlinks. Binary files show their size and SHA-256 digest. The target is the selected turn’s start; only that file is changed, including removal of a file added during the turn. The Git index stays unchanged. A lost response retrieves the original receipt; an unknown result must be checked on the execution Mac.
+
 To hand off, finish the original task, select another agent and a checkpointed turn, add any verification notes and request a preview. Review the exact packet before confirming. It contains the initial requirement, selected turn's requirement/result, file diffs and your notes; it does not include all other turns or old approvals. Notes are user-provided assertions, not evidence that a command ran. The maximum is 20 files / 96 KiB. Edited, expired or invalidated previews must be regenerated.
 
 Codex reviews only this packet in an empty sandbox; it cannot inspect the source project or run your tests. Claude may request its own new tool approvals. Handoff remains on the same executing Mac and workspace.
@@ -35,4 +37,4 @@ Pocket saves up to 32 Macs with separate credentials and pins. Use the Mac switc
 
 The owner can clean checkpoints for a finished task. This deletes private snapshot objects and clears displayed diffs, while keeping workspace files, receipts and the timeline. Fleet also keeps full requests/results for the first 100 turns and confirmed handoff packets in its private ledger; checkpoint cleanup does not delete them.
 
-Rollback, automatic merge, automatic worktree deletion, full ledger cleanup, storage quotas across tasks are not part of these three phases. Optional T3 connectors and screenshot window context are separate proposals. Detailed implementation and acceptance scenarios are in the [workflow plan](PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md).
+Automatic merge, automatic worktree deletion, full ledger cleanup, storage quotas across tasks are not part of these three phases. Optional T3 connectors and screenshot window context are separate proposals. Detailed implementation and acceptance scenarios are in the [workflow plan](PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md).

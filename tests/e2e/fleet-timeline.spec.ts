@@ -26,9 +26,12 @@ async function openTask(page: Page, modern = false) {
     handoffs: 0,
     slowPreview: false,
     receiver: false,
+    restores: 0,
+    slowRestore: false,
   };
   let finishDiff: (() => void) | undefined;
   let finishPreview: (() => void) | undefined;
+  let finishRestore: (() => void) | undefined;
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
   await page.route("**/api/fleet/hosts", (route) =>
@@ -45,7 +48,7 @@ async function openTask(page: Page, modern = false) {
           features: [
             "run-events",
             "turn-changes",
-            ...(modern ? ["session-capabilities", "agent-handoff"] : []),
+            ...(modern ? ["session-capabilities", "agent-handoff", "file-restore"] : []),
           ],
           ...(modern
             ? {
@@ -107,6 +110,45 @@ async function openTask(page: Page, modern = false) {
             : {}),
         },
       });
+    if (path.endsWith("/restore-preview")) {
+      const complete = () =>
+        route.fulfill({
+          json: {
+            path: "test.txt",
+            turn: 1,
+            file: 0,
+            current: {
+              exists: true,
+              text: "current <script>value</script>",
+              bytes: 30,
+              mode: 420,
+              sha256: "current",
+            },
+            target: { exists: true, text: "previous", bytes: 8, mode: 420, sha256: "previous" },
+            previewToken: "restore-token",
+            expiresAt: Date.now() + 600000,
+          },
+        });
+      if (state.slowRestore) {
+        finishRestore = () => {
+          void complete();
+        };
+        return;
+      }
+      return complete();
+    }
+    if (path.endsWith("/restore")) {
+      expect(route.request().postDataJSON().payload).toMatchObject({
+        hostId: macA.id,
+        workspaceId,
+        turn: 1,
+        file: 0,
+        previewToken: "restore-token",
+      });
+      state.restores++;
+      state.lastSeq++;
+      return route.fulfill({ json: { status: "accepted", run } });
+    }
     if (path.endsWith("/handoff-preview")) {
       const complete = () =>
         route.fulfill({
@@ -195,7 +237,12 @@ async function openTask(page: Page, modern = false) {
   await page.getByRole("button", { name: /Mac A/ }).click();
   await expect(page.getByRole("button", { name: "允许这一次" })).toBeEnabled();
   await expect(page.locator("#timeline-list li")).toHaveCount(2);
-  return { state, finishDiff: () => finishDiff?.(), finishPreview: () => finishPreview?.() };
+  return {
+    state,
+    finishDiff: () => finishDiff?.(),
+    finishPreview: () => finishPreview?.(),
+    finishRestore: () => finishRestore?.(),
+  };
 }
 
 test("switching Macs clears the old approval even if the new task list fails", async ({ page }) => {
@@ -440,4 +487,50 @@ test("a late handoff preview cannot enable sending on a different Mac", async ({
   await expect(page.locator("#handoff")).toBeHidden();
   await expect(page.locator("#handoff")).toBeEmpty();
   expect(state.handoffs).toBe(0);
+});
+
+test("file restore requires exact preview and confirmation without changing other tasks", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await page.getByRole("button", { name: "修改 · test.txt" }).click();
+  await expect(page.getByRole("button", { name: "确认回退此文件" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览回退此文件" }).click();
+  await expect(page.locator("#restore")).toContainText("current <script>value</script>");
+  await expect(page.locator("#restore script")).toHaveCount(0);
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "确认回退此文件" }).click();
+  expect(state.restores).toBe(0);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "确认回退此文件" }).click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(state.restores).toBe(1);
+});
+
+test("a restore preview arriving after switching Macs cannot enable file writes", async ({
+  page,
+}) => {
+  const { state, finishRestore } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "查看第 1 轮改动" }).click();
+  await page.getByRole("button", { name: "修改 · test.txt" }).click();
+  state.slowRestore = true;
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") &&
+      r.postDataJSON()?.path?.endsWith("/restore-preview"),
+  );
+  await page.getByRole("button", { name: "预览回退此文件" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  finishRestore();
+  await expect(page.locator("#restore")).toBeHidden();
+  await expect(page.locator("#restore")).toBeEmpty();
+  expect(state.restores).toBe(0);
 });
