@@ -2,6 +2,41 @@ import XCTest
 @testable import LisaPocket
 
 final class FleetTests: XCTestCase {
+    func testCapabilitiesDecodeWithoutGrantingPocketControlAndLegacyHostsStillWork() throws {
+        let json = #"{"id":"task","hostId":"mac","workspaceName":"Project","state":"completed","createdAt":1,"updatedAt":2,"lastSeq":3,"result":"reviewed","truncated":false,"agent":"codex","capabilities":{"observe":true,"append":false,"cancel":false,"approve":false,"resume":false,"handoff":false}}"#
+        let task = try JSONDecoder().decode(FleetTask.self, from: Data(json.utf8))
+        XCTAssertEqual(task.agent, "codex")
+        XCTAssertEqual(task.accessLabel, "Read only")
+        XCTAssertEqual(task.capabilities?.approve, false)
+        XCTAssertEqual(task.capabilities?.resume, false)
+        XCTAssertTrue(run().canObserve, "older hosts omit capabilities and retain the read-only view")
+    }
+    @MainActor func testWithdrawnObservationClosesTheSelectedTask() async {
+        let client = Client(), model = FleetPocketModel()
+        client.runs = [run()]; client.pages = [page([1])]
+        model.selection = "task-a"
+        await model.refresh(client)
+        var unavailable: FleetTask = run()
+        unavailable.capabilities = FleetActions(observe: false, append: false, cancel: false, approve: false, resume: false, handoff: false)
+        client.runs = [unavailable]
+        await model.refresh(client)
+        XCTAssertTrue(model.runs.isEmpty)
+        XCTAssertNil(model.selection)
+        XCTAssertTrue(model.timeline.entries.isEmpty)
+    }
+    @MainActor func testObservationWithdrawnBetweenListAndPageClearsCachedDetails() async {
+        let client = Client(), model = FleetPocketModel()
+        client.runs = [run()]; client.pages = [page([1])]
+        model.selection = "task-a"
+        await model.refresh(client)
+        var unavailable: FleetTask = run()
+        unavailable.capabilities = FleetActions(observe: false, append: false, cancel: false, approve: false, resume: false, handoff: false)
+        client.pages = [FleetPage(run: unavailable, events: [], firstSeq: 1, lastSeq: 1, gap: false, reset: false, more: false)]
+        await model.refresh(client)
+        XCTAssertTrue(model.runs.isEmpty)
+        XCTAssertNil(model.selection)
+        XCTAssertTrue(model.timeline.entries.isEmpty)
+    }
     private func run(host: String = "mac-a", id: String = "task-a", last: Int = 4) -> FleetTask {
         FleetTask(id: id, hostId: host, workspaceName: "Project", state: "waiting", createdAt: 1,
                   updatedAt: 10, lastSeq: last, result: "result", truncated: false, approval: nil)

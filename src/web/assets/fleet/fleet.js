@@ -26,6 +26,14 @@
     stale_approval: "审批已处理或已失效。",
     workspace_replaced: "目录身份已变化，请在 mini 上核对。",
     git_worktree_unavailable: "请确认登记的是 Git 仓库根目录，且已有提交。",
+    codex_not_installed: "执行机未安装 Codex CLI。",
+    codex_native_binary_required: "执行机需要独立的原生 Codex CLI。",
+    codex_api_key_required: "请在执行机配置 OPENAI_API_KEY 后启动 Codex 复核。",
+    finish_source_first: "请先结束原任务，再预览交接。",
+    handoff_context_missing: "此历史任务未保存完整要求，不能生成交接包。",
+    handoff_too_large: "本轮交接内容超过上限（20 个文件 / 96 KiB），请选择范围更小的一轮。",
+    handoff_preview_changed: "交接内容已变化，请重新预览并确认。",
+    handoff_preview_expired: "交接预览已过期，请重新预览。",
     checkpoint_unavailable: "检查点不完整或已清理，无法展示差异。",
     secure_pocket_required: "请选择已通过安全配对的 Pocket；旧版配对需撤销后重新配对。",
   };
@@ -98,6 +106,8 @@
             ? "执行机后端重启后停止了上一后端留下的 Claude 进程，已释放执行位。结果待核实。"
             : "执行机后端重启时旧 Claude 进程已退出，已释放执行位。结果待核实。",
         ];
+      case "handoff_started":
+        return ["第 " + e.turn + " 轮已交接给 " + (e.agent || "新 agent") + "；新任务独立授权。"];
       case "checkpoints_cleared":
         return ["执行机所有者已清理此任务的改动检查点。"];
       case "history_started":
@@ -125,6 +135,7 @@
     host = null,
     cap = null,
     runs = [],
+    observations = [],
     runId = "",
     version = 0,
     busy = false,
@@ -138,6 +149,9 @@
     version++;
     cap = null;
     runs = [];
+    observations = [];
+    clearHandoff();
+    $("observations").replaceChildren();
     runId = "";
     shown = "";
     timelines.clear();
@@ -279,6 +293,10 @@
     const c = await remote(h.id, scope, "/capabilities");
     if (v !== version) return;
     cap = c;
+    $("agent").replaceChildren(...(c.agents || [{ id: "claude-code" }]).map((a) => {
+      const option = make("option", a.id === "codex" ? "Codex · 只读交接包复核" : "Claude Code");
+      option.value = a.id; return option;
+    }));
     $("workspace").replaceChildren(
       ...c.workspaces.map((w) => {
         const o = make("option", w.name);
@@ -289,11 +307,6 @@
     const saved = pending();
     if (saved && c.workspaces.some((w) => w.id === saved.payload.workspaceId))
       $("workspace").value = saved.payload.workspaceId;
-    $("capability").textContent = c.unavailable
-      ? messages[c.unavailable] || c.unavailable
-      : c.control
-        ? "Claude Code · Read / Edit / Write 逐次审批。指令和获准读取的内容会发往这台 mini 配置的 Claude API。"
-        : "已授予观察权限";
     await refreshRuns(v);
   }
   async function refreshRuns(v = version) {
@@ -301,6 +314,9 @@
     const d = await remote(host.id, scope, "/runs");
     if (v !== version) return;
     runs = d.runs;
+    observations = d.observations || [];
+    if (d.agents) cap.agents = d.agents;
+    if (typeof d.control === "boolean") cap.control = d.control;
     render();
     $("work").hidden = false;
     await syncTimeline(v);
@@ -430,6 +446,9 @@
     if (!rows.some((r) => r.id === runId)) runId = (active || rows[0])?.id || "";
     renderTimeline();
     if (changesKey && changesKey !== timelineKey(runId)) clearChanges();
+    if (handoffKey && (handoffKey !== timelineKey(runId) || handoffSeq !== rows.find((x) => x.id === runId)?.lastSeq || !rows.find((x) => x.id === runId)?.capabilities?.handoff)) clearHandoff();
+    $("observations").replaceChildren(...observations.filter((o) => o.workspaceId === wid && o.capabilities?.observe).map((o) =>
+      make("p", o.agent + " · 外部观察会话 · " + o.state + " · 仅观察")));
     const r = rows.find((x) => x.id === runId),
       saved = pending(),
       blocked = busy || !!saved;
@@ -437,13 +456,20 @@
     const anotherWorkspace = saved && saved.payload.workspaceId !== wid;
     $("retry").disabled = busy || !!anotherWorkspace;
     $("retry").textContent = anotherWorkspace ? "请切回原工作区核对收据" : "核对收据并重试原操作";
-    $("start").disabled =
-      blocked ||
-      !wid ||
-      !cap.control ||
-      !!cap.unavailable ||
-      runs.some((x) => ["running", "waiting", "approval", "cancelling"].includes(x.state));
-    $("follow").disabled = blocked || !cap.control || r?.state !== "waiting";
+    const selectedAgent = $("agent").value;
+    const provider = cap.agents?.find((a) => a.id === selectedAgent);
+    const unavailable = provider ? provider.unavailable : cap.unavailable;
+    $("capability").textContent = unavailable ? messages[unavailable] || unavailable
+      : selectedAgent === "codex" ? "Codex 只读复核发送的文本与 diff；不读取项目、不执行验证命令，不支持追加、审批或恢复。内容使用执行机的 OpenAI API 配置发送。"
+      : "Claude Code · Read / Edit / Write 逐次审批，支持轮间追加与取消，不支持恢复。内容使用执行机的 Claude API 配置发送。";
+    $("start").disabled = blocked || !wid || !cap.control || !!unavailable ||
+      (cap.agents && !provider?.start) || runs.some((x) => ["running", "waiting", "approval", "cancelling"].includes(x.state));
+    const actions = r?.capabilities || (cap.features?.includes("session-capabilities") ? {} : {
+      append: cap.control && r?.state === "waiting", approve: cap.control && !!r?.approval,
+      cancel: cap.control && ["running", "waiting", "approval"].includes(r?.state),
+    });
+    $("follow").disabled = blocked || !actions.append;
+    $("follow").hidden = !actions.append;
     const list = $("runs");
     list.replaceChildren();
     if (!rows.length) {
@@ -472,30 +498,80 @@
     };
     list.append(select);
     const card = make("article", "");
-    card.append(make("strong", phase[r.state] || r.state));
+    card.append(make("strong", (r.agent || "claude-code") + " · " + (phase[r.state] || r.state)));
     if (r.updatedAt)
       card.append(make("small", " · 最后更新 " + new Date(r.updatedAt).toLocaleString()));
     if (r.result) card.append(make("pre", r.result));
     if (r.approval) {
       const a = r.approval;
       card.append(make("h3", "审批 " + a.tool), make("pre", JSON.stringify(a.input, null, 2)));
-      for (const [label, allow] of [
+      if (actions.approve) for (const [label, allow] of [
         ["允许这一次", true],
         ["拒绝", false],
       ]) {
         const b = btn(label, () =>
           mutate("/runs/" + r.id + "/decisions", { approvalId: a.id, allow }),
         );
-        b.disabled = blocked || !cap.control;
+        b.disabled = blocked;
         card.append(b);
       }
     }
-    if (["running", "waiting", "approval"].includes(r.state)) {
+    if (actions.cancel) {
       const b = btn("取消此任务", () => mutate("/runs/" + r.id + "/cancel", {}));
-      b.disabled = blocked || !cap.control;
+      b.disabled = blocked;
       card.append(b);
     }
+    if (actions.handoff && cap.features?.includes("agent-handoff")) {
+      const handoff = btn("预览跨 agent 交接", () => openHandoff(r));
+      handoff.disabled = blocked; card.append(handoff);
+    }
     list.append(card);
+  }
+  let handoffKey = "", handoffSeq = -1, handoffVersion = 0;
+  function clearHandoff() {
+    handoffVersion++; handoffKey = ""; handoffSeq = -1;
+    $("handoff").hidden = true; $("handoff").replaceChildren();
+  }
+  async function openHandoff(run) {
+    clearHandoff();
+    const v = version, request = ++handoffVersion, key = timelineKey(run.id), id = host.id, account = scope;
+    const turns = await remote(id, account, "/runs/" + run.id + "/changes");
+    if (v !== version || request !== handoffVersion || runId !== run.id) return;
+    handoffKey = key; handoffSeq = run.lastSeq;
+    const section = $("handoff"), agent = document.createElement("select"), turn = document.createElement("select");
+    agent.setAttribute("aria-label", "交接接收方"); turn.setAttribute("aria-label", "交接轮次");
+    for (const a of cap.agents.filter((a) => a.id !== run.agent && a.start)) {
+      const option = make("option", a.id + (a.mode === "packet-review" ? " · 只读交接包复核" : " · 独立审批的新任务"));
+      option.value = a.id; agent.append(option);
+    }
+    for (const t of turns.turns.filter((t) => t.available)) {
+      const option = make("option", "第 " + t.turn + " 轮" + (t.state === "interrupted" ? "（中断）" : ""));
+      option.value = t.turn; turn.append(option);
+    }
+    const verification = document.createElement("textarea");
+    verification.setAttribute("aria-label", "验证说明"); verification.maxLength = 4000;
+    const preview = make("pre", ""), send = btn("确认发送交接包", async () => {});
+    send.hidden = true;
+    let generation = 0;
+    const invalidate = () => { generation++; preview.textContent = ""; send.hidden = true; };
+    agent.onchange = turn.onchange = verification.oninput = invalidate;
+    const prepare = btn("生成交接预览", async () => {
+      invalidate(); const expected = generation;
+      const body = { hostId: id, workspaceId: run.workspaceId, agent: agent.value, turn: Number(turn.value), verification: verification.value };
+      const packet = await remote(id, account, "/runs/" + run.id + "/handoff-preview", "POST", body);
+      if (v !== version || handoffKey !== key || expected !== generation || request !== handoffVersion) return;
+      preview.textContent = host.name + " · " + packet.recipient.agent + "\n\n" + packet.prompt;
+      send.hidden = false;
+      send.onclick = () => guard(async () => {
+        if (expected !== generation || handoffKey !== key) return;
+        await mutate("/runs/" + run.id + "/handoff", { ...body, previewToken: packet.previewToken, expiresAt: packet.expiresAt });
+      });
+    });
+    prepare.disabled = !agent.value || !turn.value;
+    section.replaceChildren(make("h3", "跨 agent 交接"),
+      make("p", "接收方位于当前 Mac。仅交接初始要求、选中轮次的要求/结果和 diff；其他轮次不包含。旧审批不会转移。"),
+      agent, turn, make("p", "验证说明（由你提供，原样发送，不代表平台验证）"), verification, prepare, preview, send);
+    section.hidden = false;
   }
   async function mutate(path, values) {
     if (busy || pending()) return;
@@ -558,10 +634,11 @@
   }
   $("task-form").onsubmit = (e) => {
     e.preventDefault();
-    if (!$("start").disabled) guard(() => mutate("/runs", { text: $("prompt").value }));
+    if (!$("start").disabled) guard(() => mutate("/runs", { text: $("prompt").value, ...(cap.agents ? { agent: $("agent").value } : {}) }));
   };
   $("follow").onclick = () =>
     guard(() => mutate("/runs/" + runId + "/messages", { text: $("prompt").value }));
+  $("agent").onchange = render;
   $("workspace").onchange = () => {
     runId = "";
     $("prompt").value = "";

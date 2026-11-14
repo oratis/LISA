@@ -14,15 +14,21 @@ test.afterAll(async () => {
   await lisa?.stop();
 });
 
-async function openTask(page: Page) {
+async function openTask(page: Page, modern = false) {
   const state = {
     lastSeq: 2,
     revoked: false,
     macBUnavailable: true,
     slowDiff: false,
     cleared: false,
+    taskState: "approval",
+    mayControl: true,
+    handoffs: 0,
+    slowPreview: false,
+    receiver: false,
   };
   let finishDiff: (() => void) | undefined;
+  let finishPreview: (() => void) | undefined;
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
   await page.route("**/api/fleet/hosts", (route) =>
@@ -36,7 +42,19 @@ async function openTask(page: Page) {
     if (path === "/capabilities") {
       return route.fulfill({
         json: {
-          features: ["run-events", "turn-changes"],
+          features: [
+            "run-events",
+            "turn-changes",
+            ...(modern ? ["session-capabilities", "agent-handoff"] : []),
+          ],
+          ...(modern
+            ? {
+                agents: [
+                  { id: "claude-code", start: true, mode: "workspace-edit" },
+                  { id: "codex", start: true, mode: "packet-review" },
+                ],
+              }
+            : {}),
           control: true,
           workspaces: [{ id: workspaceId, name: "Project" }],
         },
@@ -46,16 +64,78 @@ async function openTask(page: Page) {
       return route.fulfill({ status: 503, json: { error: "connection_interrupted" } });
     }
     const run = {
-      id: runId,
+      id: state.receiver ? "9f9e4e5f-960a-4a93-8dc9-b98f0b06bdba" : runId,
       hostId,
       workspaceId,
-      state: "approval",
+      state: state.taskState,
+      ...(modern
+        ? {
+            agent: state.receiver ? "codex" : "claude-code",
+            capabilities: {
+              observe: true,
+              append: false,
+              cancel: state.mayControl && state.taskState === "approval",
+              approve: state.mayControl && state.taskState === "approval",
+              resume: false,
+              handoff: state.mayControl && state.taskState === "completed",
+            },
+          }
+        : {}),
       createdAt: 1,
       lastSeq: state.lastSeq,
       result: hostId === macA.id ? "Result from Mac A" : "Result from Mac B",
-      approval: { id: "a1", tool: "Read", input: { file_path: "test.txt" } },
+      approval:
+        state.taskState === "approval"
+          ? { id: "a1", tool: "Read", input: { file_path: "test.txt" } }
+          : null,
     };
-    if (path === "/runs") return route.fulfill({ json: { runs: [run] } });
+    if (path === "/runs")
+      return route.fulfill({
+        json: {
+          runs: [run],
+          ...(modern
+            ? {
+                observations: [
+                  {
+                    workspaceId,
+                    agent: "codex",
+                    state: "working",
+                    capabilities: { observe: true },
+                  },
+                ],
+              }
+            : {}),
+        },
+      });
+    if (path.endsWith("/handoff-preview")) {
+      const complete = () =>
+        route.fulfill({
+          json: {
+            recipient: { agent: "codex" },
+            prompt: "Original request\n+<script>change</script>\nValidation: npm test passed",
+            previewToken: "signed-preview",
+            expiresAt: Date.now() + 600000,
+          },
+        });
+      if (state.slowPreview) {
+        finishPreview = () => {
+          void complete();
+        };
+        return;
+      }
+      return complete();
+    }
+    if (path.endsWith("/handoff")) {
+      const payload = route.request().postDataJSON().payload;
+      expect(payload.agent).toBe("codex");
+      expect(payload.previewToken).toBe("signed-preview");
+      state.handoffs++;
+      state.receiver = true;
+      state.taskState = "running";
+      return route.fulfill({
+        json: { status: "accepted", run: { id: "9f9e4e5f-960a-4a93-8dc9-b98f0b06bdba" } },
+      });
+    }
     if (path.endsWith("/changes"))
       return route.fulfill({
         json: {
@@ -85,7 +165,7 @@ async function openTask(page: Page) {
       return complete();
     }
     const url = new URL(path, lisa.baseURL);
-    expect(url.pathname).toBe("/runs/" + runId + "/events");
+    expect(url.pathname).toBe("/runs/" + run.id + "/events");
     const cursor = Number(url.searchParams.get("after"));
     const reset = cursor > state.lastSeq;
     const after = reset ? 0 : cursor;
@@ -115,7 +195,7 @@ async function openTask(page: Page) {
   await page.getByRole("button", { name: /Mac A/ }).click();
   await expect(page.getByRole("button", { name: "允许这一次" })).toBeEnabled();
   await expect(page.locator("#timeline-list li")).toHaveCount(2);
-  return { state, finishDiff: () => finishDiff?.() };
+  return { state, finishDiff: () => finishDiff?.(), finishPreview: () => finishPreview?.() };
 }
 
 test("switching Macs clears the old approval even if the new task list fails", async ({ page }) => {
@@ -290,4 +370,58 @@ test("checkpoint cleanup clears an already displayed diff on the next poll", asy
   await expect(page.locator("#change-turns")).toContainText("检查点已清理");
   await expect(page.locator("#change-patch")).toBeEmpty();
   await expect(page.locator("#change-files")).toBeEmpty();
+});
+
+test("host actions hide unavailable controls alongside observed sessions", async ({ page }) => {
+  const { state } = await openTask(page, true);
+  await expect(page.locator("#observations")).toContainText("codex · 外部观察会话");
+  await expect(page.locator("#observations button")).toHaveCount(0);
+  state.mayControl = false;
+  await page.clock.fastForward(4000);
+  await expect(page.getByRole("button", { name: "允许这一次" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "取消此任务" })).toHaveCount(0);
+  await expect(page.locator("#follow")).toBeHidden();
+});
+
+test("handoff requires a preview and confirmation, and editing invalidates that preview", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "预览跨 agent 交接" }).click();
+  await page.getByLabel("验证说明").fill("npm test passed");
+  await page.getByRole("button", { name: "生成交接预览" }).click();
+  await expect(page.locator("#handoff pre")).toContainText("+<script>change</script>");
+  await expect(page.locator("#handoff script")).toHaveCount(0);
+  expect(state.handoffs).toBe(0);
+  await page.getByLabel("验证说明").fill("not tested");
+  await expect(page.getByRole("button", { name: "确认发送交接包" })).toBeHidden();
+  await page.getByRole("button", { name: "生成交接预览" }).click();
+  await page.getByRole("button", { name: "确认发送交接包" }).click();
+  await expect.poll(() => state.handoffs).toBe(1);
+  await expect(page.locator("#handoff")).toBeHidden();
+  await expect(page.locator("#runs")).toContainText("codex");
+});
+
+test("a late handoff preview cannot enable sending on a different Mac", async ({ page }) => {
+  const { state, finishPreview } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "预览跨 agent 交接" }).click();
+  state.slowPreview = true;
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") &&
+      r.postDataJSON()?.path?.endsWith("/handoff-preview"),
+  );
+  await page.getByRole("button", { name: "生成交接预览" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  finishPreview();
+  await expect(page.locator("#handoff")).toBeHidden();
+  await expect(page.locator("#handoff")).toBeEmpty();
+  expect(state.handoffs).toBe(0);
 });

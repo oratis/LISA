@@ -1,6 +1,15 @@
 import Foundation
 import Combine
 
+struct FleetActions: Decodable, Equatable {
+    let observe: Bool
+    let append: Bool
+    let cancel: Bool
+    let approve: Bool
+    let resume: Bool
+    let handoff: Bool
+}
+
 struct FleetTask: Decodable, Identifiable, Equatable {
     struct Approval: Decodable, Equatable {
         let tool: String
@@ -17,6 +26,11 @@ struct FleetTask: Decodable, Identifiable, Equatable {
     let result: String
     let truncated: Bool
     let approval: Approval?
+    var agent: String? = nil
+    var capabilities: FleetActions? = nil
+    // This Pocket route supports observation only, even if a future host offers more.
+    var canObserve: Bool { capabilities?.observe ?? true }
+    var accessLabel: String { canObserve ? "Read only" : "Access unavailable" }
 }
 
 struct FleetEntry: Decodable, Identifiable, Equatable {
@@ -33,6 +47,7 @@ struct FleetEntry: Decodable, Identifiable, Equatable {
     var state: String? = nil
     var reason: String? = nil
     var by: String? = nil
+    var agent: String? = nil
 
     var title: String {
         switch type {
@@ -46,6 +61,7 @@ struct FleetEntry: Decodable, Identifiable, Equatable {
         case "run_ended": return "Task ended · \(state ?? "")"
         case "outcome_unknown": return "Mac restarted · outcome needs checking"
         case "owner_released", "orphan_released": return "Previous process released · outcome needs checking"
+        case "handoff_started": return "Turn \(turn ?? 0) handed off · \(agent ?? "agent")"
         case "history_started": return "Earlier task · history starts here"
         default: return "Task update"
         }
@@ -105,10 +121,10 @@ final class FleetPocketModel: ObservableObject {
         do {
             let next = try await client.fleetTasks()
             guard !Task.isCancelled, expected == generation else { return }
-            runs = next
+            runs = next.filter(\.canObserve)
             message = nil
             guard let id = selection else { return }
-            guard next.contains(where: { $0.id == id }) else {
+            guard runs.contains(where: { $0.id == id }) else {
                 selection = nil
                 message = "This task is no longer shared with this Pocket."
                 return
@@ -118,6 +134,7 @@ final class FleetPocketModel: ObservableObject {
                 let page = try await client.fleetEvents(id, after: timeline.cursor)
                 guard !Task.isCancelled, expected == generation else { return }
                 guard page.run.id == id else { throw LisaError.decode }
+                guard page.run.canObserve else { throw LisaError.http(403) }
                 timeline.merge(page)
                 if !page.more { break }
             }

@@ -91,7 +91,7 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   },
   fleet: {
     forget: "not_scanned",
-    what: "registered workspaces, task viewer grants, timelines (instruction and result excerpts), pending tool inputs and private Git checkpoints (full file contents)",
+    what: "registered workspaces, task viewer grants, timelines (instruction and result excerpts), initial/turn requests and confirmed handoff packets, pending tool inputs and private Git checkpoints (full file contents)",
   },
   "otp.json": { forget: "not_scanned", what: "sign-in codes by email address" },
   "current-mood.json": { forget: "not_scanned", what: "current mood and its origin label" },

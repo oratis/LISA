@@ -63,6 +63,23 @@
                       "items": {
                         "$ref": "#/components/schemas/FleetRun"
                       }
+                    },
+                    "observations": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "description": "Enabled external Claude/Codex observations in exactly the granted workspace roots, metadata only; no transcript or approval inputs. Other managed sessions are excluded.",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetObservation"
+                      }
+                    },
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetAgent"
+                      }
+                    },
+                    "control": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -125,6 +142,14 @@
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 16000
+                      },
+                      "agent": {
+                        "type": "string",
+                        "enum": [
+                          "claude-code",
+                          "codex"
+                        ],
+                        "default": "claude-code"
                       }
                     }
                   }
@@ -4341,6 +4366,105 @@
           }
         }
       }
+    },
+    "/api/agent-host/v1/runs/{id}/handoff-preview": {
+      "post": {
+        "operationId": "previewFleetHandoff",
+        "description": "Preview a cross-agent handoff on the same host/workspace after the source process has ended. No agent starts and no operation is recorded. Requires the initiating controller and current control/workspace grant. Rejected if raw context or checkpoints are missing.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetHandoffPreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetHandoffSelection"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-host/v1/runs/{id}/handoff": {
+      "post": {
+        "operationId": "confirmFleetHandoff",
+        "description": "Confirm the exact signed preview. The host rebuilds and verifies the packet and current permissions before recording a new run, linked timeline entries and an idempotent receipt atomically. Approvals, credentials and provider sessions are never transferred. Codex reviews only this packet in an empty sandbox; Claude uses a new independently approved session.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetHandoffSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "previewToken",
+                      "expiresAt"
+                    ],
+                    "properties": {
+                      "previewToken": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "expiresAt": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4431,9 +4555,15 @@
           },
           "features": {
             "type": "array",
-            "description": "Optional protocol features of this host. `run-events`: the task timeline route. Absent on hosts that predate it.",
+            "description": "Optional protocol features: run-events, turn-changes, session-capabilities and agent-handoff. Older hosts omit features they do not implement.",
             "items": {
               "type": "string"
+            }
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetAgent"
             }
           }
         }
@@ -4525,6 +4655,19 @@
             "type": "integer",
             "minimum": 0,
             "description": "Sequence number of the newest timeline entry. A client reads the timeline when this moves past its cursor."
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/FleetActions"
+          },
+          "kind": {
+            "const": "managed"
           }
         }
       },
@@ -4547,7 +4690,10 @@
           },
           "type": {
             "type": "string",
-            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started."
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started.",
+            "enum": [
+              "handoff_started"
+            ]
           },
           "turn": {
             "type": "integer",
@@ -4617,6 +4763,21 @@
               "stopped"
             ],
             "description": "On orphan_released: whether the agent left by an earlier backend had already exited, or this backend stopped it."
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "sourceRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetRunId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -9697,6 +9858,16 @@
                 }
               }
             ]
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/FleetActions"
           }
         },
         "additionalProperties": false,
@@ -9721,7 +9892,10 @@
           },
           "type": {
             "type": "string",
-            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started."
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started.",
+            "enum": [
+              "handoff_started"
+            ]
           },
           "turn": {
             "type": "integer",
@@ -9776,6 +9950,13 @@
           },
           "reason": {
             "type": "string"
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
           }
         },
         "additionalProperties": false
@@ -9945,6 +10126,245 @@
           },
           "concurrent": {
             "type": "boolean"
+          }
+        }
+      },
+      "FleetActions": {
+        "type": "object",
+        "description": "Effective operations for the current adapter, run state and authenticated caller. The host rechecks every mutation. External observations and Pocket shares are read-only. Neither Fleet adapter currently resumes lost processes.",
+        "required": [
+          "observe",
+          "append",
+          "cancel",
+          "approve",
+          "resume",
+          "handoff"
+        ],
+        "properties": {
+          "observe": {
+            "type": "boolean"
+          },
+          "append": {
+            "type": "boolean"
+          },
+          "cancel": {
+            "type": "boolean"
+          },
+          "approve": {
+            "type": "boolean"
+          },
+          "resume": {
+            "type": "boolean"
+          },
+          "handoff": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FleetAgent": {
+        "type": "object",
+        "required": [
+          "id",
+          "mode",
+          "unavailable",
+          "start"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "workspace-edit",
+              "packet-review"
+            ]
+          },
+          "unavailable": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FleetObservation": {
+        "type": "object",
+        "required": [
+          "id",
+          "hostId",
+          "workspaceId",
+          "agent",
+          "state",
+          "updatedAt",
+          "kind",
+          "capabilities"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "hostId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "kind": {
+            "const": "observed"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/FleetActions"
+          }
+        }
+      },
+      "FleetHandoffSelection": {
+        "type": "object",
+        "required": [
+          "hostId",
+          "workspaceId",
+          "agent",
+          "turn"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "verification": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "User-provided validation notes; explicitly labeled as not independently verified."
+          }
+        }
+      },
+      "FleetHandoffPreview": {
+        "type": "object",
+        "required": [
+          "prompt",
+          "previewToken",
+          "expiresAt",
+          "source",
+          "recipient"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Exact receiver prompt, at most 96 KiB UTF-8. Contains initial request, selected-turn request/result and up to 20 bounded file diffs; omitted/truncated evidence is explicit."
+          },
+          "previewToken": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Signed expiry, at most ten minutes. Backend restart invalidates previews."
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "hostId",
+              "runId",
+              "agent",
+              "turn",
+              "state",
+              "lastSeq"
+            ],
+            "properties": {
+              "hostId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "agent": {
+                "type": "string",
+                "enum": [
+                  "claude-code",
+                  "codex"
+                ]
+              },
+              "turn": {
+                "type": "integer"
+              },
+              "state": {
+                "type": "string"
+              },
+              "lastSeq": {
+                "type": "integer"
+              }
+            }
+          },
+          "recipient": {
+            "type": "object",
+            "required": [
+              "hostId",
+              "workspaceId",
+              "agent",
+              "mode"
+            ],
+            "properties": {
+              "hostId": {
+                "type": "string"
+              },
+              "workspaceId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "agent": {
+                "type": "string",
+                "enum": [
+                  "claude-code",
+                  "codex"
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "workspace-edit",
+                  "packet-review"
+                ]
+              }
+            }
           }
         }
       }

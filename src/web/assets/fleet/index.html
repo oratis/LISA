@@ -30,6 +30,7 @@
         <div id="work" hidden>
           <label>工作区<select id="workspace"></select></label>
           <p id="capability"></p>
+          <div id="observations"></div>
           <div id="runs"></div>
           <div id="timeline" hidden>
             <h3>任务经过</h3>
@@ -44,11 +45,13 @@
             <div id="change-files"></div>
             <pre id="change-patch" hidden></pre>
           </section>
+          <section id="handoff" hidden></section>
           <form id="task-form">
-            <label for="prompt">给 Claude Code 的指令</label>
+            <label>新任务的 agent<select id="agent"><option value="claude-code">Claude Code</option></select></label>
+            <label for="prompt">任务指令</label>
             <textarea id="prompt" required maxlength="16000" rows="3"></textarea>
             <div class="actions">
-              <button id="start" class="primary">启动 Claude Code</button
+              <button id="start" class="primary">启动任务</button
               ><button id="follow" type="button">追加指令</button>
             </div>
           </form>
