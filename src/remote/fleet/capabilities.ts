@@ -30,7 +30,7 @@ export function runActions(
     append: active && agent === "claude-code" && state === "waiting",
     cancel: active && ["running", "waiting", "approval"].includes(state),
     approve: active && agent === "claude-code" && state === "approval" && pending,
-    // Neither adapter can safely resume a process lost in a backend restart.
+    // The host may separately offer a new continuation after verifying the old process stopped.
     handoff: control && !live && ["completed", "cancelled", "failed"].includes(state) && context,
   };
 }

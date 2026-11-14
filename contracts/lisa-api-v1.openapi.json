@@ -5039,6 +5039,127 @@
           }
         }
       }
+    },
+    "/api/agent-host/v1/runs/{id}/continue-preview": {
+      "post": {
+        "operationId": "previewFleetContinuation",
+        "description": "Preview a NEW session from saved context after an uncertain previous process has been verified stopped (automatic process tracking or explicit local-owner verification). Source outcome stays unknown. Requires original controller, current workspace/control grant, idle host and a new instruction.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetContinuationPreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetContinuationSelection"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/agent-host/v1/runs/{id}/continue": {
+      "post": {
+        "operationId": "continueFleetRun",
+        "description": "Confirm the exact continuation preview. Starts a new task with the original adapter and fresh tool approvals. Persists a new receipt and linked timeline entries atomically before launch; repeated operations return the original new task. Never reattaches the old provider process or replays its tool calls.",
+        "responses": {
+          "200": {
+            "description": "Authorized host response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request denied, invalid, conflicting or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FleetContinuationSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FleetMutation"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "previewToken",
+                      "expiresAt"
+                    ],
+                    "properties": {
+                      "previewToken": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "expiresAt": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     }
   },
   "components": {
@@ -10507,7 +10628,7 @@
           },
           "type": {
             "type": "string",
-            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started. approval_decided records an explicit decision before the adapter call. file_restored identifies a file restored to a turn-start checkpoint."
+            "description": "Known values: turn_started, approval_requested, approval_resolved, tool_blocked, turn_completed, turn_failed, cancel_requested, run_ended, outcome_unknown, owner_released, orphan_released, history_started. approval_decided records an explicit decision before the adapter call. file_restored identifies a file restored to a turn-start checkpoint. continuation_started links a new independently approved session; old outcomes stay unknown."
           },
           "turn": {
             "type": "integer",
@@ -10767,7 +10888,8 @@
             "type": "boolean"
           },
           "resume": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "A verified-stopped uncertain task can preview a new continuation session with an explicit new instruction. This does not resume the lost provider process."
           },
           "handoff": {
             "type": "boolean"
@@ -11215,6 +11337,68 @@
           },
           "receipts": {
             "type": "integer"
+          }
+        }
+      },
+      "FleetContinuationSelection": {
+        "type": "object",
+        "required": [
+          "hostId",
+          "workspaceId",
+          "text"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 16000,
+            "description": "Explicit new instruction, required even when historical context exists."
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ],
+            "description": "Must match the original task adapter. Omission preserves it."
+          },
+          "operationGeneration": {
+            "type": "string"
+          }
+        }
+      },
+      "FleetContinuationPreview": {
+        "type": "object",
+        "required": [
+          "sourceRunId",
+          "agent",
+          "prompt",
+          "previewToken",
+          "expiresAt"
+        ],
+        "properties": {
+          "sourceRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "At most 96 KiB: unknown-outcome warning, original requirement, latest stored result excerpt and new instruction. No provider state, old approval or tool input is transferred."
+          },
+          "previewToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "number"
           }
         }
       }

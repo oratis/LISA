@@ -9,7 +9,7 @@ The owner confirmed on November 14, 2026 that this release includes the follow-u
 - [x] Checkpoints: preview and restore selected files with concurrent-edit protection.
 - [ ] Worktrees: preview/confirm automatic merge into the source branch, refuse conflicts or changed source state, optionally clean up owned worktrees safely.
 - [x] Storage: cross-task checkpoint quotas, retention controls and complete content/receipt cleanup with an explicit operation generation so old retries cannot restart deleted tasks.
-- [ ] Recovery: explicit continuation from saved task context after the previous process has been verified stopped; never silently replay uncertain tool calls.
+- [x] Recovery: explicit continuation from saved task context after the previous process has been verified stopped; never silently replay uncertain tool calls.
 - [ ] Codex: scoped workspace browsing/editing and fresh approval requests, preserving the existing packet-only review option.
 - [ ] T3: authenticated read-only project/thread-list connector, exact selected-project scoping, pagination, cancellation and revocation.
 - [ ] Screenshots: opt-in window/accessibility context in the attachment preview, with useful fallback when permission is absent or the user excludes text.
@@ -51,3 +51,9 @@ New destructive product actions require a user-visible preview and explicit conf
 - Full cleanup requires an idle host and a signed preview bound to the database revision. It rotates the operation generation before deleting task contents, shares and all receipts, removes snapshots, then securely deletes/compacts SQLite and truncates WAL. Workspace registrations/files and pairings remain.
 - Regression verifies cleanup leaves no sentinel task content in SQLite/WAL, old retries are rejected even after restart, explicit new-generation tasks work, active snapshots survive retention, and quota applies across multiple tasks.
 - Combined Fleet/host suite: 67 passed, zero skips. Browser: 15 passed, including preview/confirmation, emptying old timeline DOM and preserving the old generation on uncertain retries. Types/contracts pass; lint remains zero errors / 72 pre-existing warnings. Logs: `/private/tmp/lisa-complete-storage-all.log`, `/private/tmp/lisa-complete-storage-browser.log`, `/private/tmp/lisa-complete-storage-final.log`.
+
+## Implementation evidence: explicit continuation
+
+- A durable verified-stopped marker is written only after process tracking proves exit/termination or the local owner explicitly verifies it. Ambiguous live/reused processes remain reserved and cannot continue.
+- The initiating controller must supply a new instruction and confirm a ten-minute signed preview. A new session receives the original requirement and last stored result excerpt, clearly labeled unverified; no previous approval/tool call or provider state is transferred. The source remains unknown and both tasks receive a linking event.
+- Tests cover unverified-process refusal, control revocation, changed instructions/context, restart/expiry invalidation, exact receipt retry, fresh approvals and stale browser previews. Fleet/host: 69 passed, zero skips. Browser: 17 passed. Logs: `/private/tmp/lisa-complete-continuation-all.log`, `/private/tmp/lisa-complete-continuation-browser.log`.

@@ -32,6 +32,9 @@
     codex_not_installed: "执行机未安装 Codex CLI。",
     codex_native_binary_required: "执行机需要独立的原生 Codex CLI。",
     codex_api_key_required: "请在执行机配置 OPENAI_API_KEY 后启动 Codex 复核。",
+    continuation_unavailable: "请先在执行机核实旧进程已退出，并确认原始上下文仍保留。",
+    continuation_preview_changed: "续接上下文或指令已变化，请重新预览。",
+    continuation_too_large: "续接上下文超过 96 KiB，请整理后新建任务。",
     finish_source_first: "请先结束原任务，再预览交接。",
     restore_preview_changed: "文件、权限或目录身份已变化，请重新预览回退。",
     restore_file_changed: "文件发生了并发改动，请检查内容后重新预览。",
@@ -115,6 +118,8 @@
             ? "执行机后端重启后停止了上一后端留下的 Claude 进程，已释放执行位。结果待核实。"
             : "执行机后端重启时旧 Claude 进程已退出，已释放执行位。结果待核实。",
         ];
+      case "continuation_started":
+        return ["已从核实退出的任务创建独立续接会话；旧结果仍未核实。"];
       case "handoff_started":
         return ["第 " + e.turn + " 轮已交接给 " + (e.agent || "新 agent") + "；新任务独立授权。"];
       case "approval_decided":
@@ -502,7 +507,7 @@
     if (!rows.some((r) => r.id === runId)) runId = (active || rows[0])?.id || "";
     renderTimeline();
     if (changesKey && changesKey !== timelineKey(runId)) clearChanges();
-    if (handoffKey && (handoffKey !== timelineKey(runId) || handoffSeq !== rows.find((x) => x.id === runId)?.lastSeq || !rows.find((x) => x.id === runId)?.capabilities?.handoff)) clearHandoff();
+    if (handoffKey && (handoffKey !== timelineKey(runId) || handoffSeq !== rows.find((x) => x.id === runId)?.lastSeq || !(rows.find((x) => x.id === runId)?.capabilities?.handoff || rows.find((x) => x.id === runId)?.capabilities?.resume))) clearHandoff();
     $("observations").replaceChildren(...observations.filter((o) => o.workspaceId === wid && o.capabilities?.observe).map((o) =>
       make("p", o.agent + " · 外部观察会话 · " + o.state + " · 仅观察")));
     const r = rows.find((x) => x.id === runId),
@@ -516,8 +521,8 @@
     const provider = cap.agents?.find((a) => a.id === selectedAgent);
     const unavailable = provider ? provider.unavailable : cap.unavailable;
     $("capability").textContent = unavailable ? messages[unavailable] || unavailable
-      : selectedAgent === "codex" ? "Codex 只读复核发送的文本与 diff；不读取项目、不执行验证命令，不支持追加、审批或恢复。内容使用执行机的 OpenAI API 配置发送。"
-      : "Claude Code · Read / Edit / Write 逐次审批，支持轮间追加与取消，不支持恢复。内容使用执行机的 Claude API 配置发送。";
+      : selectedAgent === "codex" ? "Codex 只读复核发送的文本与 diff；不读取项目、不执行验证命令，不支持追加或审批；中断后可预览上下文并新建复核任务。内容使用执行机的 OpenAI API 配置发送。"
+      : "Claude Code · Read / Edit / Write 逐次审批，支持轮间追加与取消；确认旧进程退出后可创建续接任务。内容使用执行机的 Claude API 配置发送。";
     $("start").disabled = blocked || !wid || !cap.control || !!unavailable ||
       (cap.agents && !provider?.start) || runs.some((x) => ["running", "waiting", "approval", "cancelling"].includes(x.state));
     const actions = r?.capabilities || (cap.features?.includes("session-capabilities") ? {} : {
@@ -577,6 +582,10 @@
       b.disabled = blocked;
       card.append(b);
     }
+    if (actions.resume && cap.features?.includes("task-continuation")) {
+      const resume = btn("从已保存上下文续接", () => openContinuation(r));
+      resume.disabled = blocked; card.append(resume);
+    }
     if (actions.handoff && cap.features?.includes("agent-handoff")) {
       const handoff = btn("预览跨 agent 交接", () => openHandoff(r));
       handoff.disabled = blocked; card.append(handoff);
@@ -587,6 +596,34 @@
   function clearHandoff() {
     handoffVersion++; handoffKey = ""; handoffSeq = -1;
     $("handoff").hidden = true; $("handoff").replaceChildren();
+  }
+  function openContinuation(run) {
+    clearHandoff();
+    const v = version, request = handoffVersion, key = timelineKey(run.id), id = host.id, account = scope;
+    handoffKey = key; handoffSeq = run.lastSeq;
+    const section = $("handoff"), instruction = document.createElement("textarea"), preview = make("pre", "");
+    instruction.maxLength = 16000; instruction.setAttribute("aria-label", "续接的新指令");
+    let generation = 0, packet = null, body = null;
+    const valid = () => v === version && request === handoffVersion && handoffKey === key && runId === run.id;
+    const send = btn("确认开始新的续接任务", async () => {
+      if (!valid() || !packet || !body || busy || pending()) return;
+      await mutate("/runs/" + run.id + "/continue", { ...body, previewToken: packet.previewToken, expiresAt: packet.expiresAt });
+    });
+    send.disabled = true;
+    const prepare = btn("预览续接上下文", async () => {
+      if (!valid() || !instruction.value.trim()) return;
+      const expected = generation;
+      const selected = { hostId: id, workspaceId: run.workspaceId, agent: run.agent, text: instruction.value };
+      const result = await remote(id, account, "/runs/" + run.id + "/continue-preview", "POST", { ...selected, operationGeneration: cap.operationGeneration });
+      if (!valid() || expected !== generation) return;
+      packet = result; body = selected; preview.textContent = result.prompt; send.disabled = false;
+    });
+    prepare.disabled = true;
+    instruction.oninput = () => { generation++; packet = null; body = null; preview.textContent = ""; send.disabled = true; prepare.disabled = !instruction.value.trim(); };
+    section.replaceChildren(make("h3", "创建新的续接任务"),
+      make("p", "旧进程已确认退出，但它的最后结果仍未核实。输入新的指令；预览只包含已保存的原始要求和最近结果摘要，不包含旧审批或工具调用。新会话需要独立审批。"),
+      instruction, prepare, preview, send);
+    section.hidden = false;
   }
   async function openHandoff(run) {
     clearHandoff();

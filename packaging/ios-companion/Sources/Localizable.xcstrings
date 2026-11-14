@@ -1837,6 +1837,28 @@
           }
         }
       }
+    },
+    "A new continuation session was started": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已创建新的续接会话"
+          }
+        }
+      }
+    },
+    "A checkpoint file was restored": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已回退检查点中的文件"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

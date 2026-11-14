@@ -47,6 +47,8 @@ export class FleetApi {
   peer(peer: FleetPeer, route: string, method: string, body: Record<string, unknown>) {
     const effective = { ...peer, control: peer.control && loadControlPolicy().remoteControl };
     if (method === "POST") this.host.assertGeneration(body);
+    if (method === "POST" && route.endsWith("/continue-preview"))
+      return this.host.previewContinuation(effective, uuid(route.split("/").at(-2)), body);
     if (method === "POST" && route.endsWith("/handoff-preview"))
       return this.host.previewHandoff(effective, uuid(route.split("/").at(-2)), body);
     if (method === "POST" && route.endsWith("/restore-preview"))

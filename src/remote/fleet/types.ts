@@ -62,7 +62,7 @@ export function fleetRoute(method: string, path: string): boolean {
   return (
     method === "POST" &&
     (suffix === "/runs" ||
-      /^\/runs\/[a-f0-9-]{36}\/(?:messages|decisions|cancel|handoff-preview|handoff|restore-preview|restore)$/.test(
+      /^\/runs\/[a-f0-9-]{36}\/(?:messages|decisions|cancel|handoff-preview|handoff|restore-preview|restore|continue-preview|continue)$/.test(
         suffix,
       ))
   );

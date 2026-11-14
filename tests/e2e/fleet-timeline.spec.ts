@@ -30,10 +30,13 @@ async function openTask(page: Page, modern = false) {
     slowRestore: false,
     operationGeneration: "",
     emptyLedger: false,
+    continuations: 0,
+    slowContinuation: false,
   };
   let finishDiff: (() => void) | undefined;
   let finishPreview: (() => void) | undefined;
   let finishRestore: (() => void) | undefined;
+  let finishContinuation: (() => void) | undefined;
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
   await page.route("**/api/fleet/hosts", (route) =>
@@ -50,7 +53,9 @@ async function openTask(page: Page, modern = false) {
           features: [
             "run-events",
             "turn-changes",
-            ...(modern ? ["session-capabilities", "agent-handoff", "file-restore"] : []),
+            ...(modern
+              ? ["session-capabilities", "agent-handoff", "file-restore", "task-continuation"]
+              : []),
           ],
           ...(modern
             ? {
@@ -82,7 +87,7 @@ async function openTask(page: Page, modern = false) {
               append: false,
               cancel: state.mayControl && state.taskState === "approval",
               approve: state.mayControl && state.taskState === "approval",
-              resume: false,
+              resume: state.mayControl && state.taskState === "unknown",
               handoff: state.mayControl && state.taskState === "completed",
             },
           }
@@ -114,6 +119,31 @@ async function openTask(page: Page, modern = false) {
             : {}),
         },
       });
+    if (path.endsWith("/continue-preview")) {
+      const complete = () =>
+        route.fulfill({
+          json: {
+            prompt:
+              "UNKNOWN old outcome\nNEW instruction: " +
+              route.request().postDataJSON().payload.text,
+            previewToken: "continuation-token",
+            expiresAt: Date.now() + 600000,
+          },
+        });
+      if (state.slowContinuation) {
+        finishContinuation = () => {
+          void complete();
+        };
+        return;
+      }
+      return complete();
+    }
+    if (path.endsWith("/continue")) {
+      expect(route.request().postDataJSON().payload.previewToken).toBe("continuation-token");
+      state.continuations++;
+      state.taskState = "running";
+      return route.fulfill({ json: { status: "accepted", run } });
+    }
     if (path.endsWith("/restore-preview")) {
       const complete = () =>
         route.fulfill({
@@ -246,6 +276,7 @@ async function openTask(page: Page, modern = false) {
     finishDiff: () => finishDiff?.(),
     finishPreview: () => finishPreview?.(),
     finishRestore: () => finishRestore?.(),
+    finishContinuation: () => finishContinuation?.(),
   };
 }
 
@@ -629,4 +660,46 @@ test("owner storage cleanup requires a preview and explicit confirmation", async
   await page.getByRole("button", { name: "确认清理全部任务记录" }).click();
   await expect(page.getByRole("button", { name: "确认清理全部任务记录" })).toHaveCount(0);
   expect(cleared).toBe(1);
+});
+
+test("continuation requires new instructions and a fresh preview after edits", async ({ page }) => {
+  const { state } = await openTask(page, true);
+  state.taskState = "unknown";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "从已保存上下文续接" }).click();
+  await expect(page.getByRole("button", { name: "预览续接上下文" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "确认开始新的续接任务" })).toBeDisabled();
+  await page.getByLabel("续接的新指令").fill("Inspect before editing.");
+  await page.getByRole("button", { name: "预览续接上下文" }).click();
+  await expect(page.locator("#handoff pre")).toContainText("UNKNOWN old outcome");
+  await expect(page.getByRole("button", { name: "确认开始新的续接任务" })).toBeEnabled();
+  await page.getByLabel("续接的新指令").fill("Only explain.");
+  await expect(page.getByRole("button", { name: "确认开始新的续接任务" })).toBeDisabled();
+  await expect(page.locator("#handoff pre")).toBeEmpty();
+  await page.getByRole("button", { name: "预览续接上下文" }).click();
+  await page.getByRole("button", { name: "确认开始新的续接任务" }).click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(state.continuations).toBe(1);
+});
+
+test("a late continuation preview cannot start work on another Mac", async ({ page }) => {
+  const { state, finishContinuation } = await openTask(page, true);
+  state.taskState = "unknown";
+  state.lastSeq++;
+  state.slowContinuation = true;
+  await page.clock.fastForward(4000);
+  await page.getByRole("button", { name: "从已保存上下文续接" }).click();
+  await page.getByLabel("续接的新指令").fill("Inspect first.");
+  const requested = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/api/fleet/request") &&
+      r.postDataJSON()?.path?.endsWith("/continue-preview"),
+  );
+  await page.getByRole("button", { name: "预览续接上下文" }).click();
+  await requested;
+  await page.getByRole("button", { name: /Mac B/ }).click();
+  finishContinuation();
+  await expect(page.locator("#handoff")).toBeEmpty();
+  expect(state.continuations).toBe(0);
 });

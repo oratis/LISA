@@ -56,6 +56,7 @@ interface RunRow {
   /** The backend process that launched it. */
   backend: number | null;
   agent: FleetAgent;
+  verified_stopped: number;
 }
 interface Orphan {
   id: string;
@@ -90,7 +91,8 @@ type EventType =
   | "history_started"
   | "checkpoints_cleared"
   | "handoff_started"
-  | "file_restored";
+  | "file_restored"
+  | "continuation_started";
 const ACTIVE = "('running','waiting','approval','cancelling')";
 // Timeline bounds. A long run drops its oldest entries and reports the gap.
 const MAX_EVENTS = 500,
@@ -113,6 +115,7 @@ function viewerEvent(e: Record<string, unknown>) {
     history_started: ["state"],
     handoff_started: ["turn", "agent"],
     file_restored: ["turn", "target"],
+    continuation_started: ["agent"],
   };
   return Object.fromEntries(
     ["seq", "at", "type", ...(fields[String(e.type)] ?? [])]
@@ -237,6 +240,12 @@ export class FleetHostService {
     );
     for (const column of ["pgid", "started", "backend"])
       if (!columns.has(column)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${column} INTEGER`);
+    if (!columns.has("verified_stopped")) {
+      this.db.exec("ALTER TABLE runs ADD COLUMN verified_stopped INTEGER NOT NULL DEFAULT 0");
+      this.db.exec(
+        "UPDATE runs SET verified_stopped=1 WHERE state='unknown' AND EXISTS(SELECT 1 FROM events e WHERE e.run=runs.id AND e.type IN ('orphan_released','owner_released'))",
+      );
+    }
     if (!columns.has("agent"))
       this.db.exec("ALTER TABLE runs ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude-code'");
     if (
@@ -342,7 +351,9 @@ export class FleetHostService {
     // The owner may have released it in the meantime.
     if (!this.db.prepare(`SELECT 1 FROM runs WHERE id=? AND state IN ${ACTIVE}`).get(id)) return;
     this.closePending(id, "cancelled");
-    this.db.prepare("UPDATE runs SET state='unknown',pending=NULL WHERE id=?").run(id);
+    this.db
+      .prepare("UPDATE runs SET state='unknown',pending=NULL,verified_stopped=1 WHERE id=?")
+      .run(id);
     this.record(id, "orphan_released", { process: how });
   }
   /** A state change and the timeline entry describing it commit together. */
@@ -497,25 +508,28 @@ export class FleetHostService {
       hostId: r.host,
       agent: r.agent,
       kind: "managed",
-      capabilities: runActions(
-        r.agent,
-        unknown ? "unknown" : r.state,
-        this.sessions.has(r.id),
-        peer?.control === true,
-        !!r.pending &&
-          Number(JSON.parse(r.pending).expiresAt) > Date.now() &&
-          !this.db
-            .prepare("SELECT 1 FROM viewer_ops WHERE run=? AND approval=?")
-            .get(r.id, JSON.parse(r.pending).id),
-        !!recipient &&
-          !recipient.reason() &&
-          !this.hostBusy() &&
-          !!this.db
-            .prepare(
-              "SELECT 1 FROM turn_context c JOIN checkpoints p ON p.run=c.run AND p.turn=c.turn WHERE c.run=? AND json_extract(p.before,'$.status')='ready' AND json_extract(p.after,'$.status')='ready' LIMIT 1",
-            )
-            .get(r.id),
-      ),
+      capabilities: {
+        ...runActions(
+          r.agent,
+          unknown ? "unknown" : r.state,
+          this.sessions.has(r.id),
+          peer?.control === true,
+          !!r.pending &&
+            Number(JSON.parse(r.pending).expiresAt) > Date.now() &&
+            !this.db
+              .prepare("SELECT 1 FROM viewer_ops WHERE run=? AND approval=?")
+              .get(r.id, JSON.parse(r.pending).id),
+          !!recipient &&
+            !recipient.reason() &&
+            !this.hostBusy() &&
+            !!this.db
+              .prepare(
+                "SELECT 1 FROM turn_context c JOIN checkpoints p ON p.run=c.run AND p.turn=c.turn WHERE c.run=? AND json_extract(p.before,'$.status')='ready' AND json_extract(p.after,'$.status')='ready' LIMIT 1",
+              )
+              .get(r.id),
+        ),
+        resume: peer?.control === true && this.continuationReady(r),
+      },
       state: unknown ? "unknown" : r.state,
       result: r.result,
       approval: !unknown && r.pending ? (JSON.parse(r.pending) as Approval) : null,
@@ -568,6 +582,7 @@ export class FleetHostService {
           "agent-handoff",
           "file-restore",
           "operation-generation",
+          "task-continuation",
         ],
         agents: this.agents(peer),
         hostId: peer.hostId,
@@ -629,9 +644,13 @@ export class FleetHostService {
     const workspaceId = uuid(body.workspaceId);
     if (body.hostId !== peer.hostId || !peer.control || !peer.workspaces.includes(workspaceId))
       throw new FleetError(403, "control_denied");
-    const handoff = route.endsWith("/handoff");
-    const start = route === HOST_API + "/runs" || handoff;
-    const agent = this.agent(body.agent);
+    const handoff = route.endsWith("/handoff"),
+      continuation = route.endsWith("/continue");
+    const start = route === HOST_API + "/runs" || handoff || continuation;
+    const agent = this.agent(
+      body.agent ??
+        (continuation ? this.getRun(peer, uuid(route.split("/").at(-2))).agent : undefined),
+    );
     const action = start ? "start" : route.split("/").at(-1)!;
     const runId = start ? op : uuid(route.split("/").at(-2));
     let text: string | undefined, approvalId: string | undefined;
@@ -643,7 +662,7 @@ export class FleetHostService {
     }
     // Keep pre-capabilities receipt hashes compatible with older clients.
     const fields = [route, workspaceId, text, approvalId, body.allow];
-    if (body.agent !== undefined || handoff)
+    if (body.agent !== undefined || handoff || continuation)
       fields.push(body.agent, body.turn, body.verification, body.previewToken, body.expiresAt);
     const hash = digest(JSON.stringify(fields));
     const workspace = this.workspaces().find((w) => w.id === workspaceId);
@@ -670,6 +689,8 @@ export class FleetHostService {
         if (!valid) throw new FleetError(409, "workspace_replaced");
       }
       if (start) {
+        if (continuation)
+          text = this.previewContinuation(peer, uuid(route.split("/").at(-2)), body, true).prompt;
         if (handoff) {
           const preview = this.previewHandoff(peer, uuid(route.split("/").at(-2)), body, true);
           text = preview.prompt;
@@ -699,6 +720,11 @@ export class FleetHostService {
           const source = uuid(route.split("/").at(-2));
           this.record(runId, "handoff_started", { sourceRunId: source, turn: body.turn, agent });
           this.record(source, "handoff_started", { targetRunId: runId, turn: body.turn, agent });
+        }
+        if (continuation) {
+          const source = uuid(route.split("/").at(-2));
+          this.record(runId, "continuation_started", { sourceRunId: source, agent });
+          this.record(source, "continuation_started", { targetRunId: runId, agent });
         }
       } else {
         const r = this.getRun(peer, runId);
@@ -894,6 +920,93 @@ export class FleetHostService {
   /** A signed, short-lived preview is bound to the exact packet and receiving agent.
    * Nothing executes here. Confirmation rebuilds it from immutable checkpoints, then
    * compares the signature before reserving a run or recording an operation. */
+  private continuationReady(run: RunRow) {
+    const adapter = this.adapter(run.agent);
+    return (
+      run.state === "unknown" &&
+      run.verified_stopped === 1 &&
+      !this.hostBusy() &&
+      !!adapter &&
+      !adapter.reason() &&
+      !!this.db.prepare("SELECT 1 FROM turn_context WHERE run=? AND turn=1").get(run.id)
+    );
+  }
+  /** A new independently approved session, never reattachment/replay of an uncertain process. */
+  previewContinuation(peer: FleetPeer, id: string, body: Body, confirming = false) {
+    const run = this.getRun(peer, id);
+    if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== run.workspace)
+      throw new FleetError(403, "control_denied");
+    if (!this.continuationReady(run)) throw new FleetError(409, "continuation_unavailable");
+    if (body.agent !== undefined && body.agent !== run.agent)
+      throw new FleetError(400, "continuation_agent_changed");
+    const instruction = requiredText(body.text, 16000);
+    const workspace = this.workspaces().find((w) => w.id === run.workspace)!;
+    try {
+      if (
+        fs.realpathSync.native(workspace.root) !== workspace.root ||
+        inode(workspace.root) !== workspace.inode
+      )
+        throw new Error("changed");
+    } catch {
+      throw new FleetError(409, "workspace_replaced");
+    }
+    const first = this.db
+      .prepare("SELECT request FROM turn_context WHERE run=? AND turn=1")
+      .get(id)!;
+    const last = this.db
+      .prepare(
+        "SELECT turn,request,result FROM turn_context WHERE run=? AND result IS NOT NULL ORDER BY turn DESC LIMIT 1",
+      )
+      .get(id);
+    const prompt = [
+      "A previous Fleet process stopped with an UNKNOWN outcome. This is a NEW session, not a resume of provider state.",
+      "The previous process has been verified stopped. No old approval is valid. Follow the NEW instruction below; inspect current files and obtain fresh tool approvals. Do not replay old tool calls or assume earlier partial work succeeded.",
+      "Original requirement (historical context):",
+      String(first.request),
+      last
+        ? `Last stored result from turn ${last.turn} (may report a failure; excerpt):`
+        : "No completed turn result was stored.",
+      last ? String(last.result).slice(-16000) : "",
+      "NEW instruction:",
+      instruction,
+    ].join("\n\n");
+    if (Buffer.byteLength(prompt) > 96 * 1024) throw new FleetError(413, "continuation_too_large");
+    const expiresAt = confirming ? Number(body.expiresAt) : Date.now() + 10 * 60_000;
+    if (
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now() ||
+      expiresAt > Date.now() + 10 * 60_000
+    )
+      throw new FleetError(409, "preview_expired");
+    const seq = this.db.prepare("SELECT MAX(seq) AS n FROM events WHERE run=?").get(id)?.n;
+    const previewToken = crypto
+      .createHmac("sha256", this.handoffKey)
+      .update(
+        JSON.stringify([
+          id,
+          run.host,
+          run.device,
+          run.workspace,
+          workspace.inode,
+          run.agent,
+          seq,
+          prompt,
+          expiresAt,
+        ]),
+      )
+      .digest("hex");
+    if (
+      confirming &&
+      (typeof body.previewToken !== "string" ||
+        !/^[a-f0-9]{64}$/.test(body.previewToken) ||
+        !crypto.timingSafeEqual(
+          Buffer.from(body.previewToken, "hex"),
+          Buffer.from(previewToken, "hex"),
+        ))
+    )
+      throw new FleetError(409, "continuation_preview_changed");
+    return { sourceRunId: id, agent: run.agent, prompt, expiresAt, previewToken };
+  }
   previewHandoff(peer: FleetPeer, sourceId: string, body: Body, confirming = false) {
     const source = this.getRun(peer, sourceId);
     if (!peer.control || body.hostId !== peer.hostId || body.workspaceId !== source.workspace)
@@ -1636,7 +1749,9 @@ export class FleetHostService {
           .get(id, this.epoch);
         if (!orphan) return false;
         this.closePending(id, "cancelled");
-        this.db.prepare("UPDATE runs SET state='unknown',pending=NULL WHERE id=?").run(id);
+        this.db
+          .prepare("UPDATE runs SET state='unknown',pending=NULL,verified_stopped=1 WHERE id=?")
+          .run(id);
         this.record(id, "owner_released");
         return true;
       });

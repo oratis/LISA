@@ -32,6 +32,8 @@ Status: release candidate. Publication is pending the [remaining acceptance gate
 - Claude keeps its independently approved Read/Edit/Write flow. Codex runs a single read-only review of the confirmed packet in an empty macOS sandbox, using the host's installed CLI and OpenAI API configuration. It does not browse the source checkout or run validation commands. Packets are limited to 20 files / 96 KiB; oversized packets are rejected.
 - Handoff confirmation records the new task, linked events and receipt atomically. Retrying the same operation returns the original task. Old approvals never carry into the receiving session.
 
+- Uncertain tasks can now continue through a new session after the old process has been verified stopped. A new instruction and signed context preview are required; no old tool call or approval is replayed, and the original outcome remains unverified.
+
 Setup, retention and operating limits are in the [Fleet guide](FLEET.md).
 
 ## Connections and account recovery

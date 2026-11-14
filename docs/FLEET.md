@@ -13,7 +13,7 @@ Fleet lets a controlling Mac start work in a separately authorized workspace on 
 
 On the controller, select the Mac, granted workspace and agent, then enter the task. Available actions follow the agent and task's current capabilities. Approve Claude's tools on the controlling device, append a turn when available, or cancel.
 
-The executing Mac keeps the task state, receipts and ordered timeline. Reconnecting controllers continue from their last event sequence; expired history is shown as a gap alongside the current state. A repeated operation returns its existing receipt. If the backend loses ownership of a process after restart, the result is marked unverified; neither adapter resumes that old process. Follow the local recovery action before starting another task in the occupied slot.
+The executing Mac keeps the task state, receipts and ordered timeline. Reconnecting controllers continue from their last event sequence; expired history is shown as a gap alongside the current state. A repeated operation returns its existing receipt. If the backend loses ownership of a process after restart, the result is marked unverified; neither adapter resumes that old process. Follow the local recovery action before starting another task in the occupied slot. Once the prior process is verified stopped, choose **Continue from saved context**, enter a new instruction and review the full preview. Confirmation starts a new task using the original adapter; the original requirement and latest stored result excerpt are context, not proof that interrupted work succeeded. No old approval or provider state is transferred. The old outcome stays unverified, and all new tool requests need fresh approval.
 
 ## Review each turn and hand it over
 

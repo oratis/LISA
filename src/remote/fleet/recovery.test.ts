@@ -8,7 +8,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { FleetHostService, type FleetHostOptions } from "./host-service.js";
-import type { ClaudeRunner } from "./claude.js";
+import type { ClaudeRunner, ClaudeEvents } from "./claude.js";
 import { HOST_API } from "./types.js";
 
 // A backend that dies (crash, kill, launchd restart) can leave its detached
@@ -17,7 +17,7 @@ import { HOST_API } from "./types.js";
 // group first when it is not.
 
 interface Page {
-  run: { state: string };
+  run: { id: string; state: string; capabilities: { resume: boolean } };
   events: { type: string; process?: string; outcome?: string }[];
 }
 
@@ -42,13 +42,18 @@ function fixture(child?: ChildProcess) {
   const home = path.join(dir, "lisa"),
     root = fs.realpathSync(fs.mkdtempSync(path.join(dir, "project-")));
   let starts = 0;
+  const sent: string[] = [],
+    callbacks: ClaudeEvents[] = [];
   const runner: ClaudeRunner = {
     reason: () => null,
     start(_, e) {
       starts++;
+      callbacks.push(e);
       return {
         pid: starts === 1 ? child?.pid : undefined,
-        send() {},
+        send(text) {
+          sent.push(text);
+        },
         decide() {},
         cancel() {
           e.exit("");
@@ -82,6 +87,10 @@ function fixture(child?: ChildProcess) {
   };
   return {
     home,
+    peer,
+    workspaceId: ws.id,
+    sent,
+    callbacks,
     first,
     open,
     start,
@@ -352,5 +361,156 @@ test("shutdown settles only after the agents it stopped have exited", async () =
     assert.equal(exited, true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("recovered tasks require verified process exit and a confirmed new-instruction preview", async () => {
+  const f = fixture();
+  try {
+    const id = f.start(f.first);
+    await f.first.shutdown();
+    const oldApproval = crypto.randomUUID();
+    f.ledger(
+      "UPDATE runs SET state='approval',epoch='previous',pending=? WHERE id=?",
+      JSON.stringify({
+        id: oldApproval,
+        tool: "Write",
+        input: { content: "SECRET_OLD_PENDING" },
+        expiresAt: Date.now() + 60000,
+      }),
+      id,
+    );
+    const host = f.open();
+    await host.recovered;
+    const body = {
+      hostId: f.peer.hostId,
+      workspaceId: f.workspaceId,
+      text: "Inspect what exists, then explain before editing.",
+    };
+    assert.equal(f.page(host, id).run.capabilities.resume, false);
+    assert.throws(() => host.previewContinuation(f.peer, id, body), /continuation_unavailable/);
+    host.ownerStop(id, true);
+    assert.equal(f.page(host, id).run.capabilities.resume, true);
+    assert.throws(
+      () => host.previewContinuation({ ...f.peer, control: false }, id, body),
+      /control_denied/,
+    );
+    const preview = host.previewContinuation(f.peer, id, body);
+    assert.match(preview.prompt, /NEW session/);
+    assert.match(preview.prompt, /NEW instruction/);
+    assert.ok(!preview.prompt.includes(oldApproval));
+    assert.ok(!preview.prompt.includes("SECRET_OLD_PENDING"));
+    const command = {
+      ...body,
+      operationId: crypto.randomUUID(),
+      previewToken: preview.previewToken,
+      expiresAt: preview.expiresAt,
+    };
+    assert.throws(
+      () => host.mutate(f.peer, `${HOST_API}/runs/${id}/continue`, { ...command, expiresAt: 1 }),
+      /preview_expired/,
+    );
+    assert.throws(
+      () =>
+        host.mutate(f.peer, `${HOST_API}/runs/${id}/continue`, {
+          ...command,
+          text: "silently different instruction",
+        }),
+      /continuation_preview_changed/,
+    );
+    const result = host.mutate(f.peer, `${HOST_API}/runs/${id}/continue`, command) as {
+      run: { id: string };
+    };
+    assert.notEqual(result.run.id, id);
+    assert.equal(f.sent.length, 2);
+    assert.equal(f.sent[1], preview.prompt);
+    const again = host.mutate(f.peer, `${HOST_API}/runs/${id}/continue`, command) as {
+      run: { id: string };
+    };
+    assert.equal(again.run.id, result.run.id);
+    assert.equal(f.sent.length, 2);
+    assert.equal(f.page(host, id).run.state, "unknown");
+    assert.equal(
+      f.page(host, id).events.filter((e) => e.type === "continuation_started").length,
+      1,
+    );
+    assert.equal(
+      f.page(host, result.run.id).events.filter((e) => e.type === "continuation_started").length,
+      1,
+    );
+    assert.throws(
+      () =>
+        host.mutate(f.peer, `${HOST_API}/runs/${result.run.id}/decisions`, {
+          ...body,
+          operationId: crypto.randomUUID(),
+          approvalId: oldApproval,
+          allow: true,
+        }),
+      /stale_approval/,
+    );
+    const fresh = crypto.randomUUID();
+    f.callbacks
+      .at(-1)!
+      .approval({
+        id: fresh,
+        tool: "Read",
+        input: { file_path: "new.txt" },
+        expiresAt: Date.now() + 60000,
+      });
+    assert.notEqual(fresh, oldApproval);
+    assert.equal(
+      (
+        host.read(f.peer, `${HOST_API}/runs/${result.run.id}`) as {
+          run: { approval: { id: string } };
+        }
+      ).run.approval.id,
+      fresh,
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test("continuation preview does not survive backend restart or changed saved context", async () => {
+  const f = fixture();
+  try {
+    const id = f.start(f.first);
+    await f.first.shutdown();
+    f.ledger("UPDATE runs SET state='approval',epoch='previous' WHERE id=?", id);
+    const host = f.open();
+    host.ownerStop(id, true);
+    const body = {
+      hostId: f.peer.hostId,
+      workspaceId: f.workspaceId,
+      text: "Check current files.",
+    };
+    const preview = host.previewContinuation(f.peer, id, body);
+    const command = {
+      ...body,
+      operationId: crypto.randomUUID(),
+      previewToken: preview.previewToken,
+      expiresAt: preview.expiresAt,
+    };
+    f.ledger("UPDATE turn_context SET result='new recovered evidence' WHERE run=? AND turn=1", id);
+    assert.throws(
+      () => host.mutate(f.peer, `${HOST_API}/runs/${id}/continue`, command),
+      /continuation_preview_changed/,
+    );
+    const next = host.previewContinuation(f.peer, id, body);
+    await host.shutdown();
+    const reopened = f.open();
+    assert.equal(f.page(reopened, id).run.capabilities.resume, true);
+    assert.throws(
+      () =>
+        reopened.mutate(f.peer, `${HOST_API}/runs/${id}/continue`, {
+          ...command,
+          previewToken: next.previewToken,
+          expiresAt: next.expiresAt,
+        }),
+      /continuation_preview_changed/,
+    );
+    assert.equal(f.sent.length, 1);
+  } finally {
+    f.close();
   }
 });
