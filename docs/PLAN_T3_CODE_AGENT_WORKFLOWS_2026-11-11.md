@@ -92,7 +92,15 @@
 
 ## 后续优先级
 
-**第二期 · 按轮审查改动。** 先在 LISA 创建的独立 Git worktree 试点。由执行机进程在每轮开始和结束时取快照，不经过 agent。参照 T3 的做法，用临时索引把工作区写成提交对象，存入任务私有的 Git 引用，不改动用户的索引和工作树。在任务卡列出新增、修改、删除的文件，并按需显示有界 diff。快照遵守 `.gitignore`，被忽略的文件不在其中，界面要说明。私有引用随任务记录一起清理。验收覆盖未跟踪的新文件、轮内已提交的修改和任务开始前已有的改动。Fleet 的沙箱不让 agent 读写 `.git`，轮内提交和上游合并只会来自同时操作的人，无法可靠归属的变化标为「工作区同时变化」。不是 Git 仓库的工作区没有快照。1A 的时间线已按轮记录获准的 Edit 和 Write 及其目标，可以先据此列出本轮获准改动的文件，并注明获准不等于改动成功。回退另行设计，实施前须同时验证 provider 回退能力、工作区当前基线和用户后续编辑。[T3 检查点](https://github.com/pingdotgg/t3code/blob/e89abadaee70e0d73fb19a5ce40a686b1a92310e/apps/server/src/checkpointing/CheckpointStore.ts) · [T3 快照实现](https://github.com/pingdotgg/t3code/blob/e89abadaee70e0d73fb19a5ce40a686b1a92310e/apps/server/src/vcs/GitVcsDriver.ts)
+**第二期 · 按轮审查改动（2026-11-14 实施）。** 执行机所有者在「配置这台 Mac 作为执行机」为已登记的 Git 仓库点击「从当前提交创建隔离工作区」，再给控制端授权该新工作区。目录位于源仓库旁，以 `lisa-fleet-UUID` 命名，从 HEAD 创建 detached worktree；源目录未提交的改动不会带入。普通目录继续运行任务，界面明确提示没有检查点。
+
+执行机在第一轮启动和追加轮次发送前取开始快照，在收到结果时取结束快照。取消或异常退出时记录最终部分改动并标为中断；后端重启时将未完成边界标为中断，不用重启后的文件冒充结束快照。操作收据重放不会重取开始基线。每轮差异包含新增、修改、删除，轮内由人提交的修改也不会消失；轮前和两轮间的改动属于下一轮的基线。
+
+检查点使用临时索引与私有 commit/ref，存于 `$LISA_HOME/fleet/checkpoints/<runId>` 的独立 bare Git 存储，与账本里的任务/轮次对应，不改用户索引或分支。独立配置及最高优先级的属性关闭 clean/filter、换行转换，创建 worktree 时也关闭 checkout hooks 和 smudge filters；读取 diff 禁用外部 diff/textconv。快照保存文件原始内容，按执行机权限保护，agent 不可访问。未跟踪且被忽略的文件不采集，已跟踪文件仍采集；子模块或嵌套仓库、特殊文件、替换后的工作区会明确降级为不可用。参照 [Git 属性优先级](https://git-scm.com/docs/gitattributes) 与 [Git 环境隔离](https://git-scm.com/docs/git)。
+
+控制端任务卡列出最近 100 轮的检查点状态，按轮获取文件列表、按文件 ID 获取有界 diff。当前仅对单任务前 100 轮取快照，每个快照最多 2000 个条目、16 MiB；超限不阻止任务执行，但明确显示无检查点。单文件 diff 返回最多 64 KiB，二进制文件只展示 Git 的变化提示，重命名按删除加新增表示。检测到 HEAD/索引变化时显示「工作区同时变化」；所有差异都标明无法独立归因于 agent。Pocket 的摘要授权不包含源代码 diff，服务器每次读都核验发起设备和工作区授权。
+
+结束任务的本机页面提供检查点清理：删除该任务私有对象和 refs，标记记录并推进时间线序号，让控制端清除已显示的 diff。任务收据、经过和工作区文件保留。回退、自动合并、自动删除工作区及跨任务存储配额仍留待后续。回归覆盖原索引与轮前改动保留、轮内提交、新增/删除和特殊文件名、忽略规则、二进制/符号链接、有界 diff、权限撤销、断线重试、取消/重启、清理和迟到响应。
 
 **第三期 · 按主机声明能力，支持跨 agent 交接。** 先接 Claude 和 Codex。由目标主机结合适配器、会话状态和设备权限，分别报告可观察、可追加、可取消、可审批、可恢复。T3 的能力声明按轮次、线程和审批分项列出，没有单一的总开关。#471 的能力接口目前只报告是否可控制和不可用原因，1A 加了特性列表，第三期在它上面分项声明。Web 与 Pocket 据此显示操作，服务端执行时重新检查。验收时同一台机器并排展示一个外部观察会话和一个受管会话，各自只提供可兑现的操作。随后验证「Claude 实现，Codex 复核」：用户可预览接收方、原始要求、改动和验证结果，确认后才发送。历史审批随原请求结束，新 agent 的动作按自己的权限处理。[T3 适配器接口](https://github.com/pingdotgg/t3code/blob/e89abadaee70e0d73fb19a5ce40a686b1a92310e/packages/provider-core/src/server/ProviderAdapter.ts) · [T3 能力声明](https://github.com/pingdotgg/t3code/blob/e89abadaee70e0d73fb19a5ce40a686b1a92310e/packages/contracts/src/orchestrationV2.ts#L260-L397) · [LISA 审批设计](DESIGN_WARDEN.md)
 

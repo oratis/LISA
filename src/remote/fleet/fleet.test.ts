@@ -166,6 +166,7 @@ test(
   { skip: process.platform !== "darwin", timeout: 90000 },
   async () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-macs-")));
+    let project1 = path.join(dir, "project-1");
     const children: ChildProcess[] = [];
     const calls: string[] = [];
     const readResults: { error: boolean; text: string }[] = [];
@@ -241,11 +242,10 @@ test(
               id: "toolu_fixture",
               name: toolName,
               input: read
-                ? { file_path: path.join(dir, "project-1", "approved.txt") }
+                ? { file_path: path.join(project1, "approved.txt") }
                 : {
                     file_path: path.join(
-                      dir,
-                      "project-1",
+                      project1,
                       browserTurn ? "browser-approved.txt" : "approved.txt",
                     ),
                     old_string: "",
@@ -362,10 +362,37 @@ test(
       const status = await api<{ hostId: string }>(port, "/api/remote/connect", {});
       const root = path.join(dir, "project-" + i);
       fs.mkdirSync(root, { recursive: true });
-      const w = await api<{ id: string }>(port, "/api/fleet/workspaces", {
+      if (i === 1) {
+        const git = (args: string[]) =>
+          execFileSync(
+            "git",
+            [
+              "-c",
+              "user.name=Fleet",
+              "-c",
+              "user.email=fleet@localhost",
+              "-c",
+              "core.hooksPath=/dev/null",
+              ...args,
+            ],
+            { cwd: root, stdio: "ignore" },
+          );
+        git(["init", "--template="]);
+        fs.writeFileSync(path.join(root, "README.md"), "Fleet fixture\n");
+        git(["add", "."]);
+        git(["commit", "-m", "initial"]);
+      }
+      let w = await api<{ id: string }>(port, "/api/fleet/workspaces", {
         name: "Project",
         directory: root,
       });
+      if (i === 1) {
+        const created = await api<{ id: string; root: string }>(port, "/api/fleet/worktrees", {
+          workspaceId: w.id,
+        });
+        project1 = created.root;
+        w = created;
+      }
       return { port, id: status.hostId, workspace: w.id };
     }
     try {
@@ -440,7 +467,7 @@ test(
       const run = async () => (await remote(0, "/runs/" + id)).run;
       const pending = await until(run, (r) => !!r.approval || r.state === "failed");
       assert.ok(pending.approval, "expected approval; got " + JSON.stringify(pending));
-      assert.equal(fs.existsSync(path.join(dir, "project-1", "approved.txt")), false);
+      assert.equal(fs.existsSync(path.join(project1, "approved.txt")), false);
       // The executor records the agent's process group, so a later backend can stop it.
       const ledger = new DatabaseSync(path.join(dir, "mac-1", "fleet", "runs.sqlite"));
       try {
@@ -506,10 +533,18 @@ test(
       await remote(0, "/runs/" + id + "/decisions", "POST", decision);
       await remote(0, "/runs/" + id + "/decisions", "POST", decision);
       await until(run, (r) => r.state === "waiting" && r.result === "first complete");
-      assert.equal(
-        fs.readFileSync(path.join(dir, "project-1", "approved.txt"), "utf8"),
-        "approved",
+      assert.equal(fs.readFileSync(path.join(project1, "approved.txt"), "utf8"), "approved");
+      const changes = await remote<{ files: { id: number; path: string; status: string }[] }>(
+        0,
+        "/runs/" + id + "/changes/1",
       );
+      assert.deepEqual(
+        changes.files.map((f) => [f.path, f.status]),
+        [["approved.txt", "A"]],
+      );
+      const patch = await remote<{ patch: string }>(0, "/runs/" + id + "/changes/1/0");
+      assert.match(patch.patch, /\+approved/);
+      await assert.rejects(phone.read(HOST_API + "/runs/" + id + "/changes/1"), /link_closed/);
       const follow = { ...start, operationId: crypto.randomUUID(), text: "fleet-followup" };
       await remote(0, "/runs/" + id + "/messages", "POST", follow);
       await remote(0, "/runs/" + id + "/messages", "POST", follow);
@@ -600,7 +635,7 @@ test(
               .click();
           await selectHost();
           await page.locator("#workspace").selectOption(m.workspace);
-          await expect(page.locator("#workspace option:checked")).toHaveText("Project");
+          await expect(page.locator("#workspace option:checked")).toHaveText("Project · Fleet");
           let dropped = false,
             starts = 0;
           await page.route("**/api/fleet/request", async (route) => {
@@ -632,7 +667,7 @@ test(
           });
           await page.getByRole("button", { name: "拒绝", exact: true }).click();
           await expect(page.locator("#runs pre")).toHaveText("first complete", { timeout: 12000 });
-          assert.equal(fs.existsSync(path.join(dir, "project-1", "browser-approved.txt")), false);
+          assert.equal(fs.existsSync(path.join(project1, "browser-approved.txt")), false);
           const timeline = page.locator("#timeline-list");
           await expect(timeline.locator("li").first()).toContainText("第 1 轮开始");
           await expect(timeline).toContainText("审批结果 · 已拒绝");
@@ -721,6 +756,7 @@ test(
       }
       await assert.rejects(remote(0, "/runs"), /workspace_grant_required/);
       await assert.rejects(remote(0, "/runs/" + id + "/events"), /workspace_grant_required/);
+      await assert.rejects(remote(0, "/runs/" + id + "/changes/1/0"), /workspace_grant_required/);
       assert.equal((await remote<{ control: boolean }>(2, "/capabilities")).control, false);
     } finally {
       await Promise.all(
