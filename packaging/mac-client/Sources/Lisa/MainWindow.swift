@@ -66,8 +66,8 @@ final class MainWindow: NSWindow {
 
     /// Fire the screenshot→composer flow in the hosted page; `onAttached`
     /// reports whether a shot was actually captured (vs cancelled).
-    func triggerCapture(onAttached: @escaping (Bool) -> Void) {
-        content.triggerCapture(onAttached: onAttached)
+    func triggerCapture(includeContext: Bool = false, onAttached: @escaping (Bool) -> Void) {
+        content.triggerCapture(includeContext: includeContext, onAttached: onAttached)
     }
 
     /// Pre-fill the chat composer (never auto-sends) — used by the

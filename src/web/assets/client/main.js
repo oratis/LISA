@@ -252,6 +252,15 @@ const LISA_STRINGS = {
     'session.invalidName': 'Enter a name of 1–120 characters.',
     'session.renameFailed': 'Could not save the name. Please try again.',
     'attachment.preview': 'Preview {name}',
+    'capture.withContext': 'Screenshot + front-window text',
+    'capture.review': 'Review window context',
+    'capture.include': 'Include this window context when sending',
+    'capture.explain': 'Review the front window captured before the screenshot. It may differ from the selected region. Coordinates are screen points, not image pixels. Uncheck to send the image only.',
+    'capture.permission': 'Window context unavailable: Accessibility permission is not granted. You can still send the image alone.',
+    'capture.unavailable': 'Window context unavailable. You can still send the image alone.',
+    'capture.included': 'Window context included',
+    'capture.excluded': 'Image only',
+
     'attachment.remove': 'Remove {name}',
     'attachment.close': 'Close preview',
 
@@ -726,6 +735,15 @@ const LISA_STRINGS = {
     'session.invalidName': '请输入 1–120 个字符的名称。',
     'session.renameFailed': '名称保存失败，请重试。',
     'attachment.preview': '预览 {name}',
+    'capture.withContext': '截图并采集前台窗口文字',
+    'capture.review': '查看窗口上下文',
+    'capture.include': '发送时附带此窗口上下文',
+    'capture.explain': '请检查截图前的前台窗口信息，它可能与所选区域不同。坐标为屏幕点，非图片像素。取消勾选即可只发图片。',
+    'capture.permission': '未获辅助功能权限，无法采集窗口上下文；仍可只发送图片。',
+    'capture.unavailable': '窗口上下文不可用；仍可只发送图片。',
+    'capture.included': '将附带窗口上下文',
+    'capture.excluded': '仅图片',
+
     'attachment.remove': '移除 {name}',
     'attachment.close': '关闭预览',
 
@@ -1101,6 +1119,7 @@ window.lisaAttachImage = function (file) {
     name: file.name || 'screenshot.png',
     mediaType: file.mediaType || 'image/png',
     data: file.data,
+    ...(file.context ? { context: file.context, includeContext: false } : {}),
   });
   renderAttachPreview();
   try { input.focus(); } catch (_) {}
@@ -1150,7 +1169,7 @@ window.addEventListener('message', function (e) {
 // Returns true if an image was attached, false if cancelled/failed.
 // Exposed on window so the native app's global hotkey can invoke it.
 let capturing = false;
-window.lisaCaptureAndAttach = async function (mode) {
+window.lisaCaptureAndAttach = async function (mode, includeContext) {
   if (capturing) return false;
   capturing = true;
   const btn = document.getElementById('plusBtn');
@@ -1159,7 +1178,7 @@ window.lisaCaptureAndAttach = async function (mode) {
     const res = await fetch('/api/vision/capture', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mode: mode || 'interactive' }),
+      body: JSON.stringify({ mode: mode || 'interactive', includeContext: includeContext === true }),
     });
     if (!res.ok) {
       console.warn('[vision] capture failed: HTTP ' + res.status);
@@ -1232,6 +1251,14 @@ function renderAttachPreview() {
     name.className = 'attach-name';
     name.textContent = f.name;
     chip.appendChild(name);
+    if (f.context) {
+      const context = document.createElement('button');
+      context.type = 'button'; context.className = 'capture-context-open';
+      context.textContent = tr(f.includeContext ? 'capture.included' : 'capture.excluded');
+      context.setAttribute('aria-label', tr('capture.review'));
+      context.onclick = () => showCaptureContext(f);
+      chip.appendChild(context);
+    }
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.className = 'attach-rm';
@@ -1248,6 +1275,43 @@ function renderAttachPreview() {
     };
     chip.appendChild(rm);
     attachPreview.appendChild(chip);
+  });
+}
+
+function showCaptureContext(file) {
+  const context = file.context;
+  if (!context) return;
+  const viewer = document.createElement('dialog');
+  viewer.className = 'attachment-viewer capture-context-viewer';
+  viewer.setAttribute('aria-label', tr('capture.review'));
+  const explanation = document.createElement('p');
+  explanation.textContent = tr(context.status === 'ready' ? 'capture.explain' : context.status === 'permission_required' ? 'capture.permission' : 'capture.unavailable');
+  viewer.appendChild(explanation);
+  if (context.status === 'ready' && typeof context.text === 'string') {
+    const preview = document.createElement('pre');
+    preview.textContent = context.text;
+    const label = document.createElement('label'), checkbox = document.createElement('input');
+    checkbox.type = 'checkbox'; checkbox.checked = file.includeContext === true;
+    checkbox.onchange = () => { file.includeContext = checkbox.checked; renderAttachPreview(); };
+    label.append(checkbox, document.createTextNode(tr('capture.include')));
+    viewer.append(preview, label);
+  }
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = tr('attachment.close');
+  close.onclick = () => viewer.close();
+  viewer.appendChild(close);
+  viewer.addEventListener('close', () => viewer.remove());
+  document.body.appendChild(viewer); viewer.showModal();
+}
+// Project only the approved bytes into /chat. Preview-only context never rides
+// along as an extra property, including when the image is sent without text.
+function filesForSend(files) {
+  return files.flatMap(f => {
+    const image = { name: f.name, mediaType: f.mediaType, data: f.data };
+    if (!f.includeContext || !f.context || f.context.status !== 'ready' || typeof f.context.text !== 'string') return [image];
+    const bytes = new TextEncoder().encode(f.context.text);
+    const data = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
+    return [image, { name: f.name + '.context.txt', mediaType: 'text/plain', data }];
   });
 }
 
@@ -1308,6 +1372,11 @@ if (pmAttachEl) {
     closePlusMenu();
     try { fileInput.click(); } catch (err) { console.error('[attach] fileInput.click failed:', err); }
   });
+}
+const pmContextEl = document.getElementById('pmShotContext');
+if (pmContextEl) {
+  pmContextEl.textContent = tr('capture.withContext');
+  pmContextEl.addEventListener('click', () => { closePlusMenu(); void window.lisaCaptureAndAttach('interactive', true); });
 }
 const pmShotEl = document.getElementById('pmShot');
 if (pmShotEl) {
@@ -3335,7 +3404,7 @@ async function send(message) {
     const names = pendingFiles.map(f => f.name).join(', ');
     el('span', 'msg attach-label', '📎 ' + names);
   }
-  const filesToSend = [...pendingFiles];
+  const filesToSend = filesForSend(pendingFiles);
   pendingFiles = [];
   renderAttachPreview();
   maybeOfferKbIngest(message);

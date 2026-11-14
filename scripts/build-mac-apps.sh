@@ -115,6 +115,10 @@ sign_one() {
         codesign "${args[@]}" "$pty/pty.node"
         codesign "${args[@]}" "$pty/spawn-helper"
     fi
+    local context="$app/Contents/Resources/backend/packaging/vision/context-reader"
+    if [ -f "$context" ]; then
+        codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" --identifier ai.meetlisa.screen-context "$context"
+    fi
     codesign "${args[@]}" --deep "$app"
     codesign --verify --deep --strict --verbose=1 "$app"
 }

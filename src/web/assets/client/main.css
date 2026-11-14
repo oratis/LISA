@@ -3718,3 +3718,10 @@ body[data-theme="calm"] .modal-bg { background: rgba(32,45,70,.28); }
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
   #lisaBanner, #lisaBanner .lt-dot { animation: none; }
 }
+
+  .capture-context-open { display: block; width: 100%; padding: 6px; border: 0; border-top: 1px solid var(--border-strong); background: var(--bg-card); color: var(--fg); cursor: pointer; font-size: 11.5px; }
+  .capture-context-viewer { padding: 20px; width: min(700px, 90vw); max-height: 85vh; overflow-y: auto; }
+  .capture-context-viewer p { max-width: 65ch; }
+  .capture-context-viewer pre { max-height: 42vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; user-select: text; }
+  .capture-context-viewer label { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
+  .capture-context-viewer > button { padding: 8px 16px; cursor: pointer; }

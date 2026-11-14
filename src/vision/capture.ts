@@ -21,6 +21,7 @@ import { spawn } from "node:child_process";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { readCaptureContext, type CaptureContext } from "./context.js";
 
 export type CaptureMode = "interactive" | "full";
 
@@ -29,6 +30,8 @@ export interface CapturedImage {
   mediaType: "image/png";
   /** base64-encoded PNG bytes (no data: prefix). */
   data: string;
+  /** Kept in preview only; the user must separately choose to attach this text. */
+  context?: CaptureContext;
 }
 
 /**
@@ -59,44 +62,57 @@ export function captureSupported(): boolean {
  */
 export async function captureScreenshot(
   mode: CaptureMode = "interactive",
+  includeContext = false,
+  dependencies: {
+    supported?: () => boolean;
+    context?: () => Promise<CaptureContext>;
+    capture?: (args: string[]) => Promise<void>;
+  } = {},
 ): Promise<CapturedImage | null> {
-  if (!captureSupported()) {
+  if (!(dependencies.supported ?? captureSupported)()) {
     throw new Error("screen capture is only supported on macOS");
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const outPath = path.join(os.tmpdir(), `lisa-shot-${stamp}-${process.pid}.png`);
-  const args = buildScreencaptureArgs(mode, outPath);
-
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("/usr/sbin/screencapture", args);
-    let stderr = "";
-    child.stderr.on("data", (b) => (stderr += b.toString("utf8")));
-    child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`screencapture exited ${code}: ${stderr.trim()}`)),
-    );
-  });
-
-  // Escape-to-cancel: no file written.
-  let data: string;
+  const temp = await fsp.mkdtemp(path.join(os.tmpdir(), "lisa-shot-"));
+  const outPath = path.join(temp, "capture.png");
   try {
-    const buf = await fsp.readFile(outPath);
-    if (buf.length === 0) {
-      await fsp.rm(outPath, { force: true }).catch(() => {});
-      return null;
+    // Read before the capture overlay or Lisa raises its own window. Do not
+    // call AX at all unless explicitly requested for this capture.
+    const context = includeContext
+      ? await (dependencies.context ?? readCaptureContext)().catch(() => ({
+          status: "unavailable" as const,
+        }))
+      : undefined;
+    const capture =
+      dependencies.capture ??
+      ((args: string[]) =>
+        new Promise<void>((resolve, reject) => {
+          const child = spawn("/usr/sbin/screencapture", args);
+          // Do not report screen/window metadata via command diagnostics.
+          child.stderr.resume();
+          child.on("error", () => reject(new Error("screen capture unavailable")));
+          child.on("close", (code) =>
+            code === 0 ? resolve() : reject(new Error("screen capture failed")),
+          );
+        }));
+    await capture(buildScreencaptureArgs(mode, outPath));
+    let bytes: Buffer;
+    try {
+      const stat = await fsp.stat(outPath);
+      if (!stat.size) return null;
+      if (stat.size > 14 * 1024 * 1024) throw new Error("screenshot exceeds attachment size limit");
+      bytes = await fsp.readFile(outPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
-    data = buf.toString("base64");
-  } catch {
-    return null; // cancelled / nothing captured
+    return {
+      name: `screenshot-${stamp}.png`,
+      mediaType: "image/png",
+      data: bytes.toString("base64"),
+      ...(context ? { context } : {}),
+    };
   } finally {
-    await fsp.rm(outPath, { force: true }).catch(() => {});
+    await fsp.rm(temp, { recursive: true, force: true }).catch(() => {});
   }
-
-  return {
-    name: `screenshot-${stamp}.png`,
-    mediaType: "image/png",
-    data,
-  };
 }

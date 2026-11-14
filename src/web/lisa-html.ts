@@ -257,6 +257,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
           <button type="button" id="pmAttach"><span class="g">📎</span> Attach file</button>
           ${opts.connectorCatalog ? '<button type="button" id="pmConnectors">Browse app connectors</button>' : ""}
           <button type="button" id="pmShot"><span class="g">📷</span> Screenshot</button>
+          <button type="button" id="pmShotContext">Screenshot + front-window text</button>
         </div>
       </div>
       <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>

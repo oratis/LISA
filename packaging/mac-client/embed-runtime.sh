@@ -109,6 +109,16 @@ cp "$REPO_ROOT/package.json" "$RES/backend/package.json"
 # machine (and would break the code signature seal).
 cp -RL "$REPO_ROOT/dist" "$RES/backend/dist"
 cp -R "$STAGE/node_modules" "$RES/backend/node_modules"
+# Prebuild the opt-in AX reader: released Mac apps need no developer toolchain.
+CONTEXT_OUT="$RES/backend/packaging/vision"
+mkdir -p "$CONTEXT_OUT"
+for arch in arm64 x86_64; do
+    xcrun swiftc -target "$arch-apple-macos12.0" \
+        "$REPO_ROOT/packaging/vision/Context.swift" -o "$STAGE/context-$arch"
+done
+lipo -create "$STAGE/context-arm64" "$STAGE/context-x86_64" -output "$CONTEXT_OUT/context-reader"
+codesign --force --sign - --identifier ai.meetlisa.screen-context "$CONTEXT_OUT/context-reader"
+
 
 # Optional, explicitly prepared native PTY module. Never bundle a library for
 # the wrong architecture or silently ship an incomplete install.

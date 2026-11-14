@@ -41,6 +41,7 @@
   "files": [
     "dist/",
     "packaging/eventkit/",
+    "packaging/vision/",
     "contracts/",
     "channels.example.json",
     "completions/",

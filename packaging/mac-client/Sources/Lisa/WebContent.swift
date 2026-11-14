@@ -149,8 +149,8 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
     /// whatever the user is trying to screenshot. callAsyncJavaScript (macOS
     /// 11+) resolves with the JS return value; older macOS falls back to the
     /// fire-and-forget path (window already handled by the caller).
-    func triggerCapture(onAttached: @escaping (Bool) -> Void) {
-        let js = "return await (window.lisaCaptureAndAttach ? window.lisaCaptureAndAttach('interactive') : false);"
+    func triggerCapture(includeContext: Bool = false, onAttached: @escaping (Bool) -> Void) {
+        let js = "return await (window.lisaCaptureAndAttach ? window.lisaCaptureAndAttach('interactive', \(includeContext ? "true" : "false")) : false);"
         if #available(macOS 11.0, *) {
             webView.callAsyncJavaScript(
                 js, arguments: [:], in: nil, in: .page
@@ -166,7 +166,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
             }
         } else {
             webView.evaluateJavaScript(
-                "window.lisaCaptureAndAttach && window.lisaCaptureAndAttach('interactive');"
+                "window.lisaCaptureAndAttach && window.lisaCaptureAndAttach('interactive', \(includeContext ? "true" : "false"));"
             ) { _, _ in onAttached(true) }
         }
     }

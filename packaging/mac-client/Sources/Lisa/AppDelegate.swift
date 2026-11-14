@@ -42,8 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Vision — global ⌃⌥S: screenshot straight into Lisa's composer,
         // from anywhere. Brings the window forward, then runs the page's
         // capture bridge (server-side screencapture → attachment).
-        HotkeyManager.shared.register { [weak self] in
-            self?.captureForLisa(nil)
+        HotkeyManager.shared.register { [weak self] includeContext in
+            self?.captureForLisa(includeContext: includeContext)
         }
 
         // Lisa Island — the notch pill, now a feature of this app rather than
@@ -74,7 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func captureForLisa(_ sender: Any?) {
+    @objc func captureForLisa(_ sender: Any?) { captureForLisa(includeContext: false) }
+    @objc func captureContextForLisa(_ sender: Any?) { captureForLisa(includeContext: true) }
+    private func captureForLisa(includeContext: Bool) {
         // Do NOT raise the Lisa window first — that would cover whatever the
         // user is trying to screenshot. screencapture's crosshair is a
         // system-level overlay that works regardless of which app is frontmost,
@@ -83,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // attached (so the user sees it land), and leave everything untouched
         // if they cancelled with Escape.
         let fireCapture: () -> Void = { [weak self] in
-            self?.mainWindow?.triggerCapture { attached in
+            self?.mainWindow?.triggerCapture(includeContext: includeContext) { attached in
                 if attached { self?.bringWindowToFront() }
             }
         }
@@ -326,6 +328,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         captureItem.keyEquivalentModifierMask = [.control, .option]
         viewMenu.addItem(captureItem)
+        let contextItem = NSMenuItem(title: "Screenshot + Front-window Text…",
+            action: #selector(captureContextForLisa(_:)), keyEquivalent: "s")
+        contextItem.keyEquivalentModifierMask = [.control, .option, .shift]
+        viewMenu.addItem(contextItem)
         viewMenu.addItem(.separator())
         viewMenu.addItem(NSMenuItem(
             title: "Enter Full Screen",

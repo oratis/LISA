@@ -5340,6 +5340,40 @@
           }
         }
       }
+    },
+    "/api/vision/capture": {
+      "post": {
+        "summary": "Capture a local screenshot, with optional preview-only front-window context",
+        "description": "Local owner, loopback and same-origin only. includeContext explicitly opts into reading window/accessibility data before capture. Context is not sent to a model; the composer separately selects it on Send. Missing Accessibility access preserves the image-only flow. Coordinates are global screen points and may not describe the selected screenshot region.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LisaCaptureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Captured image or cancellation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LisaCaptureResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the local owner may capture"
+          },
+          "501": {
+            "description": "Capture unsupported on this platform"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8499,7 +8533,7 @@
               "notion",
               "slack",
               "feishu",
-                "t3",
+              "t3",
               "todoist",
               "outlook-mail",
               "outlook-calendar",
@@ -8539,7 +8573,7 @@
                     "notion",
                     "slack",
                     "feishu",
-                "t3",
+                    "t3",
                     "todoist",
                     "outlook-mail",
                     "outlook-calendar",
@@ -11719,6 +11753,90 @@
             "type": "boolean"
           }
         }
+      },
+      "LisaCaptureRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "interactive",
+              "full"
+            ],
+            "default": "interactive"
+          },
+          "includeContext": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "LisaCaptureResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "cancelled"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "cancelled": {
+                "const": true
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "file": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mediaType",
+                  "data"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "mediaType": {
+                    "const": "image/png"
+                  },
+                  "data": {
+                    "type": "string",
+                    "contentEncoding": "base64"
+                  },
+                  "context": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "status"
+                    ],
+                    "properties": {
+                      "status": {
+                        "enum": [
+                          "ready",
+                          "permission_required",
+                          "unavailable"
+                        ]
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 32768
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }
