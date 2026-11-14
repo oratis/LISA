@@ -244,7 +244,7 @@ struct RosterView: View {
         switch p.action {
         case .useCloud: Button("Use LISA Cloud") { app.switchToCloud() }
         case .signIn: Button("Sign in again") { app.beginSignInAgain() }
-        case .connectMac: Button("Open Settings") { app.selectedTab = 3 }
+        case .connectMac: Button("Open Settings") { app.openRoomSettings() }
         case .retry: Button("Try again") { Task { await model.load(app.client) } }
         case nil: EmptyView()
         }
