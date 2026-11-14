@@ -20,7 +20,13 @@ import {
 } from "./protocol.js";
 import { sendFrame } from "./broker.js";
 
-import { fleetRoute, type FleetGrant, type FleetPeer } from "./fleet/types.js";
+import {
+  fleetRoute,
+  fleetViewRoute,
+  type FleetGrant,
+  type FleetPeer,
+  type FleetViewer,
+} from "./fleet/types.js";
 
 interface Grant {
   fleet?: FleetGrant;
@@ -30,6 +36,7 @@ interface Grant {
   createdAt: number;
   /** 2: approved after a committed (v2) code comparison. Absent: v1, the weaker method. */
   pairing?: 2;
+  pairingId?: string;
 }
 interface Stored {
   version: 1;
@@ -285,6 +292,7 @@ export class RemoteHost {
         ...(fleet ? { fleet } : {}),
         name: pending.name,
         createdAt: Date.now(),
+        pairingId: crypto.randomUUID(),
         ...(pending.protocol === 2 ? { pairing: 2 as const } : {}),
       },
     ];
@@ -352,6 +360,20 @@ export class RemoteHost {
     const grant = this.stored.grants.find((g) => g.id === req.headers["x-lisa-link-device"]);
     if (grant?.fleet && grant.pairing === 2)
       return { ...grant.fleet, deviceId: grant.id, hostId: keyId(this.stored.identity.publicKey) };
+  }
+  pocketDevice(id: string): FleetViewer | undefined {
+    if (!this.stored?.enabled) return;
+    const grant = this.stored.grants.find((g) => g.id === id);
+    if (grant?.pairing === 2 && !grant.fleet)
+      return {
+        deviceId: grant.id,
+        hostId: keyId(this.stored.identity.publicKey),
+        pairingId: grant.pairingId ?? `legacy:${grant.createdAt}`,
+      };
+  }
+  fleetViewer(req: http.IncomingMessage): FleetViewer | undefined {
+    if (!this.authorized(req)) return;
+    return this.pocketDevice(String(req.headers["x-lisa-link-device"]));
   }
   private expirePending(): void {
     for (const [id, p] of this.pending) if (p.expiresAt < Date.now()) this.pending.delete(id);
@@ -724,7 +746,10 @@ export class RemoteHost {
     const grant = this.stored?.grants.find((g) => g.id === c.deviceId);
     if (
       !grant ||
-      (grant.fleet ? !fleetRoute(method, route) : route.startsWith("/api/agent-host/"))
+      (grant.fleet
+        ? !fleetRoute(method, route)
+        : route.startsWith("/api/agent-host/") &&
+          !(grant.pairing === 2 && fleetViewRoute(method, route)))
     ) {
       this.closeChannel(id);
       return;
