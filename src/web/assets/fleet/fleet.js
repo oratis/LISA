@@ -330,7 +330,7 @@
     if (v !== version) return;
     cap = c;
     $("agent").replaceChildren(...(c.agents || [{ id: "claude-code" }]).map((a) => {
-      const option = make("option", a.id === "codex" ? "Codex · 只读交接包复核" : "Claude Code");
+      const option = make("option", a.id === "codex" ? "Codex · 只读交接包复核" : a.id === "codex-workspace" ? "Codex · 目录读写（逐次审批）" : "Claude Code");
       option.value = a.id; return option;
     }));
     $("workspace").replaceChildren(
@@ -566,6 +566,7 @@
     const unavailable = provider ? provider.unavailable : cap.unavailable;
     $("capability").textContent = unavailable ? messages[unavailable] || unavailable
       : selectedAgent === "codex" ? "Codex 只读复核发送的文本与 diff；不读取项目、不执行验证命令，不支持追加或审批；中断后可预览上下文并新建复核任务。内容使用执行机的 OpenAI API 配置发送。"
+      : selectedAgent === "codex-workspace" ? "Codex · List / Read / Edit / Write 逐次审批，支持追加与取消；仅批准的目录内普通文件，不支持点文件、链接或执行命令。内容使用执行机的 OpenAI API 配置发送。"
       : "Claude Code · Read / Edit / Write 逐次审批，支持轮间追加与取消；确认旧进程退出后可创建续接任务。内容使用执行机的 Claude API 配置发送。";
     $("start").disabled = blocked || !wid || cap.workspaces.find((w) => w.id === wid)?.archived || !cap.control || !!unavailable ||
       (cap.agents && !provider?.start) || runs.some((x) => ["running", "waiting", "approval", "cancelling"].includes(x.state));

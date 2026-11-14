@@ -55,6 +55,49 @@ export function codexInvocation(scratch: string) {
   ];
 }
 
+/** Both adapters run Codex in empty scratch; only host-mediated tools can access a project. */
+export function startCodexProcess(
+  home: string,
+  port: number,
+  _cwd: string,
+  invocation: (scratch: string) => string[],
+) {
+  const binary = fs.realpathSync(resolveCli("codex")!);
+  const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lisa-review-")));
+  const q = JSON.stringify;
+  let policy = buildMacosSeatbeltPolicy({
+    cwd: scratch,
+    mode: "workspace-write",
+    allowNetwork: true,
+    denyPaths: [...sandboxProtections().paths, home],
+    denyTcpPorts: [...sandboxProtections().tcpPorts, port],
+  });
+  policy +=
+    '\n(deny file-read-data file-write* (subpath "/Users") (subpath "/Volumes") (subpath "/private/tmp") (subpath "/private/var/folders"))';
+  policy += "\n(allow file-read-data file-read* file-write* (subpath " + q(scratch) + "))";
+  for (const dir of [scratch, path.dirname(binary)])
+    for (let parent = path.dirname(dir); parent !== "/"; parent = path.dirname(parent))
+      policy += "\n(allow file-read-data (literal " + q(parent) + "))";
+  policy += "\n(allow file-read-data file-read* (literal " + q(binary) + "))";
+  // Even checkouts outside /Users and /Volumes stay outside this review's context.
+  policy += "\n(deny file-read-data file-write* (subpath " + q(_cwd) + "))";
+  const proc = spawn("/usr/bin/sandbox-exec", ["-p", policy, binary, ...invocation(scratch)], {
+    cwd: scratch,
+    detached: true,
+    stdio: ["pipe", "pipe", "pipe"],
+    env: {
+      PATH: "/usr/bin:/bin",
+      HOME: scratch,
+      TMPDIR: scratch,
+      CODEX_HOME: scratch,
+      CODEX_API_KEY: process.env.OPENAI_API_KEY,
+      NO_PROXY: "127.0.0.1,localhost,::1",
+      ...(process.env.OPENAI_BASE_URL ? { OPENAI_BASE_URL: process.env.OPENAI_BASE_URL } : {}),
+    },
+  });
+  return { proc, scratch };
+}
+
 export class LocalCodex implements ClaudeRunner {
   constructor(
     private readonly home: string,
@@ -87,43 +130,7 @@ export class LocalCodex implements ClaudeRunner {
   start(_cwd: string, events: ClaudeEvents): ClaudeSession {
     const reason = this.reason();
     if (reason) throw new FleetError(503, reason);
-    const binary = fs.realpathSync(resolveCli("codex")!);
-    const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lisa-review-")));
-    const q = JSON.stringify;
-    let policy = buildMacosSeatbeltPolicy({
-      cwd: scratch,
-      mode: "workspace-write",
-      allowNetwork: true,
-      denyPaths: [...sandboxProtections().paths, this.home],
-      denyTcpPorts: [...sandboxProtections().tcpPorts, this.port],
-    });
-    policy +=
-      '\n(deny file-read-data file-write* (subpath "/Users") (subpath "/Volumes") (subpath "/private/tmp") (subpath "/private/var/folders"))';
-    policy += "\n(allow file-read-data file-read* file-write* (subpath " + q(scratch) + "))";
-    for (const dir of [scratch, path.dirname(binary)])
-      for (let parent = path.dirname(dir); parent !== "/"; parent = path.dirname(parent))
-        policy += "\n(allow file-read-data (literal " + q(parent) + "))";
-    policy += "\n(allow file-read-data file-read* (literal " + q(binary) + "))";
-    // Even checkouts outside /Users and /Volumes stay outside this review's context.
-    policy += "\n(deny file-read-data file-write* (subpath " + q(_cwd) + "))";
-    const proc = spawn(
-      "/usr/bin/sandbox-exec",
-      ["-p", policy, binary, ...codexInvocation(scratch)],
-      {
-        cwd: scratch,
-        detached: true,
-        stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          PATH: "/usr/bin:/bin",
-          HOME: scratch,
-          TMPDIR: scratch,
-          CODEX_HOME: scratch,
-          CODEX_API_KEY: process.env.OPENAI_API_KEY,
-          NO_PROXY: "127.0.0.1,localhost,::1",
-          ...(process.env.OPENAI_BASE_URL ? { OPENAI_BASE_URL: process.env.OPENAI_BASE_URL } : {}),
-        },
-      },
-    );
+    const { proc, scratch } = startCodexProcess(this.home, this.port, _cwd, codexInvocation);
     let sent = false,
       stopped = false,
       complete = false,

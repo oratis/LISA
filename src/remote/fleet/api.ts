@@ -3,6 +3,7 @@ import path from "node:path";
 import { FleetHostService } from "./host-service.js";
 import { FleetController } from "./controller.js";
 import { LocalClaude } from "./claude.js";
+import { LocalCodexWorkspace } from "./codex-workspace.js";
 import { LocalCodex } from "./codex.js";
 import { getCurrentHub } from "../../integrations/current-hub.js";
 import {
@@ -26,6 +27,7 @@ export class FleetApi {
   constructor(home: string, port: number) {
     this.host = new FleetHostService(home, new LocalClaude(home, port), {
       codex: new LocalCodex(home, port),
+      codexWorkspace: new LocalCodexWorkspace(home, port),
       observed: () => getCurrentHub()?.list() ?? [],
     });
     // The controller private key must never resolve through a model-facing secret:// handle.

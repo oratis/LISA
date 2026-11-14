@@ -5,7 +5,7 @@ Fleet lets a controlling Mac start work in a separately authorized workspace on 
 ## Set up an executing Mac
 
 1. Open the executing Mac's own local LISA page, then **Remote Macs → Configure this Mac as an execution host**. Host configuration is restricted to the local owner.
-2. Register a workspace and enable the installed agent. Claude Code supports approved Read/Edit/Write operations and follow-up turns. Codex needs its native CLI and `OPENAI_API_KEY` (optionally `OPENAI_BASE_URL`) and reviews one explicitly supplied packet.
+2. Register a workspace and enable the installed agent. Claude Code supports approved Read/Edit/Write operations and follow-up turns. Codex needs its native CLI and `OPENAI_API_KEY` (optionally `OPENAI_BASE_URL`). Choose **packet review** for one supplied-text review, or **workspace tools** for individually approved List/Read/Edit/Write calls and follow-up turns.
 3. Pair the controller with v2 code comparison, then grant that device the exact workspace. Another device, account or directory does not inherit the grant.
 4. For checkpoints, create an **isolated workspace from the current commit** of a registered Git repository and grant the newly created workspace. It starts at HEAD in a detached worktree beside the original repository. Uncommitted source changes are not copied.
 
@@ -23,7 +23,7 @@ After the task ends, select a changed file and choose **Preview file restore**. 
 
 To hand off, finish the original task, select another agent and a checkpointed turn, add any verification notes and request a preview. Review the exact packet before confirming. It contains the initial requirement, selected turn's requirement/result, file diffs and your notes; it does not include all other turns or old approvals. Notes are user-provided assertions, not evidence that a command ran. The maximum is 20 files / 96 KiB. Edited, expired or invalidated previews must be regenerated.
 
-Codex reviews only this packet in an empty sandbox; it cannot inspect the source project or run your tests. Claude may request its own new tool approvals. Handoff remains on the same executing Mac and workspace.
+Codex packet mode reviews only this packet in an empty sandbox. Codex workspace mode also starts in an empty sandbox and reaches the selected project only through Fleet tools, each with a fresh approval; built-in tools have no project access. Neither Codex mode runs project commands or tests. Workspace tools reject dot paths, traversal, links, hardlinks and special files; parent directories must exist. Read/Edit return UTF-8 text up to 64 KiB; List returns one directory up to 500 entries. Writes bind the approved file identity/content and cannot be replayed after failure. Claude may request its own new tool approvals. Handoff remains on the same executing Mac and workspace.
 
 ## Share a task with Pocket
 

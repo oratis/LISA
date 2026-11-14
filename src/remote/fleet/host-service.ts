@@ -68,6 +68,7 @@ interface Orphan {
 }
 export interface FleetHostOptions {
   codex?: ClaudeRunner;
+  codexWorkspace?: ClaudeRunner;
   observed?: () => readonly AgentSession[];
   /** `kill(id, 0)`: whether a process exists, or a process group for a negative id. */
   exists?: (id: number) => boolean;
@@ -467,11 +468,16 @@ export class FleetHostService {
     return r;
   }
   private adapter(agent: FleetAgent) {
-    return agent === "claude-code" ? this.runner : this.options.codex;
+    return agent === "claude-code"
+      ? this.runner
+      : agent === "codex"
+        ? this.options.codex
+        : this.options.codexWorkspace;
   }
   private agent(value: unknown): FleetAgent {
     if (value === undefined) return "claude-code";
-    if (value !== "claude-code" && value !== "codex") throw new FleetError(400, "invalid_agent");
+    if (value !== "claude-code" && value !== "codex" && value !== "codex-workspace")
+      throw new FleetError(400, "invalid_agent");
     return value;
   }
   private hostBusy() {
@@ -482,7 +488,7 @@ export class FleetHostService {
     );
   }
   private agents(peer: FleetPeer) {
-    return (["claude-code", "codex"] as const).map((id) => {
+    return (["claude-code", "codex", "codex-workspace"] as const).map((id) => {
       const unavailable =
         this.adapter(id)?.reason() ?? (this.adapter(id) ? null : "agent_unavailable");
       return {
@@ -769,7 +775,7 @@ export class FleetHostService {
           throw new FleetError(409, "run_not_active");
         if (r.state === "cancelling") throw new FleetError(409, "run_stopping");
         const actions = this.view(r, peer).capabilities;
-        if (action === "messages" && r.agent !== "claude-code")
+        if (action === "messages" && r.agent === "codex")
           throw new FleetError(409, "append_unavailable");
         if (action === "cancel" && !actions.cancel) throw new FleetError(409, "run_not_active");
         if (

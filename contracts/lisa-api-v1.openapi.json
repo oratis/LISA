@@ -5543,7 +5543,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "capabilities": {
@@ -5651,7 +5652,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "sourceRunId": {
@@ -10791,7 +10793,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "capabilities": {
@@ -10881,7 +10884,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           }
         },
@@ -11101,7 +11105,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "mode": {
@@ -11150,7 +11155,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "state": {
@@ -11188,7 +11194,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ]
           },
           "turn": {
@@ -11247,7 +11254,8 @@
                 "type": "string",
                 "enum": [
                   "claude-code",
-                  "codex"
+                  "codex",
+                  "codex-workspace"
                 ]
               },
               "turn": {
@@ -11281,7 +11289,8 @@
                 "type": "string",
                 "enum": [
                   "claude-code",
-                  "codex"
+                  "codex",
+                  "codex-workspace"
                 ]
               },
               "mode": {
@@ -11556,7 +11565,8 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "codex-workspace"
             ],
             "description": "Must match the original task adapter. Omission preserves it."
           },

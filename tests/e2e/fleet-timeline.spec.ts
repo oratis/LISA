@@ -68,6 +68,7 @@ async function openTask(page: Page, modern = false) {
                 agents: [
                   { id: "claude-code", start: true, mode: "workspace-edit" },
                   { id: "codex", start: true, mode: "packet-review" },
+                  { id: "codex-workspace", start: true, mode: "workspace-edit" },
                 ],
               }
             : {}),
@@ -485,6 +486,32 @@ test("host actions hide unavailable controls alongside observed sessions", async
   await expect(page.getByRole("button", { name: "允许这一次" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "取消此任务" })).toHaveCount(0);
   await expect(page.locator("#follow")).toBeHidden();
+});
+
+test("Codex workspace and packet review are distinct choices with a bound start request", async ({
+  page,
+}) => {
+  const { state } = await openTask(page, true);
+  state.taskState = "completed";
+  state.lastSeq++;
+  await page.clock.fastForward(4000);
+  let started = false;
+  await page.route("**/api/fleet/request", (route) => {
+    const request = route.request().postDataJSON();
+    if (request.path !== "/runs" || request.method !== "POST") return route.fallback();
+    expect(request.payload.agent).toBe("codex-workspace");
+    expect(request.payload.text).toBe("Read and update the project");
+    started = true;
+    return route.fulfill({ json: { status: "accepted", run: { id: runId, workspaceId } } });
+  });
+  await page.locator("#agent").selectOption("codex-workspace");
+  await expect(page.locator("#capability")).toContainText("逐次审批");
+  await page.locator("#prompt").fill("Read and update the project");
+  await page.locator("#start").click();
+  await expect(page.locator("#notice")).toContainText("操作已接收");
+  expect(started).toBe(true);
+  await page.locator("#agent").selectOption("codex");
+  await expect(page.locator("#capability")).toContainText("不读取项目");
 });
 
 test("handoff requires a preview and confirmation, and editing invalidates that preview", async ({

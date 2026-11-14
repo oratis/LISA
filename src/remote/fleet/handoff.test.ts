@@ -58,6 +58,7 @@ function fixture() {
   const reopen = () =>
     new FleetHostService(home, runner("claude-code"), {
       codex: runner("codex"),
+      codexWorkspace: runner("codex-workspace"),
       observed: () => observed,
     });
   const svc = reopen();
@@ -116,6 +117,55 @@ function fixture() {
     },
   };
 }
+
+test("Codex workspace mode permits approved turns while packet mode stays read-only", async () => {
+  const f = fixture();
+  try {
+    const start = { ...f.start, agent: "codex-workspace" };
+    f.svc.mutate(f.peer, HOST_API + "/runs", start);
+    assert.equal(f.read().agent, "codex-workspace");
+    const event = f.events["codex-workspace"]!;
+    const approval = {
+      id: crypto.randomUUID(),
+      tool: "Edit",
+      input: { file_path: "file.txt", old_string: "before", new_string: "after" },
+      expiresAt: Date.now() + 60_000,
+    };
+    event.approval(approval);
+    assert.equal(f.read().capabilities.approve, true);
+    assert.equal(f.read(f.id, { ...f.peer, control: false }).capabilities.approve, false);
+    assert.throws(
+      () =>
+        f.svc.mutate(
+          { ...f.peer, control: false },
+          f.route + "/decisions",
+          f.body({ approvalId: approval.id, allow: true }),
+        ),
+      /control_denied/,
+    );
+    const decision = f.body({ approvalId: approval.id, allow: true });
+    f.svc.mutate(f.peer, f.route + "/decisions", decision);
+    event.approval(null, { id: approval.id, outcome: "allowed" });
+    event.result("edited", false);
+    assert.equal(f.read().capabilities.append, true);
+    const next = f.body({ text: "inspect again" });
+    f.svc.mutate(f.peer, f.route + "/messages", next);
+    f.svc.mutate(f.peer, f.route + "/messages", next);
+    assert.equal(f.sends.length, 2, "follow-up retries do not resend");
+    const fresh = { ...approval, id: crypto.randomUUID() };
+    event.approval(fresh);
+    f.svc.mutate(f.peer, f.route + "/decisions", decision);
+    assert.equal(
+      (f.read().approval as { id: string }).id,
+      fresh.id,
+      "old receipt cannot decide a new request",
+    );
+    f.svc.mutate(f.peer, f.route + "/cancel", f.body());
+    assert.equal(f.read().capabilities.approve, false);
+  } finally {
+    await f.close();
+  }
+});
 
 test("host capabilities distinguish scoped external observations, live adapters and viewer rights", async () => {
   const f = fixture();

@@ -10,7 +10,7 @@ The owner confirmed on November 14, 2026 that this release includes the follow-u
 - [x] Worktrees: preview/confirm automatic merge into the source branch, refuse conflicts or changed source state, optionally clean up owned worktrees safely.
 - [x] Storage: cross-task checkpoint quotas, retention controls and complete content/receipt cleanup with an explicit operation generation so old retries cannot restart deleted tasks.
 - [x] Recovery: explicit continuation from saved task context after the previous process has been verified stopped; never silently replay uncertain tool calls.
-- [ ] Codex: scoped workspace browsing/editing and fresh approval requests, preserving the existing packet-only review option.
+- [x] Codex: scoped workspace browsing/editing and fresh approval requests, preserving the existing packet-only review option.
 - [ ] T3: authenticated read-only project/thread-list connector, exact selected-project scoping, pagination, cancellation and revocation.
 - [ ] Screenshots: opt-in window/accessibility context in the attachment preview, with useful fallback when permission is absent or the user excludes text.
 - [ ] Update API contracts, Web/Pocket/Mac UI, translations, guides, README and release notes to match implemented behavior.
@@ -64,3 +64,10 @@ New destructive product actions require a user-visible preview and explicit conf
 - Confirmation requires a clean unchanged source and matching worktree/checkpoint. One commit is fast-forwarded; optional cleanup rechecks ownership/content and refuses ignored files. Removed workspaces retain historical diffs and cannot start new tasks.
 - Durable unknown receipts and host maintenance reservations prevent duplicate writes across backend instances. Uncertain merge receipts retain the proposed commit for inspection. Only explicit local-owner verification releases uncertain/dead-backend operations; no old operation is retried. Restore and full ledger cleanup use the same reservation.
 - Fleet/host: 74 passed, zero skips before the final two fault/restart regressions. Final checkpoint suite: 20 passed, including a human edit during merge preserving the worktree even after the source commit succeeded. Browser: 19 passed, including cleanup selection invalidating previews and late Mac-switch responses. Type checks/contracts pass; lint has zero errors / 72 existing warnings. Logs: `/private/tmp/lisa-complete-merge-all.log`, `/private/tmp/lisa-complete-merge-final.log`, `/private/tmp/lisa-complete-merge-browser.log`, `/private/tmp/lisa-complete-merge-static.log`.
+
+## Implementation evidence: Codex workspace mode
+
+- `codex-workspace` is separate from existing `codex` packet review. Native app-server starts an ephemeral thread in empty Seatbelt-protected scratch; only Fleet-mediated List/Read/Edit/Write reaches the selected project, each through a fresh five-minute approval. Follow-up turns and cancellation use the existing durable task receipts.
+- Tools reject escapes/dot paths/links/hardlinks/special files, require existing parents, bound text/payload/directory size, bind file/directory identity and content, and consume the operation before I/O. Partial writes cannot replay. Expired/invalid/withdrawn approvals do not authorize later calls.
+- The installed native Codex fixture completed Read → Edit → denied Write → rejected traversal, followed by a directory listing through its actual code-mode tool entry and a rejected native patch against the source. Tests now inspect both legacy tool arrays and modern `additional_tools` messages; the original packet-review fixture also remains green. This is native-protocol acceptance against a local Responses fixture, not live OpenAI inference.
+- Fleet/host: 82 passed, zero skips. Browser: 20 passed. Types/contracts and scoped lint pass. Logs: `/private/tmp/lisa-complete-codex-all.log`, `/private/tmp/lisa-complete-codex-browser.log`, `/private/tmp/lisa-complete-codex-final-static.log`.

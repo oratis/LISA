@@ -120,9 +120,18 @@ test(
     assert.equal(requests.length, 1);
     assert.match(JSON.stringify(requests[0]!.input), /confirmed packet/);
     assert.doesNotMatch(JSON.stringify(requests), /not-in-the-preview/);
+    // Models can advertise tools inside additional_tools messages as well as the
+    // legacy top-level array. Scratch-only utility tools confer no project access.
+    const advertised = JSON.stringify(requests[0]!.tools ?? requests[0]!.input);
+    const declared = [...advertised.matchAll(/declare const tools: \{ ([a-zA-Z0-9_]+)/g)].map(
+      (m) => m[1],
+    );
+    assert.ok(
+      !declared.some((name) => /exec_command|shell|web_search|view_image|fleet_/.test(name!)),
+    );
     assert.ok(
       !((requests[0]!.tools ?? []) as { name?: string; type: string }[]).some((tool) =>
-        /exec_command|shell|apply_patch|mcp|web_search|view_image/.test(tool.name ?? tool.type),
+        /exec_command|shell|web_search|view_image/.test(tool.name ?? tool.type),
       ),
     );
   },
