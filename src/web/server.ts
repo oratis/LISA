@@ -59,6 +59,12 @@ import {
 } from "../connectors/workspace/catalog.js";
 import type { Resource as WorkspaceResource } from "../connectors/workspace/data.js";
 import {
+  FeishuReadonlyDriver,
+  isFeishuReadRequest,
+  type FeishuAccount,
+  type FeishuResource,
+} from "../connectors/feishu-driver.js";
+import {
   SlackReadonlyDriver,
   isSlackReadRequest,
   type SlackAccount,
@@ -424,6 +430,7 @@ export interface WebServerOptions {
   workspaceDrivers?: Partial<
     Record<WorkspaceId, ReadonlyDriver<WorkspaceResource, WorkspaceResource>>
   >;
+  feishuDriver?: ReadonlyDriver<FeishuAccount, FeishuResource>;
   slackDriver?: ReadonlyDriver<SlackAccount, SlackResource>;
   notionDriver?: ReadonlyDriver<NotionAccount, NotionResource>;
   linearDriver?: ReadonlyDriver<LinearAccount, LinearResource>;
@@ -1221,6 +1228,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         secrets: connectorSecrets,
         changed: (sessionId) =>
           broadcast({ type: "connector_connection_changed", sessionId, provider: "notion" }, null),
+        resume: resumeConnector,
+      }),
+    );
+    taskConnectors.set(
+      "feishu",
+      new ReadonlyConnector({
+        home: lisaHome(),
+        driver: opts.feishuDriver ?? new FeishuReadonlyDriver(),
+        secrets: connectorSecrets,
+        changed: (sessionId) =>
+          broadcast({ type: "connector_connection_changed", sessionId, provider: "feishu" }, null),
         resume: resumeConnector,
       }),
     );
@@ -6068,6 +6086,7 @@ self.addEventListener('fetch', (event) => {
             ...(isLinearReadRequest(message) ? ["linear" as const] : []),
             ...(isDriveReadRequest(message) ? ["google-drive" as const] : []),
             ...(isNotionReadRequest(message) ? ["notion" as const] : []),
+            ...(isFeishuReadRequest(message) ? ["feishu" as const] : []),
             ...(isSlackReadRequest(message) ? ["slack" as const] : []),
           ];
           const taskProvider = requestedProviders[0];

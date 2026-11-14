@@ -797,3 +797,15 @@ test("Slack wrapper exposes channel reads only and taints all returned content",
   for (const operation of ["send", "reply", "join", "delete", "unknown"])
     assert.equal(cat("slack_read", { operation }), "write");
 });
+
+test("Feishu wrapper permits selected document reads and taints returned content", () => {
+  for (const operation of ["list", "metadata", "content"]) {
+    const action = classify("feishu_read", { operation });
+    assert.equal(action.category, "read");
+    assert.equal(action.connector, "feishu");
+    assert.equal(action.taintSource, true);
+    assert.equal(action.destination, "fixed");
+  }
+  for (const operation of ["write", "create", "delete", "search"])
+    assert.equal(cat("feishu_read", { operation }), "write");
+});
