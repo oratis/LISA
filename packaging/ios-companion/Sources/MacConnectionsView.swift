@@ -172,6 +172,17 @@ struct MacConnectionsView: View {
         selected = target; code = ""; status = ""; confirmed = false; authorized = false; secure = true
         comparable = true
     }
+    /// `/api/relay/macs` refused although `/api/auth/me` just confirmed the
+    /// account: the cloud has no Mac relay. Its 403 says
+    /// `account_session_required` (older servers: no code at all), which here
+    /// can't mean "sign in", so it must not read as a sign-in problem.
+    nonisolated static func macConnectionsUnavailable(_ error: Error) -> Bool {
+        if error.httpStatus == 404 { return true }
+        guard error.httpStatus == 403 else { return false }
+        let code = error.serverFailure?.code ?? ""
+        return code.isEmpty || code == "account_session_required"
+    }
+
     private func refresh() async {
         guard app.savedCloudConfig.token != nil else { return }
         loading = true; defer { loading = false }
@@ -185,7 +196,7 @@ struct MacConnectionsView: View {
             needsSignIn = false
             hosts = try await client.remoteMacs()
             status = ""
-        } catch let error where error.httpStatus == 404 || (error.httpStatus == 403 && error.serverFailure?.code.isEmpty != false) {
+        } catch let error where Self.macConnectionsUnavailable(error) {
             hosts = []; status = "This cloud service hasn't enabled Mac connections yet."
         } catch {
             let problem = ConnectionProblem.classify(error, config: config)

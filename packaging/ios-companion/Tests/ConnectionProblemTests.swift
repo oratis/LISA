@@ -112,6 +112,15 @@ final class ConnectionProblemTests: XCTestCase {
         XCTAssertTrue(RemoteMacTransport.openFailure(CancellationError(), status: 503, closeCode: 0, timedOut: true) is CancellationError)
     }
 
+    func testACloudWithoutTheMacRelayIsNotASignInProblem() {
+        XCTAssertTrue(MacConnectionsView.macConnectionsUnavailable(failure(403, #"{"error":"account_session_required","message":"Sign in to your Lisa account to do this."}"#)))
+        XCTAssertTrue(MacConnectionsView.macConnectionsUnavailable(failure(403, #"{"error":"account_session_required"}"#)))
+        XCTAssertTrue(MacConnectionsView.macConnectionsUnavailable(LisaError.http(403)))
+        XCTAssertTrue(MacConnectionsView.macConnectionsUnavailable(LisaError.http(404)))
+        XCTAssertFalse(MacConnectionsView.macConnectionsUnavailable(failure(403, #"{"error":"account_suspended","message":"Suspended."}"#)))
+        XCTAssertFalse(MacConnectionsView.macConnectionsUnavailable(failure(401, #"{"error":"unauthorized"}"#)))
+    }
+
     // ── billing ──
 
     @MainActor
