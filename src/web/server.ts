@@ -2927,7 +2927,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       if (url === "/fleet" && method === "GET") {
-        const html = await fs.readFile(path.join(ASSETS_DIR, "fleet", "index.html"), "utf8");
+        let html = await fs.readFile(path.join(ASSETS_DIR, "fleet", "index.html"), "utf8");
+        // Older service workers cache /assets by pathname, ignoring queries.
+        // Put the content revision in the path so an installed app cannot mix
+        // new markup with an older release's scripts or stylesheet.
+        const revisions = await Promise.all(
+          ["fleet.css", "locale.js", "fleet.js"].map(async (name) => {
+            const data = await fs.readFile(path.join(ASSETS_DIR, "fleet", name));
+            return {
+              name,
+              hash: crypto.createHash("sha256").update(data).digest("hex").slice(0, 16),
+            };
+          }),
+        );
+        for (const { name, hash } of revisions) {
+          html = html.replace(`/assets/fleet/${name}`, `/assets/fleet/${hash}/${name}`);
+        }
         res.writeHead(200, {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
@@ -5847,15 +5862,27 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url.startsWith("/assets/")) {
-      const safe = path.normalize(url.slice("/assets/".length)).replace(/^[/\\]+/, "");
+      let safe = path.normalize(url.slice("/assets/".length)).replace(/^[/\\]+/, "");
       if (safe.includes("..")) {
         res.writeHead(400);
         res.end();
         return;
       }
       try {
+        const fleetRevision = /^fleet\/([a-f0-9]{16})\/(fleet\.css|fleet\.js|locale\.js)$/.exec(
+          safe,
+        );
+        if (fleetRevision) safe = `fleet/${fleetRevision[2]}`;
         const file = path.join(ASSETS_DIR, safe);
         const data = await fs.readFile(file);
+        if (
+          fleetRevision &&
+          crypto.createHash("sha256").update(data).digest("hex").slice(0, 16) !== fleetRevision[1]
+        ) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
         // Only the bundled gallery is executable HTML. It uses the same nonce
         // policy as the main UI; arbitrary assets remain non-executable bytes.
         if (safe === "visuals/soft-ink-v1/gallery.html") {

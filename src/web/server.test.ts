@@ -9,6 +9,7 @@
  */
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -149,6 +150,33 @@ describe("T-10 security headers on the real server", () => {
   test("closes cleanly (timers and observers are torn down)", async () => {
     await srv.close();
   });
+});
+
+test("Fleet markup uses content-versioned assets and rejects mismatched revisions", async () => {
+  const srv = await boot();
+  try {
+    const page = await request(srv.port, "GET", "/fleet");
+    assert.equal(page.status, 200);
+    assert.equal(page.headers["cache-control"], "no-store");
+    const assets = [
+      ...page.text.matchAll(/(?:href|src)="(\/assets\/fleet\/([a-f0-9]{16})\/([^"]+))"/g),
+    ];
+    assert.equal(assets.length, 3);
+    for (const [, url, hash, name] of assets) {
+      const asset = await request(srv.port, "GET", url!);
+      assert.equal(asset.status, 200);
+      assert.equal(createHash("sha256").update(asset.text).digest("hex").slice(0, 16), hash);
+      assert.equal(asset.text, (await request(srv.port, "GET", `/assets/fleet/${name}`)).text);
+      assert.match(
+        asset.headers["content-type"]!,
+        name!.endsWith(".css") ? /text\/css/ : /javascript/,
+      );
+      const stale = await request(srv.port, "GET", `/assets/fleet/0000000000000000/${name}`);
+      assert.equal(stale.status, 404);
+    }
+  } finally {
+    await srv.close();
+  }
 });
 
 test("Soft Ink assets have browser MIME types and the gallery keeps nonce-based CSP", async () => {

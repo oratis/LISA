@@ -9,6 +9,57 @@ test.afterAll(async () => {
   await lisa?.stop();
 });
 
+test("an installed app ignores stale Fleet scripts and styles from its offline cache", async ({
+  page,
+}) => {
+  await page.goto(lisa.baseURL + "/#control");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve) =>
+        navigator.serviceWorker.addEventListener("controllerchange", () => resolve(), {
+          once: true,
+        }),
+      );
+    }
+    const keys = await caches.keys();
+    for (const key of keys) {
+      const cache = await caches.open(key);
+      for (const file of ["fleet.js", "locale.js", "fleet.css"]) {
+        await cache.put(
+          `/assets/fleet/${file}`,
+          new Response(
+            file.endsWith(".css")
+              ? "body { background: rgb(255, 0, 0); }"
+              : "window.staleFleetAsset = true;",
+            {
+              headers: {
+                "content-type": file.endsWith(".css") ? "text/css" : "application/javascript",
+              },
+            },
+          ),
+        );
+      }
+    }
+  });
+  await page.locator("#ctrlRemoteTab").click();
+  const fleet = page.frameLocator("#controlFleet");
+  await expect(fleet.locator("html")).toHaveAttribute("data-embedded", "");
+  await expect(fleet.locator(".standalone-header")).toBeHidden();
+  await expect(fleet.locator(".steps")).toHaveCSS("display", "flex");
+  const resources = await fleet
+    .locator('link[rel="stylesheet"], script[src]')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("href") || node.getAttribute("src")),
+    );
+  expect(resources).toHaveLength(3);
+  for (const resource of resources) expect(resource).toMatch(/^\/assets\/fleet\/[a-f0-9]{16}\//);
+  await page.reload();
+  await expect(fleet.locator("html")).toHaveAttribute("data-embedded", "");
+  await expect(fleet.locator(".standalone-header")).toBeHidden();
+});
+
 async function devices(page: Page) {
   const state = { started: 0, followups: 0, status: "completed", control: true, empty: false };
   await page.route("**/api/fleet/hosts", (route) =>
