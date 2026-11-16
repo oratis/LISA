@@ -87,6 +87,115 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    "shell.sessions": "Sessions",
+    "shell.new": "＋ New",
+    "shell.more": "More",
+    "shell.born": "born {date} · {n} days",
+    "shell.now": "just now",
+    "shell.seconds": "{n}s",
+    "shell.minutes": "{n}m",
+    "shell.hours": "{n}h",
+    "shell.days": "{n}d",
+    "shell.menu": "Open navigation and sessions",
+    "shell.newChat": "New chat",
+    "shell.group": "Group by agent / by project",
+    "shell.explore": "Explore Lisa",
+    "mood.neutral": "neutral",
+    "mood.happy": "happy",
+    "mood.curious": "curious",
+    "mood.thinking": "thinking",
+    "mood.focused": "focused",
+    "mood.working": "working",
+    "mood.sleepy": "sleepy",
+    "mood.sad": "sad",
+    "mood.excited": "excited",
+    "mood.worried": "worried",
+    "mood.listening": "listening",
+    "mood.calm": "calm",
+    "mood.confused": "confused",
+    "mood.proud": "proud",
+    "mood.tired": "tired",
+
+    "control.ui.Session": "Session",
+    "control.ui.This session is no longer active.": "This session is no longer active.",
+    "control.ui.just now": "just now",
+    "control.ui.adoptable": "adoptable",
+    "control.ui.\u26a0 Waiting for approval to run ": "⚠ Waiting for approval to run ",
+    "control.ui.Approve": "Approve",
+    "control.ui.Deny": "Deny",
+    "control.ui.errored": "errored",
+    "control.ui.State": "State",
+    "control.ui.Turns": "Turns",
+    "control.ui.Tokens": "Tokens",
+    "control.ui.Branch": "Branch",
+    "control.ui.Last command": "Last command",
+    "control.ui.Recent tools": "Recent tools",
+    "control.ui.Files": "Files",
+    "control.ui.Path": "Path",
+    "control.ui.Last activity": "Last activity",
+    "control.ui. in \u00b7 ": " in · ",
+    "control.ui. out": " out",
+    "control.ui.type into the CLI\u2026": "type into the CLI…",
+    "control.ui.send a follow-up\u2026": "send a follow-up…",
+    "control.ui.Send": "Send",
+    "control.ui.View output": "View output",
+    "control.ui.Cancel": "Cancel",
+    "control.ui.\u21f2 Adopt": "⇲ Adopt",
+    "control.ui.Observe-only \u2014 no control channel for this session.": "Observe-only — no control channel for this session.",
+    "control.ui.action failed": "action failed",
+    "control.ui.loading\u2026": "loading…",
+    "control.ui.(no output yet)": "(no output yet)",
+    "control.ui.Delegate a task": "Delegate a task",
+    "control.ui.Agent": "Agent",
+    "control.ui.managed \u2014 LISA runs it (approve each step)": "managed — LISA runs it (approve each step)",
+    "control.ui.claude \u2014 real CLI under a PTY": "claude — real CLI under a PTY",
+    "control.ui.codex \u2014 real CLI under a PTY": "codex — real CLI under a PTY",
+    "control.ui.Task": "Task",
+    "control.ui.Describe the task\u2026 (\u2318/Ctrl+Enter to start)": "Describe the task… (⌘/Ctrl+Enter to start)",
+    "control.ui.Start agent \u2192": "Start agent →",
+    "control.ui.Starting\u2026": "Starting…",
+    "control.ui.network error": "network error",
+    "control.ui.failed (": "failed (",
+
+    "control.title": "Control",
+    "control.subtitle": "Your agents, projects and Macs, in one place.",
+    "control.local": "This Mac",
+    "control.remote": "Remote Macs",
+    "control.delegate": "+ New task",
+    "control.tabs": "Task location",
+    "control.loading": "Loading tasks…",
+    "control.remoteLoading": "Connecting to your Macs…",
+    "control.emptyTitle": "A little room for your next idea",
+    "control.emptyHelp": "Start a task here, or choose Remote Macs to work on another computer.",
+    "control.emptyLocalHelp": "Start a task to see its progress and approvals here.",
+    "control.policy": "Permissions on this Mac",
+    "control.remoteOn": "Remote control allowed",
+    "control.remoteOff": "Remote control disabled",
+    "control.adoptOn": "External sessions can be resumed",
+    "control.adoptOff": "External sessions are read-only",
+    "control.active": "Active tasks",
+    "control.attention": "Needs you",
+    "control.total": "Recent sessions",
+    "control.approve": "Approve",
+    "control.deny": "Deny",
+    "control.permission": "Waiting to run ",
+    "control.state.working": "Working",
+    "control.state.waiting": "Waiting",
+    "control.state.error": "Failed",
+    "control.state.done": "Done",
+    "control.state.idle": "Idle",
+    "control.state.unknown": "Unknown",
+    "control.turn": "Turn {n}",
+    "nav.chat": "Chat",
+    "nav.dashboard": "Dashboard",
+    "nav.control": "Control",
+    "nav.reve": "Rêve",
+    "nav.room": "Room",
+    "nav.sense": "Sense",
+    "nav.memory": "Memory",
+    "nav.kb": "Knowledge",
+    "nav.settings": "Settings",
+
     "reve.sessionChanged": "The active conversation changed. Select the conversation again to reflect on it.",
     "reve.dreamLog": "Dream records",
     "reve.pendingNotes": "{n} reconsideration notes waiting",
@@ -570,6 +679,115 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    "shell.sessions": "会话",
+    "shell.new": "＋ 新建",
+    "shell.more": "更多",
+    "shell.born": "诞生于 {date} · {n} 天",
+    "shell.now": "刚刚",
+    "shell.seconds": "{n}秒前",
+    "shell.minutes": "{n}分钟前",
+    "shell.hours": "{n}小时前",
+    "shell.days": "{n}天前",
+    "shell.menu": "打开导航与会话",
+    "shell.newChat": "新建聊天",
+    "shell.group": "按智能体或项目分组",
+    "shell.explore": "探索 Lisa",
+    "mood.neutral": "平静",
+    "mood.happy": "开心",
+    "mood.curious": "好奇",
+    "mood.thinking": "思考中",
+    "mood.focused": "专注",
+    "mood.working": "工作中",
+    "mood.sleepy": "困倦",
+    "mood.sad": "低落",
+    "mood.excited": "兴奋",
+    "mood.worried": "担忧",
+    "mood.listening": "倾听",
+    "mood.calm": "安静",
+    "mood.confused": "困惑",
+    "mood.proud": "自豪",
+    "mood.tired": "疲倦",
+
+    "control.ui.Session": "会话",
+    "control.ui.This session is no longer active.": "此会话已结束。",
+    "control.ui.just now": "刚刚",
+    "control.ui.adoptable": "可接管",
+    "control.ui.\u26a0 Waiting for approval to run ": "等待批准执行 ",
+    "control.ui.Approve": "批准",
+    "control.ui.Deny": "拒绝",
+    "control.ui.errored": "执行失败",
+    "control.ui.State": "状态",
+    "control.ui.Turns": "轮次",
+    "control.ui.Tokens": "用量",
+    "control.ui.Branch": "分支",
+    "control.ui.Last command": "最近命令",
+    "control.ui.Recent tools": "最近工具",
+    "control.ui.Files": "文件",
+    "control.ui.Path": "路径",
+    "control.ui.Last activity": "最近活动",
+    "control.ui. in \u00b7 ": " 输入 · ",
+    "control.ui. out": " 输出",
+    "control.ui.type into the CLI\u2026": "向命令行输入…",
+    "control.ui.send a follow-up\u2026": "追加任务指令…",
+    "control.ui.Send": "发送",
+    "control.ui.View output": "查看输出",
+    "control.ui.Cancel": "取消任务",
+    "control.ui.\u21f2 Adopt": "接管会话",
+    "control.ui.Observe-only \u2014 no control channel for this session.": "此会话仅供查看，暂无控制通道。",
+    "control.ui.action failed": "操作失败",
+    "control.ui.loading\u2026": "正在加载…",
+    "control.ui.(no output yet)": "暂无输出",
+    "control.ui.Delegate a task": "新建本机任务",
+    "control.ui.Agent": "执行智能体",
+    "control.ui.managed \u2014 LISA runs it (approve each step)": "LISA 托管任务 · 逐步审批",
+    "control.ui.claude \u2014 real CLI under a PTY": "Claude Code · 本机命令行",
+    "control.ui.codex \u2014 real CLI under a PTY": "Codex · 本机命令行",
+    "control.ui.Task": "任务指令",
+    "control.ui.Describe the task\u2026 (\u2318/Ctrl+Enter to start)": "描述任务…（⌘/Ctrl+Enter 开始）",
+    "control.ui.Start agent \u2192": "开始任务 →",
+    "control.ui.Starting\u2026": "正在启动…",
+    "control.ui.network error": "网络连接失败",
+    "control.ui.failed (": "操作失败（",
+
+    "control.title": "控制中心",
+    "control.subtitle": "在一处管理智能体、项目与 Mac。",
+    "control.local": "本机任务",
+    "control.remote": "远程 Mac",
+    "control.delegate": "＋ 新建任务",
+    "control.tabs": "任务位置",
+    "control.loading": "正在加载任务…",
+    "control.remoteLoading": "正在连接你的 Mac…",
+    "control.emptyTitle": "从一个任务开始",
+    "control.emptyHelp": "在本机发起任务，或切换到远程 Mac 使用另一台电脑。",
+    "control.emptyLocalHelp": "发起任务后，可在这里查看进度并处理审批。",
+    "control.policy": "本机权限",
+    "control.remoteOn": "允许远程控制",
+    "control.remoteOff": "远程控制已关闭",
+    "control.adoptOn": "可接管外部会话",
+    "control.adoptOff": "外部会话仅供查看",
+    "control.active": "进行中",
+    "control.attention": "待你处理",
+    "control.total": "近期会话",
+    "control.approve": "批准",
+    "control.deny": "拒绝",
+    "control.permission": "等待执行 ",
+    "control.state.working": "进行中",
+    "control.state.waiting": "等待中",
+    "control.state.error": "失败",
+    "control.state.done": "已完成",
+    "control.state.idle": "空闲",
+    "control.state.unknown": "未知",
+    "control.turn": "第 {n} 轮",
+    "nav.chat": "聊天",
+    "nav.dashboard": "概览",
+    "nav.control": "控制",
+    "nav.reve": "梦境",
+    "nav.room": "房间",
+    "nav.sense": "感知",
+    "nav.memory": "记忆",
+    "nav.kb": "知识库",
+    "nav.settings": "设置",
+
     "reve.sessionChanged": "当前会话已切换，请重新选择要回顾的会话。",
     "reve.dreamLog": "梦境记录",
     "reve.pendingNotes": "{n} 条重新考虑请求待处理",
@@ -1032,14 +1250,14 @@ const LISA_STRINGS = {
     'pair.noExpiry': '这个配对链接里的设备令牌不会过期 —— 拿到它的人就能连上这个 Lisa。用完之后请在 Settings 里吊销该设备。',
     'control.tools': '{n} 次工具调用',
     'control.upgrade': '显示对话内容',
-    'control.metadata': '当前只显示会话信息。打开 Control，选择「显示对话内容」即可查看消息。',
+    'control.metadata': '当前只显示会话信息。打开控制中心，选择「显示对话内容」即可查看消息。',
     'control.enable': '显示 Codex 会话',
     'control.disable': '停止显示 Codex 会话',
     'control.found': '已检测到本机 Codex 会话，开启后可在此查看近期对话。',
     'control.window': '显示最近 30 分钟内更新的 Codex 会话，最多 10 个。',
     'control.missing': '在本机启动一个 Codex 会话后，即可在这里连接。',
     'control.empty': '暂无近期的智能体会话。',
-    'control.loadError': '会话加载失败，请重新打开 Control 重试。',
+    'control.loadError': '会话加载失败，请重新打开控制中心重试。',
     'control.saveError': '保存失败。请检查 agents.json 的格式和文件权限，再试一次。',
     'sense.noConnector': '没有发布任何内容 —— 尚未安装社交连接器。',
     'kbd.switchPlaceholder': '切换会话…',
@@ -1081,6 +1299,22 @@ const sendBtn = document.getElementById('sendBtn');
 const sessionEl = document.getElementById('sessionId');
 const fileInput = document.getElementById('fileInput');
 const attachPreview = document.getElementById('attachPreview');
+[
+  ['.sb-sessions-head h2', 'shell.sessions'], ['#sbNewSession', 'shell.new'], ['#mobileMore span', 'shell.more'],
+].forEach(function (item) { var el = document.querySelector(item[0]); if (el) el.textContent = tr(item[1]); });
+[
+  ['mobileMore', 'shell.more'], ['mobileMenuBtn', 'shell.menu'], ['mobileNewChat', 'shell.newChat'], ['sbTreeMode', 'shell.group'],
+].forEach(function (item) { var el = document.getElementById(item[0]); if (el) { el.setAttribute('aria-label', tr(item[1])); el.title = tr(item[1]); } });
+document.getElementById('sbNewSession').title = tr('shell.newChat');
+
+
+document.querySelectorAll('#navList [data-view]').forEach(function (item) {
+  var label = tr('nav.' + item.getAttribute('data-view'));
+  item.querySelector('.nav-label').textContent = label;
+  item.setAttribute('aria-label', label);
+});
+
+
 
 // ── Attached files state ──────────────────────────────────────────
 let pendingFiles = []; // Array of {name, mediaType, data (base64)}
@@ -2559,8 +2793,10 @@ function setMood(slug) {
   const request = ++portraitRequest;
   window.LisaArt.portrait(mascotEl, slug).then(function (loaded) {
     if (!loaded || request !== portraitRequest) return;
-    mascotTagEl.textContent = slug.replace(/-/g, ' ');
-    mascotEl.alt = 'Lisa · ' + slug.replace(/-/g, ' ');
+    const translated = tr('mood.' + slug);
+    const label = translated === 'mood.' + slug ? slug.replace(/-/g, ' ') : translated;
+    mascotTagEl.textContent = label;
+    mascotEl.alt = 'Lisa · ' + label;
   });
 }
 setMood('neutral');
@@ -3778,11 +4014,11 @@ if ('serviceWorker' in navigator) {
 
   function relativeTime(iso) {
     const ms = Date.now() - new Date(iso).getTime();
-    if (ms < 30_000)    return 'just now';
-    if (ms < 60_000)    return Math.round(ms / 1000) + 's';
-    if (ms < 3600_000)  return Math.round(ms / 60_000) + 'm';
-    if (ms < 86400_000) return Math.round(ms / 3600_000) + 'h';
-    return Math.round(ms / 86400_000) + 'd';
+    if (ms < 30_000)    return tr('shell.now');
+    if (ms < 60_000)    return tr('shell.seconds', { n: Math.round(ms / 1000) });
+    if (ms < 3600_000)  return tr('shell.minutes', { n: Math.round(ms / 60_000) });
+    if (ms < 86400_000) return tr('shell.hours', { n: Math.round(ms / 3600_000) });
+    return tr('shell.days', { n: Math.round(ms / 86400_000) });
   }
 
   function setDesire(text) {
@@ -4461,18 +4697,18 @@ if ('serviceWorker' in navigator) {
   // — a 503/error surfaces inline in the dialog).
   function openDelegateModal() {
     openModal(
-      'Delegate a task',
+      tr("control.ui.Delegate a task"),
       '<div class="delegate-modal">' +
-        '<label class="dm-label">Agent</label>' +
+        '<label class="dm-label">' + escapeHtml(tr("control.ui.Agent")) + '</label>' +
         '<select id="dmKind" class="dm-kind">' +
-          '<option value="managed">managed — LISA runs it (approve each step)</option>' +
-          '<option value="claude" disabled>claude — real CLI under a PTY</option>' +
-          '<option value="codex" disabled>codex — real CLI under a PTY</option>' +
+          '<option value="managed">' + escapeHtml(tr("control.ui.managed \u2014 LISA runs it (approve each step)")) + '</option>' +
+          '<option value="claude" disabled>' + escapeHtml(tr("control.ui.claude \u2014 real CLI under a PTY")) + '</option>' +
+          '<option value="codex" disabled>' + escapeHtml(tr("control.ui.codex \u2014 real CLI under a PTY")) + '</option>' +
         '</select>' +
         '<p id="dmAvailability" class="empty">' + escapeHtml(tr('panel.loading')) + '</p>' +
-        '<label class="dm-label">Task</label>' +
-        '<textarea id="dmTask" class="dm-task" rows="5" placeholder="Describe the task… (⌘/Ctrl+Enter to start)"></textarea>' +
-        '<div class="dm-actions"><button id="dmStart" class="dm-start" type="button">Start agent →</button></div>' +
+        '<label class="dm-label">' + escapeHtml(tr("control.ui.Task")) + '</label>' +
+        '<textarea id="dmTask" class="dm-task" rows="5" placeholder="' + escapeHtml(tr("control.ui.Describe the task\u2026 (\u2318/Ctrl+Enter to start)")) + '"></textarea>' +
+        '<div class="dm-actions"><button id="dmStart" class="dm-start" type="button">' + escapeHtml(tr("control.ui.Start agent \u2192")) + '</button></div>' +
         '<div id="dmErr" class="dm-err"></div>' +
       '</div>'
     );
@@ -4497,7 +4733,7 @@ if ('serviceWorker' in navigator) {
       const url = kind === 'managed' ? '/api/agents/managed/start' : '/api/agents/pty/start';
       const body = kind === 'managed' ? { task: task } : { agent: kind, task: task };
       if (errEl) errEl.textContent = '';
-      if (startEl) { startEl.disabled = true; startEl.textContent = 'Starting…'; }
+      if (startEl) { startEl.disabled = true; startEl.textContent = tr("control.ui.Starting\u2026"); }
       fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -4506,15 +4742,15 @@ if ('serviceWorker' in navigator) {
         if (!r.ok) {
           return r.text().then(function (t) {
             t = errorText(t);
-            if (errEl) errEl.textContent = t || ('failed (' + r.status + ')');
-            if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
+            if (errEl) errEl.textContent = t || (tr("control.ui.failed (") + r.status + ')');
+            if (startEl) { startEl.disabled = false; startEl.textContent = tr("control.ui.Start agent \u2192"); }
           });
         }
         closeModal();
         if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
       }).catch(function () {
-        if (errEl) errEl.textContent = 'network error';
-        if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
+        if (errEl) errEl.textContent = tr("control.ui.network error");
+        if (startEl) { startEl.disabled = false; startEl.textContent = tr("control.ui.Start agent \u2192"); }
       });
     }
     if (startEl) startEl.addEventListener('click', submitDelegate);
@@ -4539,7 +4775,7 @@ if ('serviceWorker' in navigator) {
       if (Number.isNaN(born.getTime())) return;
       const days = Math.max(0, Math.floor((Date.now() - born.getTime()) / 86400000));
       const ymd = born.toISOString().slice(0, 10);
-      identitySub.textContent = 'born ' + ymd + ' · ' + days + ' day' + (days === 1 ? '' : 's');
+      identitySub.textContent = LISA_LOCALE === 'zh-CN' ? tr('shell.born', { date: ymd, n: days }) : 'born ' + ymd + ' · ' + days + ' day' + (days === 1 ? '' : 's');
       // The empty-chat card quotes this line; it renders before /api/soul
       // lands, so repaint it once the identity is known.
       if (typeof window.lisaRenderChatEmpty === 'function') window.lisaRenderChatEmpty();
@@ -5719,12 +5955,7 @@ if ('serviceWorker' in navigator) {
     return '';
   }
   function statusLabel(state) {
-    if (state === 'working') return 'Working';
-    if (state === 'waiting') return 'Waiting';
-    if (state === 'error') return 'Error';
-    if (state === 'done') return 'Done';
-    if (state === 'idle') return 'Idle';
-    return 'Unknown';
+    return tr('control.state.' + (['working', 'waiting', 'error', 'done', 'idle'].includes(state) ? state : 'unknown'));
   }
   // Compact activity line (local copy of the sidebar helper — kept decoupled).
   function actLine(s) {
@@ -5733,7 +5964,7 @@ if ('serviceWorker' in navigator) {
     if (a.pendingPermission) return 'wants to run ' + a.pendingPermission;
     var bits = [];
     if (a.lastError) bits.push(a.lastError);
-    if (typeof a.turnCount === 'number' && a.turnCount > 0) bits.push('turn ' + a.turnCount);
+    if (typeof a.turnCount === 'number' && a.turnCount > 0) bits.push(tr('control.turn', { n: a.turnCount }));
     if (a.tokens && (a.tokens.input || a.tokens.output)) {
       var tot = (a.tokens.input || 0) + (a.tokens.output || 0);
       bits.push(tot >= 1000 ? Math.round(tot / 1000) + 'k tok' : tot + ' tok');
@@ -5747,7 +5978,7 @@ if ('serviceWorker' in navigator) {
   }
   function updateAgentCount(n) {
     var c = document.getElementById('navAgentCount');
-    if (c) c.textContent = String(n);
+    if (c) c.textContent = n ? String(n) : '';
   }
 
   // ── view switching ──────────────────────────────────────────────
@@ -5789,7 +6020,7 @@ if ('serviceWorker' in navigator) {
     document.body.dataset.view = name;
     window.dispatchEvent(new CustomEvent('lisa-view-change', { detail: { view: name } }));
     syncRoomVisibility();
-    try { history.replaceState(null, '', name === 'chat' ? location.pathname + location.search : '#' + name); } catch (e) {}
+    try { history.replaceState(null, '', name === 'chat' ? location.pathname + location.search : '#' + name + (name === 'control' && controlTab === 'remote' ? '/remote' : '')); } catch (e) {}
   }
   navList.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.nav-item') : null;
@@ -5928,7 +6159,7 @@ if ('serviceWorker' in navigator) {
   function ctrlProgress(s) {
     var a = s.activity; if (!a || typeof a !== 'object') return '';
     var bits = [];
-    if (typeof a.turnCount === 'number' && a.turnCount > 0) bits.push('turn ' + a.turnCount);
+    if (typeof a.turnCount === 'number' && a.turnCount > 0) bits.push(tr('control.turn', { n: a.turnCount }));
     if (a.tokens && (a.tokens.input || a.tokens.output)) {
       var tot = (a.tokens.input || 0) + (a.tokens.output || 0);
       bits.push(tot >= 1000 ? Math.round(tot / 1000) + 'k tok' : tot + ' tok');
@@ -5957,12 +6188,12 @@ if ('serviceWorker' in navigator) {
     h += '<span class="st-chip ' + scls + '">' + esc(statusLabel(s.state)) + '<span class="cr-arrow"> ›</span></span>';
     if (sub) h += '<div class="cr-sub">' + esc(sub) + '</div>';
     if (pend) {
-      h += '<div class="cr-pend">⚠ wants to run ' + esc(pend);
+      h += '<div class="cr-pend">' + esc(tr('control.permission')) + esc(pend);
       if (s.controllable === 'managed') {
         // The server resolves only the request this row shows, so the buttons carry its id.
         var aid = esc(a.approvalId || '');
-        h += '<button class="cr-quick ok" data-q="approve" data-sid="' + id + '" data-approval="' + aid + '">approve</button>';
-        h += '<button class="cr-quick no" data-q="deny" data-sid="' + id + '" data-approval="' + aid + '">deny</button>';
+        h += '<button class="cr-quick ok" data-q="approve" data-sid="' + id + '" data-approval="' + aid + '">' + esc(tr('control.approve')) + '</button>';
+        h += '<button class="cr-quick no" data-q="deny" data-sid="' + id + '" data-approval="' + aid + '">' + esc(tr('control.deny')) + '</button>';
       }
       h += '</div>';
     } else if (err) {
@@ -5996,53 +6227,58 @@ if ('serviceWorker' in navigator) {
       var sessions = (res && res.sessions) || [];
       var s = null;
       for (var i = 0; i < sessions.length; i++) { if (sessions[i].sessionId === id) { s = sessions[i]; break; } }
-      if (!s) { openModal('Session', '<div class="sd"><div class="sd-note">This session is no longer active.</div></div>'); return; }
+      if (!s) { openModal(tr("control.ui.Session"), '<div class="sd"><div class="sd-note">' + escapeHtml(tr("control.ui.This session is no longer active.")) + '</div></div>'); return; }
       var a = s.activity || {};
       var fam = s.controllable;
       var scls = statusClass(s.state);
       var title = (s.agent && s.agent !== 'claude-code' ? s.agent + ' · ' : '') + (window.lisaAgentLabel(s) || 'agent');
-      function rel(iso) { var ms = Date.now() - new Date(iso).getTime(); if (ms < 60000) return 'just now'; if (ms < 3600000) return Math.round(ms / 60000) + 'm ago'; if (ms < 86400000) return Math.round(ms / 3600000) + 'h ago'; return Math.round(ms / 86400000) + 'd ago'; }
+      function rel(iso) {
+        var seconds = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
+        /** @type {Intl.RelativeTimeFormatUnit} */
+        var unit = Math.abs(seconds) < 3600 ? 'minute' : Math.abs(seconds) < 86400 ? 'hour' : 'day';
+        return Math.abs(seconds) < 60 ? tr('control.ui.just now') : new Intl.RelativeTimeFormat(LISA_LOCALE, { numeric: 'auto' }).format(Math.round(seconds / (unit === 'minute' ? 60 : unit === 'hour' ? 3600 : 86400)), unit);
+      }
       function row(k, v) { return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
       var h = '<div class="sd">';
       h += '<div class="sd-top"><span class="st-chip ' + scls + '">' + esc(statusLabel(s.state)) + '</span>';
       if (fam) h += '<span class="sd-chip">' + esc(fam) + '</span>';
-      if (s.resumable) h += '<span class="sd-chip">adoptable</span>';
+      if (s.resumable) h += '<span class="sd-chip">' + escapeHtml(tr("control.ui.adoptable")) + '</span>';
       h += '<span class="sd-id">' + esc(s.sessionId) + '</span></div>';
       if (a.pendingPermission) {
-        h += '<div class="sd-banner pend"><div>⚠ Waiting for approval to run <b>' + esc(a.pendingPermission) + '</b></div>';
-        if (fam === 'managed') h += '<div class="sd-b-row"><button class="sd-btn ok" data-sd="approve">Approve</button><button class="sd-btn danger" data-sd="deny">Deny</button></div>';
+        h += '<div class="sd-banner pend"><div>' + escapeHtml(tr("control.ui.\u26a0 Waiting for approval to run ")) + '<b>' + esc(a.pendingPermission) + '</b></div>';
+        if (fam === 'managed') h += '<div class="sd-b-row"><button class="sd-btn ok" data-sd="approve">' + escapeHtml(tr("control.ui.Approve")) + '</button><button class="sd-btn danger" data-sd="deny">' + escapeHtml(tr("control.ui.Deny")) + '</button></div>';
         h += '</div>';
       }
       if (a.lastError || s.state === 'error') {
-        h += '<div class="sd-banner err">✗ ' + esc(a.lastError || s.stateReason || 'errored') + '</div>';
+        h += '<div class="sd-banner err">✗ ' + esc(a.lastError || s.stateReason || tr("control.ui.errored")) + '</div>';
       }
       h += '<dl class="sd-grid">';
-      h += row('State', esc(statusLabel(s.state)) + (s.stateReason ? ' <span style="color:var(--fg-3)">(' + esc(s.stateReason) + ')</span>' : ''));
-      if (typeof a.turnCount === 'number' && a.turnCount > 0) h += row('Turns', String(a.turnCount));
-      if (a.tokens && (a.tokens.input || a.tokens.output)) h += row('Tokens', String(a.tokens.input || 0) + ' in · ' + String(a.tokens.output || 0) + ' out');
-      if (a.gitBranch) h += row('Branch', esc(a.gitBranch));
-      if (a.lastCommandName) h += row('Last command', esc(a.lastCommandName));
-      if (a.lastTools && a.lastTools.length) h += row('Recent tools', '<div class="sd-chips">' + a.lastTools.slice(-6).map(function (t) { return '<span class="sd-chip">' + esc(t) + '</span>'; }).join('') + '</div>');
-      if (a.filesTouched && a.filesTouched.length) h += row('Files', '<div class="sd-chips">' + a.filesTouched.slice(-8).map(function (f) { return '<span class="sd-chip">' + esc(String(f).split('/').pop() || f) + '</span>'; }).join('') + '</div>');
-      if (s.cwd) h += row('Path', esc(s.cwd));
-      h += row('Last activity', esc(rel(s.lastMtime)));
+      h += row(tr("control.ui.State"), esc(statusLabel(s.state)) + (s.stateReason ? ' <span style="color:var(--fg-3)">(' + esc(s.stateReason) + ')</span>' : ''));
+      if (typeof a.turnCount === 'number' && a.turnCount > 0) h += row(tr("control.ui.Turns"), String(a.turnCount));
+      if (a.tokens && (a.tokens.input || a.tokens.output)) h += row(tr("control.ui.Tokens"), String(a.tokens.input || 0) + tr("control.ui. in \u00b7 ") + String(a.tokens.output || 0) + tr("control.ui. out"));
+      if (a.gitBranch) h += row(tr("control.ui.Branch"), esc(a.gitBranch));
+      if (a.lastCommandName) h += row(tr("control.ui.Last command"), esc(a.lastCommandName));
+      if (a.lastTools && a.lastTools.length) h += row(tr("control.ui.Recent tools"), '<div class="sd-chips">' + a.lastTools.slice(-6).map(function (t) { return '<span class="sd-chip">' + esc(t) + '</span>'; }).join('') + '</div>');
+      if (a.filesTouched && a.filesTouched.length) h += row(tr("control.ui.Files"), '<div class="sd-chips">' + a.filesTouched.slice(-8).map(function (f) { return '<span class="sd-chip">' + esc(String(f).split('/').pop() || f) + '</span>'; }).join('') + '</div>');
+      if (s.cwd) h += row(tr("control.ui.Path"), esc(s.cwd));
+      h += row(tr("control.ui.Last activity"), esc(rel(s.lastMtime)));
       h += '</dl>';
       h += '<div class="sd-actions">';
       if (fam && s.state !== 'done' && !a.pendingPermission) {
-        h += '<input class="sd-send" id="sdSend" type="text" placeholder="' + (fam === 'pty' ? 'type into the CLI…' : 'send a follow-up…') + '">';
-        h += '<button class="sd-btn primary" data-sd="send">Send</button>';
+        h += '<input class="sd-send" id="sdSend" type="text" placeholder="' + (fam === 'pty' ? tr("control.ui.type into the CLI\u2026") : tr("control.ui.send a follow-up\u2026")) + '">';
+        h += '<button class="sd-btn primary" data-sd="send">' + escapeHtml(tr("control.ui.Send")) + '</button>';
       }
-      if (fam === 'pty') h += '<button class="sd-btn" data-sd="output">View output</button>';
-      if (fam && s.state !== 'done') h += '<button class="sd-btn danger" data-sd="cancel">Cancel</button>';
-      if (s.resumable) h += '<button class="sd-btn ok" data-sd="adopt">⇲ Adopt</button>';
-      if (!fam && !s.resumable) h += '<span class="sd-note">Observe-only — no control channel for this session.</span>';
+      if (fam === 'pty') h += '<button class="sd-btn" data-sd="output">' + escapeHtml(tr("control.ui.View output")) + '</button>';
+      if (fam && s.state !== 'done') h += '<button class="sd-btn danger" data-sd="cancel">' + escapeHtml(tr("control.ui.Cancel")) + '</button>';
+      if (s.resumable) h += '<button class="sd-btn ok" data-sd="adopt">' + escapeHtml(tr("control.ui.\u21f2 Adopt")) + '</button>';
+      if (!fam && !s.resumable) h += '<span class="sd-note">' + escapeHtml(tr("control.ui.Observe-only \u2014 no control channel for this session.")) + '</span>';
       h += '</div>';
       h += '<pre class="sd-out" id="sdOut" style="display:none"></pre>';
       h += '</div>';
       openModal(title, h);
       var body = document.getElementById('modalBody');
       if (!body) return;
-      function sdErr(err) { body.insertAdjacentHTML('afterbegin', '<div class="sd-banner err" style="margin-bottom:12px">✗ ' + esc(err && err.message ? err.message : 'action failed') + '</div>'); }
+      function sdErr(err) { body.insertAdjacentHTML('afterbegin', '<div class="sd-banner err" style="margin-bottom:12px">✗ ' + esc(err && err.message ? err.message : tr("control.ui.action failed")) + '</div>'); }
       function afterAct(p) { p.then(function () { if (window.refreshClaudeSessions) window.refreshClaudeSessions(); openSessionDetail(id); }).catch(sdErr); }
       function doSend() { var inp = document.getElementById('sdSend'); var t = inp && inp.value.trim(); if (t) afterAct(sdAction(fam, id, 'send', { text: t })); }
       var btns = body.querySelectorAll('[data-sd]');
@@ -6056,8 +6292,8 @@ if ('serviceWorker' in navigator) {
           else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(errorText(t)); }); }));
           else if (act === 'output') {
             var out = document.getElementById('sdOut');
-            if (out) { out.style.display = 'block'; out.textContent = 'loading…'; }
-            getJSON('/api/agents/pty/' + encodeURIComponent(id) + '/output').then(function (d) { if (out) out.textContent = (d && d.output) ? d.output : '(no output yet)'; });
+            if (out) { out.style.display = 'block'; out.textContent = tr("control.ui.loading\u2026"); }
+            getJSON('/api/agents/pty/' + encodeURIComponent(id) + '/output').then(function (d) { if (out) out.textContent = (d && d.output) ? d.output : tr("control.ui.(no output yet)"); });
           }
         });
       }
@@ -6065,13 +6301,61 @@ if ('serviceWorker' in navigator) {
       if (sendInp) { sendInp.focus(); sendInp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); doSend(); } }); }
     });
   }
+  var controlTab = 'local';
+  function syncFleetVisibility() {
+    var frame = document.getElementById('controlFleet');
+    if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'lisa-fleet-visibility', visible: active === 'control' && controlTab === 'remote' && !document.hidden }, location.origin);
+  }
+  document.addEventListener('visibilitychange', syncFleetVisibility);
+  window.addEventListener('lisa-view-change', syncFleetVisibility);
+  window.addEventListener('message', function (event) {
+    var frame = document.getElementById('controlFleet');
+    if (frame && event.source === frame.contentWindow && event.origin === location.origin && event.data?.type === 'lisa-fleet-ready') syncFleetVisibility();
+  });
+  function selectControlTab(tab, focus) {
+    controlTab = tab === 'remote' && views.control.dataset.remoteFleet === 'true' ? 'remote' : 'local';
+    views.control.querySelectorAll('[data-control-tab]').forEach(function (button) {
+      var selected = button.dataset.controlTab === controlTab;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      if (selected && focus) button.focus();
+    });
+    document.getElementById('ctrlScroll').hidden = controlTab !== 'local';
+    document.getElementById('ctrlDelegate').hidden = controlTab !== 'local';
+    var remote = document.getElementById('ctrlRemote');
+    if (remote) {
+      remote.hidden = controlTab !== 'remote';
+      if (controlTab === 'remote' && !document.getElementById('controlFleet')) {
+        var frame = document.createElement('iframe');
+        frame.id = 'controlFleet'; frame.title = tr('control.remote');
+        frame.src = '/fleet#embedded';
+        frame.addEventListener('load', function () { document.getElementById('ctrlRemoteLoading').hidden = true; syncFleetVisibility(); });
+        remote.appendChild(frame);
+      }
+    }
+    if (active === 'control') history.replaceState(null, '', controlTab === 'remote' ? '#control/remote' : '#control');
+    syncFleetVisibility();
+  }
   function loadControl() {
+    var hasFleet = views.control.dataset.remoteFleet === 'true';
     views.control.innerHTML =
-      '<div class="view-head"><div><h2>Control</h2><div class="vh-sub">Live agents &amp; control plane · click a session to inspect</div></div>' +
-      '<button class="view-act" id="ctrlDelegate">+ Delegate a task</button></div>' +
-      '<div class="view-scroll" id="ctrlScroll"><div class="view-empty">loading…</div></div>';
-    var del = document.getElementById('ctrlDelegate');
-    if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
+      '<div class="view-head control-head"><div><h2>' + esc(tr('control.title')) + '</h2><div class="vh-sub">' + esc(tr('control.subtitle')) + '</div></div>' +
+      '<button class="view-act" id="ctrlDelegate">' + esc(tr('control.delegate')) + '</button></div>' +
+      (hasFleet ? '<div class="control-tabs" role="tablist" aria-label="' + esc(tr('control.tabs')) + '">' +
+      '<button id="ctrlLocalTab" role="tab" aria-controls="ctrlScroll" data-control-tab="local" aria-selected="true">' + esc(tr('control.local')) + '</button>' +
+      '<button id="ctrlRemoteTab" role="tab" aria-controls="ctrlRemote" data-control-tab="remote" aria-selected="false" tabindex="-1">' + esc(tr('control.remote')) + '</button></div>' : '') +
+      '<div class="view-scroll" id="ctrlScroll"' + (hasFleet ? ' role="tabpanel" aria-labelledby="ctrlLocalTab"' : '') + '><div class="view-empty">' + esc(tr('control.loading')) + '</div></div>' +
+      (hasFleet ? '<div id="ctrlRemote" role="tabpanel" aria-labelledby="ctrlRemoteTab" hidden><p id="ctrlRemoteLoading" role="status">' + esc(tr('control.remoteLoading')) + '</p></div>' : '');
+    document.getElementById('ctrlDelegate').addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
+    views.control.querySelectorAll('[data-control-tab]').forEach(function (button) {
+      button.addEventListener('click', function () { selectControlTab(button.dataset.controlTab); });
+      button.addEventListener('keydown', function (event) {
+        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault();
+          selectControlTab(event.key === 'Home' ? 'local' : event.key === 'End' ? 'remote' : controlTab === 'local' ? 'remote' : 'local', true);
+        }
+      });
+    });
     renderControl();
   }
   var changingCodexObservation = false;
@@ -6097,9 +6381,14 @@ if ('serviceWorker' in navigator) {
         if (rx !== ry) return rx - ry;
         return new Date(y.lastMtime).getTime() - new Date(x.lastMtime).getTime();
       });
-      var html = '<div class="ctrl-policy">' +
-        '<span class="pp-tag">remote control: ' + (policy.remoteControl ? 'on' : 'off') + '</span>' +
-        '<span class="pp-tag">adopt external: ' + (policy.remoteAdoptExternal ? 'on' : 'off') + '</span></div>';
+      var html = '<div class="control-stats">' + [
+        [sessions.filter(function (s) { return s.state === 'working'; }).length, 'active'],
+        [sessions.filter(function (s) { return s.activity?.pendingPermission || s.state === 'waiting' || s.state === 'error'; }).length, 'attention'],
+        [sessions.length, 'total']
+      ].map(function (item) { return '<div><strong>' + item[0] + '</strong><span>' + esc(tr('control.' + item[1])) + '</span></div>'; }).join('') + '</div>';
+      html += '<details class="ctrl-policy"><summary>' + esc(tr('control.policy')) + '</summary><div>' +
+        '<span class="pp-tag">' + esc(tr(policy.remoteControl ? 'control.remoteOn' : 'control.remoteOff')) + '</span>' +
+        '<span class="pp-tag">' + esc(tr(policy.remoteAdoptExternal ? 'control.adoptOn' : 'control.adoptOff')) + '</span></div></details>';
       var observation = policy.codexObservation;
       if (observation && (observation.detected || observation.enabled)) {
         html += '<div class="v-row codex-observation"><div class="v-main"><div class="v-name">Codex</div><div class="v-sub">' +
@@ -6113,10 +6402,12 @@ if ('serviceWorker' in navigator) {
         sessions.forEach(function (s) { html += ctrlRowHTML(s); });
         html += '</div>';
       } else {
-        html += '<div class="view-empty">' + esc(tr('control.empty')) +
-          (observation && !observation.detected ? ' ' + esc(tr('control.missing')) : '') + '</div>';
+        html += '<div class="control-empty"><span class="control-empty-icon" aria-hidden="true">⌘</span><h3>' + esc(tr('control.emptyTitle')) + '</h3><p>' +
+          esc(tr(views.control.dataset.remoteFleet === 'true' ? 'control.emptyHelp' : 'control.emptyLocalHelp')) + '</p><button class="view-act" id="ctrlEmptyStart">' + esc(tr('control.delegate')) + '</button>' +
+          (observation && !observation.detected ? '<p class="control-empty-note">' + esc(tr('control.missing')) + '</p>' : '') + '</div>';
       }
       scroll.innerHTML = html;
+      scroll.querySelector('#ctrlEmptyStart')?.addEventListener('click', function () { document.getElementById('ctrlDelegate').click(); });
       var toggle = scroll.querySelector('#codexObservation');
       var conversations = scroll.querySelector('#codexConversations');
       if (toggle) toggle.addEventListener('click', changeObservation);
@@ -6775,10 +7066,12 @@ if ('serviceWorker' in navigator) {
 
   // ── init: honor a deep-link hash, else default to chat ──────────
   var initial = (location.hash || '').replace('#', '');
-  showView(views[initial] ? initial : 'chat');
+  showView(views[initial.split('/')[0]] ? initial.split('/')[0] : 'chat');
+  if (initial === 'control/remote') selectControlTab('remote');
   window.addEventListener('hashchange', function () {
     var h = (location.hash || '').replace('#', '');
-    if (views[h] && h !== active) showView(h);
+    var name = h.split('/')[0];
+    if (views[name]) { if (name !== active) showView(name); if (name === 'control') selectControlTab(h === 'control/remote' ? 'remote' : 'local'); }
   });
 })();
 

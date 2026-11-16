@@ -7,6 +7,8 @@ const workspaceId = "ac290f4b-3c7a-41b1-8e0c-872c73393fda";
 const runId = "cf9f90c7-6a93-4652-a2fa-e71c8f1a8561";
 let lisa: LisaInstance;
 
+test.use({ locale: "zh-CN" });
+
 test.beforeAll(async () => {
   lisa = await startLisa({ label: "fleet-timeline", stub: "none" });
 });
@@ -411,7 +413,7 @@ test("the execution Mac shares only the selected task with a securely paired Poc
     return route.fulfill({ json: { shared } });
   });
   await page.goto(lisa.baseURL + "/fleet");
-  await page.locator("#local summary").click();
+  await page.locator("#local > summary").click();
   await expect(page.locator("#shares")).toContainText("Project");
   await expect(page.locator("#shares")).not.toContainText("Old Pocket");
   await page.getByRole("button", { name: /允许查看 · My Pocket/ }).click();
@@ -521,7 +523,7 @@ test("handoff requires a preview and confirmation, and editing invalidates that 
   state.taskState = "completed";
   state.lastSeq++;
   await page.clock.fastForward(4000);
-  await page.getByRole("button", { name: "预览跨 agent 交接" }).click();
+  await page.getByRole("button", { name: "预览智能体交接" }).click();
   await page.getByLabel("验证说明").fill("npm test passed");
   await page.getByRole("button", { name: "生成交接预览" }).click();
   await expect(page.locator("#handoff pre")).toContainText("+<script>change</script>");
@@ -541,7 +543,7 @@ test("a late handoff preview cannot enable sending on a different Mac", async ({
   state.taskState = "completed";
   state.lastSeq++;
   await page.clock.fastForward(4000);
-  await page.getByRole("button", { name: "预览跨 agent 交接" }).click();
+  await page.getByRole("button", { name: "预览智能体交接" }).click();
   state.slowPreview = true;
   const requested = page.waitForRequest(
     (r) =>
@@ -769,8 +771,9 @@ test("owner storage cleanup requires a preview and explicit confirmation", async
     return route.fulfill({ json: { cleared: true, compacted: true } });
   });
   await page.goto(lisa.baseURL + "/fleet");
-  await page.locator("#local summary").click();
+  await page.locator("#local > summary").click();
   await expect(page.getByRole("button", { name: "确认清理全部任务记录" })).toHaveCount(0);
+  await page.locator(".maintenance-settings > summary").click();
   await page.getByRole("button", { name: "预览完整账本清理" }).click();
   await expect(page.locator("#storage")).toContainText("2 个任务、3 个回执");
   page.once("dialog", (d) => d.dismiss());

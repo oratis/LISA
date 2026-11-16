@@ -161,8 +161,6 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       </div>
     </div>
 
-    ${opts.remoteFleet ? '<a href="/fleet" class="nav-item" aria-label="远程 Mac · Remote Macs">远程 Mac · Remote Macs</a>' : ""}
-
     <!-- Primary navigation (3×3 tile grid view switcher — wired in setupConsole) -->
     <nav class="nav-list" id="navList">
       <button class="nav-item active" type="button" data-view="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span><span class="nav-label">Chat</span></button>
@@ -271,7 +269,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
     <!-- Console views (populated lazily by setupConsole in lisa-client.ts) -->
     <section class="view" id="viewDashboard"></section>
-    <section class="view" id="viewControl"></section>
+    <section class="view" id="viewControl"${opts.remoteFleet ? ' data-remote-fleet="true"' : ""}></section>
     <section class="view" id="viewReve"></section>
     <section class="view" id="viewRoom">
       <iframe id="roomFrame" title="Lisa's room" style="flex:1;width:100%;border:0;display:block;background:#0a0e1a"></iframe>

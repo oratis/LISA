@@ -71,6 +71,7 @@ test.describe("mobile app shell", () => {
     await page.goto(lisa.baseURL);
     await page.locator('[data-mobile-view="control"]').click();
     await expect(page.locator("#viewControl")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Remote Macs" })).toBeVisible();
     await expect(page.locator('[data-mobile-view="control"]')).toHaveAttribute(
       "aria-current",
       "page",
@@ -79,9 +80,9 @@ test.describe("mobile app shell", () => {
     await expect(page.locator("#roomFrame")).toBeVisible();
     await page.locator("#mobileMore").click();
     await expect(page.getByRole("dialog", { name: "Explore Lisa" })).toBeVisible();
-    // The nine view tiles, and the Remote Macs entry that the local owner gets.
+    // Remote Macs belongs to Control; navigation stays a nine-tile grid.
     await expect(page.locator("#mobileMenu #navList .nav-item")).toHaveCount(9);
-    await expect(page.locator('#mobileMenu a.nav-item[href="/fleet"]')).toBeVisible();
+    await expect(page.locator('#mobileMenu a[href="/fleet"]')).toHaveCount(0);
     await expect(page.locator("#sessionTree .tleaf").first()).toBeVisible();
     await page.screenshot({
       animations: "disabled",

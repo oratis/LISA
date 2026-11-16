@@ -2932,7 +2932,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
           "content-security-policy":
-            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'self'; base-uri 'none'",
         });
         res.end(html);
         return;

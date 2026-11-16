@@ -1,12 +1,12 @@
 # Fleet: tasks on your other Macs
 
-Fleet lets a controlling Mac start work in a separately authorized workspace on an executing Mac. Start from **Remote Macs** in the web workspace. Each Mac needs a running LISA backend and the same LISA account; the executing Mac must stay awake. See [Mac connection setup](REMOTE_CONNECTIONS.md) for account pairing and network recovery.
+Fleet lets a controlling Mac start work in a separately authorized workspace on an executing Mac. Start from **Control → Remote Macs** in the web workspace. Remote tasks stay inside Control alongside **This Mac**, with the same appearance and interface language. The interface follows the system language (Chinese or English); task content is kept as written. Each Mac needs a running LISA backend and the same LISA account; the executing Mac must stay awake. See [Mac connection setup](REMOTE_CONNECTIONS.md) for account pairing and network recovery.
 
 ## Set up an executing Mac
 
-1. Open the executing Mac's own local LISA page, then **Remote Macs → Configure this Mac as an execution host**. Host configuration is restricted to the local owner.
-2. Register a workspace and enable the installed agent. Claude Code supports approved Read/Edit/Write operations and follow-up turns. Codex needs its native CLI and `OPENAI_API_KEY` (optionally `OPENAI_BASE_URL`). Choose **packet review** for one supplied-text review, or **workspace tools** for individually approved List/Read/Edit/Write calls and follow-up turns.
-3. Pair the controller with v2 code comparison, then grant that device the exact workspace. Another device, account or directory does not inherit the grant.
+1. Open the executing Mac's own local LISA page, then **Control → Remote Macs → Set up this Mac**. Host configuration is restricted to the local owner.
+2. Register a workspace and enable the installed agent. Claude Code requests approval for each supported file operation and supports follow-up turns. Available tools depend on the installed CLI; some versions expose Read/Edit without Write. Codex needs its native CLI and `OPENAI_API_KEY` (optionally `OPENAI_BASE_URL`). Choose **packet review** for one supplied-text review, or **workspace tools** for individually approved List/Read/Edit/Write calls and follow-up turns.
+3. Keep the executing Mac's setup section open: connection status and incoming pairing requests update automatically, preserving selected permissions. Pair the controller with v2 code comparison, then grant that device the exact workspace. Another device, account or directory does not inherit the grant.
 4. For checkpoints, create an **isolated workspace from the current commit** of a registered Git repository and grant the newly created workspace. It starts at HEAD in a detached worktree beside the original repository. Uncommitted source changes are not copied.
 
 ## Run and reconnect
