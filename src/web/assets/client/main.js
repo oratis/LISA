@@ -319,6 +319,13 @@ const LISA_STRINGS = {
     "reve.loading": "Loading…",
     "expressions.replay": "Replay",
     "expressions.title": "Conversation expressions",
+    "expressions.picker": "Lisa sticker collection",
+    "expressions.stickers": "Stickers",
+    "expressions.moods": "Expressions",
+    "expressions.category": "Sticker category",
+    "expressions.remove": "Remove sticker",
+    "expressions.close": "Close stickers",
+    "expressions.chooseHint": "Choose a sticker, add a message if you like, then send it to Lisa.",
     "expressions.frequency": "Expression frequency",
     "expressions.note": "History stays still. Animations pause offscreen and follow Reduce Motion.",
     "expressions.saved": "Saved",
@@ -517,6 +524,45 @@ const LISA_STRINGS = {
     "connector.choose.linear": "Choose teams",
     "connector.scope.gmail": "LISA can read message headers and short snippets in the selected labels until you disconnect.",
     "connector.scope.google-calendar": "LISA can read the selected calendars at the access level you granted until you disconnect.",
+    "dashboard.connectors.your.connected.knowledge": "Your connected knowledge",
+    "dashboard.connectors.all.connectors.saved.authorization.status.read.only.access": "All connectors · saved authorization status · read-only access",
+    "dashboard.connectors.refresh.status": "Refresh status",
+    "dashboard.connectors.available.integrations": "Included connectors",
+    "dashboard.connectors.authorized": "Authorized",
+    "dashboard.connectors.need.setup": "Need setup",
+    "dashboard.connectors.find.an.app.or.capability": "Find an app or capability",
+    "dashboard.connectors.filter.connectors": "Filter connectors",
+    "dashboard.connectors.all.connectors": "All connectors",
+    "dashboard.connectors.ready.to.connect": "Ready to connect",
+    "dashboard.connectors.needs.attention": "Needs attention",
+    "dashboard.connectors.not.connected": "Not connected",
+    "dashboard.connectors.awaiting.confirmation": "Awaiting confirmation",
+    "dashboard.connectors.needs.setup": "Needs setup",
+    "dashboard.connectors.status.unavailable": "Status unavailable",
+    "dashboard.connectors.local.markdown.choose.vaults.before.reading": "Local Markdown · choose vaults before reading",
+    "dashboard.connectors.sign.in.is.not.configured.on.this.installation": "Sign-in is not configured on this installation.",
+    "dashboard.connectors.choose.your.account.and.reading.scope.in.chat": "Choose your account and reading scope in chat.",
+    "dashboard.connectors.setup.details": "Setup details",
+    "dashboard.connectors.this.connector.is.included.but.sign.in.is.not.configured.on.this.mac.an.administrator.must.configure.its.oauth.application.and.restart.lisa.before.you.can.connect": "This connector is included, but sign-in is not configured on this Mac. An administrator must configure its OAuth application and restart Lisa before you can connect.",
+    "dashboard.connectors.use.the.lisa.macos.app.with.its.calendar.and.reminders.reader.installed": "Use the Lisa macOS app with its calendar and reminders reader installed.",
+    "dashboard.connectors.box.requires.an.oauth.2.0.app.with.the.read.only.scope.root.readonly.and.callback.http.localhost.4870.oauth.box.store.its.client.id.and.secret.in.the.protected.workspace.client.configuration.on.this.mac": "Box requires an OAuth 2.0 app with the read-only scope root_readonly and callback http://localhost:4870/oauth/box. Store its client ID and secret in the protected workspace client configuration on this Mac.",
+    "dashboard.connectors.no.matching.connectors": "No matching connectors.",
+    "dashboard.connectors.could.not.load.connector.status": "Could not load connector status.",
+    "dashboard.connectors.retry": "Retry",
+    "dashboard.connectors.scope": "{n} selected resources · read only",
+    "dashboard.connectors.use": "Use in chat",
+    "dashboard.connectors.connect": "Set up in chat",
+    "connector.choose.box": "Choose Box files",
+    "connector.choose.obsidian": "Choose vaults",
+    "obsidian.noVaults": "Open a vault in Obsidian on this Mac, then try again.",
+    "obsidian.config": "The local vault configuration could not be read.",
+    "obsidian.access": "The vault is unavailable. Check its location and this Mac’s file permissions.",
+    "obsidian.renew": "This vault has moved or changed. Connect again to choose its new location.",
+    "obsidian.note": "This note is too large or is not a regular Markdown file.",
+    "obsidian.path": "Choose a Markdown note inside the selected vault.",
+    "obsidian.scope": "Search and read Markdown notes in selected local vaults. Hidden files, links and attachments are excluded.",
+    "obsidian.authorize": "Choose from vaults already opened in Obsidian on this Mac. Notes stay untouched; only requested content is shared with the chat model.",
+    "obsidian.allow": "Choose local vaults",
     "connector.choose.todoist": "Choose projects",
     "connector.choose.outlook-mail": "Choose mail folders",
     "connector.choose.outlook-calendar": "Choose calendars",
@@ -911,6 +957,13 @@ const LISA_STRINGS = {
     "reve.loading": "加载中…",
     "expressions.replay": "重播",
     "expressions.title": "对话表情",
+    "expressions.picker": "Lisa 表情包",
+    "expressions.stickers": "互动贴纸",
+    "expressions.moods": "心情表情",
+    "expressions.category": "表情分类",
+    "expressions.remove": "移除表情",
+    "expressions.close": "关闭表情包",
+    "expressions.chooseHint": "选一个表情，可以配上文字，再发送给 Lisa。",
     "expressions.frequency": "表情频率",
     "expressions.note": "历史表情默认静态；切页、离屏会暂停，并遵循减少动态效果设置。",
     "expressions.saved": "已保存",
@@ -1109,6 +1162,45 @@ const LISA_STRINGS = {
     "connector.choose.linear": "选择可读取的团队",
     "connector.scope.gmail": "LISA 可读取勾选标签内的邮件头和摘要，直到你断开连接。",
     "connector.scope.google-calendar": "LISA 将按你授予的权限读取勾选的日历，直到你断开连接。",
+    "dashboard.connectors.your.connected.knowledge": "你的知识与应用",
+    "dashboard.connectors.all.connectors.saved.authorization.status.read.only.access": "全部连接器 · 已保存的授权状态 · 只读访问",
+    "dashboard.connectors.refresh.status": "刷新状态",
+    "dashboard.connectors.available.integrations": "收录的连接器",
+    "dashboard.connectors.authorized": "已授权",
+    "dashboard.connectors.need.setup": "待配置",
+    "dashboard.connectors.find.an.app.or.capability": "搜索应用或能力",
+    "dashboard.connectors.filter.connectors": "筛选连接器",
+    "dashboard.connectors.all.connectors": "全部连接器",
+    "dashboard.connectors.ready.to.connect": "可连接",
+    "dashboard.connectors.needs.attention": "需要处理",
+    "dashboard.connectors.not.connected": "未连接",
+    "dashboard.connectors.awaiting.confirmation": "待确认",
+    "dashboard.connectors.needs.setup": "待配置",
+    "dashboard.connectors.status.unavailable": "状态异常",
+    "dashboard.connectors.local.markdown.choose.vaults.before.reading": "本地 Markdown · 读取前选择保险库",
+    "dashboard.connectors.sign.in.is.not.configured.on.this.installation": "此安装尚未配置该应用的登录能力。",
+    "dashboard.connectors.choose.your.account.and.reading.scope.in.chat": "在对话中选择账号和读取范围。",
+    "dashboard.connectors.setup.details": "查看配置说明",
+    "dashboard.connectors.this.connector.is.included.but.sign.in.is.not.configured.on.this.mac.an.administrator.must.configure.its.oauth.application.and.restart.lisa.before.you.can.connect": "此连接器已收录，但本机尚未配置登录。请由管理员完成应用授权配置并重新启动 Lisa，再连接账号。",
+    "dashboard.connectors.use.the.lisa.macos.app.with.its.calendar.and.reminders.reader.installed": "请使用包含日历与提醒事项读取组件的 macOS 版 Lisa。",
+    "dashboard.connectors.box.requires.an.oauth.2.0.app.with.the.read.only.scope.root.readonly.and.callback.http.localhost.4870.oauth.box.store.its.client.id.and.secret.in.the.protected.workspace.client.configuration.on.this.mac": "Box 需要 OAuth 2.0 应用，使用只读范围 root_readonly，回调地址为 http://localhost:4870/oauth/box。应用 ID 和密钥由管理员保存在本机受保护的连接器配置中。",
+    "dashboard.connectors.no.matching.connectors": "没有匹配的连接器。",
+    "dashboard.connectors.could.not.load.connector.status": "暂时无法读取连接器状态。",
+    "dashboard.connectors.retry": "重试",
+    "dashboard.connectors.scope": "已选 {n} 项资源 · 只读",
+    "dashboard.connectors.use": "在对话中使用",
+    "dashboard.connectors.connect": "在对话中连接",
+    "connector.choose.box": "选择 Box 文件",
+    "connector.choose.obsidian": "选择保险库",
+    "obsidian.noVaults": "请先在本机 Obsidian 中打开一个保险库，再重试。",
+    "obsidian.config": "无法读取本机保险库配置。",
+    "obsidian.access": "无法访问保险库，请检查文件位置和本机的文件访问权限。",
+    "obsidian.renew": "保险库已移动或变更，请重新连接并选择。",
+    "obsidian.note": "笔记过大，或不是普通 Markdown 文件。",
+    "obsidian.path": "请选择已授权保险库内的 Markdown 笔记。",
+    "obsidian.scope": "检索和读取选定保险库中的 Markdown 笔记，不包含隐藏文件、链接和附件。",
+    "obsidian.authorize": "从本机 Obsidian 已打开的保险库中选择。笔记保持原样，仅将你请求的内容提供给对话模型。",
+    "obsidian.allow": "选择本机保险库",
     "connector.choose.todoist": "选择可读取的项目",
     "connector.choose.outlook-mail": "选择可读取的邮件文件夹",
     "connector.choose.outlook-calendar": "选择可读取的日历",
@@ -1832,6 +1924,7 @@ let activeSessionId = null;
 function setActiveSessionUI(id) {
   activeSessionId = id;
   window.lisaActiveSessionId = id;
+  window.dispatchEvent(new Event('lisa-session-change'));
   sessionEl.textContent = id;
   updateTitlebarSession();
   void githubRefresh();
@@ -2614,7 +2707,15 @@ function prependHistoryMessages(messages) {
   const fragment = document.createDocumentFragment();
   for (const msg of messages) {
     if (msg.role === 'assistant' && msg.expression) { fragment.appendChild(window.LisaExpressions.create(msg.expression, false)); continue; }
-    const text = textOfMessage(msg);
+    let text = textOfMessage(msg);
+    if (msg.role === 'user' && msg.expression) {
+      const fallback = msg.expression.emoji + ' [LISA: ' + msg.expression.alt + ']';
+      if (text.endsWith(fallback)) text = text.slice(0, -fallback.length).trim();
+      const role = document.createElement('div'); role.className = 'role you'; role.textContent = 'YOU'; fragment.append(role);
+      if (text) { const caption = document.createElement('span'); caption.className = 'msg'; caption.textContent = text; fragment.append(caption); }
+      fragment.append(window.LisaExpressions.create(msg.expression, false, 'user'));
+      continue;
+    }
     if (!text) continue;
     // Idle "while you were away" notes are persisted as assistant messages with
     // a [while you were away] sentinel — render them as the distinct idle card
@@ -3632,10 +3733,12 @@ function previewInput(name, input) {
 }
 
 async function send(message) {
+  const expression = window.LisaExpressions.take();
   input.value = '';
   input.style.height = 'auto';
   el('div', 'role you', 'YOU');
-  el('span', 'msg', message || '(attachment)');
+  if (message || !expression) el('span', 'msg', message || '(attachment)');
+  if (expression) log.append(window.LisaExpressions.create(expression, true, 'user'));
   if (pendingFiles.length) {
     const names = pendingFiles.map(f => f.name).join(', ');
     el('span', 'msg attach-label', '📎 ' + names);
@@ -3644,7 +3747,7 @@ async function send(message) {
   pendingFiles = [];
   renderAttachPreview();
   maybeOfferKbIngest(message);
-  await runChat(message, filesToSend);
+  await runChat(message, filesToSend, expression);
 }
 
 // ── chat → KB: a bare URL in the user's message gets a one-tap save-to-KB
@@ -3686,7 +3789,7 @@ function maybeOfferKbIngest(message) {
 // On failure, show the error detail with a retry button that re-runs the same
 // turn. Kept separate from send() so retry never re-appends the user's bubble
 // or re-reads the (already-cleared) attachment tray.
-function showError(detail, message, filesToSend) {
+function showError(detail, message, filesToSend, expression) {
   if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   const block = el('div', 'err-block', null);
   const head = document.createElement('div');
@@ -3703,13 +3806,13 @@ function showError(detail, message, filesToSend) {
   retry.textContent = tr('err.retry');
   retry.addEventListener('click', () => {
     block.remove();
-    runChat(message, filesToSend);
+    runChat(message, filesToSend, expression);
   });
   block.appendChild(retry);
   log.scrollTop = log.scrollHeight;
 }
 
-async function runChat(message, filesToSend) {
+async function runChat(message, filesToSend, expression) {
   sendBtn.disabled = true;
   const gen = chatGeneration;
   // F6 — bind this turn to the session it was sent from: the server routes
@@ -3745,13 +3848,13 @@ async function runChat(message, filesToSend) {
     if (errored || gen !== chatGeneration) return;
     errored = true;
     setChatStatus(tr('chat.failed'));
-    showError(detail, message, filesToSend);
+    showError(detail, message, filesToSend, expression);
   };
   try {
     const res = await fetch('/chat', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({message, files: filesToSend, sessionId: sid, expressions: true}),
+      body: JSON.stringify({message, files: filesToSend, sessionId: sid, expressions: true, expression}),
     });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -3849,7 +3952,7 @@ async function runChat(message, filesToSend) {
 form.addEventListener('submit', (ev) => {
   ev.preventDefault();
   const msg = input.value.trim();
-  if (msg || pendingFiles.length) send(msg);
+  if (!sendBtn.disabled && (msg || pendingFiles.length || window.LisaExpressions.selected())) send(msg);
 });
 
 input.addEventListener('keydown', (ev) => {
@@ -6101,15 +6204,16 @@ if ('serviceWorker' in navigator) {
   }
   function loadDashboard() {
     views.dashboard.innerHTML =
-      '<div class="view-head"><div><h2>Dashboard</h2><div class="vh-sub">Operations at a glance</div></div>' +
-      '<button class="view-act" id="dashDelegate">+ Delegate a task</button></div>' +
-      '<div class="view-scroll" id="dashScroll"><div class="view-empty">loading…</div></div>';
+      '<div class="view-head"><div><h2>' + esc(LISA_LOCALE === 'zh-CN' ? '总览' : 'Dashboard') + '</h2><div class="vh-sub">' + esc(LISA_LOCALE === 'zh-CN' ? '任务、动态与已连接的应用' : 'Tasks, activity and connected apps') + '</div></div>' +
+      '<button class="view-act" id="dashDelegate">' + esc(tr('control.delegate')) + '</button></div>' +
+      '<div class="view-scroll" id="dashScroll"><div id="dashOperations"><div class="view-empty">' + esc(tr('control.loading')) + '</div></div>' + (!!document.getElementById('pmConnectors') ? '<section id="dashboardConnectors" class="dc-section" aria-label="Connectors"></section>' : '') + '</div>';
     var del = document.getElementById('dashDelegate');
     if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
     renderDashboard();
+    void loadDashboardConnectors();
   }
   function renderDashboard() {
-    var scroll = document.getElementById('dashScroll');
+    var scroll = document.getElementById('dashOperations');
     if (!scroll) return;
     Promise.all([
       getJSON('/api/agents/sessions'), getJSON('/api/dispatch/list'),
@@ -6126,29 +6230,29 @@ if ('serviceWorker' in navigator) {
       var desire = ping.current_desire || '';
       var html = '';
       html += '<div class="stat-bar">' +
-        '<div class="stat"><div class="n">' + sessions.length + '</div><div class="k">Agents</div></div>' +
-        '<div class="stat"><div class="n">' + aliveTasks + '</div><div class="k">Tasks</div></div>' +
-        '<div class="stat"><div class="n">' + dispatches.length + '</div><div class="k">Dispatched</div></div>' +
-        '<div class="stat"><div class="n">' + events.length + '</div><div class="k">Signals</div></div></div>';
+        '<div class="stat"><div class="n">' + sessions.length + '</div><div class="k">' + esc(LISA_LOCALE === 'zh-CN' ? '智能体' : 'Agents') + '</div></div>' +
+        '<div class="stat"><div class="n">' + aliveTasks + '</div><div class="k">' + esc(LISA_LOCALE === 'zh-CN' ? '任务' : 'Tasks') + '</div></div>' +
+        '<div class="stat"><div class="n">' + dispatches.length + '</div><div class="k">' + esc(LISA_LOCALE === 'zh-CN' ? '已委派' : 'Dispatched') + '</div></div>' +
+        '<div class="stat"><div class="n">' + events.length + '</div><div class="k">' + esc(LISA_LOCALE === 'zh-CN' ? '动态' : 'Signals') + '</div></div></div>';
       html += '<div class="proactive-panel' + (proactiveOn ? '' : ' off') + '" id="ppPanel"><div class="pp-head"><span class="pp-dot"></span>' +
-        '<div><div class="pp-title">Proactive mode <b id="ppState">' + (proactiveOn ? 'On · watching' : 'Paused') + '</b></div>' +
-        '<div class="pp-desc" id="ppDesc">' + (proactiveOn ? 'Lisa watches your agents, tasks and signals for blockers and next steps.' : 'Resting — she will only act when you talk to her.') + '</div></div></div>' +
-        '<div class="pp-tags"><span class="pp-tag">' + sessions.length + ' agents</span><span class="pp-tag">' + aliveTasks + ' tasks</span>' +
-        (waiting ? '<span class="pp-tag warn">' + waiting + ' waiting</span>' : '') +
-        (errored ? '<span class="pp-tag warn">' + errored + ' errored</span>' : '') +
-        '<span class="pp-tag">owner-routed</span><span class="pp-tag">quiet on waits</span></div></div>';
-      html += '<div class="view-sec-label">Focus · currently pursuing</div>';
+        '<div><div class="pp-title">' + esc(LISA_LOCALE === 'zh-CN' ? '主动模式' : 'Proactive mode') + ' <b id="ppState">' + (proactiveOn ? (LISA_LOCALE === 'zh-CN' ? '开启 · 关注中' : 'On · watching') : (LISA_LOCALE === 'zh-CN' ? '已暂停' : 'Paused')) + '</b></div>' +
+        '<div class="pp-desc" id="ppDesc">' + (proactiveOn ? (LISA_LOCALE === 'zh-CN' ? 'Lisa 会关注任务进展，发现阻碍并整理下一步。' : 'Lisa watches your agents, tasks and signals for blockers and next steps.') : (LISA_LOCALE === 'zh-CN' ? '休息中，与你对话时才会行动。' : 'Resting — she will only act when you talk to her.')) + '</div></div></div>' +
+        '<div class="pp-tags"><span class="pp-tag">' + sessions.length + (LISA_LOCALE === 'zh-CN' ? ' 个智能体' : ' agents') + '</span><span class="pp-tag">' + aliveTasks + (LISA_LOCALE === 'zh-CN' ? ' 项任务' : ' tasks') + '</span>' +
+        (waiting ? '<span class="pp-tag warn">' + waiting + (LISA_LOCALE === 'zh-CN' ? ' 项等待中' : ' waiting') + '</span>' : '') +
+        (errored ? '<span class="pp-tag warn">' + errored + (LISA_LOCALE === 'zh-CN' ? ' 项异常' : ' errored') + '</span>' : '') +
+        '</div></div>';
+      html += '<div class="view-sec-label">' + esc(LISA_LOCALE === 'zh-CN' ? '当前关注' : 'Focus · currently pursuing') + '</div>';
       if (desire) {
         html += '<div class="focus-card"><div class="fc-top">' +
-          '<span class="fc-label">Self-directed</span><span class="fc-pill">Active</span></div>' +
+          '<span class="fc-label">' + esc(LISA_LOCALE === 'zh-CN' ? '自主推进' : 'Self-directed') + '</span><span class="fc-pill">' + esc(LISA_LOCALE === 'zh-CN' ? '进行中' : 'Active') + '</span></div>' +
           '<p class="fc-title">' + esc(desire) + '</p></div>';
       } else {
-        html += '<div class="focus-card"><div class="fc-desc">Nothing actively pursued right now.</div></div>';
+        html += '<div class="focus-card"><div class="fc-desc">' + esc(LISA_LOCALE === 'zh-CN' ? '目前没有正在推进的事项。' : 'Nothing actively pursued right now.') + '</div></div>';
       }
-      html += '<div class="view-sec-label">Agents &amp; tasks</div>';
+      html += '<div class="view-sec-label">' + esc(LISA_LOCALE === 'zh-CN' ? '智能体与任务' : 'Agents & tasks') + '</div>';
       var cards = sessions.map(agentCardHTML).concat(dispatches.slice(0, 6).map(taskCardHTML));
       html += cards.length ? '<div class="card-scroll">' + cards.join('') + '</div>'
-                           : '<div class="view-empty">No active agents or tasks. Delegate one to get started.</div>';
+                           : '<div class="view-empty">' + esc(LISA_LOCALE === 'zh-CN' ? '目前没有进行中的任务，可以委派一项任务开始。' : 'No active agents or tasks. Delegate one to get started.') + '</div>';
       scroll.innerHTML = html;
     });
   }
@@ -7474,3 +7578,5 @@ if ('serviceWorker' in navigator) {
   document.addEventListener('focusout', () => requestAnimationFrame(syncViewport));
   syncLayout();
 })();
+
+window.LisaExpressions.mountComposer();

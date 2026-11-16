@@ -30,12 +30,12 @@ test("every state, pose and sticker is covered, with each animation below 256 Ki
       assert.ok(sizes[index]! <= 256 * 1024, name + " exceeds per-file budget");
   const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
   assert.equal(Object.keys(manifest.portraits).length, 24);
-  assert.equal(Object.keys(manifest.clips).length, 46);
+  assert.equal(Object.keys(manifest.clips).length, 53);
   const art = JSON.parse(await readFile(new URL("../soft-ink-v1/manifest.json", root), "utf8"));
   for (const index of Object.values<number>(art.portraits.aliases))
     assert.ok(manifest.clips[manifest.portraits[index]]);
   assert.equal(manifest.poses.length, 12);
-  assert.equal(manifest.stickers.length, 8);
+  assert.equal(manifest.stickers.length, 12);
   for (const id of [...manifest.poses, ...manifest.stickers]) assert.ok(manifest.clips[id]);
   const expected = new Set(["manifest.json", "manifest.js"]);
   for (const clip of Object.values<{

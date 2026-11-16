@@ -98,6 +98,14 @@ export class GoogleReadonlyDriver implements ReadonlyDriver<GoogleAccount, Googl
       },
     };
   }
+  async configured() {
+    try {
+      await (this.options.client ?? googleClient)();
+      return true;
+    } catch {
+      return false;
+    }
+  }
   validAccount = (value: unknown): value is GoogleAccount => {
     const a = value as GoogleAccount;
     return (

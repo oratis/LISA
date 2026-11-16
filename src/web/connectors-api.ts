@@ -11,6 +11,7 @@ export async function handleConnectorApi(
   rawUrl: string,
   services: Map<ConnectorProvider, ConnectorService>,
   localOwner: boolean,
+  github?: Pick<ConnectorService, "summary">,
 ): Promise<boolean> {
   const url = new URL(rawUrl, "http://localhost");
   const match =
@@ -56,13 +57,35 @@ export async function handleConnectorApi(
               requests.push({ provider: group.provider, request });
         }
       }
+      const connectors = await Promise.all(
+        CONNECTOR_CATALOG.map(async (c) => {
+          const service = c.id === "github" ? github : services.get(c.id);
+          const available = !!service;
+          try {
+            return {
+              ...c,
+              available,
+              connection: service
+                ? await service.summary()
+                : { status: "unavailable", resourceCount: 0 },
+            };
+          } catch {
+            return {
+              ...c,
+              available,
+              connection: {
+                status: "error",
+                resourceCount: 0,
+                lastError: "connector_state_corrupt",
+              },
+            };
+          }
+        }),
+      );
       json(200, {
         // Unavailable sources (no OAuth client, or no EventKit reader in this build) stay
         // listed so a client can explain why they cannot be connected here.
-        connectors: CONNECTOR_CATALOG.map((c) => ({
-          ...c,
-          available: c.id === "github" || services.has(c.id),
-        })),
+        connectors,
         ...(session === null ? {} : { requests, unavailableProviders }),
       });
       return true;

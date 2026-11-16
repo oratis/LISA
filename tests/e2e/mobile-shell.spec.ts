@@ -53,7 +53,7 @@ test.describe("mobile app shell", () => {
       const log = await page.locator("#log").boundingBox();
       expect(log!.height).toBeGreaterThan(812 * 0.65);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
-      for (const id of ["plusBtn", "recordBtn", "sendBtn"]) {
+      for (const id of ["plusBtn", "expressionPickerBtn", "recordBtn", "sendBtn"]) {
         const button = page.locator("#" + id);
         await expect(button).toBeInViewport();
         const box = await button.boundingBox();

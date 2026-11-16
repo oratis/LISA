@@ -22,9 +22,9 @@ const record = {
   format: "animated",
 } as const;
 
-test("all 32 conversation assets resolve to bundled, versioned still/animated/native files", async () => {
-  assert.equal(expressionCatalog.length, 32);
-  assert.equal(new Set(expressionCatalog.map((x) => x.id)).size, 32);
+test("all 36 conversation assets resolve to bundled, versioned still/animated/native files", async () => {
+  assert.equal(expressionCatalog.length, 36);
+  assert.equal(new Set(expressionCatalog.map((x) => x.id)).size, 36);
   for (const item of expressionCatalog) {
     const e = resolveExpression({
       ...record,

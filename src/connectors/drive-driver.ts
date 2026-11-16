@@ -103,6 +103,14 @@ export class DriveReadonlyDriver implements ReadonlyDriver<DriveAccount, DriveRe
   ) {
     this.http = options.http ?? googleHttp();
   }
+  async configured() {
+    try {
+      await (this.options.client ?? googleClient)();
+      return true;
+    } catch {
+      return false;
+    }
+  }
   validAccount = (v: unknown): v is DriveAccount =>
     !!v &&
     typeof (v as DriveAccount).id === "string" &&

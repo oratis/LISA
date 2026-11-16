@@ -49,7 +49,11 @@
     "sticker-celebrate",
     "sticker-here-for-you",
     "sticker-make-a-plan",
-    "sticker-tea-break"
+    "sticker-tea-break",
+    "sticker-got-it",
+    "sticker-hug",
+    "sticker-good-night",
+    "sticker-curious"
   ],
   "clips": {
     "blink": {
@@ -575,6 +579,84 @@
       "durationMs": 4540,
       "bytes": 194180,
       "posterBytes": 23034
+    },
+    "sticker-got-it": {
+      "src": "/assets/visuals/soft-ink-motion-v1/sticker-got-it.webp",
+      "poster": "/assets/visuals/soft-ink-motion-v1/sticker-got-it-static.webp",
+      "width": 256,
+      "height": 256,
+      "frames": 4,
+      "durationMs": 3980,
+      "bytes": 65334,
+      "posterBytes": 17938,
+      "native": "/assets/visuals/soft-ink-motion-v1/sticker-got-it.gif",
+      "nativeBytes": 111524
+    },
+    "sticker-hug": {
+      "src": "/assets/visuals/soft-ink-motion-v1/sticker-hug.webp",
+      "poster": "/assets/visuals/soft-ink-motion-v1/sticker-hug-static.webp",
+      "width": 256,
+      "height": 256,
+      "frames": 4,
+      "durationMs": 3980,
+      "bytes": 65056,
+      "posterBytes": 16330,
+      "native": "/assets/visuals/soft-ink-motion-v1/sticker-hug.gif",
+      "nativeBytes": 99718
+    },
+    "sticker-good-night": {
+      "src": "/assets/visuals/soft-ink-motion-v1/sticker-good-night.webp",
+      "poster": "/assets/visuals/soft-ink-motion-v1/sticker-good-night-static.webp",
+      "width": 256,
+      "height": 256,
+      "frames": 4,
+      "durationMs": 3980,
+      "bytes": 58104,
+      "posterBytes": 15292,
+      "native": "/assets/visuals/soft-ink-motion-v1/sticker-good-night.gif",
+      "nativeBytes": 108350
+    },
+    "sticker-curious": {
+      "src": "/assets/visuals/soft-ink-motion-v1/sticker-curious.webp",
+      "poster": "/assets/visuals/soft-ink-motion-v1/sticker-curious-static.webp",
+      "width": 256,
+      "height": 256,
+      "frames": 4,
+      "durationMs": 3980,
+      "bytes": 56524,
+      "posterBytes": 14930,
+      "native": "/assets/visuals/soft-ink-motion-v1/sticker-curious.gif",
+      "nativeBytes": 102174
+    },
+    "room-work-natural": {
+      "src": "/assets/visuals/soft-ink-motion-v1/room-work-natural.webp",
+      "poster": "/assets/visuals/soft-ink-motion-v1/room-work-natural-static.webp",
+      "width": 384,
+      "height": 384,
+      "frames": 4,
+      "durationMs": 3980,
+      "bytes": 72432,
+      "posterBytes": 19130
+    },
+    "room-read-natural": {
+      "src": "/assets/visuals/soft-ink-motion-v1/room-read-natural.webp",
+      "poster": "/assets/visuals/soft-ink-motion-v1/room-read-natural-static.webp",
+      "width": 384,
+      "height": 384,
+      "frames": 4,
+      "durationMs": 3980,
+      "bytes": 71210,
+      "posterBytes": 18896
+    },
+    "room-tea-natural": {
+      "src": "/assets/visuals/soft-ink-motion-v1/room-tea-natural.webp",
+      "poster": "/assets/visuals/soft-ink-motion-v1/room-tea-natural-static.webp",
+      "width": 384,
+      "height": 384,
+      "frames": 4,
+      "durationMs": 3980,
+      "bytes": 67352,
+      "posterBytes": 18080
     }
   }
 }

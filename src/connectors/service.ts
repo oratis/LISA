@@ -227,6 +227,28 @@ export class ReadonlyConnector<A, R> {
       connected,
     };
   }
+  /** Saved grant status only: no token reads, network calls, or new authorization. */
+  async summary() {
+    const configured = (await this.options.driver.configured?.()) ?? true;
+    const disconnected = configured ? ("disconnected" as const) : ("unavailable" as const);
+    if (!(await this.hasState())) return { status: disconnected, resourceCount: 0 };
+    return this.state((s) => {
+      const pending = s.requests.some(
+        (r) =>
+          ["waiting", "authorizing", "selecting"].includes(r.status) && r.expiresAt > this.now(),
+      );
+      const latest = s.requests.at(-1);
+      return {
+        status: s.connection
+          ? ("authorized" as const)
+          : pending
+            ? ("pending" as const)
+            : disconnected,
+        resourceCount: s.connection?.resources.length ?? 0,
+        ...(latest?.error && latest.status === "failed" ? { lastError: latest.error } : {}),
+      };
+    }, false);
+  }
   async list(sessionId: string): Promise<ConnectionRequestView<A, R>[]> {
     if (!idOK(sessionId)) throw new ConnectorError("invalid_session");
     if (!(await this.hasState())) return [];

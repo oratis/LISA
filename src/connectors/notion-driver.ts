@@ -93,6 +93,14 @@ export class NotionReadonlyDriver implements ReadonlyDriver<NotionAccount, Notio
   ) {
     this.http = options.http ?? notionHttp();
   }
+  async configured() {
+    try {
+      await (this.options.client ?? notionClient)();
+      return true;
+    } catch {
+      return false;
+    }
+  }
   validAccount = (v: unknown): v is NotionAccount =>
     !!v &&
     notionId((v as NotionAccount).id) &&

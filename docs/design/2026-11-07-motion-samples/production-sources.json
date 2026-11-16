@@ -364,5 +364,75 @@
     "size": 384,
     "frames": [0, 1, 2, 3, 4, 5, 6, 7, 8],
     "delay": [1500, 160, 160, 180, 450, 180, 160, 250, 1500]
+  },
+  {
+    "id": "sticker-got-it",
+    "source": "sticker-got-it.png",
+    "sourceDirectory": "docs/design/2026-11-16-companion-refresh/sources",
+    "subjects": 3,
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 0],
+    "delay": [2500, 180, 700, 600]
+  },
+  {
+    "id": "sticker-hug",
+    "source": "sticker-hug.png",
+    "sourceDirectory": "docs/design/2026-11-16-companion-refresh/sources",
+    "subjects": 3,
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 0],
+    "delay": [2500, 180, 700, 600]
+  },
+  {
+    "id": "sticker-good-night",
+    "source": "sticker-good-night.png",
+    "sourceDirectory": "docs/design/2026-11-16-companion-refresh/sources",
+    "subjects": 3,
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 0],
+    "delay": [2500, 180, 700, 600]
+  },
+  {
+    "id": "sticker-curious",
+    "source": "sticker-curious.png",
+    "sourceDirectory": "docs/design/2026-11-16-companion-refresh/sources",
+    "subjects": 3,
+    "size": 256,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 0],
+    "delay": [2500, 180, 700, 600]
+  },
+  {
+    "id": "room-work-natural",
+    "source": "room-work-natural.png",
+    "sourceDirectory": "docs/design/2026-11-16-companion-refresh/sources",
+    "subjects": 3,
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 0],
+    "delay": [2500, 180, 700, 600]
+  },
+  {
+    "id": "room-read-natural",
+    "source": "room-read-natural.png",
+    "sourceDirectory": "docs/design/2026-11-16-companion-refresh/sources",
+    "subjects": 3,
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 0],
+    "delay": [2500, 180, 700, 600]
+  },
+  {
+    "id": "room-tea-natural",
+    "source": "room-tea-natural.png",
+    "sourceDirectory": "docs/design/2026-11-16-companion-refresh/sources",
+    "subjects": 3,
+    "size": 384,
+    "fill": 0.88,
+    "frames": [0, 1, 2, 0],
+    "delay": [2500, 180, 700, 600]
   }
 ]

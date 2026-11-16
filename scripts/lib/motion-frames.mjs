@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import assert from "node:assert/strict";
-function subjects(data, width, height) {
+function subjects(data, width, height, count) {
   const seen = new Uint8Array(width * height);
   const queue = new Int32Array(width * height);
   const found = [];
@@ -36,10 +36,10 @@ function subjects(data, width, height) {
     }
     if (count > 10000) found.push({ left, top, right, bottom, pixels: count });
   }
-  assert.equal(found.length, 9, "Expected exactly nine large connected subjects");
+  assert.equal(found.length, count, `Expected exactly ${count} large connected subjects`);
   found.sort((a, b) => a.top - b.top);
   const ordered = [];
-  for (let r = 0; r < 3; r++)
+  for (let r = 0; r < count / 3; r++)
     ordered.push(...found.slice(r * 3, r * 3 + 3).sort((a, b) => a.left - b.left));
   return ordered.map((b) => {
     let sum = 0,
@@ -58,20 +58,20 @@ function subjects(data, width, height) {
   });
 }
 
-export async function register(input, size, fill) {
+export async function register(input, size, fill, count = 9) {
   const { data, info } = await sharp(input)
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  const boxes = subjects(data, info.width, info.height);
+  const boxes = subjects(data, info.width, info.height, count);
   const heights = boxes.map((b) => b.bottom - b.top + 1).sort((a, b) => a - b);
   const widestHalf = Math.max(
     ...boxes.map((b) => Math.max(b.anchorX - b.left + 4, b.right - b.anchorX + 4)),
   );
   const scale = Math.min(
-    (size * fill) / heights[4],
+    (size * fill) / heights[Math.floor(count / 2)],
     (size * 0.46) / widestHalf,
-    (size * 0.9) / (heights[8] + 8),
+    (size * 0.9) / (heights[count - 1] + 8),
   );
   const raws = [];
 

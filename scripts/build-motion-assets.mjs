@@ -76,6 +76,10 @@ const manifest = {
     "sticker-here-for-you",
     "sticker-make-a-plan",
     "sticker-tea-break",
+    "sticker-got-it",
+    "sticker-hug",
+    "sticker-good-night",
+    "sticker-curious",
   ],
   clips: {},
 };
@@ -87,8 +91,10 @@ if (only.size)
   manifest.clips = JSON.parse(await fs.readFile(path.join(out, "manifest.json"), "utf8")).clips;
 await fs.mkdir(out, { recursive: true });
 async function buildClip(cfg) {
-  const input = await fs.readFile(path.join(source, cfg.source));
-  const raws = await register(input, cfg.size, cfg.fill || 0.88);
+  const input = await fs.readFile(
+    path.join(cfg.sourceDirectory ? path.join(root, cfg.sourceDirectory) : source, cfg.source),
+  );
+  const raws = await register(input, cfg.size, cfg.fill || 0.88, cfg.subjects || 9);
   const raw = Buffer.concat(cfg.frames.map((i) => raws[i]));
   const image = () =>
     sharp(raw, {

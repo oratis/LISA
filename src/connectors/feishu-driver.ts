@@ -47,6 +47,14 @@ export class FeishuReadonlyDriver implements ReadonlyDriver<FeishuAccount, Feish
   ) {
     this.http = options.http ?? feishuHttp();
   }
+  async configured() {
+    try {
+      await (this.options.client ?? feishuClient)();
+      return true;
+    } catch {
+      return false;
+    }
+  }
   validAccount = (v: unknown): v is FeishuAccount =>
     !!v &&
     feishuIdentityId((v as FeishuAccount).id) &&

@@ -562,6 +562,22 @@ function __name(t){return t}
 ${renderMarkdown}
 (() => {
   var $ = function (id) { return document.getElementById(id); };
+  var roomZh = (navigator.language || 'en').toLowerCase().indexOf('zh') === 0;
+  document.documentElement.lang = roomZh ? 'zh-CN' : 'en';
+  var ROOM_COPY = {"Talk to her ▸": "和她聊聊 ▸", "Close": "关闭", "★ while you were away": "★ 你不在的时候", "✦ on her mind": "✦ 正在关注", "♪ music": "♪ 音乐", "Lisa is asleep": "Lisa 正在休息", "Wake her — run": "唤醒她 — 运行", "Put on some music": "放点音乐", "Change room theme": "切换房间风格", "Redecorate the room": "切换房间风格", "Read Lisa's notes": "阅读 Lisa 的留言", "What Lisa has been thinking about": "查看 Lisa 正在关注的事", "what she's been thinking about": "查看 Lisa 正在关注的事", "Seek": "播放进度", "Shuffle": "随机播放", "Previous": "上一首", "Play or pause": "播放或暂停", "Play / Pause": "播放或暂停", "Next": "下一首", "Repeat": "循环播放", "Mute": "静音", "Volume": "音量", "coding": "写代码", "debugging": "排查问题", "writing": "写作中", "reading up": "查阅资料", "studying": "学习中", "reading": "阅读中", "thinking": "思考中", "having some tea": "喝杯茶", "having some coffee": "喝咖啡", "gaming": "玩游戏", "watching a movie": "看电影", "watching anime": "看动画", "on a call": "通话中", "streaming": "直播中", "napping": "小憩中", "asleep": "睡着了", "cooking": "做饭中", "dancing": "跳舞", "in a good mood": "心情不错", "laughing": "开怀大笑", "amused": "觉得有趣", "a little down": "有些低落", "upset": "有些难过", "frustrated": "有些沮丧", "a bit annoyed": "有些烦恼", "excited": "很期待", "happy you're here": "很高兴你来了", "grateful": "心怀感谢", "sleepy": "有些困了", "a little shy": "有些害羞", "surprised": "有些惊讶", "at home": "在家里", "away": "暂时离开", "dreaming…": "做梦中…", "thinking…": "思考中…", "listening to music": "听音乐", "stretching": "伸展一下", "gazing out the window": "看看窗外", "working in her chair": "坐着工作", "resting in her chair": "靠在椅子上休息", "reading in her chair": "坐着阅读", "having tea in her chair": "坐着喝茶", "by the window": "站在窗边", "standing on the rug": "站在地毯上", "relaxing at home": "在家放松", "stretching on the rug": "在地毯上伸展"};
+  function rt(text) { return roomZh ? ROOM_COPY[text] || text : text; }
+  if (roomZh) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      var node = walker.currentNode;
+      if (node.parentElement && /^(SCRIPT|STYLE)$/.test(node.parentElement.tagName)) continue;
+      var trimmed = node.textContent.trim();
+      if (ROOM_COPY[trimmed]) node.textContent = node.textContent.replace(trimmed, ROOM_COPY[trimmed]);
+    }
+    document.querySelectorAll('[title], [aria-label]').forEach(function (el) {
+      ['title', 'aria-label'].forEach(function (attr) { if (el.hasAttribute(attr)) el.setAttribute(attr, rt(el.getAttribute(attr))); });
+    });
+  }
   // Localize the reader's "while you were away" title to the UI language.
   (function () {
     var l = (navigator.language || 'en').toLowerCase();
@@ -689,14 +705,19 @@ ${renderMarkdown}
     if (pose === 'stand' && lisa.classList.contains('lookup')) clip = 'looking-up';
     var image = $('lisa-motion');
     var seated = ROOM_SEATED.poses[pose];
+    if (seated && seated.clip) clip = seated.clip;
+    // The resting drawing breathes around its cushion contact; do not swap it
+    // for an unrelated square sleeping pose.
+    if (pose === 'sleep') clip = null;
     // Animation canvases are square. Register their hips to the same cushion
     // as the cropped static drawing, without moving the furniture or wrapper.
     var contact = { work: [67, 76], sleep: [64, 77], read: [62, 66], tea: [62, 66] }[pose];
-    var height = seated ? 100 / .88 : 100;
-    var width = seated ? height / seated.aspect : 100;
+    var natural = seated && seated.clip;
+    var height = seated && !natural ? 100 / .88 : 100;
+    var width = seated && !natural ? height / seated.aspect : 100;
     image.style.width = width + '%'; image.style.height = height + '%';
-    image.style.left = (seated ? seated.contact[0] - contact[0] * width / 100 : 0) + '%';
-    image.style.top = (seated ? seated.contact[1] - contact[1] * height / 100 : 4) + '%';
+    image.style.left = (natural ? 0 : seated ? seated.contact[0] - contact[0] * width / 100 : 0) + '%';
+    image.style.top = (natural ? 0 : seated ? seated.contact[1] - contact[1] * height / 100 : 4) + '%';
     window.LisaMotion.bind(image, state.online ? clip : null, null);
     window.LisaMotion.bind($('gramophone-motion'), body.classList.contains('music') ? 'gramophone' : null, null);
   }
@@ -746,7 +767,7 @@ ${renderMarkdown}
       function place() {
         if (request !== characterRevision) return;
         var atlasPositions = { stand: '0% 0%', pjs: '66.666667% 100%', listen: '0% 100%', stretch: '100% 50%', window: '33.333333% 100%' };
-        var width = (seated ? seated.width : (pose === 'window' ? 37 : 45)) * ROOM_CHARACTER_SCALE;
+        var width = seated && seated.feet ? (geometry.feetFloor - point[1]) * 100 / (seated.feet[1] - seated.contact[1]) : (seated ? seated.width : (pose === 'window' ? 37 : 45)) * ROOM_CHARACTER_SCALE;
         stage.style.setProperty('--actor-x', point[0] + '%');
         stage.style.setProperty('--actor-y', point[1] + '%');
         stage.style.setProperty('--actor-width', width + '%');
@@ -757,9 +778,9 @@ ${renderMarkdown}
         stage.style.setProperty('--shadow-height', (seated ? 3.8 : 2.6) * ROOM_CHARACTER_SCALE + '%');
         stage.style.setProperty('--feet-width', 9 * ROOM_CHARACTER_SCALE + '%');
         stage.style.setProperty('--feet-height', 2.4 * ROOM_CHARACTER_SCALE + '%');
-        stage.style.setProperty('--feet-x', (seated ? point[0] + width * (0.4 - seated.contact[0] / 100) : point[0]) + '%');
+        stage.style.setProperty('--feet-x', (seated ? point[0] + width * ((seated.feet ? seated.feet[0] / 100 : 0.4) - seated.contact[0] / 100) : point[0]) + '%');
         stage.style.setProperty('--feet-y', geometry.feetFloor + '%');
-        stage.style.setProperty('--feet-opacity', seated && pose !== 'sleep' ? (state.theme === 'room2' ? '.35' : '.75') : '0');
+        stage.style.setProperty('--feet-opacity', seated && pose !== 'sleep' && state.theme === 'room' ? '.65' : '0');
         lisaWrap.dataset.pose = pose;
         lisaWrap.dataset.support = seated ? 'seat' : 'floor';
         lisa.classList.remove('blink', 'lookup');
@@ -767,7 +788,7 @@ ${renderMarkdown}
         lisa.style.backgroundSize = seated ? '100% 100%' : '400% 300%';
         lisa.style.backgroundPosition = seated ? 'center' : atlasPositions[pose];
         var descriptions = { work: 'working in her chair', sleep: 'resting in her chair', read: 'reading in her chair', tea: 'having tea in her chair', window: 'by the window', stand: 'standing on the rug', pjs: 'relaxing at home', listen: 'listening to music', stretch: 'stretching on the rug' };
-        lisa.setAttribute('aria-label', 'Lisa ' + descriptions[pose]);
+        lisa.setAttribute('aria-label', 'Lisa ' + rt(descriptions[pose]));
         syncMotion();
         requestAnimationFrame(function () {
           if (request !== characterRevision) return;
@@ -837,11 +858,11 @@ ${renderMarkdown}
     }, 2600 + Math.random() * 3400);
   }
   function refreshCaption() {
-    if (!state.online) { doing.textContent = 'away'; return; }
-    if (state.dreaming) { doing.textContent = 'dreaming…'; return; }
-    if (state.thinking) { doing.textContent = 'thinking…'; return; }
-    if (state.activity) { doing.textContent = ACT_CAPTION[state.activity]; return; }
-    doing.textContent = CAPTION[state.mood] || 'at home';
+    if (!state.online) { doing.textContent = rt('away'); return; }
+    if (state.dreaming) { doing.textContent = rt('dreaming…'); return; }
+    if (state.thinking) { doing.textContent = rt('thinking…'); return; }
+    if (state.activity) { doing.textContent = rt(ACT_CAPTION[state.activity]); return; }
+    doing.textContent = rt(CAPTION[state.mood] || 'at home');
   }
   function refreshDot() {
     dot.className = '';
@@ -893,7 +914,7 @@ ${renderMarkdown}
   // ── Desire + letter ────────────────────────────────────────────────────
   function refreshDesire() {
     body.classList.toggle('has-desire', !!state.desire && state.online && !state.dreaming);
-    if (state.desire) $('desire-txt').textContent = 'she wants to ' + String(state.desire).replace(/^to\\s+/i, '');
+    if (state.desire) $('desire-txt').textContent = (roomZh ? '正在关注：' : 'she wants to ') + String(state.desire).replace(/^to\\s+/i, '');
   }
   function refreshLetter() {
     var n = state.letters.length;
@@ -985,7 +1006,7 @@ ${renderMarkdown}
   var pTracks = [], pOrder = [], pOrderPos = -1, pSeeking = false, pLoaded = false;
   var pMood = 'all', pShuffle = false, pRepeat = 'all', pTargetVol = 0.55, pMuted = false, pFade = null;
   var PKEY = 'lisa-room-music';
-  var MOOD_LABEL = { classical: '古典 · classical', light: '轻音乐 · light', classic: '经典 · classic', mine: '我的 · mine' };
+  var MOOD_LABEL = roomZh ? { classical: '古典', light: '轻音乐', classic: '经典', mine: '我的' } : { classical: 'Classical', light: 'Light', classic: 'Classics', mine: 'Mine' };
 
   function pPrefsGet() { try { return JSON.parse(localStorage.getItem(PKEY) || '{}'); } catch (e) { return {}; } }
   function pPrefsSave() {
@@ -1022,7 +1043,7 @@ ${renderMarkdown}
     for (var m = 0; m < list.length; m++) (function (mood) {
       var c = document.createElement('div');
       c.className = 'mchip' + (pMood === mood ? ' on' : '');
-      c.textContent = mood === 'all' ? 'all' : (MOOD_LABEL[mood] || mood);
+      c.textContent = mood === 'all' ? (roomZh ? '全部' : 'All') : (MOOD_LABEL[mood] || mood);
       c.addEventListener('click', function () { pMood = mood; var cur = pTracks[pOrder[pOrderPos]]; pBuildOrder(cur ? cur.id : null); pRenderList(); pMoods(); pPrefsSave(); });
       box.appendChild(c);
     })(list[m]);
@@ -1030,7 +1051,7 @@ ${renderMarkdown}
   function pRenderList() {
     var box = $('plist'); box.innerHTML = '';
     if (!pOrder.length) {
-      box.innerHTML = '<div class="pempty">No tracks here yet. Drop <code>.mp3</code> files into <code>~/.lisa/music/</code> and reopen — they appear as <b>我的 / mine</b>.</div>';
+      box.innerHTML = roomZh ? '<div class="pempty">还没有音乐。将 MP3 文件放入 <code>~/.lisa/music/</code> 后重新打开，即可在「我的」中播放。</div>' : '<div class="pempty">Add MP3 files to <code>~/.lisa/music/</code> and reopen to listen under Mine.</div>';
       return;
     }
     for (var i = 0; i < pOrder.length; i++) (function (pos) {

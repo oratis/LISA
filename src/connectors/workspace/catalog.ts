@@ -1,5 +1,17 @@
 // Public card metadata. Credentials and tenant-specific settings never enter this catalog.
 export const workspaceApps = {
+  box: {
+    name: "Box",
+    example: {
+      en: "Summarize the text in my selected Box files.",
+      "zh-CN": "总结我选定的 Box 文件中的文本。",
+    },
+    vendor: "box",
+    scope: "root_readonly",
+    unit: "file",
+    hint: "Box file ID",
+    intent: /\bbox\b/i,
+  },
   todoist: {
     name: "Todoist",
     example: {

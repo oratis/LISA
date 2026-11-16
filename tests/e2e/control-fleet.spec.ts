@@ -47,7 +47,7 @@ test("an installed app ignores stale Fleet scripts and styles from its offline c
   const fleet = page.frameLocator("#controlFleet");
   await expect(fleet.locator("html")).toHaveAttribute("data-embedded", "");
   await expect(fleet.locator(".standalone-header")).toBeHidden();
-  await expect(fleet.locator(".steps")).toHaveCSS("display", "flex");
+  await expect(fleet.locator(".steps")).toHaveCSS("display", "grid");
   const resources = await fleet
     .locator('link[rel="stylesheet"], script[src]')
     .evaluateAll((nodes) =>

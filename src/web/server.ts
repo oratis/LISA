@@ -1,3 +1,4 @@
+import { ObsidianDriver, isObsidianReadRequest } from "../connectors/obsidian.js";
 import { handleConsole } from "../admin/http.js";
 import { featureAllowed } from "../admin/store.js";
 import { expressionTurn } from "../expressions/turn.js";
@@ -6,7 +7,11 @@ import {
   readExpressionPreferences,
   writeExpressionPreferences,
 } from "../expressions/preferences.js";
-import { resolveExpression, expressionText } from "../expressions/catalog.js";
+import {
+  resolveExpression,
+  expressionText,
+  type ExpressionRecord,
+} from "../expressions/catalog.js";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -436,6 +441,7 @@ export interface WebServerOptions {
   workspaceDrivers?: Partial<
     Record<WorkspaceId, ReadonlyDriver<WorkspaceResource, WorkspaceResource>>
   >;
+  obsidianDriver?: ReadonlyDriver<WorkspaceResource, WorkspaceResource>;
   t3Driver?: ReadonlyDriver<T3Account, T3Resource>;
   feishuDriver?: ReadonlyDriver<FeishuAccount, FeishuResource>;
   slackDriver?: ReadonlyDriver<SlackAccount, SlackResource>;
@@ -1169,6 +1175,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       : undefined;
   const taskConnectors = new Map<ConnectorProvider, ConnectorService>();
   if (!cloudEdition && capabilityProfile === "local-owner" && connectorSecrets) {
+    taskConnectors.set(
+      "obsidian",
+      new ReadonlyConnector({
+        home: lisaHome(),
+        driver: opts.obsidianDriver ?? new ObsidianDriver(),
+        secrets: connectorSecrets,
+        resume: resumeConnector,
+        changed: (sessionId) =>
+          broadcast(
+            { type: "connector_connection_changed", provider: "obsidian", sessionId },
+            null,
+          ),
+      }),
+    );
     // Only sources that can work here: a configured OAuth client (Todoist needs none) or a
     // runnable EventKit reader, checked once at startup. Chat routing below skips the rest.
     const injected = opts.workspaceDrivers ?? {};
@@ -3453,6 +3473,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         url,
         taskConnectors,
         !cloud && !accountUid && isLoopbackAddress(remoteAddr),
+        githubConnector?.service,
       )
     )
       return;
@@ -5926,6 +5947,7 @@ self.addEventListener('fetch', (event) => {
       let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
       let targetSessionId: string | undefined;
       let expressionClient = false;
+      let userExpression: ExpressionRecord | undefined;
       try {
         // Every other endpoint guards its JSON.parse — this one used to be the
         // only one that didn't, and a malformed body left the socket hanging.
@@ -5934,12 +5956,27 @@ self.addEventListener('fetch', (event) => {
           files?: Array<{ name: string; mediaType: string; data: string }>;
           sessionId?: unknown;
           expressions?: unknown;
+          expression?: unknown;
         };
         expressionClient = parsed.expressions === true;
-        if (typeof parsed.message !== "string" || !parsed.message.trim()) {
+        if (parsed.expression !== undefined) {
+          const resolved = resolveExpression(parsed.expression);
+          if (!resolved) throw new Error("invalid expression");
+          userExpression = {
+            version: 1,
+            id: crypto.randomUUID(),
+            assetId: resolved.assetId,
+            format: resolved.format,
+          };
+        }
+        if (typeof parsed.message !== "string" || (!parsed.message.trim() && !userExpression)) {
           throw new Error("missing message");
         }
         message = parsed.message;
+        if (userExpression)
+          message = [message.trim(), expressionText(resolveExpression(userExpression)!)]
+            .filter(Boolean)
+            .join("\n\n");
         files = parsed.files;
         if (
           cloud &&
@@ -6134,7 +6171,10 @@ self.addEventListener('fetch', (event) => {
               { role: "user", content: message },
               { role: "assistant", content: catalogReply },
             ] as const) {
-              await chat.session.appendMessage(entry);
+              await chat.session.appendMessage(
+                entry,
+                entry.role === "user" ? userExpression : undefined,
+              );
               chat.history.push(entry);
             }
             send({ type: "text", text: catalogReply });
@@ -6143,6 +6183,7 @@ self.addEventListener('fetch', (event) => {
           }
           const requestedProviders: ConnectorProvider[] = [
             ...workspaceReadIntents(message).filter((id) => taskConnectors.has(id)),
+            ...(isObsidianReadRequest(message) ? ["obsidian" as const] : []),
             ...googleReadIntents(message),
             ...(isLinearReadRequest(message) ? ["linear" as const] : []),
             ...(isDriveReadRequest(message) ? ["google-drive" as const] : []),
@@ -6187,7 +6228,7 @@ self.addEventListener('fetch', (event) => {
                 ),
               ],
             };
-            await chat.session.appendMessage(user);
+            await chat.session.appendMessage(user, userExpression);
             chat.history.push(user);
             // This slice has one durable continuation per source. Never silently finish
             // half of a combined request or run its unrestricted remainder.
@@ -6383,7 +6424,9 @@ self.addEventListener('fetch', (event) => {
                     if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
                   },
             onMessagePersist: async (m) => {
-              await chat.session.appendMessage(m);
+              const record = m.role === "user" ? userExpression : undefined;
+              await chat.session.appendMessage(m, record);
+              if (record) userExpression = undefined;
               persisted.push(m);
             },
             onPromptPersist: (text, reason) => chat.session.appendPrompt(text, reason),

@@ -1,0 +1,46 @@
+{
+  "tool": "built-in image_gen",
+  "reference": "docs/design/2026-10-08-visual-refresh/soft-ink-sources/stickers.png",
+  "jobs": [
+    [
+      "sticker-hug",
+      "Create ONE production animation sprite sheet of Lisa. Reference is identity/style only: turquoise bob, blue eyes, navy hoodie with cyan drawstrings, soft ink anime illustration. Exactly 3 equal square cells in one horizontal 3:1 strip. Fully transparent background with real alpha, no grid, labels or words, no scene or furniture. Same waist-up size, body registration and 12% empty margins in all three cells, all hands fully within cells and anatomically correct. Gesture: a warm reassuring hug offered toward viewer. Frame 1 hands open outward at chest level, gentle smile; frame 2 arms open slightly wider, head tilts a tiny bit, soft closed eyes; frame 3 return to the first pose. No heart props or other characters."
+    ],
+    [
+      "sticker-good-night",
+      "Create ONE production animation sprite sheet of Lisa. Reference is identity/style only: turquoise bob, blue eyes, navy hoodie with cyan drawstrings, soft ink anime illustration. Exactly 3 equal square cells in one horizontal 3:1 strip. Fully transparent background with real alpha, no grid, labels or words, no scene or furniture. Same waist-up size, body registration and 12% empty margins in all three cells, all hands fully within cells and anatomically correct. Gesture: a gentle good-night, both palms together beside one cheek, shoulders relaxed. Frame 1 sleepy half-open eyes, subtle smile; frame 2 softly closed eyes, small head tilt onto her hands; frame 3 same as first pose. Keep hands and shoulders steady. No sleeping text, stars or props."
+    ],
+    [
+      "sticker-curious",
+      "Create ONE production animation sprite sheet of Lisa. Reference is identity/style only: turquoise bob, blue eyes, navy hoodie with cyan drawstrings, soft ink anime illustration. Exactly 3 equal square cells in one horizontal 3:1 strip. Fully transparent background with real alpha, no grid, labels or words, no scene or furniture. Same waist-up size, body registration and 12% empty margins in all three cells, all hands fully within cells and anatomically correct. Gesture: an inquisitive friendly expression, one index finger raised beside her cheek and other arm relaxed. Frame 1 head upright, eyes attentive, smile; frame 2 small curious head tilt, one eyebrow slightly lifted; frame 3 return to the first pose with a soft blink. Keep body and hands still, tiny natural changes only."
+    ],
+    [
+      "room-read-natural",
+      "Create ONE full-body production animation keyframe sheet matching the reference Lisa EXACTLY in character identity, body proportions, seated posture, head size, pelvis position, bent legs, vertical shins and planted sneakers. Same turquoise bob, blue eyes, navy hoodie and trousers. Exactly THREE equal square cells in a horizontal 3:1 strip. Fully transparent background alpha zero, no furniture, shadows, labels, words or extra objects. Same scale and coordinates for pelvis, knees, soles and body in every frame; no body sway. Full body inside each square with 8% transparent margin. Replace the laptop with a small open hardcover book naturally held above her thighs. Frame1 eyes looking down at book; frame2 soft blink, one fingertip lightly touches page edge; frame3 returns to first pose. The book stays fixed; do not turn a full page or move her arms substantially. Soft warm thoughtful expression."
+    ],
+    [
+      "room-tea-natural",
+      "Create ONE full-body production animation keyframe sheet matching the reference Lisa EXACTLY in character identity, body proportions, seated posture, head size, pelvis position, bent legs, vertical shins and planted sneakers. Same turquoise bob, blue eyes, navy hoodie and trousers. Exactly THREE equal square cells in a horizontal 3:1 strip. Fully transparent background alpha zero, no furniture, shadows, labels, words or extra objects. Same scale and coordinates for pelvis, knees, soles and body in every frame; no body sway. Full body inside each square with 8% transparent margin. Replace the laptop with a small mint ceramic tea cup gently held with both hands near her chest. Frame1 relaxed attentive eyes and tiny smile; frame2 eyes softly close while appreciating the tea, fingers and cup still; frame3 returns to first pose. Do not move cup to mouth or alter leg/arm anatomy. A quiet tea break."
+    ],
+    [
+      "sticker-good-night-clean",
+      {
+        "prompt": "Edit this exact three-frame Lisa animation sheet: remove ALL white or pale backdrop and every drop shadow or halo. Background must be fully transparent alpha zero, including between the three figures. Keep only the three existing characters, unchanged faces, hands, hoodie, scale, positions and 3:1 sheet layout. No added art. This is a production transparent sticker sheet, not paper.",
+        "referenced_image_paths": [
+          "/Users/oratis/.codex/generated_images/01a1e3a8-aaf1-7780-9d92-d5269b9a0121/exec-7798ec7b-ef13-4ee2-916f-b44accf9e1e3.png"
+        ],
+        "transparent_background": true
+      }
+    ],
+    [
+      "room-work-natural",
+      {
+        "prompt": "Create one production full-body animation keyframe sheet using reference image as Lisa identity/style. Exactly THREE equal square cells arranged in a 3:1 horizontal strip, fully transparent background, no chair, no furniture, no shadows, no text. Preserve turquoise bob, blue eyes, navy hoodie and trousers, teal sneakers, soft ink anime art. Redraw Lisa sitting naturally on an invisible armchair cushion, three-quarter view facing left: pelvis supported, thigh horizontal, knees bent near 90 degrees, lower legs vertical, both soles planted on the SAME ground baseline, shoulders relaxed, laptop resting on thighs at a realistic angle. Her legs must extend down from the seat rather than being tucked under or floating. Adult-like proportions consistent with original character; head not oversized. Frame1 attentive relaxed gaze down at laptop, hands lightly resting keyboard. Frame2 soft blink with tiny finger change, body pelvis legs feet laptop held exactly fixed. Frame3 same as frame1. All 3 full figures identical scale and registration, 10% padding, no clipped feet, no extra fingers. Motion must be subtle and grounded, no body bounce.",
+        "referenced_image_paths": [
+          "/Users/oratis/.codex/worktrees/control-remote-mac/LISA/src/web/assets/visuals/soft-ink-motion-v1/typing-static.webp"
+        ],
+        "transparent_background": true
+      }
+    ]
+  ]
+}

@@ -54,6 +54,14 @@ export class T3ReadonlyDriver implements ReadonlyDriver<T3Account, T3Resource> {
       connect?: typeof withReadonlyMcp;
     } = {},
   ) {}
+  async configured() {
+    try {
+      this.endpoint();
+      return true;
+    } catch {
+      return false;
+    }
+  }
   private endpoint() {
     return t3Endpoint(this.options.endpoint);
   }

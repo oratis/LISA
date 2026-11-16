@@ -25,7 +25,8 @@ export async function loopbackAuthorization<T>(
       | "/oauth/atlassian"
       | "/oauth/dropbox"
       | "/oauth/todoist"
-      | "/oauth/figma";
+      | "/oauth/figma"
+      | "/oauth/box";
     /** Error code when a fixed callback port is already taken on either loopback. */
     portInUseCode?: string;
   } = {},
