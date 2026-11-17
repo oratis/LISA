@@ -1,0 +1,67 @@
+---
+// Lisa Pocket on iPhone. The four screens are the published App Store
+// screenshots for version 1.4, cropped to the app itself.
+const { lang = "en" } = Astro.props;
+const zh = lang === "zh-CN";
+const store = "https://apps.apple.com/us/app/lisa-pocket/id6784690058";
+const t = zh
+  ? {
+      eyebrow: "Lisa Pocket · iPhone 与 iPad", title: "把 Lisa 装进口袋。",
+      text: "在手机上使用 LISA Cloud 聊天，或者配对你自己的 Mac，接着刚才的事继续：她的房间、你的记忆和知识库，都在 iPhone 和 iPad 上。",
+      points: ["登录 LISA Cloud 即可聊天，无需准备 Mac", "通过加密的本地连接配对你的 Mac，不在同一网络时改走加密中继", "发送第一条消息前，Pocket 会说明哪些 AI 服务将收到内容，并征求你的同意"],
+      cta: "前往 App Store", note: "1.4 已在美区 App Store 上架，需要 iOS 17 或更新版本，可用性因地区而异。", gallery: "Lisa Pocket 截图",
+      shots: [["room", "房间", "Lisa Pocket 的房间页：Lisa 在家，下方是九个入口"], ["chat", "聊天", "Lisa Pocket 的聊天页与三个起始建议"], ["memory", "记忆", "Lisa Pocket 的记忆页"], ["knowledge", "知识库", "Lisa Pocket 的知识库列表"]],
+    }
+  : {
+      eyebrow: "Lisa Pocket · iPhone & iPad", title: "Lisa, in your pocket.",
+      text: "Chat with LISA Cloud from your phone, or pair your own Mac and pick up where you left off: her room, your memory and your knowledge base, on iPhone and iPad.",
+      points: ["Sign in to LISA Cloud and chat without setting up a Mac", "Pair your Mac over an encrypted local connection, with an encrypted relay when you are away", "Before the first message, Pocket shows which AI services will receive it and asks for permission"],
+      cta: "View on the App Store", note: "Version 1.4 is on the US App Store. Requires iOS 17 or later. Availability varies by region.", gallery: "Lisa Pocket screenshots",
+      shots: [["room", "Room", "The Room screen in Lisa Pocket: Lisa at home above nine destinations"], ["chat", "Chat", "The Chat screen in Lisa Pocket with three starters"], ["memory", "Memory", "The Memory screen in Lisa Pocket"], ["knowledge", "Knowledge", "The Knowledge list in Lisa Pocket"]],
+    };
+---
+<section class="section pocket" aria-labelledby="pocket-title">
+  <div class="pocket-head">
+    <div>
+      <p class="eyebrow"><span class="rule"></span>{t.eyebrow}</p>
+      <h2 id="pocket-title">{t.title}</h2>
+      <p class="lede">{t.text}</p>
+      <div class="actions"><a class="btn-primary" href={store} target="_blank" rel="noopener">{t.cta} ↗</a></div>
+      <p class="note">{t.note}</p>
+    </div>
+    <ul class="ticks">{t.points.map((p) => <li>{p}</li>)}</ul>
+  </div>
+  <ul class="pocket-phones" aria-label={t.gallery}>
+    {t.shots.map(([id, label, alt]) => (
+      <li>
+        <figure class="phone">
+          <img src={`/pocket/${id}.webp`} alt={alt} width="628" height="1280" loading="lazy" decoding="async" />
+        </figure>
+        <span class="phone-label">{label}</span>
+      </li>
+    ))}
+  </ul>
+</section>
+<style>
+  .pocket-head { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:clamp(1.5rem,4vw,3.5rem); align-items:end; }
+  .pocket-head .actions { margin:1.4rem 0 .9rem; }
+  .pocket-head .note { margin:0; }
+  .pocket-head .ticks { margin:0 0 .4rem; padding:1.3rem 1.4rem; border:1px solid var(--border); border-radius:16px; background:var(--bg-elev); }
+  .pocket-phones { list-style:none; margin:clamp(2rem,4vw,3rem) 0 0; padding:0; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:clamp(1rem,2.6vw,2rem); align-items:start; }
+  .pocket-phones li { display:grid; gap:.9rem; justify-items:center; }
+  .pocket-phones li:nth-child(even) { margin-top:2.6rem; }
+  .pocket-phones .phone { width:100%; --w:220px; }
+  .phone-label { font-family:var(--mono); font-size:.7rem; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); }
+  @media(max-width:900px) {
+    .pocket-head { grid-template-columns:1fr; align-items:start; }
+    /* a swipeable row: each phone snaps into place */
+    .pocket-phones { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:min(30%,230px); overflow-x:auto; scroll-snap-type:x mandatory; gap:1rem; padding-bottom:.5rem; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+    .pocket-phones::-webkit-scrollbar { display:none; }
+    .pocket-phones li { scroll-snap-align:center; }
+    .pocket-phones li:nth-child(even) { margin-top:0; }
+    .pocket-phones .phone { --w:200px; }
+  }
+  @media(max-width:640px) {
+    .pocket-phones { grid-auto-columns:min(62%,240px); padding-inline:max(1.25rem, env(safe-area-inset-left)); margin-inline:calc(-1 * max(1.25rem, env(safe-area-inset-left))); }
+  }
+</style>

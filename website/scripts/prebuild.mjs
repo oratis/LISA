@@ -2,6 +2,7 @@
  * Pre-build step for the website:
  *   1. Snapshot scripts/lisa-moods.ts → website/src/data/moods.json so
  *      Astro pages can import the data without a TS resolution dance.
+ *   1b. Snapshot the root package.json version → website/src/data/release.json.
  *   2. Symlink src/web/assets/ → website/public/assets so the existing
  *      114 mood portraits + base UI assets are served from the website
  *      under /assets/* without duplicating files.
@@ -50,6 +51,14 @@ await fs.writeFile(
   JSON.stringify({ styleLock, moods }, null, 2),
 );
 console.log(`✓ wrote moods.json (${moods.length} moods)`);
+
+// 1b. Snapshot the release version so pages can name it without a network call.
+const pkg = JSON.parse(await fs.readFile(path.join(REPO_ROOT, "package.json"), "utf8"));
+await fs.writeFile(
+  path.join(outDir, "release.json"),
+  JSON.stringify({ version: pkg.version, minor: pkg.version.split(".").slice(0, 2).join(".") }, null, 2),
+);
+console.log(`✓ wrote release.json (${pkg.version})`);
 
 // 2. Symlink assets ─────────────────────────────────────────────────────
 const publicDir = path.join(WEBSITE_ROOT, "public");
