@@ -1,8 +1,21 @@
-# Lisa 0.32.0 — Review, approve and finish Fleet work
+# Lisa 0.32.0 — A more expressive companion, connected workspaces
 
-Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.
+Lisa gains natural seated animations, a shared chat sticker collection, a clearer Rêve and Control layout, and a Dashboard catalog of 22 connectors including Box and Obsidian. Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.
 
-Status: release candidate. Publication is pending the [remaining acceptance gates](RELEASE_CHECKLIST_v0.32.0.md).
+The local Mac build was accepted on November 17, 2026, and PR #516 is merged. Channel publication and remaining live-account/device checks are tracked independently in the [release checklist](RELEASE_CHECKLIST_v0.32.0.md).
+
+## Companion animation and chat stickers
+
+- Working, reading and tea use dedicated seated animation loops with matching hip and foot positions in both room themes. Resting keeps its fitted pose and gentle breathing; hidden windows and reduced-motion preferences stop animation.
+- Four new expressions — Got it, Hug, Good night and Curious — bring the collection to 12 animated stickers plus 24 mood portraits. Choose a sticker in the chat composer, optionally add text, and send it to Lisa. Both user and Lisa stickers survive history reloads; the gallery offers transparent WebP and animated GIF downloads.
+- Rêve pairs memory with knowledge, reflection with pursuits, and dreams with capacity in a balanced layout that adapts to the pane width. Authored controls follow the Chinese or English locale; saved user content retains its original language.
+
+## Box, Obsidian and the connector dashboard
+
+- Dashboard lists all 22 read-only connectors with search, filters, configuration actions, saved authorization state and selected-resource counts. Authorization status describes a saved grant, not a live provider health check.
+- Box uses read-only OAuth and explicit file selection. Version-pinned reads support bounded text files; PDF and Office extraction are not included. A locally configured Box OAuth application is required. Offline OAuth/read/refresh tests pass; a real Box account has not been tested.
+- Obsidian discovers local vaults and asks which ones Lisa may read. It lists, searches and reads bounded Markdown content without a community plugin or local HTTP server. Hidden files, symlinks, hard-linked content and attachments are excluded. Tests use disposable vaults.
+- Setup, scope and read limits are in [Box and Obsidian connectors](CONNECTORS_BOX_OBSIDIAN.md).
 
 ## Control and remote Mac workflows
 
@@ -91,4 +104,4 @@ Knowledge-base Git history now binds every command to that instance's own reposi
 
 ## Included changes
 
-This release candidate also includes [#516](https://github.com/oratis/LISA/pull/516) (Control integration and localization, awaiting local acceptance). It includes [#498](https://github.com/oratis/LISA/pull/498), [#504](https://github.com/oratis/LISA/pull/504), [#505](https://github.com/oratis/LISA/pull/505), [#497](https://github.com/oratis/LISA/pull/497), [#500](https://github.com/oratis/LISA/pull/500), [#499](https://github.com/oratis/LISA/pull/499), [#503](https://github.com/oratis/LISA/pull/503), [#506](https://github.com/oratis/LISA/pull/506), [#501](https://github.com/oratis/LISA/pull/501), [#507](https://github.com/oratis/LISA/pull/507), [#460](https://github.com/oratis/LISA/pull/460), [#509](https://github.com/oratis/LISA/pull/509) and [#508](https://github.com/oratis/LISA/pull/508). The missing historical [v0.30.2 note](RELEASE_v0.30.2.md) has also been restored, and both READMEs now distinguish source features from channel availability.
+This release includes [#516](https://github.com/oratis/LISA/pull/516) (accepted companion, connector and Control refresh), [#511](https://github.com/oratis/LISA/pull/511) (Fleet extensions) and [#512](https://github.com/oratis/LISA/pull/512) (knowledge-base isolation). It includes [#498](https://github.com/oratis/LISA/pull/498), [#504](https://github.com/oratis/LISA/pull/504), [#505](https://github.com/oratis/LISA/pull/505), [#497](https://github.com/oratis/LISA/pull/497), [#500](https://github.com/oratis/LISA/pull/500), [#499](https://github.com/oratis/LISA/pull/499), [#503](https://github.com/oratis/LISA/pull/503), [#506](https://github.com/oratis/LISA/pull/506), [#501](https://github.com/oratis/LISA/pull/501), [#507](https://github.com/oratis/LISA/pull/507), [#460](https://github.com/oratis/LISA/pull/460), [#509](https://github.com/oratis/LISA/pull/509) and [#508](https://github.com/oratis/LISA/pull/508). The missing historical [v0.30.2 note](RELEASE_v0.30.2.md) has also been restored, and both READMEs now distinguish source features from channel availability.

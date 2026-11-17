@@ -55,7 +55,7 @@ lisa serve --web        # Web 工作区：http://localhost:5757
 - **积累长期上下文。** 同一实例中的身份、记忆、观点和日记以文件保存，跨会话延续；回顾与反思可以更新愿望和技能。
 - **维护个人知识库。** 保存链接，导入受支持的文章与视频字幕，检索带链接的 wiki，并从已配置的信息源生成简报。
 - **跨 Mac 协调编程 agent。** 本机 Control 可观察支持的 Claude Code、Codex、OpenCode 和 Aider 会话。Fleet 在逐个授权的工作区启动 Claude Code，记录可断线补读的任务经过，在隔离 worktree 中保存每轮文件改动。先预览已结束轮次，再交给 Claude 或 Codex 复核；操作按钮按 agent 实际能力显示，Codex 可选择只读交接包复核，或逐次审批的 List/Read/Edit/Write 工作区模式。完成后可预览回退单个文件，或确认合并到源分支并清理自有 worktree。还可将指定任务摘要分享给安全配对的 Pocket，默认只读；单独授权后可预览完整输入并审批。Pocket 支持保存和切换多台 Mac。参见 [Fleet 设置与限制](docs/FLEET.md)。
-- **连接本地工作流。** 二十种只读来源连接器覆盖文档、任务、日历、邮件和设计工具，包括指定飞书文档及 T3 项目的线程列表。通过 `/connectors` 浏览、授权账号并选择允许读取的资源；可用性取决于本机 OAuth 配置，Apple 日历和提醒事项需要 Swift 工具链。MCP、skills、插件和消息渠道均可选配。参见[连接器设置](docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md)。
+- **连接本地工作流。** 二十二种只读来源连接器覆盖文档、任务、日历、邮件和设计工具，包括 Box 文件、Obsidian 保险库、指定飞书文档及 T3 项目的线程列表；Dashboard 展示各项已保存的授权状态。通过 `/connectors` 浏览、授权账号并选择允许读取的资源；可用性取决于本机 OAuth 配置，Apple 日历和提醒事项需要 Swift 工具链。MCP、skills、插件和消息渠道均可选配。参见[连接器设置](docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md)。
 - **按需分享截图上下文。** 默认只截图；专用操作可采集前台窗口文字和坐标，预览后单独勾选才发送。缺少权限时仍可只发图片。
 - **给 Lisa 独立工作时间。** 持久目标、例程与本地 watcher，支持保存运行记录、取消和恢复。聊天创建的任务默认关闭，需要你启用；托管任务默认关闭，未接入审批的任务副作用会被拒绝。
 - **看见她的状态。** 像素房间、情绪立绘与 Mac 灵动岛反映实际活动；手机小组件和 Live Activity 依赖已配置、可达的 Mac 与通知设置。
@@ -80,7 +80,7 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 
 ## 开发状态
 
-当前已发布的核心版本为 **v0.31.0**。**v0.32.0 候选版**汇总三期 Fleet 工作流及后续完整扩展、连接恢复、会话续期、T3 与飞书只读连接器（[发布说明](docs/RELEASE_v0.32.0.md)、[更新日志](CHANGELOG.md)）。GitHub Releases、npm、Homebrew、托管服务与 Pocket 分别发布；代码合并不代表所有渠道已更新。验证和剩余门槛见[发布清单](docs/RELEASE_CHECKLIST_v0.32.0.md)。
+**v0.32.0** 汇总已验收的动画与表情包、包含 Box 和 Obsidian 的 22 种连接器、本地化 Control 工作流，以及三期 Fleet 工作流、连接恢复和会话续期（[发布说明](docs/RELEASE_v0.32.0.md)、[更新日志](CHANGELOG.md)）。GitHub Releases、npm、Homebrew、托管服务与 Pocket 分别发布；代码合并不代表所有渠道已更新。验证和剩余门槛见[发布清单](docs/RELEASE_CHECKLIST_v0.32.0.md)。
 
 | 工作方向 | 当前状态 |
 | --- | --- |

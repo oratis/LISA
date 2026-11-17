@@ -7,10 +7,13 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
-## [0.32.0] — 2026-11-15
+## [0.32.0] — 2026-11-17
 
-Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.
+Lisa gains natural seated animations, a shared chat sticker collection, a clearer Rêve and Control layout, and a Dashboard catalog of 22 connectors including Box and Obsidian. Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.
 
+- Companion animation and chat stickers
+- Box, Obsidian and the connector dashboard
+- Control and remote Mac workflows
 - Fleet timelines and read-only Pocket sharing
 - Pocket multi-Mac and task approvals
 - Per-turn checkpoints and file diffs
