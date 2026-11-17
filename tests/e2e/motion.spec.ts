@@ -27,17 +27,17 @@ test.describe("LISA motion lifecycle", () => {
     await page.locator('[data-view="room"]').click();
     const room = page.frameLocator("#roomFrame");
     const image = room.locator("#lisa-motion");
-    await expect(image).toHaveAttribute("data-motion-clip", "typing");
+    await expect(image).toHaveAttribute("data-motion-clip", "room-work-natural");
     await expect(image).toHaveAttribute("data-motion-state", "playing");
     await expect(room.locator("#lisa")).toHaveClass(/motion-ready/);
     await expect(image).toBeVisible();
     await page.locator('[data-view="chat"]').click();
-    await expect(image).toHaveAttribute("src", /typing-static.webp$/);
+    await expect(image).toHaveAttribute("src", /room-work-natural-static.webp$/);
     await expect(room.locator("body")).toHaveClass(/art-paused/);
     await page.locator('[data-view="room"]').click();
     await expect(image).toHaveAttribute("data-motion-state", "playing");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await expect(image).toHaveAttribute("src", /typing-static.webp$/);
+    await expect(image).toHaveAttribute("src", /room-work-natural-static.webp$/);
     await expect(page.locator("#mascot")).toHaveAttribute("data-motion-state", "static");
     expect(
       await room
@@ -51,7 +51,7 @@ test.describe("LISA motion lifecycle", () => {
       Object.defineProperty(document, "hidden", { configurable: true, value: true });
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    await expect(image).toHaveAttribute("src", /typing-static.webp$/);
+    await expect(image).toHaveAttribute("src", /room-work-natural-static.webp$/);
     await expect(page.locator("#mascot")).toHaveAttribute("data-motion-state", "static");
     await page.evaluate(() => {
       Object.defineProperty(document, "hidden", { configurable: true, value: false });
@@ -97,12 +97,11 @@ test.describe("LISA motion lifecycle", () => {
       route.fulfill({ json: { online: true, mood } }),
     );
     for (const [slug, clip] of [
-      ["reading-book", "room-reading"],
-      ["drinking-tea", "room-tea"],
+      ["reading-book", "room-read-natural"],
+      ["drinking-tea", "room-tea-natural"],
       ["stretching", "stretching"],
       ["listening-music", "listening"],
-      ["working-coding", "typing"],
-      ["napping", "sleeping"],
+      ["working-coding", "room-work-natural"],
     ]) {
       mood = slug!;
       await page.goto(lisa.baseURL + "/room");
@@ -110,10 +109,11 @@ test.describe("LISA motion lifecycle", () => {
       await expect(page.locator("#lisa")).toHaveClass(/motion-ready/);
       await expect(page.locator("#lisa-motion")).toBeVisible();
     }
+    mood = "napping";
     await page.route("**/soft-ink-motion-v1/*", (route) => route.fulfill({ status: 404 }));
     await page.reload();
     await expect(page.locator("#lisa-wrap")).toHaveAttribute("data-pose", "sleep");
-    await expect(page.locator("#lisa-motion")).toHaveAttribute("data-motion-clip", "sleeping");
+    await expect(page.locator("#lisa-motion")).toHaveAttribute("data-motion-clip", "");
     await expect(page.locator("#lisa-motion")).toHaveAttribute("data-motion-state", "fallback");
     await expect(page.locator("#lisa")).not.toHaveClass(/motion-ready/);
     expect(
@@ -228,7 +228,7 @@ test.describe("LISA motion lifecycle", () => {
     });
     await page.goto(lisa.baseURL + "/assets/visuals/soft-ink-v1/gallery.html");
     await expect(page.locator("#expressions img")).toHaveCount(24);
-    await expect(page.locator("#stickers img")).toHaveCount(8);
+    await expect(page.locator("#stickers img")).toHaveCount(12);
     for (const image of await page.locator("#expressions img, #stickers img").all()) {
       await expect(image).toHaveAttribute("data-motion-state", "static");
       await expect

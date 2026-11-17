@@ -60,6 +60,10 @@ const labels: Record<string, [alt: string, emoji: string]> = {
   "sticker-here-for-you": ["Here for you · 我在这里", "🫶"],
   "sticker-make-a-plan": ["Make a plan · 写下计划", "📝"],
   "sticker-tea-break": ["Tea break · 喝杯茶", "🍵"],
+  "sticker-got-it": ["Got it · 收到", "👌"],
+  "sticker-hug": ["A hug for you · 抱抱", "🫂"],
+  "sticker-good-night": ["Good night · 晚安", "🌙"],
+  "sticker-curious": ["Tell me more · 想听更多", "💭"],
 };
 export const expressionCatalog = [
   ...Object.values<string>(art.portraits),

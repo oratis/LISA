@@ -522,6 +522,11 @@
       '<p class="rv-footnote">' +
       esc(tr("reve.history.limits")) +
       "</p>";
+    // Pair each reflection surface with its context, in the same DOM and visual order.
+    const grid = root.querySelector(".rv-grid");
+    const primary = Array.from(grid.querySelector(".rv-main-column").children);
+    const context = Array.from(grid.querySelector(".rv-side-column").children);
+    grid.replaceChildren(...primary.flatMap((card, index) => context[index] ? [card, context[index]] : [card]));
     status(tr("reve.updated") + when(data.generatedAt), false);
   }
   async function refresh() {

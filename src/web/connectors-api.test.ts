@@ -12,6 +12,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   let owner = true,
     actions = 0;
   const fake = {
+    summary: async () => ({ status: "disconnected", resourceCount: 0 }),
     list: async () => [],
     authorize: async () => {
       actions++;
@@ -56,7 +57,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal(catalog.status, 200);
   assert.equal(
     ((await catalog.json()) as { connectors: unknown[] }).connectors.length,
-    9 + workspaceIds.length,
+    10 + workspaceIds.length,
   );
   for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }])
     assert.equal((await post("{}", headers)).status, 403, JSON.stringify(headers));
@@ -102,13 +103,16 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
 });
 
 test("the catalog marks sources this install cannot serve, and their routes stay closed", async (t) => {
-  const fake = { list: async () => [] } as unknown as ConnectorService;
+  const fake = {
+    summary: async () => ({ status: "disconnected", resourceCount: 0 }),
+    list: async () => [],
+  } as unknown as ConnectorService;
   const services = new Map<ConnectorProvider, ConnectorService>([
     ["gmail", fake],
     ["outlook-mail", fake],
   ]);
   const server = http.createServer((req, res) => {
-    void handleConnectorApi(req, res, req.url!, services, true).then((handled) => {
+    void handleConnectorApi(req, res, req.url!, services, true, fake).then((handled) => {
       if (!handled) {
         res.writeHead(404);
         res.end();

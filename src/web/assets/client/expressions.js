@@ -6,6 +6,10 @@
   let revision = 0;
   let saving = false;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const localizedLabel = (text) => {
+    const parts = String(text || 'Lisa').split(' · ');
+    return LISA_LOCALE === 'zh-CN' ? parts[1] || parts[0] : parts[0];
+  };
   const active = () =>
     !document.hidden && !reduce.matches && (!window.LisaMotion || window.LisaMotion.active());
   const observer = new IntersectionObserver((changes) =>
@@ -106,13 +110,14 @@
       /* Stills and readable fallback remain usable offline. */
     }
   }
-  function create(expression, live) {
+  function create(expression, live, role = 'assistant') {
     const node = document.createElement('figure');
     node.className = 'expression-bubble';
     node.dataset.expressionId = expression.id;
+    node.dataset.role = role;
     const image = document.createElement('img');
     image.width = image.height = 128;
-    image.alt = expression.alt || 'Lisa';
+    image.alt = localizedLabel(expression.alt);
     image.hidden = true;
     const fallback = document.createElement('span');
     fallback.className = 'expression-emoji';
@@ -206,7 +211,88 @@
     };
     display.onchange = frequency.onchange = save;
   }
-  window.LisaExpressions = Object.freeze({ create, refresh, mountSettings });
+  const drafts = new Map();
+  const sessionKey = () => window.lisaActiveSessionId || 'current';
+  const selected = () => drafts.get(sessionKey());
+  function refreshDraft() {
+    const target = document.getElementById('expressionDraft');
+    if (!target) return;
+    const value = selected();
+    target.replaceChildren();
+    target.hidden = !value;
+    if (!value) return;
+    const img = document.createElement('img');
+    img.src = window.LISA_MOTION_ART.clips[value.assetId].poster;
+    img.alt = localizedLabel(value.alt);
+    const label = document.createElement('span');
+    label.textContent = localizedLabel(value.alt);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', tr('expressions.remove'));
+    remove.onclick = () => { drafts.delete(sessionKey()); refreshDraft(); };
+    target.append(img, label, remove);
+  }
+  function take() {
+    const value = selected();
+    drafts.delete(sessionKey());
+    refreshDraft();
+    return value;
+  }
+  function mountComposer() {
+    const trigger = document.getElementById('expressionPickerBtn');
+    if (!trigger) return;
+    trigger.title = tr('expressions.picker');
+    trigger.setAttribute('aria-label', trigger.title);
+    const dialog = document.createElement('dialog');
+    dialog.className = 'expression-picker';
+    dialog.setAttribute('aria-labelledby', 'expressionPickerTitle');
+    const header = document.createElement('header');
+    const title = document.createElement('h2');
+    title.id = 'expressionPickerTitle';
+    title.textContent = tr('expressions.picker');
+    const close = document.createElement('button');
+    close.type = 'button'; close.textContent = '×';
+    close.setAttribute('aria-label', tr('expressions.close'));
+    close.onclick = () => dialog.close();
+    header.append(title, close);
+    const tabs = document.createElement('div');
+    tabs.className = 'expression-tabs';
+    tabs.setAttribute('aria-label', tr('expressions.category'));
+    const grid = document.createElement('div');
+    grid.className = 'expression-grid';
+    const note = document.createElement('p');
+    note.textContent = tr('expressions.chooseHint');
+    function show(category) {
+      grid.replaceChildren();
+      for (const button of tabs.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.category === category));
+      for (const item of window.LISA_EXPRESSION_CATALOG.filter((entry) => category === 'stickers' ? entry.id.startsWith('sticker-') : !entry.id.startsWith('sticker-'))) {
+        const clip = window.LISA_MOTION_ART.clips[item.id];
+        const button = document.createElement('button');
+        button.type = 'button'; button.dataset.assetId = item.id;
+        button.setAttribute('aria-label', localizedLabel(item.alt));
+        const img = document.createElement('img');
+        img.src = clip.poster; img.alt = ''; img.loading = 'lazy'; img.width = img.height = 88;
+        const label = document.createElement('span'); label.textContent = localizedLabel(item.alt);
+        button.append(img, label);
+        button.onclick = () => {
+          drafts.set(sessionKey(), { version: 1, id: crypto.randomUUID(), assetId: item.id, format: 'animated', alt: item.alt, emoji: item.emoji, durationMs: clip.durationMs });
+          refreshDraft(); dialog.close(); document.getElementById('input').focus();
+        };
+        grid.append(button);
+      }
+    }
+    for (const category of ['stickers', 'moods']) {
+      const button = document.createElement('button'); button.type = 'button';
+      button.dataset.category = category; button.textContent = tr('expressions.' + category);
+      button.onclick = () => show(category); tabs.append(button);
+    }
+    dialog.append(header, tabs, grid, note);
+    document.body.append(dialog);
+    trigger.onclick = () => { show('stickers'); dialog.showModal(); };
+    window.addEventListener('lisa-session-change', () => { dialog.close(); refreshDraft(); });
+  }
+  window.LisaExpressions = Object.freeze({ create, refresh, mountSettings, mountComposer, selected, take });
   window.addEventListener('lisa-motion-change', refreshEntries);
   window.addEventListener('focus', refresh);
   window.addEventListener('lisa-view-change', refreshEntries);

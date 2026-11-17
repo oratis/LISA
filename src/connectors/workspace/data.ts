@@ -30,6 +30,7 @@ export function validId(provider: CloudId, value: unknown): value is string {
       /^[a-zA-Z0-9_-]{1,128}$/.test(left!) &&
       (right === undefined || /^\d{1,20}:\d{1,20}$/.test(right))
     );
+  if (provider === "box") return /^\d{1,25}$/.test(value);
   if (provider === "todoist") return /^[a-zA-Z0-9_-]{1,128}$/.test(value);
   if (provider === "jira" || provider === "confluence")
     return uuid.test(left!) && /^\d{1,25}$/.test(right ?? "");
@@ -50,6 +51,10 @@ export function validId(provider: CloudId, value: unknown): value is string {
 const enc = encodeURIComponent;
 export async function identity(api: Reader, tenant?: string): Promise<Account> {
   switch (api.vendor) {
+    case "box": {
+      const u = await api.get("/2.0/users/me", { fields: "id,name" });
+      return resource(u.id, u.name);
+    }
     case "todoist": {
       const u = await api.get("/api/v1/user");
       return resource(u.id, u.full_name);
@@ -74,6 +79,13 @@ export async function identity(api: Reader, tenant?: string): Promise<Account> {
 }
 export async function choices(id: CloudId, api: Reader): Promise<Resource[]> {
   switch (id) {
+    case "box":
+      return rows(
+        (await api.get("/2.0/folders/0/items", { limit: "100", fields: "id,type,name" })).entries,
+      )
+        .filter((p) => p.type === "file")
+        .slice(0, 30)
+        .map((p) => resource(p.id, p.name));
     case "todoist":
       return rows((await api.get("/api/v1/projects", { limit: "30" })).results).map((p) =>
         resource(p.id, p.name),
@@ -168,6 +180,12 @@ async function figmaDocument(api: Reader, key: string, depth: string) {
 export async function lookup(id: CloudId, api: Reader, key: string): Promise<Resource> {
   if (!validId(id, key)) fail("invalid_resource");
   switch (id) {
+    case "box": {
+      const p = await api.get("/2.0/files/" + key, { fields: "id,type,name,item_status" });
+      bound(p.id, key);
+      if (p.type !== "file" || p.item_status !== "active") fail("workspace_inaccessible");
+      return resource(key, p.name);
+    }
     case "todoist": {
       const p = await api.get("/api/v1/projects/" + enc(key));
       bound(p.id, key);
@@ -249,6 +267,21 @@ function layers(node: Row, depth: number, budget: { left: number; truncated: boo
 export async function contents(id: CloudId, api: Reader, key: string, period: Period) {
   if (!validId(id, key)) fail("invalid_resource");
   switch (id) {
+    case "box": {
+      const p = await api.get("/2.0/files/" + key, {
+        fields: "id,type,name,size,file_version,item_status",
+      });
+      bound(p.id, key);
+      if (p.type !== "file" || p.item_status !== "active") fail("workspace_inaccessible");
+      if (!textName(p.name) || typeof p.size !== "number" || p.size < 0 || p.size > 1_000_000)
+        fail("workspace_content_unavailable");
+      const version = identifier(row(p.file_version).id);
+      const text = await api.boxText(key, version);
+      const after = await api.get("/2.0/files/" + key, { fields: "id,file_version" });
+      bound(after.id, key);
+      bound(row(after.file_version).id, version);
+      return limitedText(text);
+    }
     case "todoist": {
       const r = await api.get("/api/v1/tasks", { project_id: key, limit: "50" });
       return collection(

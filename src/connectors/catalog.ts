@@ -92,6 +92,17 @@ export const CONNECTOR_CATALOG = [
     authModes: ["login"],
     example: { en: "Summarize my selected Feishu documents.", "zh-CN": "总结我选定的飞书文档。" },
   },
+  {
+    id: "obsidian",
+    name: "Obsidian",
+    access: "read",
+    authModes: ["login"],
+    example: {
+      en: "Search my selected Obsidian vaults and summarize my Markdown notes.",
+      "zh-CN": "检索我选定的 Obsidian 保险库并总结 Markdown 笔记。",
+    },
+    workspace: { vendor: "local", unit: "vault", hint: "", scope: "selected_markdown_vaults" },
+  },
   ...workspaceIds.map((id) => {
     const { name, vendor, unit, hint, example } = workspaceApps[id];
     return {

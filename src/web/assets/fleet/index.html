@@ -1,85 +1,83 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>远程 Mac · LISA</title>
+    <title>Remote Macs · LISA</title>
     <link rel="stylesheet" href="/assets/fleet/fleet.css" />
+    <script src="/assets/fleet/locale.js"></script>
     <script defer src="/assets/fleet/fleet.js"></script>
   </head>
   <body>
     <main>
-      <header>
-        <a href="/">← LISA</a>
-        <h1>远程 Mac</h1>
+      <header class="standalone-header">
+        <a href="/#control/remote" data-i18n="返回控制中心">Back to Control</a>
+        <h1 data-i18n="远程 Mac">Remote Macs</h1>
       </header>
+      <div class="fleet-intro">
+        <div><p class="eyebrow" data-i18n="让任务在合适的地方继续">A place for every task</p>
+        <h2 data-i18n="把另一台 Mac 变成你的工作伙伴">Your other Mac, ready to help</h2>
+        <p data-i18n="选择设备和工作区，让任务继续。进度、审批与结果都在这里。">Choose a Mac and workspace. Keep progress, approvals and results together.</p></div>
+        <button id="setup" class="quiet" data-i18n="设置本机">Set up this Mac</button>
+      </div>
+      <ol class="steps" aria-label="Workflow" data-i18n-aria="操作步骤">
+        <li id="step-device" aria-current="step"><span>1</span><span data-i18n="选择 Mac">Choose a Mac</span></li>
+        <li id="step-workspace"><span>2</span><span data-i18n="选择工作区">Choose a workspace</span></li>
+        <li id="step-task"><span>3</span><span data-i18n="开始任务">Start a task</span></li>
+      </ol>
       <p id="notice" role="status" aria-live="polite"></p>
-      <section>
-        <div class="heading">
-          <h2>我的机器</h2>
-          <button id="refresh">刷新</button>
-        </div>
-        <div id="hosts" class="grid"></div>
+      <section class="device-section">
+        <div class="heading"><h3 data-i18n="我的设备">My Macs</h3><button id="refresh" class="quiet" data-i18n="刷新">Refresh</button></div>
+        <div id="hosts" class="grid" aria-live="polite"></div>
       </section>
       <section id="target" hidden>
-        <div class="heading">
-          <h2 id="name"></h2>
-          <small id="fingerprint"></small>
+        <div class="heading target-heading"><div><p class="eyebrow" data-i18n="当前设备">Selected Mac</p><h2 id="name"></h2></div>
+          <div class="heading"><button id="change-device" class="quiet" data-i18n="切换设备">Switch Mac</button><details class="device-info"><summary data-i18n="连接详情">Connection details</summary><small id="fingerprint"></small><div id="pairing"></div></details></div>
         </div>
-        <div id="pairing"></div>
+        <div id="connection-action"></div>
         <div id="work" hidden>
-          <label>工作区<select id="workspace"></select></label>
-          <p id="capability"></p>
+          <div class="workspace-bar"><label for="workspace" data-i18n="工作区">Workspace</label><select id="workspace"></select></div>
           <div id="observations"></div>
-          <div id="runs"></div>
-          <div id="timeline" hidden>
-            <h3>任务经过</h3>
-            <p id="timeline-note"></p>
-            <ol id="timeline-list"></ol>
-          </div>
-          <section id="changes" hidden>
-            <h3>每轮改动</h3>
-            <p>比较该轮开始和结束时的工作区。差异可能包含同时发生的人工改动；未跟踪且被 Git 忽略的文件不在快照中。</p>
-            <div id="change-turns"></div>
-            <p id="change-note" role="status"></p>
-            <div id="change-files"></div>
-            <pre id="change-patch" hidden></pre>
-            <section id="restore" hidden></section>
-            <section id="merge" hidden></section>
-          </section>
-          <section id="handoff" hidden></section>
-          <form id="task-form">
-            <label>新任务的 agent<select id="agent"><option value="claude-code">Claude Code</option></select></label>
-            <label for="prompt">任务指令</label>
-            <textarea id="prompt" required maxlength="16000" rows="3"></textarea>
-            <div class="actions">
-              <button id="start" class="primary">启动任务</button
-              ><button id="follow" type="button">追加指令</button>
+          <div class="task-layout">
+            <div class="task-main">
+              <h3 data-i18n="任务与进度">Tasks & progress</h3>
+              <div id="runs"></div>
+              <section id="handoff" hidden></section>
+              <details id="timeline" hidden open><summary data-i18n="任务经过">Task timeline</summary><p id="timeline-note"></p><ol id="timeline-list"></ol></details>
+              <details id="changes" hidden open>
+                <summary data-i18n="每轮改动">Changes by turn</summary>
+                <p class="helper" data-i18n="比较该轮开始和结束时的工作区。差异可能包含同时发生的人工改动；未跟踪且被 Git 忽略的文件不在快照中。">Compare the workspace before and after a turn. Changes may include concurrent edits; ignored, untracked files are excluded.</p>
+                <div id="change-turns"></div><p id="change-note" role="status"></p><div id="change-files"></div><pre id="change-patch" hidden></pre>
+                <section id="restore" hidden></section><section id="merge" hidden></section>
+              </details>
             </div>
-          </form>
-          <button id="retry" hidden>核对收据并重试原操作</button>
+            <aside class="task-compose">
+              <form id="task-form">
+                <h3 id="compose-title" data-i18n="新建任务">New task</h3>
+                <label for="agent" data-i18n="执行智能体">Agent</label><select id="agent"><option value="claude-code">Claude Code</option></select>
+                <label for="prompt" data-i18n="任务指令">Instructions</label>
+                <textarea id="prompt" required maxlength="16000" rows="5" data-i18n-placeholder="描述你希望完成的事情…" placeholder="What would you like to get done?"></textarea>
+                <p id="start-hint" class="helper"></p>
+                <div class="actions"><button id="start" class="primary" data-i18n="启动任务">Start task</button><button id="follow" class="primary" type="button" hidden data-i18n="追加指令">Send follow-up</button></div>
+                <details class="agent-details"><summary data-i18n="能力与权限">Capabilities & permissions</summary><p id="capability" class="helper"></p></details>
+              </form>
+              <button id="retry" hidden data-i18n="核对收据并重试原操作">Check receipt and retry</button>
+            </aside>
+          </div>
         </div>
       </section>
-      <details id="local">
-        <summary>配置这台 Mac 作为执行机</summary>
-        <p id="link-status"></p>
-        <button id="connect">启用账号连接</button>
-        <form id="register">
-          <label>工作区别名<input id="alias" required maxlength="64" /></label
-          ><label>本机项目的绝对路径<input id="directory" required /></label
-          ><button>登记目录</button>
-        </form>
-        <div id="maintenance"></div>
-        <div id="local-workspaces"></div>
-        <div id="requests"></div>
-        <div id="devices"></div>
-        <div id="local-runs"></div>
-        <div id="checkpoint-runs"></div>
-        <section id="storage" hidden></section>
-        <h3>Pocket 任务权限</h3>
-        <p>选择已安全配对的 Pocket，授权它查看本机的指定任务及结果摘要。查看默认为只读；可单独授予或撤销此任务的审批权限。</p>
-        <div id="shares"></div>
-        <button id="local-refresh">刷新本机配置</button>
+      <details id="local" class="local-settings">
+        <summary data-i18n="配置这台 Mac 作为执行机">Set up this Mac to run tasks</summary>
+        <p class="helper" data-i18n="在作为执行机的 Mac 上完成以下设置：连接账号、登记项目，再批准其他设备的配对请求。">On the Mac that will run tasks, connect your account, add a project, then approve pairing requests.</p>
+        <div class="setup-section"><h3 data-i18n="账号连接">Account connection</h3><p id="link-status"></p><button id="connect" data-i18n="启用账号连接">Connect account</button></div>
+        <div class="setup-section"><h3 data-i18n="项目与工作区">Projects & workspaces</h3>
+          <form id="register"><label><span data-i18n="工作区别名">Workspace name</span><input id="alias" required maxlength="64" autocomplete="off" /></label><label><span data-i18n="本机项目的绝对路径">Absolute project path</span><input id="directory" required placeholder="/Users/you/Projects/project" autocomplete="off" spellcheck="false" /></label><button data-i18n="登记目录">Add workspace</button></form>
+          <div id="local-workspaces"></div>
+        </div>
+        <div class="setup-section"><h3 data-i18n="配对与设备权限">Pairing & device access</h3><div id="requests"></div><div id="devices"></div></div>
+        <div class="setup-section"><h3 data-i18n="Pocket 任务权限">Pocket task access</h3><p class="helper" data-i18n="选择已安全配对的 Pocket，授权它查看本机的指定任务及结果摘要。查看默认为只读；可单独授予或撤销此任务的审批权限。">Share selected tasks with a securely paired Pocket. Viewing is read-only; approval access is granted separately.</p><div id="shares"></div></div>
+        <details class="maintenance-settings"><summary data-i18n="任务维护与存储">Task maintenance & storage</summary><div id="maintenance"></div><div id="local-runs"></div><div id="checkpoint-runs"></div><section id="storage" hidden></section></details>
+        <button id="local-refresh" class="quiet" data-i18n="刷新本机配置">Refresh settings</button>
       </details>
     </main>
   </body>

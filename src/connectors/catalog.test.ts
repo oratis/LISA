@@ -1,3 +1,4 @@
+import { isObsidianReadRequest } from "./obsidian.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONNECTOR_CATALOG, connectorCatalogReply } from "./catalog.js";
@@ -15,6 +16,7 @@ test("every directory example routes to exactly its own read connector in either
   for (const app of CONNECTOR_CATALOG) {
     for (const example of Object.values(app.example)) {
       const matches = [
+        ...(isObsidianReadRequest(example) ? ["obsidian"] : []),
         ...googleReadIntents(example),
         ...(isGitHubReadRequest(example) ? ["github"] : []),
         ...(isLinearReadRequest(example) ? ["linear"] : []),

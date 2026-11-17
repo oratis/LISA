@@ -651,6 +651,36 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Opt in to durable expression SSE events after a successful turn. Omitted/false receives a readable text fallback."
+                  },
+                  "expression": {
+                    "type": "object",
+                    "description": "Optional bundled user sticker. A valid sticker permits an empty message. The server assigns a fresh ID and canonicalizes metadata.",
+                    "properties": {
+                      "version": {
+                        "const": 1
+                      },
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9-]{1,80}$"
+                      },
+                      "assetId": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "enum": [
+                          "animated",
+                          "static",
+                          "emoji"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "id",
+                      "assetId",
+                      "format"
+                    ],
+                    "additionalProperties": true
                   }
                 },
                 "additionalProperties": true
@@ -2025,7 +2055,9 @@
                 "figma",
                 "dropbox",
                 "apple-calendar",
-                "apple-reminders"
+                "apple-reminders",
+                "box",
+                "obsidian"
               ]
             }
           },
@@ -2091,7 +2123,9 @@
                 "figma",
                 "dropbox",
                 "apple-calendar",
-                "apple-reminders"
+                "apple-reminders",
+                "box",
+                "obsidian"
               ]
             }
           },
@@ -2189,7 +2223,9 @@
                 "figma",
                 "dropbox",
                 "apple-calendar",
-                "apple-reminders"
+                "apple-reminders",
+                "box",
+                "obsidian"
               ]
             }
           },
@@ -2288,7 +2324,9 @@
                 "figma",
                 "dropbox",
                 "apple-calendar",
-                "apple-reminders"
+                "apple-reminders",
+                "box",
+                "obsidian"
               ]
             }
           },
@@ -2375,7 +2413,9 @@
                 "figma",
                 "dropbox",
                 "apple-calendar",
-                "apple-reminders"
+                "apple-reminders",
+                "box",
+                "obsidian"
               ]
             }
           },
@@ -2461,7 +2501,9 @@
                 "figma",
                 "dropbox",
                 "apple-calendar",
-                "apple-reminders"
+                "apple-reminders",
+                "box",
+                "obsidian"
               ]
             }
           },
@@ -2573,7 +2615,9 @@
                 "figma",
                 "dropbox",
                 "apple-calendar",
-                "apple-reminders"
+                "apple-reminders",
+                "box",
+                "obsidian"
               ]
             }
           }
@@ -8544,7 +8588,9 @@
               "figma",
               "dropbox",
               "apple-calendar",
-              "apple-reminders"
+              "apple-reminders",
+              "box",
+              "obsidian"
             ]
           }
         },
@@ -8584,7 +8630,9 @@
                     "figma",
                     "dropbox",
                     "apple-calendar",
-                    "apple-reminders"
+                    "apple-reminders",
+                    "box",
+                    "obsidian"
                   ]
                 },
                 "name": {
@@ -8642,6 +8690,33 @@
                 "available": {
                   "type": "boolean",
                   "description": "False when this install cannot serve the source: no OAuth client configured, or the Apple EventKit reader cannot run in this build. Such sources are not routed from chat."
+                },
+                "connection": {
+                  "type": "object",
+                  "description": "Saved authorization and local configuration only; never a live upstream health probe. No tokens or account identifiers are returned.",
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "authorized",
+                        "disconnected",
+                        "pending",
+                        "unavailable",
+                        "error"
+                      ]
+                    },
+                    "resourceCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "lastError": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "resourceCount"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [

@@ -1,3 +1,4 @@
+import { expressionCatalog } from "../expressions/catalog.js";
 /**
  * Lisa.app chat HTML — the main /web shell.
  *
@@ -161,8 +162,6 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       </div>
     </div>
 
-    ${opts.remoteFleet ? '<a href="/fleet" class="nav-item" aria-label="远程 Mac · Remote Macs">远程 Mac · Remote Macs</a>' : ""}
-
     <!-- Primary navigation (3×3 tile grid view switcher — wired in setupConsole) -->
     <nav class="nav-list" id="navList">
       <button class="nav-item active" type="button" data-view="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span><span class="nav-label">Chat</span></button>
@@ -245,6 +244,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
     <!-- Attachment chip strip (above composer) -->
     <div id="attachPreview"></div>
+    <div id="expressionDraft" hidden></div>
 
     <!-- Composer -->
     <form id="form">
@@ -260,6 +260,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
           <button type="button" id="pmShotContext">Screenshot + front-window text</button>
         </div>
       </div>
+      <button type="button" id="expressionPickerBtn" aria-label="Lisa stickers" title="Lisa stickers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 14c1 4 7 4 8 0M8 9h.01M16 9h.01"/></svg></button>
       <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <textarea id="input" rows="1" aria-label="Message Lisa" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)"></textarea>
       <button type="submit" id="sendBtn" aria-label="Send message" title="Send message">
@@ -271,7 +272,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
     <!-- Console views (populated lazily by setupConsole in lisa-client.ts) -->
     <section class="view" id="viewDashboard"></section>
-    <section class="view" id="viewControl"></section>
+    <section class="view" id="viewControl"${opts.remoteFleet ? ' data-remote-fleet="true"' : ""}></section>
     <section class="view" id="viewReve"></section>
     <section class="view" id="viewRoom">
       <iframe id="roomFrame" title="Lisa's room" style="flex:1;width:100%;border:0;display:block;background:#0a0e1a"></iframe>
@@ -458,6 +459,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 <script${nonceAttr}>
 ${MD_RENDER_JS}
 ${SOFT_INK_JS}
+window.LISA_EXPRESSION_CATALOG = ${JSON.stringify(expressionCatalog).replace(/</g, "\\u003c")};
 ${MAIN_CLIENT_JS}
 </script>
 </body></html>`;

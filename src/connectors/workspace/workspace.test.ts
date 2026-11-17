@@ -240,6 +240,7 @@ test("ordinary chat that only names a source is not a read request", () => {
 });
 test("each source matches a plain English (or Chinese) read request", () => {
   const asks: Record<WorkspaceId, string> = {
+    box: "Read my Box files",
     todoist: "List my Todoist tasks for today",
     "outlook-mail": "Summarize my Outlook inbox",
     "outlook-calendar": "Read my Outlook calendar for next week",
@@ -384,4 +385,116 @@ test("list output is marked untrusted like read output", async () => {
   );
   assert.equal(listed.untrusted, true);
   assert.deepEqual(listed.resources, resources);
+});
+
+test("Box reads a confirmed versioned text file and refuses changed or unselected files", async () => {
+  const c = credentials({ ...original, provider: "box" });
+  let version = "99",
+    downloads = 0;
+  const api: Http = async (url, _init, _signal, text) => {
+    if (url.pathname === "/2.0/users/me") return { id: account.id, name: account.name };
+    if (url.pathname === "/2.0/folders/0/items")
+      return {
+        entries: [
+          { id: "12", name: "plan.md", type: "file" },
+          { id: "13", name: "Folder", type: "folder" },
+        ],
+      };
+    if (url.pathname === "/2.0/files/12/content") {
+      downloads++;
+      assert.equal(text, true);
+      assert.equal(url.searchParams.get("version"), "99");
+      return "# Knowledge";
+    }
+    if (url.pathname === "/2.0/files/12")
+      return {
+        id: "12",
+        name: "plan.md",
+        type: "file",
+        item_status: "active",
+        size: 11,
+        file_version: { id: downloads ? version : "99" },
+      };
+    throw Error("Unexpected endpoint " + url.pathname);
+  };
+  const driver = new WorkspaceDriver("box", api),
+    resources = [{ id: "12", name: "plan.md" }];
+  assert.deepEqual(
+    (await driver.resources(c.access, 1, signal())).map((r) => r.id),
+    ["12"],
+  );
+  const read = () =>
+    driver.read(c.access, account, resources, { operation: "read", resourceId: "12" }, signal());
+  assert.match(JSON.stringify(await read()), /Knowledge/);
+  downloads = 0;
+  version = "100";
+  await assert.rejects(read(), /workspace_resource_changed/);
+  await assert.rejects(
+    driver.read(c.access, account, [], { operation: "read", resourceId: "12" }, signal()),
+    /resource_not_granted/,
+  );
+  const ep = endpoints("box", client),
+    login = new URL(ep.auth);
+  login.search = new URLSearchParams({
+    client_id: client.clientId,
+    scope: "root_readonly",
+    redirect_uri: redirectUri("box"),
+    response_type: "code",
+    state: "a".repeat(43),
+  }).toString();
+  assert(validLogin("box", login.href));
+  login.searchParams.set("scope", "root_readwrite");
+  assert(!validLogin("box", login.href));
+  const rotated = await refreshCloud(
+    { ...original, provider: "box" },
+    async (url, init) => {
+      assert.equal(url.href, "https://api.box.com/oauth2/token");
+      assert.equal(
+        new URLSearchParams(String(init.body)).get("client_secret"),
+        client.clientSecret,
+      );
+      return {
+        access_token: "new",
+        refresh_token: "rotated",
+        expires_in: 3600,
+        token_type: "bearer",
+      };
+    },
+    signal(),
+  );
+  assert.equal(rotated.refresh, "rotated");
+});
+test("Box download redirects pin public DNS and strip credentials; arbitrary/private hosts fail closed", async () => {
+  let target =
+    "https://dl.boxcloud.com/api/2.0/internal_files/12/versions/99/representations/content/";
+  const visited: string[] = [];
+  const http = createWorkspaceHttp({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    transport: async (url, init) => {
+      visited.push(url);
+      if (url.startsWith("https://api.box.com/"))
+        return new Response(null, { status: 302, headers: { location: target } });
+      assert.equal(new Headers(init?.headers).get("authorization"), null);
+      return new Response("safe text");
+    },
+  });
+  const download = () =>
+    http(
+      new URL("https://api.box.com/2.0/files/12/content?version=99"),
+      { headers: { authorization: "Bearer secret" } },
+      signal(),
+      true,
+    );
+  assert.equal(await download(), "safe text");
+  assert.equal(visited.length, 2);
+  for (const url of [
+    "https://evil.test/content",
+    "http://dl.boxcloud.com/file",
+    "https://dl.boxcloud.com.evil.test/file",
+    "https://secret@dl.boxcloud.com/file",
+    "https://dl.boxcloud.com:444/file",
+  ]) {
+    target = url;
+    await assert.rejects(download(), /workspace_invalid_endpoint/);
+  }
 });

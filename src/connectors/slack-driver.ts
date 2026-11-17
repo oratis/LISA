@@ -48,6 +48,14 @@ export class SlackReadonlyDriver implements ReadonlyDriver<SlackAccount, SlackRe
   ) {
     this.http = options.http ?? slackHttp();
   }
+  async configured() {
+    try {
+      await (this.options.client ?? slackClient)();
+      return true;
+    } catch {
+      return false;
+    }
+  }
   validAccount = (v: unknown): v is SlackAccount =>
     !!v &&
     slackId((v as SlackAccount).id, "UW") &&

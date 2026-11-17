@@ -8,7 +8,7 @@ const workspaceCards = new Map();
 function workspaceLoginUrl(url, vendor) {
   if (new Set(url.searchParams.keys()).size !== url.searchParams.size || url.username || url.password || url.hash || url.searchParams.get('redirect_uri') !== 'http://localhost:4870/oauth/' + vendor) return false;
   if (vendor === 'microsoft') return url.origin === 'https://login.microsoftonline.com' && /^\/(?:[a-f\d-]{36}|consumers)\/oauth2\/v2\.0\/authorize$/i.test(url.pathname);
-  const paths = { atlassian: 'https://auth.atlassian.com/authorize', dropbox: 'https://www.dropbox.com/oauth2/authorize', todoist: 'https://app.todoist.com/oauth/authorize', figma: 'https://www.figma.com/oauth' };
+  const paths = { box: 'https://account.box.com/api/oauth2/authorize', atlassian: 'https://auth.atlassian.com/authorize', dropbox: 'https://www.dropbox.com/oauth2/authorize', todoist: 'https://app.todoist.com/oauth/authorize', figma: 'https://www.figma.com/oauth' };
   return paths[vendor] === url.origin + url.pathname;
 }
 
@@ -38,6 +38,12 @@ const githubErrors = {
   feishu_unavailable: tr('connector.error.feishu_unavailable'),
   feishu_document_changed: tr('connector.error.feishu_document_changed'),
   feishu_invalid_link: tr('connector.error.feishu_invalid_link'),
+  obsidian_no_vaults: tr('obsidian.noVaults'),
+  obsidian_invalid_config: tr('obsidian.config'),
+  obsidian_inaccessible: tr('obsidian.access'),
+  obsidian_reauthorize: tr('obsidian.renew'),
+  obsidian_note_unavailable: tr('obsidian.note'),
+  obsidian_invalid_path: tr('obsidian.path'),
   workspace_reauthorize: tr('workspace.renew'),
   workspace_scope_mismatch: tr('workspace.mismatch'),
   workspace_invalid_period: tr('workspace.period'),
@@ -269,12 +275,13 @@ function workspaceResourceId(provider, value) {
 }
 function workspaceCard(app) {
   const name = app.name;
-  const native = app.workspace.vendor === 'apple';
+  const local = app.workspace.vendor === 'local';
+  const native = app.workspace.vendor === 'apple' || local;
   return {
     name,
-    detail: native ? tr('workspace.nativeScope', { name }) : tr('workspace.scope', { name, scope: app.workspace.scope }),
-    authorizeDetail: tr(native ? 'workspace.system' : 'workspace.return', { name }),
-    modes: { login: tr(native ? 'workspace.allow' : 'workspace.login', { name }) },
+    detail: local ? tr('obsidian.scope') : native ? tr('workspace.nativeScope', { name }) : tr('workspace.scope', { name, scope: app.workspace.scope }),
+    authorizeDetail: local ? tr('obsidian.authorize') : tr(native ? 'workspace.system' : 'workspace.return', { name }),
+    modes: { login: local ? tr('obsidian.allow') : tr(native ? 'workspace.allow' : 'workspace.login', { name }) },
     account: a => a.name,
     open: tr('workspace.open', { name }),
     loginUrl: native ? undefined : url => workspaceLoginUrl(url, app.workspace.vendor),
@@ -583,4 +590,97 @@ function showConnectorCatalog() {
       modalBody.appendChild(row);
     }
   }, showConnectorCatalog);
+}
+
+// A complete inventory lives in Dashboard, including sources awaiting host configuration.
+// Fetching it observes saved grants only; it never signs in or reads remote documents.
+let dashboardConnectorQuery = '';
+let dashboardConnectorFilter = 'all';
+async function loadDashboardConnectors() {
+  const root = document.getElementById('dashboardConnectors');
+  if (!root) return;
+  root.setAttribute('aria-busy', 'true');
+  try {
+    const response = await fetch('/api/connectors');
+    if (!response.ok) throw new Error(String(response.status));
+    const data = await response.json();
+    if (!root.isConnected) return;
+    const apps = data.connectors;
+    root.replaceChildren();
+    const heading = githubNode('div', '', 'dc-heading');
+    const title = githubNode('div');
+    title.append(githubNode('h3', tr('dashboard.connectors.your.connected.knowledge')),
+      githubNode('p', tr('dashboard.connectors.all.connectors.saved.authorization.status.read.only.access'), 'dc-caption'));
+    const refresh = githubNode('button', tr('dashboard.connectors.refresh.status'), 'github-button');
+    refresh.type = 'button'; refresh.addEventListener('click', loadDashboardConnectors);
+    heading.append(title, refresh); root.append(heading);
+    const authorized = apps.filter(a => a.connection?.status === 'authorized').length;
+    const totals = githubNode('div', '', 'dc-totals');
+    for (const [number, label] of [[apps.length, tr('dashboard.connectors.available.integrations')], [authorized, tr('dashboard.connectors.authorized')], [apps.filter(a => a.connection?.status === 'unavailable').length, tr('dashboard.connectors.need.setup')]]) {
+      const tile = githubNode('div'); tile.append(githubNode('strong', String(number)), githubNode('span', label)); totals.append(tile);
+    }
+    root.append(totals);
+    const toolbar = githubNode('div', '', 'dc-toolbar');
+    const search = document.createElement('input'); search.type = 'search'; search.value = dashboardConnectorQuery;
+    search.placeholder = tr('dashboard.connectors.find.an.app.or.capability'); search.setAttribute('aria-label', search.placeholder);
+    const filter = document.createElement('select'); filter.setAttribute('aria-label', tr('dashboard.connectors.filter.connectors'));
+    for (const [value, label] of [['all', tr('dashboard.connectors.all.connectors')], ['authorized', tr('dashboard.connectors.authorized')], ['ready', tr('dashboard.connectors.ready.to.connect')], ['unavailable', tr('dashboard.connectors.need.setup')], ['attention', tr('dashboard.connectors.needs.attention')]]) {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; filter.append(option);
+    }
+    filter.value = dashboardConnectorFilter;
+    toolbar.append(search, filter); root.append(toolbar);
+    const list = githubNode('div', '', 'dc-grid'); root.append(list);
+    const labels = { authorized: tr('dashboard.connectors.authorized'), disconnected: tr('dashboard.connectors.not.connected'), pending: tr('dashboard.connectors.awaiting.confirmation'), unavailable: tr('dashboard.connectors.needs.setup'), error: tr('dashboard.connectors.status.unavailable') };
+    function renderList() {
+      list.replaceChildren();
+      const query = dashboardConnectorQuery.trim().toLowerCase();
+      const visible = apps.filter(app => {
+        const state = app.connection?.status || 'error';
+        const matches = !query || [app.name, app.id, app.example.en, app.example['zh-CN']].some(v => v.toLowerCase().includes(query));
+        const kind = dashboardConnectorFilter;
+        return matches && (kind === 'all' || (kind === 'ready' ? app.available && state === 'disconnected' : kind === 'attention' ? ['pending', 'error'].includes(state) || !!app.connection?.lastError : state === kind));
+      });
+      for (const app of visible) {
+        const state = app.connection?.status || 'error';
+        const canConnect = app.available && state !== 'unavailable';
+        const card = githubNode('article', '', 'dc-card'); card.dataset.provider = app.id; card.dataset.status = state;
+        const top = githubNode('div', '', 'dc-card-head');
+        const icon = githubNode('span', app.name.slice(0, 2).toUpperCase(), 'dc-icon'); icon.setAttribute('aria-hidden', 'true');
+        top.append(icon, githubNode('h4', app.name), githubNode('span', labels[state] || labels.error, 'dc-state ' + state));
+        card.append(top, githubNode('p', app.example[LISA_LOCALE], 'dc-description'));
+        const scope = state === 'authorized'
+          ? tr('dashboard.connectors.scope', { n: app.connection.resourceCount })
+          : app.id === 'obsidian' ? tr('dashboard.connectors.local.markdown.choose.vaults.before.reading')
+          : !canConnect ? tr('dashboard.connectors.sign.in.is.not.configured.on.this.installation')
+          : tr('dashboard.connectors.choose.your.account.and.reading.scope.in.chat');
+        card.append(githubNode('p', scope, 'dc-caption'));
+        if (app.connection?.lastError) card.append(githubNode('p', githubErrorText(app.connection.lastError), 'dc-error'));
+        const action = githubNode('button', canConnect ? tr(state === 'authorized' ? 'dashboard.connectors.use' : 'dashboard.connectors.connect') : tr('dashboard.connectors.setup.details'), 'github-button');
+        action.type = 'button';
+        action.addEventListener('click', () => {
+          if (canConnect) {
+            window.lisaShowView('chat');
+            const example = app.example[LISA_LOCALE];
+            window.lisaPrefillComposer(input.value.trim() ? input.value + '\n' + example : example);
+          } else {
+            openModal(app.name, '');
+            modalBody.append(githubNode('p', tr('dashboard.connectors.this.connector.is.included.but.sign.in.is.not.configured.on.this.mac.an.administrator.must.configure.its.oauth.application.and.restart.lisa.before.you.can.connect')));
+            if (app.workspace?.vendor === 'apple') modalBody.replaceChildren(githubNode('p', tr('dashboard.connectors.use.the.lisa.macos.app.with.its.calendar.and.reminders.reader.installed')));
+            if (app.id === 'box') {
+              modalBody.append(githubNode('p', tr('dashboard.connectors.box.requires.an.oauth.2.0.app.with.the.read.only.scope.root.readonly.and.callback.http.localhost.4870.oauth.box.store.its.client.id.and.secret.in.the.protected.workspace.client.configuration.on.this.mac')));
+            }
+          }
+        });
+        card.append(action); list.append(card);
+      }
+      if (!visible.length) list.append(githubNode('p', tr('dashboard.connectors.no.matching.connectors'), 'dc-caption'));
+    }
+    search.addEventListener('input', () => { dashboardConnectorQuery = search.value; renderList(); });
+    filter.addEventListener('change', () => { dashboardConnectorFilter = filter.value; renderList(); });
+    renderList();
+  } catch {
+    if (!root.isConnected) return;
+    root.replaceChildren(githubNode('p', tr('dashboard.connectors.could.not.load.connector.status'), 'dc-error'));
+    const retry = githubNode('button', tr('dashboard.connectors.retry'), 'github-button'); retry.type = 'button'; retry.addEventListener('click', loadDashboardConnectors); root.append(retry);
+  } finally { root.removeAttribute('aria-busy'); }
 }

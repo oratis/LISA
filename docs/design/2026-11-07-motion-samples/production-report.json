@@ -1,7 +1,7 @@
 {
-  "assetsBytes": 8180202,
+  "assetsBytes": 9183477,
   "controllerBytes": 8408,
-  "totalBytes": 8188610,
+  "totalBytes": 9191885,
   "maxAnimationBytes": 262144,
   "clips": [
     {
@@ -325,6 +325,55 @@
       "posterBytes": 23034,
       "nativeBytes": 0,
       "sourceSha256": "0ebed80c3acf3e34f41149df282cbebea05d42e478f5cdb37f7819bb837fb028"
+    },
+    {
+      "id": "sticker-got-it",
+      "animationBytes": 65334,
+      "posterBytes": 17938,
+      "nativeBytes": 111524,
+      "sourceSha256": "c3067145fc930cc1a4f70c4e3c857dd29e5875400eb0f433569178bd7680ccfa"
+    },
+    {
+      "id": "sticker-hug",
+      "animationBytes": 65056,
+      "posterBytes": 16330,
+      "nativeBytes": 99718,
+      "sourceSha256": "1c522bd0acc581f9ce8cc175cd35f494803ca91f4c739726ea2ee833f3091f23"
+    },
+    {
+      "id": "sticker-good-night",
+      "animationBytes": 58104,
+      "posterBytes": 15292,
+      "nativeBytes": 108350,
+      "sourceSha256": "166c97beb6c1525c6c89d87ee71a54f17d0faee71a7096905f9b069496333eb1"
+    },
+    {
+      "id": "sticker-curious",
+      "animationBytes": 56524,
+      "posterBytes": 14930,
+      "nativeBytes": 102174,
+      "sourceSha256": "3159a16de13e4c0906b6214d07fe5af1887bd69549682ee96d5cad405955ad56"
+    },
+    {
+      "id": "room-work-natural",
+      "animationBytes": 72432,
+      "posterBytes": 19130,
+      "nativeBytes": 0,
+      "sourceSha256": "d6f1157ac818bbff4ae817429e93ecfdea2be61f214d49503b117bb9b0a35eda"
+    },
+    {
+      "id": "room-read-natural",
+      "animationBytes": 71210,
+      "posterBytes": 18896,
+      "nativeBytes": 0,
+      "sourceSha256": "551f13e30ab9fa286f394a571c2e115e66dde1b74c8aed1a2e9a2f2e5f79179a"
+    },
+    {
+      "id": "room-tea-natural",
+      "animationBytes": 67352,
+      "posterBytes": 18080,
+      "nativeBytes": 0,
+      "sourceSha256": "dd6156ff5b7d1053cee91359d9f6ee1efa4d66e447545984abf0a3baa8357ce8"
     }
   ]
 }

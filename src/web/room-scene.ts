@@ -3,6 +3,22 @@ import { readFileSync } from "node:fs";
 const seated = JSON.parse(
   readFileSync(new URL("./assets/visuals/soft-ink-room-v2/manifest.json", import.meta.url), "utf8"),
 );
+const motion = JSON.parse(
+  readFileSync(
+    new URL("./assets/visuals/soft-ink-motion-v1/manifest.json", import.meta.url),
+    "utf8",
+  ),
+);
+for (const pose of ["work", "read", "tea"]) {
+  const clip = `room-${pose}-natural`;
+  seated.poses[pose] = {
+    src: motion.clips[clip].poster,
+    aspect: 1,
+    contact: [75, 70],
+    feet: [50, 94],
+    clip,
+  };
+}
 
 /** Scale around the pose's contact point so smaller figures stay on furniture. */
 export const ROOM_CHARACTER_SCALE = 0.86;
@@ -14,7 +30,7 @@ export const ROOM_CHARACTER_SCALE = 0.86;
 export const ROOM_GEOMETRY = {
   room: {
     seat: [71.3, 61.8],
-    feetFloor: 74,
+    feetFloor: 72,
     floor: [49.5, 87],
     window: [51, 72.5],
     chairFront:
@@ -24,7 +40,7 @@ export const ROOM_GEOMETRY = {
   },
   room2: {
     seat: [79.7, 68.2],
-    feetFloor: 84,
+    feetFloor: 78.4,
     floor: [49.5, 87.5],
     window: [49, 72],
     chairFront:

@@ -1,3 +1,4 @@
+import { ObsidianDriver, isObsidianReadRequest } from "../connectors/obsidian.js";
 import { handleConsole } from "../admin/http.js";
 import { featureAllowed } from "../admin/store.js";
 import { expressionTurn } from "../expressions/turn.js";
@@ -6,7 +7,11 @@ import {
   readExpressionPreferences,
   writeExpressionPreferences,
 } from "../expressions/preferences.js";
-import { resolveExpression, expressionText } from "../expressions/catalog.js";
+import {
+  resolveExpression,
+  expressionText,
+  type ExpressionRecord,
+} from "../expressions/catalog.js";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -436,6 +441,7 @@ export interface WebServerOptions {
   workspaceDrivers?: Partial<
     Record<WorkspaceId, ReadonlyDriver<WorkspaceResource, WorkspaceResource>>
   >;
+  obsidianDriver?: ReadonlyDriver<WorkspaceResource, WorkspaceResource>;
   t3Driver?: ReadonlyDriver<T3Account, T3Resource>;
   feishuDriver?: ReadonlyDriver<FeishuAccount, FeishuResource>;
   slackDriver?: ReadonlyDriver<SlackAccount, SlackResource>;
@@ -1169,6 +1175,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       : undefined;
   const taskConnectors = new Map<ConnectorProvider, ConnectorService>();
   if (!cloudEdition && capabilityProfile === "local-owner" && connectorSecrets) {
+    taskConnectors.set(
+      "obsidian",
+      new ReadonlyConnector({
+        home: lisaHome(),
+        driver: opts.obsidianDriver ?? new ObsidianDriver(),
+        secrets: connectorSecrets,
+        resume: resumeConnector,
+        changed: (sessionId) =>
+          broadcast(
+            { type: "connector_connection_changed", provider: "obsidian", sessionId },
+            null,
+          ),
+      }),
+    );
     // Only sources that can work here: a configured OAuth client (Todoist needs none) or a
     // runnable EventKit reader, checked once at startup. Chat routing below skips the rest.
     const injected = opts.workspaceDrivers ?? {};
@@ -2927,12 +2947,27 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       if (url === "/fleet" && method === "GET") {
-        const html = await fs.readFile(path.join(ASSETS_DIR, "fleet", "index.html"), "utf8");
+        let html = await fs.readFile(path.join(ASSETS_DIR, "fleet", "index.html"), "utf8");
+        // Older service workers cache /assets by pathname, ignoring queries.
+        // Put the content revision in the path so an installed app cannot mix
+        // new markup with an older release's scripts or stylesheet.
+        const revisions = await Promise.all(
+          ["fleet.css", "locale.js", "fleet.js"].map(async (name) => {
+            const data = await fs.readFile(path.join(ASSETS_DIR, "fleet", name));
+            return {
+              name,
+              hash: crypto.createHash("sha256").update(data).digest("hex").slice(0, 16),
+            };
+          }),
+        );
+        for (const { name, hash } of revisions) {
+          html = html.replace(`/assets/fleet/${name}`, `/assets/fleet/${hash}/${name}`);
+        }
         res.writeHead(200, {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
           "content-security-policy":
-            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'self'; base-uri 'none'",
         });
         res.end(html);
         return;
@@ -3438,6 +3473,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         url,
         taskConnectors,
         !cloud && !accountUid && isLoopbackAddress(remoteAddr),
+        githubConnector?.service,
       )
     )
       return;
@@ -5847,15 +5883,27 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url.startsWith("/assets/")) {
-      const safe = path.normalize(url.slice("/assets/".length)).replace(/^[/\\]+/, "");
+      let safe = path.normalize(url.slice("/assets/".length)).replace(/^[/\\]+/, "");
       if (safe.includes("..")) {
         res.writeHead(400);
         res.end();
         return;
       }
       try {
+        const fleetRevision = /^fleet\/([a-f0-9]{16})\/(fleet\.css|fleet\.js|locale\.js)$/.exec(
+          safe,
+        );
+        if (fleetRevision) safe = `fleet/${fleetRevision[2]}`;
         const file = path.join(ASSETS_DIR, safe);
         const data = await fs.readFile(file);
+        if (
+          fleetRevision &&
+          crypto.createHash("sha256").update(data).digest("hex").slice(0, 16) !== fleetRevision[1]
+        ) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
         // Only the bundled gallery is executable HTML. It uses the same nonce
         // policy as the main UI; arbitrary assets remain non-executable bytes.
         if (safe === "visuals/soft-ink-v1/gallery.html") {
@@ -5899,6 +5947,7 @@ self.addEventListener('fetch', (event) => {
       let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
       let targetSessionId: string | undefined;
       let expressionClient = false;
+      let userExpression: ExpressionRecord | undefined;
       try {
         // Every other endpoint guards its JSON.parse — this one used to be the
         // only one that didn't, and a malformed body left the socket hanging.
@@ -5907,12 +5956,27 @@ self.addEventListener('fetch', (event) => {
           files?: Array<{ name: string; mediaType: string; data: string }>;
           sessionId?: unknown;
           expressions?: unknown;
+          expression?: unknown;
         };
         expressionClient = parsed.expressions === true;
-        if (typeof parsed.message !== "string" || !parsed.message.trim()) {
+        if (parsed.expression !== undefined) {
+          const resolved = resolveExpression(parsed.expression);
+          if (!resolved) throw new Error("invalid expression");
+          userExpression = {
+            version: 1,
+            id: crypto.randomUUID(),
+            assetId: resolved.assetId,
+            format: resolved.format,
+          };
+        }
+        if (typeof parsed.message !== "string" || (!parsed.message.trim() && !userExpression)) {
           throw new Error("missing message");
         }
         message = parsed.message;
+        if (userExpression)
+          message = [message.trim(), expressionText(resolveExpression(userExpression)!)]
+            .filter(Boolean)
+            .join("\n\n");
         files = parsed.files;
         if (
           cloud &&
@@ -6107,7 +6171,10 @@ self.addEventListener('fetch', (event) => {
               { role: "user", content: message },
               { role: "assistant", content: catalogReply },
             ] as const) {
-              await chat.session.appendMessage(entry);
+              await chat.session.appendMessage(
+                entry,
+                entry.role === "user" ? userExpression : undefined,
+              );
               chat.history.push(entry);
             }
             send({ type: "text", text: catalogReply });
@@ -6116,6 +6183,7 @@ self.addEventListener('fetch', (event) => {
           }
           const requestedProviders: ConnectorProvider[] = [
             ...workspaceReadIntents(message).filter((id) => taskConnectors.has(id)),
+            ...(isObsidianReadRequest(message) ? ["obsidian" as const] : []),
             ...googleReadIntents(message),
             ...(isLinearReadRequest(message) ? ["linear" as const] : []),
             ...(isDriveReadRequest(message) ? ["google-drive" as const] : []),
@@ -6160,7 +6228,7 @@ self.addEventListener('fetch', (event) => {
                 ),
               ],
             };
-            await chat.session.appendMessage(user);
+            await chat.session.appendMessage(user, userExpression);
             chat.history.push(user);
             // This slice has one durable continuation per source. Never silently finish
             // half of a combined request or run its unrestricted remainder.
@@ -6356,7 +6424,9 @@ self.addEventListener('fetch', (event) => {
                     if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
                   },
             onMessagePersist: async (m) => {
-              await chat.session.appendMessage(m);
+              const record = m.role === "user" ? userExpression : undefined;
+              await chat.session.appendMessage(m, record);
+              if (record) userExpression = undefined;
               persisted.push(m);
             },
             onPromptPersist: (text, reason) => chat.session.appendPrompt(text, reason),

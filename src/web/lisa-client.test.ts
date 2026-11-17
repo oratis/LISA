@@ -658,9 +658,9 @@ describe("Control view quick approve/deny answers the request it shows", () => {
   ].join("\n");
   // The row asks the page for an agent's display name (#470); none is set here,
   // so it falls back to the session id.
-  const ctx = createContext({ window: { lisaAgentLabel: () => "" } });
+  const ctx = i18nContext({ window: { lisaAgentLabel: () => "" } });
   runInContext(
-    `${src}; globalThis.__row = ctrlRowHTML; globalThis.__decide = ctrlQuickDecision;`,
+    `${I18N_SRC}\n${src}; globalThis.__row = ctrlRowHTML; globalThis.__decide = ctrlQuickDecision;`,
     ctx,
   );
   const row = (ctx as { __row: (s: unknown) => string }).__row;

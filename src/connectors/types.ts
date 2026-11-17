@@ -20,6 +20,8 @@ export interface ReadonlyDriver<A, R> {
   id: string;
   authModes: readonly string[];
   reauthorizationCode: string;
+  /** Local configuration check only. Must not contact a provider or request consent. */
+  configured?(): Promise<boolean>;
   validAccount(value: unknown): value is A;
   accountId(account: A): string;
   validResource(value: unknown): value is R;

@@ -57,6 +57,13 @@ export function endpoints(id: CloudId, client: AppClient) {
         scopes: workspaceScopes(id),
         pkce: true,
       };
+    case "box":
+      return {
+        auth: "https://account.box.com/api/oauth2/authorize",
+        token: "https://api.box.com/oauth2/token",
+        scopes: workspaceScopes(id),
+        pkce: false,
+      };
     case "figma":
       return {
         auth: "https://www.figma.com/oauth",
@@ -142,7 +149,7 @@ async function configuredClient(id: CloudId): Promise<AppClient | undefined> {
     if (typeof config.clientId !== "string" || !/^[a-zA-Z0-9._-]{3,256}$/.test(config.clientId))
       fail();
     const client: AppClient = { clientId: config.clientId };
-    if (vendor === "figma" || vendor === "atlassian" || vendor === "todoist")
+    if (vendor === "figma" || vendor === "atlassian" || vendor === "todoist" || vendor === "box")
       client.clientSecret = identifier(config.clientSecret);
     if (vendor === "microsoft") client.tenant = identifier(config.tenant);
     endpoints(id, client);
@@ -188,8 +195,12 @@ export function validLogin(id: CloudId, raw: string) {
   }
 }
 function checkScopes(id: CloudId, raw: unknown, requested: string, refresh: boolean) {
-  // Figma and legacy Todoist omit scope; Dropbox refresh may omit an unchanged scope.
-  if (raw === undefined && (id === "figma" || id === "todoist" || (refresh && id === "dropbox")))
+  // Box, Figma and legacy Todoist omit scope; Dropbox refresh may omit an unchanged scope.
+  // Box consent explicitly requests root_readonly, including for apps configured more broadly.
+  if (
+    raw === undefined &&
+    (id === "figma" || id === "todoist" || id === "box" || (refresh && id === "dropbox"))
+  )
     return;
   if (typeof raw !== "string") fail("workspace_scope_mismatch");
   const normalize = (s: string) =>

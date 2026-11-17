@@ -80,6 +80,50 @@ test.describe("conversation expressions", () => {
     expect(lisa.stub!.requestCount).toBeGreaterThanOrEqual(4);
   });
 
+  test("user and Lisa exchange bundled stickers, persist both roles, and reject unknown assets", async ({
+    page,
+    request,
+  }) => {
+    await page.goto(lisa.baseURL);
+    await page.locator("#expressionPickerBtn").click();
+    await expect(page.locator(".expression-grid button")).toHaveCount(12);
+    await page.locator('[data-asset-id="sticker-hug"]').click();
+    await expect(page.locator("#expressionDraft")).toContainText("A hug for you");
+    await expect(page.locator(".expression-picker")).not.toBeVisible();
+    await page.locator("#sendBtn").click();
+    await expect(page.locator('.expression-bubble[data-role="user"]')).toHaveCount(1);
+    await expect(page.locator('.expression-bubble[data-role="assistant"]')).toHaveCount(1);
+    await expect(page.locator("#sendBtn")).toBeEnabled();
+    const history = await (await request.get(lisa.baseURL + "/api/history")).json();
+    const figures = history.messages.filter((m: { expression?: object }) => m.expression);
+    expect(figures.map((m: { role: string }) => m.role)).toEqual(["user", "assistant"]);
+    expect(figures[0].expression.assetId).toBe("sticker-hug");
+    expect(JSON.stringify(figures[0].content)).toContain("A hug for you");
+    await page.reload();
+    await expect(page.locator('.expression-bubble[data-role="user"] img')).toHaveAttribute(
+      "src",
+      /sticker-hug-static.webp$/,
+    );
+    await expect(page.locator('.expression-bubble[data-role="assistant"]')).toHaveCount(1);
+    expect(await page.locator("#log").innerText()).not.toContain("[LISA:");
+    await page.locator("#expressionPickerBtn").click();
+    await page.locator('[data-category="moods"]').click();
+    await expect(page.locator(".expression-grid button")).toHaveCount(24);
+    await page.keyboard.press("Escape");
+    const invalid = await request.post(lisa.baseURL + "/chat", {
+      data: {
+        message: "",
+        expression: {
+          version: 1,
+          id: "test",
+          assetId: "https://evil.test/a.webp",
+          format: "animated",
+        },
+      },
+    });
+    expect(invalid.status()).toBe(400);
+  });
+
   test("cadence and veto turns never re-log or re-cache the system prompt", async ({ request }) => {
     // Turn 1 and 4 may carry an expression, 2 and 3 are spaced out, 5 vetoes.
     for (const text of [

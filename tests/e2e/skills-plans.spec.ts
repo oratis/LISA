@@ -95,7 +95,7 @@ test.describe("skills and coding plans", () => {
   }
   test("unavailable interactive CLI choices are disabled before submitting", async ({ page }) => {
     await page.getByRole("button", { name: "Dashboard", exact: true }).click();
-    await page.getByRole("button", { name: "+ Delegate a task", exact: true }).click();
+    await page.getByRole("button", { name: "+ New task", exact: true }).click();
     await expect(page.locator('#dmKind option[value="codex"]')).toBeDisabled();
     await expect(page.locator('#dmKind option[value="managed"]')).toBeEnabled();
     await expect(page.locator("#dmAvailability")).toContainText(/turned off|does not include/);

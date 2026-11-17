@@ -53,11 +53,41 @@ export function createWorkspaceHttp(
           fail("workspace_invalid_endpoint");
         const [ip] = await resolvePublicAddresses(url.hostname, deps.lookup);
         deadline!.throwIfAborted();
-        const response = await transport(
+        let response = await transport(
           url.href,
           { ...init, redirect: "manual", signal: deadline },
           ip!,
         );
+        // Box returns a signed CDN capability URL. Only this download endpoint may redirect;
+        // re-check public DNS at every hop and never forward the API bearer to the CDN.
+        if (
+          text &&
+          url.origin === "https://api.box.com" &&
+          /^\/2\.0\/files\/\d+\/content$/.test(url.pathname)
+        ) {
+          for (let hop = 0; [301, 302, 303, 307, 308].includes(response.status) && hop < 3; hop++) {
+            const location = response.headers.get("location");
+            await response.body?.cancel();
+            if (!location) fail("workspace_invalid_endpoint");
+            const target = new URL(location);
+            if (
+              target.protocol !== "https:" ||
+              target.username ||
+              target.password ||
+              target.port ||
+              target.hash ||
+              !/^[a-z0-9.-]+\.boxcloud\.com$/.test(target.hostname)
+            )
+              fail("workspace_invalid_endpoint");
+            const [address] = await resolvePublicAddresses(target.hostname, deps.lookup);
+            deadline!.throwIfAborted();
+            response = await transport(
+              target.href,
+              { redirect: "manual", signal: deadline },
+              address!,
+            );
+          }
+        }
         if (!response.ok) {
           // A dead refresh token must drop the connection, whatever status carries it:
           // Atlassian answers a reused rotating refresh token with 403 invalid_grant.
@@ -99,6 +129,7 @@ export function createWorkspaceHttp(
 export const workspaceHttp: Http = createWorkspaceHttp();
 
 export const apiOrigins = {
+  box: "https://api.box.com",
   microsoft: "https://graph.microsoft.com",
   atlassian: "https://api.atlassian.com",
   figma: "https://api.figma.com",
@@ -161,6 +192,19 @@ export class Reader {
             "Dropbox-API-Arg": JSON.stringify({ path: id }),
           },
         },
+        this.signal,
+        true,
+      ),
+      1_000_000,
+    );
+  }
+  async boxText(id: string, version: string) {
+    if (this.vendor !== "box" || !/^\d{1,25}$/.test(id) || !/^\d{1,25}$/.test(version))
+      fail("workspace_invalid_endpoint");
+    return string(
+      await this.http(
+        new URL("https://api.box.com/2.0/files/" + id + "/content?version=" + version),
+        { headers: { Authorization: "Bearer " + this.token } },
         this.signal,
         true,
       ),

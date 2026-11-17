@@ -637,3 +637,33 @@
 [data-recap-window] {
   margin-top: 12px;
 }
+
+/* Follow the actual center-pane width, including when both side rails are open. */
+.rv-scroll > * { max-width: 1060px; margin-left: auto; margin-right: auto; }
+.rv-hero { display: grid; grid-template-columns: minmax(0, 1fr) 144px; padding: 30px; gap: 24px; border-radius: 20px; }
+.rv-orbit { width: 144px; justify-self: center; }
+.rv-stats { margin-top: 18px; margin-bottom: 24px; }
+.rv-stats > div { text-align: center; align-items: center; padding: 20px 12px; }
+.rv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
+.rv-grid > .rv-card { height: 100%; }
+.rv-card { padding: 22px; border-radius: 16px; }
+.rv-card-head { align-items: flex-start; gap: 12px; }
+.rv-card-head h3 { line-height: 1.6; }
+.rv-card-head .rv-link { flex-shrink: 0; max-width: 52%; text-align: right; line-height: 1.5; }
+.rv-activity { margin-top: 18px; }
+@container (max-width: 720px) {
+  .rv-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .rv-hero { grid-template-columns: minmax(0, 1fr) 100px; padding: 24px; gap: 12px; }
+  .rv-orbit { width: 100px; height: 110px; }
+  .rv-scroll { padding: 8px 18px 28px; }
+  .rv-status { padding-left: 18px; padding-right: 18px; }
+}
+@container (max-width: 440px) {
+  .rv-hero { text-align: center; grid-template-columns: minmax(0, 1fr); }
+  .rv-orbit { display: none; }
+  .rv-hero p { margin-left: auto; margin-right: auto; }
+  .rv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rv-card { padding: 18px; }
+  .rv-card-head { flex-wrap: wrap; }
+  .rv-card-head .rv-link { max-width: 100%; text-align: left; }
+}

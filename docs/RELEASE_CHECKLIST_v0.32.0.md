@@ -1,6 +1,6 @@
 # v0.32.0 release checklist
 
-Updated November 15, 2026. Baseline: `01563b84` (PR #510 merged), followed by the complete-extension candidate. This checklist separates implemented work, verified behavior and channel publication; an unchecked item is not a passing result.
+Updated November 16, 2026. Baseline: `01563b84` (PR #510 merged), followed by the complete-extension candidate. This checklist separates implemented work, verified behavior and channel publication; an unchecked item is not a passing result.
 
 ## Three-phase scope
 
@@ -23,11 +23,16 @@ Updated November 15, 2026. Baseline: `01563b84` (PR #510 merged), followed by th
 - [x] Current relay Worker type checks, dry-run build and four integration tests passed.
 - [x] Latest Pocket source passed signed-simulator URLSession against the deployed production relay: Cloud → LAN → Cloud on blocked LAN → LAN after recovery. Worker version tested: `62681223-d843-4da5-b773-6fe8fff4657a`; verify again after publishing the updated Worker.
 - [x] Native Fleet Claude adapter with the configured live provider: Read/Edit requested separate approvals, and the expected disposable-workspace file edit was verified.
-- [ ] Independent remote-Mac acceptance from the original Fleet release plan. Multiple local backend processes do not replace a second physical Mac.
+- [x] Independent physical-Mac Control lifecycle acceptance on PR #516: production relay, v2 pairing, one-worktree grant, live Claude Read/Edit approvals, actual denied Edit, follow-up, matching file/diff results, receipt recovery without replay, disconnect/reconnect, cancellation and revocation. Original source stayed clean; temporary test instances and credentials were removed. The tested CLI exposed Read/Edit; live remote Codex, new-file Write and physical sleep/wake are not claimed.
 - [ ] Physical iPhone Wi-Fi → cellular → Wi-Fi, Mac sleep/wake and firewall-denial acceptance. The available iPhone was reported unavailable; simulator tests do not replace this.
 - [ ] Feishu real-account OAuth callback and selected document read. Automated coverage is available; the last documented live attempt did not acquire credentials.
 
 ## Publication
+
+- [x] Control integration/localization PR #516 passed Node 22/24, coverage, browser, website, audit and docs CI. Local validation: 4,377 default Node tests plus two opt-in native Codex fixtures; 129 browser tests; 25 final Control/Fleet regressions.
+- [x] Local Mac acceptance candidate built as a universal 0.32.0 app and installed over 0.31.0 after backing up the app, user data and previous backend override. All 39 native tests passed; bundled backend health reports 0.32.0, sessions and remote identity are retained, and the existing account connection is online.
+- [x] Native-window upgrade verification exposed stale cached Fleet assets. Content-versioned paths fixed the mismatch; 29 server tests and 33 Control/Fleet/mobile browser tests passed, including an installed-app offline-cache regression. The rebuilt app's Control → Remote Macs layout was visually verified in the native window.
+- [ ] Owner acceptance of the locally installed 0.32.0 candidate, then merge PR #516 before tagging.
 
 - [x] Complete-extension PR #511 reviewed locally, CI passed and merged. Devin full review was unavailable (expired credits).
 - [ ] Final knowledge-base Git isolation follow-up PR CI/review and merge.
@@ -57,4 +62,4 @@ The owner explicitly included the deferred proposals on November 14. Implementat
 - [ ] Final knowledge-base isolation follow-up CI/review.
 - [ ] Real T3 authorization and selected-project read; the environment URL is still needed.
 
-Earlier baseline checks above are retained as evidence, not presented as full validation of these new changes. Physical iPhone/second-Mac and real-account acceptance remain unchecked until actually observed.
+Earlier baseline checks above are retained as evidence, not presented as full validation of these new changes. The second-Mac Control workflow is now verified as scoped above. Physical iPhone, remote sleep/wake and outstanding real-account acceptance remain unchecked until actually observed.

@@ -21,6 +21,7 @@ import type { Provider } from "../../src/providers/types.js";
 const tenant = "12345678-1234-1234-1234-123456789012";
 const client = { clientId: "test-app", clientSecret: "fixture-secret", tenant };
 function key(id: WorkspaceId) {
+  if (id === "box") return "12";
   if (id === "dropbox") return "id:File01";
   if (id === "jira" || id === "confluence") return tenant + "|123";
   if (id === "sharepoint") return "example.sharepoint.com," + tenant + "," + tenant + "|File01";
@@ -51,6 +52,23 @@ function providerHttp(id: CloudId, onRead: () => void): Http {
       return marker;
     }
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer fixture-access");
+    if (p === "/2.0/users/me") return { id: "user", name: "Fixture" };
+    if (p === "/2.0/folders/0/items")
+      return { entries: [{ id: "12", type: "file", name: "fixture.txt" }] };
+    if (p === "/2.0/files/12")
+      return {
+        id: "12",
+        type: "file",
+        name: "fixture.txt",
+        size: 10,
+        item_status: "active",
+        file_version: { id: "99" },
+      };
+    if (p === "/2.0/files/12/content") {
+      expect(u.searchParams.get("version")).toBe("99");
+      onRead();
+      return marker;
+    }
     if (p === "/api/v1/user") return { id: "user", full_name: "Fixture" };
     if (p === "/v1/me") return { id: "user", handle: "Fixture" };
     if (p === "/v1.0/me") return { id: "user", displayName: "Fixture" };

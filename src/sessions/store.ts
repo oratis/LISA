@@ -128,11 +128,14 @@ export class SessionStore {
     return true;
   }
 
-  async appendMessage(message: StoredMessage): Promise<void> {
+  async appendMessage(message: StoredMessage, expression?: ExpressionRecord): Promise<void> {
+    if (expression && (message.role !== "user" || !resolveExpression(expression)))
+      throw new Error("Invalid user expression");
     const entry: SessionEntry = {
       type: "message",
       ts: new Date().toISOString(),
       message,
+      ...(expression ? { expression } : {}),
     };
     await appendLine(this.path, JSON.stringify(entry));
   }
@@ -173,7 +176,8 @@ export class SessionStore {
     for (const line of tail.lines.reverse()) {
       const entry = parse(line);
       if (entry?.type !== "message" || !entry.message) continue;
-      if (resolveExpression(entry.expression)) return distance;
+      if (entry.message.role === "assistant" && resolveExpression(entry.expression))
+        return distance;
       if (isUser(entry.message) && ++distance >= 3) return 3;
     }
     if (tail.complete) return Infinity;
@@ -183,7 +187,7 @@ export class SessionStore {
     for await (const line of jsonlLines(this.path)) {
       const entry = parse(line);
       if (entry?.type !== "message" || !entry.message) continue;
-      if (resolveExpression(entry.expression)) distance = 0;
+      if (entry.message.role === "assistant" && resolveExpression(entry.expression)) distance = 0;
       else if (isUser(entry.message)) distance++;
     }
     return distance;
