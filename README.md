@@ -1,5 +1,7 @@
 # LISA
 
+<img align="right" width="128" src="src/web/assets/visuals/soft-ink-motion-v1/sticker-hello.gif" alt="Lisa waving hello">
+
 [![npm](https://img.shields.io/npm/v/@oratis/lisa?color=cb3837&label=npm)](https://www.npmjs.com/package/@oratis/lisa)
 [![Homebrew](https://img.shields.io/badge/homebrew-oratis%2Ftap%2Flisa-fbb040)](https://github.com/oratis/homebrew-tap)
 [![Mac DMG](https://img.shields.io/github/v/release/oratis/LISA?label=Mac%20app&color=000000&logo=apple)](https://github.com/oratis/LISA/releases/latest)
@@ -11,7 +13,11 @@
 
 **An open-source AI Personal Assistant for planning, writing and personal knowledge.** Plan a day, draft a message, build a personal knowledge base, or coordinate coding agents from your Mac. Use LISA Cloud for hosted chat, or run your own instance with your choice of model.
 
-[Website](https://meetlisa.ai) · [Guide](docs/GUIDE.md) · [Latest release](https://github.com/oratis/LISA/releases/latest) · [Roadmap](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
+[Website](https://meetlisa.ai) · [Guide](docs/GUIDE.md) · [What's new in 0.32](docs/RELEASE_v0.32.0.md) · [Latest release](https://github.com/oratis/LISA/releases/latest) · [Roadmap](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
+
+<p align="center">
+  <a href="assets/screenshots/hero.png"><img src="assets/screenshots/hero.png" alt="Planning a day with Lisa in the web workspace" width="920"></a>
+</p>
 
 ## Choose where Lisa runs
 
@@ -28,7 +34,9 @@ Cloud and Mac are **separate instances**: their histories, memories and credenti
 
 ## Quick start
 
-For the Mac app, download **Lisa-Suite.dmg** from the [latest release](https://github.com/oratis/LISA/releases/latest). For the CLI, choose one install command:
+**Mac app.** Download **Lisa-Suite.dmg** from the [latest release](https://github.com/oratis/LISA/releases/latest), drag Lisa to Applications and open it. Its setup screen asks for a model key; nothing else needs installing.
+
+**CLI and self-hosted web.** Install with Homebrew or npm:
 
 ```sh
 brew install oratis/tap/lisa
@@ -36,29 +44,28 @@ brew install oratis/tap/lisa
 npm install -g @oratis/lisa
 ```
 
-Configure a model, then start Lisa:
+Then start Lisa:
 
 ```sh
-mkdir -p ~/.lisa
-# Add your own key to ~/.lisa/config.env, for example:
-# ANTHROPIC_API_KEY=your-key
-
-lisa                    # terminal chat; first launch creates Lisa's identity
 lisa serve --web        # web workspace at http://localhost:5757
+lisa                    # terminal chat
+lisa doctor             # check config, providers and network
 ```
 
-Anthropic, OpenAI, Gemini, OpenAI-compatible services and local models are supported. See [providers](docs/PROVIDERS.md) for keys, model selection and Ollama / LM Studio setup. Coding work can also use supported CLI subscriptions through [coding plans](docs/GUIDE.md#coding-plans--use-a-subscription-instead-of-an-api-key).
+The web workspace asks for one model key on first launch and saves it to `~/.lisa/config.env` on your machine. For terminal chat, add the key to that file yourself, for example `ANTHROPIC_API_KEY=your-key`. Lisa's identity is created once, at the start of the first session, and takes about half a minute.
+
+Anthropic, OpenAI, Gemini, OpenAI-compatible services and local models are supported. See [providers](docs/PROVIDERS.md) for keys, model selection and Ollama / LM Studio setup. Coding work can also use supported CLI subscriptions through [coding plans](docs/GUIDE.md#coding-plans--use-a-subscription-instead-of-an-api-key). To update a Homebrew or npm install later, run `lisa upgrade`.
 
 ## What you can do
 
 - **Start with everyday work.** Planning, writing and idea starters open editable drafts. Chat supports streaming replies, tool activity, history, cancellation and retry.
-- **Build lasting context.** File-backed identity, memories, opinions and journals evolve across sessions within the same instance. Review and reflection can update Lisa's desires and skills.
+- **Build lasting context.** File-backed identity, memories, opinions and journals evolve across sessions within the same instance. Review and reflection can update Lisa's desires and skills; Rêve lists what changed, with its source conversation and a recoverable previous version.
 - **Keep a personal knowledge base.** Save links, ingest supported articles and video transcripts, search a linked wiki, and generate briefs from configured feeds.
-- **Coordinate coding agents across Macs.** Local Control observes supported Claude Code, Codex, OpenCode and Aider sessions. Fleet starts Claude Code in separately authorized workspaces, records a reconnectable task timeline, and captures per-turn file changes in isolated worktrees. Preview a finished turn before handing it to Claude or a Codex review. Controls reflect each agent’s actual capabilities; Codex can review the confirmed packet or use separately approved List/Read/Edit/Write workspace tools. Preview single-file rollback or confirm a merge into the source branch with optional owned-worktree removal. Pocket saves multiple Macs and receives read-only task shares by default; a separate grant enables full-input approval decisions. See [Fleet setup and limits](docs/FLEET.md).
-- **Connect your local workflow.** Twenty-two read-only source connectors cover documents, tasks, calendars, mail and design tools, including Box files, Obsidian vaults, selected Feishu documents and T3 project thread lists. Dashboard lists their saved authorization status. Browse `/connectors`, authorize an account and choose what Lisa may read. Availability depends on local OAuth configuration; Apple Calendar and Reminders require a Swift toolchain. MCP servers, skills, plugins and messaging channels remain optional. See [connector setup](docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md).
+- **Coordinate coding agents across Macs.** Control observes supported Claude Code, Codex, OpenCode and Aider sessions on this Mac. Fleet starts Claude Code in workspaces you authorize one at a time, on this Mac or a paired one, and keeps a reconnectable task timeline with per-turn file diffs in isolated worktrees. Review a finished turn, hand it to Claude or Codex, restore a single file, or confirm a merge into the source branch; each step shows a preview first. Pocket follows shared tasks read-only by default, and a separate grant enables approval decisions. See [Fleet setup and limits](docs/FLEET.md).
+- **Connect your local workflow.** Twenty-two read-only source connectors cover documents, tasks, calendars, mail and design tools, including Box files, Obsidian vaults, selected Feishu documents and T3 project thread lists. Dashboard lists their saved authorization status; browse `/connectors` in chat, authorize an account and choose what Lisa may read. Availability depends on local OAuth configuration, and Apple Calendar and Reminders require a Swift toolchain. MCP servers, skills, plugins and messaging channels remain optional. See [connector setup](docs/PLAN_CONNECTOR_EXPANSION_2026-11-07.md).
 - **Choose screenshot context.** Default capture is image-only; an explicit action collects front-window text and coordinates for preview, with a separate checkbox before sending. Missing permission keeps the image-only path.
 - **Give Lisa time to work.** Durable goals, routines and local watchers come with saved runs, cancellation and recovery. Tasks drafted in chat stay off until you enable them. Hosted tasks remain off by default; task side effects without an approval integration are denied.
-- **Keep her in view.** A pixel-art room, mood portraits and the Mac Island reflect real activity. Mobile widgets and Live Activities depend on a configured, reachable Mac and notification setup.
+- **Keep her in view.** A pixel-art room with seated working, reading and tea animations, mood portraits, twelve chat stickers and the Mac Island reflect real activity. Mobile widgets and Live Activities depend on a configured, reachable Mac and notification setup.
 
 ## Memory, identity and control
 
@@ -80,18 +87,18 @@ The **reach-out gate** applies source controls, quiet hours, deduplication and b
 
 ## Development status
 
-**v0.32.0** brings the accepted companion/sticker refresh, 22 connectors including Box and Obsidian, localized Control workflows, and the three Fleet workflow phases together with connection recovery and session renewal ([release notes](docs/RELEASE_v0.32.0.md), [changelog](CHANGELOG.md)). GitHub artifacts, the notarized Mac app, npm, Homebrew, the hosted backend, relay and website are published and verified. Pocket is a separate release. See the [publication record](docs/RELEASE_VERIFICATION_v0.32.0.md) and [release checklist](docs/RELEASE_CHECKLIST_v0.32.0.md).
+**v0.32.0** is the current release: the companion and sticker refresh, 22 connectors including Box and Obsidian, localized Control workflows, and the three Fleet workflow phases with connection recovery and session renewal. GitHub artifacts, the notarized Mac app, npm, Homebrew, the hosted backend, relay and website are published and verified; Pocket is released separately. Details are in the [release notes](docs/RELEASE_v0.32.0.md), [changelog](CHANGELOG.md), [publication record](docs/RELEASE_VERIFICATION_v0.32.0.md) and [release checklist](docs/RELEASE_CHECKLIST_v0.32.0.md).
 
-| Workstream | Status |
+| Area | Status |
 | --- | --- |
-| Fleet timelines, scoped Pocket viewing, per-turn diffs and agent handoffs | Implemented in [#504](https://github.com/oratis/LISA/pull/504), [#505](https://github.com/oratis/LISA/pull/505) and [#508](https://github.com/oratis/LISA/pull/508); Pocket viewing requires the new Pocket binary |
-| Mac connections and account sessions | LAN/relay recovery, session renewal/revocation, live-stream closure and actionable connection errors implemented; physical iPhone network-switch acceptance is still pending |
-| Pocket Room and iPad layouts | Updated in [#509](https://github.com/oratis/LISA/pull/509); the 1.4 source includes Room navigation, editable starters and shared Fleet tasks |
-| iOS App Store | **1.4 is live** (build 1794650503), released November 15 and checked November 17, 2026; complete-extension build 1794678341 remains in internal TestFlight |
-| Warden, durable goals, routines and watchers | Available; Warden web policy is opt-in and hosted tasks remain off by default |
+| Mac app, CLI and self-hosted web | 0.32.0 published on every channel |
+| Fleet: timelines, per-turn diffs, handoffs, file restore, confirmed merge, cleanup and quotas | Shipped in Mac/CLI 0.32.0. A second-Mac acceptance run with a live Claude provider passed; new-file Write and live remote Codex were not part of it. Viewing shared tasks in Pocket needs a Pocket build that includes it |
+| Mac connections and account sessions | LAN/relay recovery, session renewal and revocation are implemented. Network-switch acceptance on a physical iPhone is still pending |
+| Lisa Pocket (iOS) | **1.4 is live** on the US App Store, released November 15, 2026, with the Room and iPad refresh. The complete-extension build, which adds multi-Mac switching and task approvals, remains in internal TestFlight |
+| Connectors | 22 read-only connectors. Box and Feishu document reads pass offline tests and have not been checked against live accounts |
+| Warden, durable goals, routines and watchers | Available. Warden web policy is opt-in and hosted tasks remain off by default |
 | Model routing and costs | Purpose-based routing and opt-in estimated budgets; these are not a universal spending ceiling |
-| Complete proposal extensions | Multi-Mac/approvals, file rollback, confirmed merge, ledger cleanup/quota, explicit continuation, Codex workspace, T3 reads and screenshot context shipped in Mac/CLI 0.32.0; complete-extension Pocket publication and remaining live-account/device checks are pending ([execution log](docs/EXECUTION_FLEET_COMPLETE_RELEASE_2026-11-14.md)) |
-| Other directions | Cross-device memory synchronization and general write connectors remain separate future work |
+| Not yet built | Cross-device memory synchronization and general write connectors |
 
 Product research on Muse and other personal assistants informs the direction, with implementation boundaries documented in the [Muse review](docs/RESEARCH_MUSE_2026-09-27.md), [always-on research](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md) and [upgrade plan](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md). LISA is an independent project.
 
@@ -100,14 +107,38 @@ Product research on Muse and other personal assistants informs the direction, wi
 <table>
 <tr>
 <td width="50%" align="center">
-  <a href="assets/screenshots/shell-nebula.png"><img src="assets/screenshots/shell-nebula.png" alt="LISA session shell — Nebula theme"></a><br>
-  <b>Session shell — Nebula</b><br>
-  <sub>Session tree · chat · inspector rail. Her portrait swaps live with her mood; agents she watches sit in the tree next to her own sessions.</sub>
+  <a href="assets/screenshots/shell-nebula.png"><img src="assets/screenshots/shell-nebula.png" alt="LISA web workspace — Nebula theme"></a><br>
+  <b>Workspace — Nebula</b><br>
+  <sub>Sessions, chat and a nine-view navigation grid. Her portrait follows her mood.</sub>
 </td>
 <td width="50%" align="center">
-  <a href="assets/screenshots/shell-calm.png"><img src="assets/screenshots/shell-calm.png" alt="LISA session shell — Calm theme"></a><br>
-  <b>Session shell — Calm</b><br>
-  <sub>The same shell in the light theme. Two themes, one Lisa.</sub>
+  <a href="assets/screenshots/shell-calm.png"><img src="assets/screenshots/shell-calm.png" alt="LISA web workspace — Calm theme"></a><br>
+  <b>Workspace — Calm</b><br>
+  <sub>The same workspace in the light theme.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" align="center">
+  <a href="assets/screenshots/room.png"><img src="assets/screenshots/room.png" alt="Lisa's room while she writes"></a><br>
+  <b>Room</b><br>
+  <sub>A pixel-art room that reflects what she is doing. Here she is writing a reply.</sub>
+</td>
+<td width="50%" align="center">
+  <a href="assets/screenshots/reve.png"><img src="assets/screenshots/reve.png" alt="Rêve — memory and reflection"></a><br>
+  <b>Rêve</b><br>
+  <sub>What she learned and changed, with the conversations behind it and a recoverable previous version.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" align="center">
+  <a href="assets/screenshots/dashboard-connectors.png"><img src="assets/screenshots/dashboard-connectors.png" alt="Dashboard with the connector catalog"></a><br>
+  <b>Dashboard</b><br>
+  <sub>Tasks, activity and the catalog of 22 read-only connectors.</sub>
+</td>
+<td width="50%" align="center">
+  <a href="assets/screenshots/control.png"><img src="assets/screenshots/control.png" alt="Control — a managed task on this Mac"></a><br>
+  <b>Control</b><br>
+  <sub>Agents and tasks on this Mac and on paired Macs. A managed task waits for the next instruction.</sub>
 </td>
 </tr>
 </table>
@@ -124,7 +155,7 @@ npm run build
 node dist/cli.js serve --web
 ```
 
-Before submitting a change, run the relevant checks:
+`npm link` puts the build on your `PATH` as `lisa`. Before submitting a change, run the relevant checks:
 
 ```sh
 npm run typecheck
@@ -134,7 +165,7 @@ node scripts/check-md-links.mjs
 node scripts/check-readme-drift.mjs
 ```
 
-See [Contributing](CONTRIBUTING.md) for the full development workflow and native build instructions in [iOS](packaging/ios-companion/README.md) / [Mac](packaging/mac-client/README.md).
+The browser suite (`npm run test:e2e`) runs offline against a stub model and needs `npx playwright install chromium` once. See [Contributing](CONTRIBUTING.md) for the full development workflow and native build instructions in [iOS](packaging/ios-companion/README.md) / [Mac](packaging/mac-client/README.md).
 
 ## Learn more
 
