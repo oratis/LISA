@@ -144,11 +144,11 @@ which owns that auth. See [Coding plans](#coding-plans--use-a-subscription-inste
 ### Demo
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">
-    <img src="../assets/demo-thumbnail.png" alt="Watch the LISA demo on YouTube" width="720">
+  <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">
+    <img src="../assets/demo-thumbnail.png" alt="Watch the LISA 0.32 film on YouTube" width="720">
   </a>
   <br>
-  <i>▶️ <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">Watch the 2-minute demo on YouTube</a></i>
+  <i>▶️ <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">Watch the 0.32 film on YouTube</a> · 1:24</i>
 </p>
 
 ### Screenshots

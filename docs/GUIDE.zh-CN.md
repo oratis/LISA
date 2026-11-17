@@ -135,11 +135,11 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 ### 演示视频
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">
-    <img src="../assets/demo-thumbnail.png" alt="在 YouTube 观看 LISA 演示" width="720">
+  <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">
+    <img src="../assets/demo-thumbnail.png" alt="在 YouTube 观看 LISA 0.32 影片" width="720">
   </a>
   <br>
-  <i>▶️ <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">在 YouTube 观看 2 分钟演示</a></i>
+  <i>▶️ <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">在 YouTube 观看 0.32 影片</a> · 1:24</i>
 </p>
 
 ### 截图

@@ -16,7 +16,8 @@
 [官网](https://meetlisa.ai) · [使用指南](docs/GUIDE.zh-CN.md) · [0.32 更新内容](docs/RELEASE_v0.32.0.md) · [最新版本](https://github.com/oratis/LISA/releases/latest) · [路线图](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
 
 <p align="center">
-  <a href="assets/screenshots/hero.png"><img src="assets/screenshots/hero.png" alt="在 Web 工作区和 Lisa 一起规划一天" width="920"></a>
+  <a href="https://www.youtube.com/watch?v=QggT1pvKpBU"><img src="assets/demo-thumbnail.png" alt="在 YouTube 观看 LISA 0.32 影片" width="860"></a><br>
+  ▶ <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">在 YouTube 观看 0.32 影片</a> · 1:24
 </p>
 
 ## 选择 Lisa 的运行位置
@@ -106,6 +107,10 @@ Muse 与其他 PA 产品的调研用于指导方向，实现边界见 [Muse 对�
 
 ## 界面预览
 
+<p align="center">
+  <a href="assets/screenshots/hero.png"><img src="assets/screenshots/hero.png" alt="在 Web 工作区和 Lisa 一起规划一天" width="920"></a>
+</p>
+
 <table>
 <tr>
 <td width="50%" align="center"><a href="assets/screenshots/shell-nebula.png"><img src="assets/screenshots/shell-nebula.png" alt="LISA 工作区，Nebula 主题"></a><br><b>工作区 · Nebula 深色主题</b><br><sub>会话、聊天与九宫格导航，立绘随情绪变化。</sub></td>
@@ -121,7 +126,7 @@ Muse 与其他 PA 产品的调研用于指导方向，实现边界见 [Muse 对�
 </tr>
 </table>
 
-[观看两分钟演示](https://www.youtube.com/watch?v=J_00iwAB_WI)
+[在 YouTube 观看 0.32 影片](https://www.youtube.com/watch?v=QggT1pvKpBU) · 1:24
 
 ## 开发与贡献
 

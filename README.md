@@ -16,7 +16,8 @@
 [Website](https://meetlisa.ai) · [Guide](docs/GUIDE.md) · [What's new in 0.32](docs/RELEASE_v0.32.0.md) · [Latest release](https://github.com/oratis/LISA/releases/latest) · [Roadmap](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
 
 <p align="center">
-  <a href="assets/screenshots/hero.png"><img src="assets/screenshots/hero.png" alt="Planning a day with Lisa in the web workspace" width="920"></a>
+  <a href="https://www.youtube.com/watch?v=QggT1pvKpBU"><img src="assets/demo-thumbnail.png" alt="Watch the LISA 0.32 film on YouTube" width="860"></a><br>
+  ▶ <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">Watch the 0.32 film on YouTube</a> · 1:24
 </p>
 
 ## Choose where Lisa runs
@@ -104,6 +105,10 @@ Product research on Muse and other personal assistants informs the direction, wi
 
 ## Screenshots
 
+<p align="center">
+  <a href="assets/screenshots/hero.png"><img src="assets/screenshots/hero.png" alt="Planning a day with Lisa in the web workspace" width="920"></a>
+</p>
+
 <table>
 <tr>
 <td width="50%" align="center">
@@ -143,7 +148,7 @@ Product research on Muse and other personal assistants informs the direction, wi
 </tr>
 </table>
 
-<p align="center">▶ <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">Watch the 2-minute demo on YouTube</a></p>
+<p align="center">▶ <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">Watch the 0.32 film on YouTube</a> · 1:24</p>
 
 ## Develop and contribute
 
