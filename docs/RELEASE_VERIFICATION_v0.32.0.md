@@ -13,7 +13,7 @@ Verified November 17, 2026, after owner acceptance. [PR #516](https://github.com
 | Homebrew | [Live tap formula](https://github.com/oratis/homebrew-tap/blob/main/Formula/lisa.rb) points to 0.32.0 | [Tap workflow](https://github.com/oratis/LISA/actions/runs/44010729800) passed. Live formula URL and SHA-256 match the downloaded npm package. |
 | Hosted backend | `lisa-cloud-v0-32-0`, 100% production traffic | Canary and production health/version, existing account authentication, unauthenticated API refusal, Cloud-only restrictions and new assets passed. Existing environment, secrets, storage and service settings retained. |
 | Relay | Worker version `1faddc46-b866-4176-bcca-69b3a1db01a4` | Pinned Wrangler type checks, four tests and dry run passed. Production account authentication, v2 pairing, encrypted round trips, heartbeat and revocation passed both before and after backend promotion. Disposable test identities and grants were removed. |
-| Website | `lisa-web-v0-32-0`, 100% production traffic | Rebuilt after the GitHub release was public. Canary and [production](https://meetlisa.ai) checks passed for both homepages, changelogs, privacy pages and linked CSS. Existing traffic tags retained. |
+| Website | `lisa-web-v0-32-0-notes`, 100% production traffic | Rebuilt after the GitHub release was public. Canary and [production](https://meetlisa.ai) checks passed for both homepages, changelogs, privacy pages and linked CSS. Existing traffic tags retained. |
 
 The registry initially served stale metadata and returned 404 for the new tarball. The release was not republished: bounded download retries completed before the Homebrew formula update, and the package was subsequently downloaded and independently installed locally.
 

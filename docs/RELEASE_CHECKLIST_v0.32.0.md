@@ -41,7 +41,7 @@ Updated November 17, 2026. Baseline: `01563b84` (PR #510 merged), followed by th
 - [x] Signed/notarized universal Mac DMG verified, including checksum, signature, stapled ticket and Gatekeeper. The final official app replaced the local acceptance candidate after backup; backend 0.32.0, native UI, existing sessions, remote identity and account connection were verified.
 - [x] Homebrew formula updated from the published npm tarball; its live URL and SHA-256 match the downloaded package.
 - [x] Cloud Run backend and relay published and smoke-tested, with existing deployment configuration retained. Backend `lisa-cloud-v0-32-0` serves 100% of traffic; relay version `1faddc46-b866-4176-bcca-69b3a1db01a4` passed account authentication, encrypted pairing/requests, heartbeat and revocation after backend promotion.
-- [x] Website rebuilt after the GitHub release exists, deployed as `lisa-web-v0-32-0` and checked at canary and production URLs. Both languages, changelogs, privacy pages and linked styles passed.
+- [x] Website rebuilt after the GitHub release exists, deployed as `lisa-web-v0-32-0-notes` and checked at canary and production URLs. Both languages, changelogs, privacy pages and linked styles passed.
 - [x] Pocket 1.4 (1794678341) uploaded successfully through CI on November 15.
 - [x] Apple API verified build 1794678341 as `VALID`, `IN_BETA_TESTING` (internal), `READY_FOR_BETA_SUBMISSION` (external).
 - [x] Read-only Apple status check on November 17 confirms public Pocket **1.4**, build **1794650503**, is `READY_FOR_DISTRIBUTION`; the public listing records its November 15 release. This was the separate UI-release submission, not a new upload during the Mac release.
