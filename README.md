@@ -20,7 +20,7 @@
 | **Mac app** | Web workspace, menu-bar Island, local tools and agent controls | Download the signed, notarized **Lisa-Suite.dmg** from Releases; Node and the backend are bundled |
 | **CLI / self-hosted web** | Local assistant, configurable providers, knowledge, integrations and development tools | Node **22.19+** and a provider key or local model |
 | **LISA Cloud** | Account-based chat, memory and knowledge tools, without setting up a Mac | [Sign in](https://meetlisa.ai/cloud/); usage allowance and optional credits apply |
-| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | **1.3 is available on the [US App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058)**; availability varies by region |
+| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | **1.4 is available on the [US App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058)**; availability varies by region |
 
 Cloud and Mac are **separate instances**: their histories, memories and credentials do not automatically sync. Local tools need your Mac to be running and reachable. Cloud does not expose your Mac's shell, mail, coding agents or host-level push services.
 
@@ -80,17 +80,17 @@ The **reach-out gate** applies source controls, quiet hours, deduplication and b
 
 ## Development status
 
-**v0.32.0** brings the accepted companion/sticker refresh, 22 connectors including Box and Obsidian, localized Control workflows, and the three Fleet workflow phases together with connection recovery and session renewal ([release notes](docs/RELEASE_v0.32.0.md), [changelog](CHANGELOG.md)). GitHub Releases, npm, Homebrew, the hosted service and Pocket are separate delivery channels; merging code does not publish all of them. See the [release checklist](docs/RELEASE_CHECKLIST_v0.32.0.md) for verification and remaining gates.
+**v0.32.0** brings the accepted companion/sticker refresh, 22 connectors including Box and Obsidian, localized Control workflows, and the three Fleet workflow phases together with connection recovery and session renewal ([release notes](docs/RELEASE_v0.32.0.md), [changelog](CHANGELOG.md)). GitHub artifacts, the notarized Mac app, npm, Homebrew, the hosted backend, relay and website are published and verified. Pocket is a separate release. See the [publication record](docs/RELEASE_VERIFICATION_v0.32.0.md) and [release checklist](docs/RELEASE_CHECKLIST_v0.32.0.md).
 
 | Workstream | Status |
 | --- | --- |
 | Fleet timelines, scoped Pocket viewing, per-turn diffs and agent handoffs | Implemented in [#504](https://github.com/oratis/LISA/pull/504), [#505](https://github.com/oratis/LISA/pull/505) and [#508](https://github.com/oratis/LISA/pull/508); Pocket viewing requires the new Pocket binary |
 | Mac connections and account sessions | LAN/relay recovery, session renewal/revocation, live-stream closure and actionable connection errors implemented; physical iPhone network-switch acceptance is still pending |
 | Pocket Room and iPad layouts | Updated in [#509](https://github.com/oratis/LISA/pull/509); the 1.4 source includes Room navigation, editable starters and shared Fleet tasks |
-| iOS App Store | **1.3 is live**, released November 7 and checked November 14, 2026; the source’s 1.4 features are not part of that binary |
+| iOS App Store | **1.4 is live** (build 1794650503), released November 15 and checked November 17, 2026; complete-extension build 1794678341 remains in internal TestFlight |
 | Warden, durable goals, routines and watchers | Available; Warden web policy is opt-in and hosted tasks remain off by default |
 | Model routing and costs | Purpose-based routing and opt-in estimated budgets; these are not a universal spending ceiling |
-| Complete proposal extensions | Multi-Mac/approvals, file rollback, confirmed merge, ledger cleanup/quota, explicit continuation, Codex workspace, T3 reads and screenshot context implemented; final acceptance/publication pending ([execution log](docs/EXECUTION_FLEET_COMPLETE_RELEASE_2026-11-14.md)) |
+| Complete proposal extensions | Multi-Mac/approvals, file rollback, confirmed merge, ledger cleanup/quota, explicit continuation, Codex workspace, T3 reads and screenshot context shipped in Mac/CLI 0.32.0; complete-extension Pocket publication and remaining live-account/device checks are pending ([execution log](docs/EXECUTION_FLEET_COMPLETE_RELEASE_2026-11-14.md)) |
 | Other directions | Cross-device memory synchronization and general write connectors remain separate future work |
 
 Product research on Muse and other personal assistants informs the direction, with implementation boundaries documented in the [Muse review](docs/RESEARCH_MUSE_2026-09-27.md), [always-on research](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md) and [upgrade plan](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md). LISA is an independent project.
