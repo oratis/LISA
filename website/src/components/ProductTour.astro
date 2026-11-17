@@ -1,0 +1,139 @@
+---
+// A tabbed tour of the workspace. Every image is a capture of Lisa 0.32 running
+// locally. Without scripts the panels simply stack; with scripts they become an
+// ARIA tablist (arrow keys, Home and End move between tabs).
+const { lang = "en" } = Astro.props;
+const zh = lang === "zh-CN";
+
+const t = zh
+  ? { eyebrow: "Lisa 能做什么", title: "一个工作区，装下每天的事。", tabs: "功能导览", zoom: "放大截图", close: "关闭" }
+  : { eyebrow: "What Lisa does", title: "One workspace for the whole day.", tabs: "Product tour", zoom: "Enlarge screenshot", close: "Close" };
+
+const items = zh
+  ? [
+      { id: "plan", label: "规划与写作", title: "从一份草稿开始", text: "带来一个目标、一段粗略的笔记，或者一个还没想清楚的点子。Lisa 把它整理成计划或初稿，你可以直接修改；她用了哪些工具一目了然，回复随时可以停止或重试。", points: ["规划、写作与想法三种起始入口", "流式回复，工具活动可见", "保留历史，可取消、可重试"], alt: "Lisa 把三件事排成当天的计划" },
+      { id: "memory", label: "记忆", title: "说一次就够了", text: "告诉 Lisa 你的工作习惯，她会把它存成你所运行实例上的普通文件。新会话带着这些上下文开始，她记住了什么，你随时可以查看和修改。", points: ["身份、记忆、观点与日记都是文件", "在同一实例内跨会话延续", "Cloud 与 Mac 各自保存记忆"], alt: "在新会话中，Lisa 回忆起之前告诉她的两件事" },
+      { id: "knowledge", label: "知识库", title: "存下链接，之后再搜", text: "把文章、链接和受支持的视频字幕存进个人知识库。Lisa 可以在对话中检索它，也可以根据你配置的信息源生成简报。", points: ["带链接的 wiki 与实时搜索", "文章与字幕采集", "基于自选信息源的简报"], alt: "知识库中保存的一篇文章与搜索结果" },
+      { id: "room", label: "房间", title: "她在做什么，房间里看得见", text: "Lisa 住在一间小小的像素房间里。处理你的请求时她会坐下来写东西，空闲时看书、喝茶；让她休息一下，她就去打个盹。", points: ["坐姿工作、阅读与喝茶动画", "十二个聊天表情包与情绪立绘", "由她的真实状态驱动"], alt: "Lisa 坐在房间的扶手椅上用笔记本写回复" },
+      { id: "reve", label: "Rêve", title: "回看她学到了什么", text: "对话之后 Lisa 会反思，并可能修订她记住的内容。Rêve 列出每一处改动、背后的对话和上一个版本，你可以一键恢复。", points: ["记忆改动附带来源依据", "可恢复上一版本", "后台运行与用量一目了然"], alt: "Rêve 页面显示一条记忆更新与后台运行统计" },
+      { id: "connectors", label: "连接器", title: "接入你自己的资料", text: "二十二种只读连接器覆盖文档、任务、日历、邮件和设计工具，包括 GitHub、Google 日历、Gmail、Linear、Box 与 Obsidian。由你授权账号，并明确选择 Lisa 可以读取哪些内容。", points: ["只读设计", "读取范围由你选择", "需要本机 OAuth 配置，部分还需额外工具"], alt: "Dashboard 中的 22 种连接器目录" },
+      { id: "control", label: "Control", title: "把任务交出去，每一步由你批准", text: "把任务交给 agent，决定权仍在你手里：每次文件改动都等你批准。Fleet 可以在你授权的工作区启动 Claude Code，在本机或已配对的另一台 Mac 上运行，合并之前可以逐轮查看 diff。", points: ["观察 Claude Code、Codex、OpenCode 与 Aider 会话", "逐步批准或拒绝", "每轮 diff、文件恢复与确认合并"], alt: "Control 页面中一个等待下一步指示的受管任务" },
+    ]
+  : [
+      { id: "plan", label: "Plan & write", title: "Start with a draft", text: "Bring a goal, a rough note or a half-formed idea. Lisa turns it into a plan or a first draft you can edit, shows the tools she used, and lets you stop or retry a reply at any point.", points: ["Planning, writing and idea starters", "Streaming replies with visible tool activity", "History, cancel and retry"], alt: "Lisa turning three tasks into a plan for the day" },
+      { id: "memory", label: "Memory", title: "Tell her once", text: "Tell Lisa how you like to work and she keeps it as plain files on the instance you run. A new session starts with that context, and you can read or change what she remembers at any time.", points: ["Identity, memories, opinions and journals as files", "Carries across sessions within one instance", "Cloud and Mac keep separate memory"], alt: "In a new session, Lisa recalls two things she was told earlier" },
+      { id: "knowledge", label: "Knowledge", title: "Save a link, search it later", text: "Save articles, links and supported video transcripts into a personal knowledge base. Lisa can search it mid-conversation, and build briefs from the feeds you configure.", points: ["A linked wiki with live search", "Article and transcript capture", "Briefs from your own feeds"], alt: "A saved article and a search result in the knowledge base" },
+      { id: "room", label: "Room", title: "A room that shows what she is doing", text: "Lisa lives in a small pixel-art room. She sits down to write while she works on your request, reads or has tea when things are quiet, and naps if you tell her to take a break.", points: ["Seated working, reading and tea animations", "Twelve chat stickers and mood portraits", "Driven by her real state"], alt: "Lisa in her room, writing a reply on a laptop in the armchair" },
+      { id: "reve", label: "Rêve", title: "Review what she learned", text: "After conversations Lisa reflects and may refine what she remembers. Rêve lists each change with the conversation behind it and the previous version, so you can restore it.", points: ["Memory changes with source evidence", "Restore the previous version", "Background runs and usage in view"], alt: "The Rêve view showing one memory update and background run counts" },
+      { id: "connectors", label: "Connectors", title: "Bring your own sources", text: "Twenty-two read-only connectors cover documents, tasks, calendars, mail and design tools, including GitHub, Google Calendar, Gmail, Linear, Box and Obsidian. You authorize an account and choose exactly what Lisa may read.", points: ["Read-only by design", "You pick the resources", "Needs local OAuth setup; some need extra tooling"], alt: "The Dashboard catalog of 22 connectors" },
+      { id: "control", label: "Control", title: "Delegate, then approve each step", text: "Hand a task to an agent and stay in charge: each file change waits for your approval. Fleet can start Claude Code in workspaces you authorize, on this Mac or a paired one, with per-turn diffs to review before anything merges.", points: ["Observes Claude Code, Codex, OpenCode and Aider sessions", "Approve or deny each step", "Per-turn diffs, file restore and confirmed merge"], alt: "The Control view with a managed task waiting for the next instruction" },
+    ];
+---
+<section class="section tour" aria-labelledby="tour-title" data-tour>
+  <p class="eyebrow"><span class="rule"></span>{t.eyebrow}</p>
+  <h2 id="tour-title">{t.title}</h2>
+  <div class="tour-tabs" role="tablist" aria-label={t.tabs}>
+    {items.map((it, i) => (
+      <button class="tour-tab" type="button" role="tab" id={`tour-tab-${it.id}`} aria-controls={`tour-panel-${it.id}`} aria-selected={i === 0 ? "true" : "false"} tabindex={i === 0 ? 0 : -1}>{it.label}</button>
+    ))}
+  </div>
+  <div class="tour-panels">
+    {items.map((it) => (
+      <article class="tour-panel" role="tabpanel" id={`tour-panel-${it.id}`} aria-labelledby={`tour-tab-${it.id}`} tabindex="0">
+        <div class="tour-copy">
+          <p class="clabel">{it.label}</p>
+          <h3>{it.title}</h3>
+          <p>{it.text}</p>
+          <ul>{it.points.map((p) => <li>{p}</li>)}</ul>
+        </div>
+        <figure class="shot">
+          <button class="shot-zoom" type="button" data-zoom={`/shots/${it.id}.webp`} data-alt={it.alt} aria-label={`${t.zoom}: ${it.label}`}>
+            <img src={`/shots/${it.id}.webp`} alt={it.alt} width="1600" height="900" loading="lazy" decoding="async" />
+          </button>
+        </figure>
+      </article>
+    ))}
+  </div>
+  <dialog class="lightbox" aria-label={t.zoom}>
+    <button class="lightbox-close" type="button" aria-label={t.close}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+    <img alt="" width="1600" height="900" />
+  </dialog>
+</section>
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>("[data-tour]")) {
+    const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+    const panels = Array.from(root.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+    const select = (index: number, focus = false) => {
+      tabs.forEach((tab, i) => {
+        const on = i === index;
+        tab.setAttribute("aria-selected", String(on));
+        tab.tabIndex = on ? 0 : -1;
+        panels[i].hidden = !on;
+      });
+      if (focus) tabs[index].focus();
+      // keep the active tab in view when the tab row scrolls sideways (phones)
+      const list = tabs[index].parentElement!;
+      if (list.scrollWidth > list.clientWidth) {
+        const left = tabs[index].offsetLeft - (list.clientWidth - tabs[index].offsetWidth) / 2;
+        list.scrollTo({ left, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      }
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", () => select(i));
+      tab.addEventListener("keydown", (event) => {
+        const move: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 };
+        if (!(event.key in move)) return;
+        event.preventDefault();
+        select((move[event.key] + tabs.length) % tabs.length, true);
+      });
+    });
+    root.dataset.enhanced = "true";
+    select(0);
+
+    // click a screenshot to read it at full size
+    const box = root.querySelector<HTMLDialogElement>("dialog.lightbox");
+    const big = box?.querySelector("img");
+    if (box && big && typeof box.showModal === "function") {
+      for (const button of root.querySelectorAll<HTMLButtonElement>("[data-zoom]")) {
+        button.addEventListener("click", () => { big.src = button.dataset.zoom!; big.alt = button.dataset.alt ?? ""; box.showModal(); });
+      }
+      box.addEventListener("click", (event) => { if (event.target === box || (event.target as HTMLElement).closest(".lightbox-close")) box.close(); });
+      big.addEventListener("click", () => box.close());
+    }
+  }
+</script>
+<style>
+  .tour-tabs { display:none; gap:.5rem; margin-top:1.5rem; padding:.35rem; border:1px solid var(--border); border-radius:14px; background:var(--bg-elev); overflow-x:auto; scrollbar-width:none; }
+  .tour-tabs::-webkit-scrollbar { display:none; }
+  .tour[data-enhanced] .tour-tabs { display:flex; }
+  .tour-tab { flex:1 0 auto; min-height:44px; padding:.55rem 1rem; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--muted); font:500 .95rem var(--display); cursor:pointer; white-space:nowrap; transition:color .15s, background .15s, border-color .15s; }
+  .tour-tab:hover { color:var(--ink); }
+  .tour-tab[aria-selected="true"] { color:var(--ink); background:var(--panel-2); border-color:var(--border-lit); }
+  .tour-tab:focus-visible { outline-offset:2px; }
+  .tour-panels { margin-top:1.4rem; }
+  .tour-panel { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:clamp(1.5rem,4vw,3rem); align-items:center; }
+  .tour-panel + .tour-panel { margin-top:3rem; }
+  .tour[data-enhanced] .tour-panel + .tour-panel { margin-top:0; }
+  .tour-panel[hidden] { display:none; }
+  .tour-panel:focus-visible { outline-offset:8px; border-radius:12px; }
+  .tour-copy .clabel { font-family:var(--mono); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0; }
+  .tour-copy h3 { font-size:clamp(1.35rem,2.4vw,1.75rem); margin:.6rem 0 .2rem; }
+  .tour-copy p { line-height:1.7; }
+  .tour-copy ul { list-style:none; padding:0; margin:1.1rem 0 0; display:grid; gap:.55rem; }
+  .tour-copy li { position:relative; padding-left:1.5rem; color:var(--ink); font-size:.95rem; line-height:1.5; }
+  .tour-copy li::before { content:""; position:absolute; left:.15rem; top:.5em; width:.55rem; height:.3rem; border-left:2px solid var(--accent); border-bottom:2px solid var(--accent); transform:rotate(-45deg); }
+  .shot-zoom { display:block; width:100%; padding:0; border:0; background:none; cursor:zoom-in; }
+  .shot-zoom:focus-visible { outline-offset:-3px; }
+  .lightbox { width:min(96vw,1500px); max-width:none; padding:0; border:1px solid var(--border-lit); border-radius:16px; background:var(--bg-elev); overflow:hidden; }
+  .lightbox::backdrop { background:#000c; backdrop-filter:blur(6px); }
+  .lightbox img { display:block; width:100%; height:auto; cursor:zoom-out; }
+  .lightbox-close { position:absolute; top:.6rem; right:.6rem; width:44px; height:44px; display:grid; place-items:center; border:1px solid var(--border-lit); border-radius:12px; background:var(--panel); color:var(--ink); cursor:pointer; }
+  @media(max-width:900px) {
+    .tour-panel { grid-template-columns:1fr; gap:1.25rem; }
+    .tour-panel .shot { order:-1; }
+    .tour-tab { flex:0 0 auto; }
+  }
+  @media(max-width:640px) {
+    .tour-tabs { margin-inline:calc(-1 * max(1.25rem, env(safe-area-inset-left))); border-radius:0; border-inline:0; padding-inline:max(1.25rem, env(safe-area-inset-left)); }
+  }
+</style>

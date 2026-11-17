@@ -7,20 +7,23 @@ const { lang = "en" } = Astro.props;
 const zh = lang === "zh-CN";
 const watchUrl = `https://www.youtube.com/watch?v=${video.youtubeId}`;
 const t = zh
-  ? { eyebrow: "产品影片", title: "不到 90 秒，认识 Lisa", note: "按下播放后才会从 YouTube 加载影片。", play: "播放影片：认识 Lisa（1 分 24 秒）", open: "在 YouTube 打开" }
-  : { eyebrow: "Product film", title: "Meet Lisa in under 90 seconds", note: "The video loads from YouTube only after you press play.", play: "Play video: Meet Lisa (1 minute 24 seconds)", open: "Open on YouTube" };
+  ? { eyebrow: "产品影片", title: "不到 90 秒，认识 Lisa", text: "0.32 版的一次完整导览，录自一个全新安装的 Lisa。画面全部来自真实运行，等待模型的部分做了加速。", chapters: ["首次启动", "规划与写作", "记忆与知识库", "房间与表情包", "Rêve 与连接器", "Control"], note: "按下播放后才会从 YouTube 加载影片。", play: "播放影片：认识 Lisa（1 分 24 秒）", playShort: "播放影片", open: "在 YouTube 打开" }
+  : { eyebrow: "Product film", title: "Meet Lisa in under 90 seconds", text: "A tour of version 0.32, recorded from a freshly installed Lisa. Every screen is real; time spent waiting on the model is sped up.", chapters: ["First launch", "Plan and write", "Memory and knowledge", "Room and stickers", "Rêve and connectors", "Control"], note: "The video loads from YouTube only after you press play.", play: "Play video: Meet Lisa (1 minute 24 seconds)", playShort: "Play the film", open: "Open on YouTube" };
 ---
 <section class="section promo" aria-labelledby="promo-title">
-  <p class="eyebrow"><span class="rule"></span>{t.eyebrow}</p>
-  <h2 id="promo-title">{t.title}</h2>
   <div class="promo-frame" data-promo data-youtube-id={video.youtubeId} data-title={t.title}>
     <a class="promo-poster" href={watchUrl} aria-label={t.play}>
       <img src={video.poster} alt="" width="1280" height="720" loading="lazy" decoding="async" />
-      <span class="promo-play" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34"><path d="M8 5.2v13.6L19.2 12z" /></svg></span>
-      <span class="promo-time" aria-hidden="true">{video.duration}</span>
+      <span class="promo-play" aria-hidden="true"><span class="promo-dot"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 5.2v13.6L19.2 12z" /></svg></span>{t.playShort}<small>{video.duration}</small></span>
     </a>
   </div>
-  <p class="note promo-note">{t.note} <a href={watchUrl} target="_blank" rel="noopener">{t.open} ↗</a></p>
+  <div class="promo-copy">
+    <p class="eyebrow"><span class="rule"></span>{t.eyebrow}</p>
+    <h2 id="promo-title">{t.title}</h2>
+    <p>{t.text}</p>
+    <ol class="promo-chapters">{t.chapters.map((c) => <li>{c}</li>)}</ol>
+    <p class="note promo-note">{t.note} <a href={watchUrl} target="_blank" rel="noopener">{t.open} ↗</a></p>
+  </div>
 </section>
 <script>
   for (const frame of document.querySelectorAll<HTMLElement>("[data-promo]")) {
@@ -41,17 +44,25 @@ const t = zh
   }
 </script>
 <style>
-  .promo h2 { margin-top:.6rem; }
-  .promo-frame { margin-top:1.3rem; position:relative; aspect-ratio:16 / 9; border:1px solid var(--border); border-radius:24px; overflow:hidden; background:var(--panel); box-shadow:var(--shadow); }
+  .promo { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:clamp(1.5rem,4vw,3rem); align-items:center; }
+  .promo-copy p { line-height:1.7; }
+  .promo-chapters { list-style:none; counter-reset:c; margin:1.1rem 0 0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem 1rem; }
+  .promo-chapters li { counter-increment:c; display:flex; gap:.6rem; align-items:baseline; color:var(--ink); font-size:.93rem; }
+  .promo-chapters li::before { content:counter(c, decimal-leading-zero); flex:none; font:500 .72rem var(--mono); color:var(--blue); }
+  .promo-frame { position:relative; aspect-ratio:16 / 9; border:1px solid var(--border-lit); border-radius:16px; overflow:hidden; background:var(--panel); box-shadow:0 30px 70px -32px rgba(0,0,0,.85); }
+  :root[data-theme="light"] .promo-frame { box-shadow:0 26px 60px -30px rgba(32,45,70,.35); }
   .promo-frame :global(iframe) { position:absolute; inset:0; width:100%; height:100%; border:0; }
   .promo-poster { position:absolute; inset:0; display:block; }
   .promo-poster img { width:100%; height:100%; object-fit:cover; display:block; }
-  .promo-play { position:absolute; left:50%; top:50%; width:84px; height:84px; margin:-42px 0 0 -42px; border-radius:50%; display:grid; place-items:center; background:var(--accent); color:var(--on-accent); box-shadow:0 12px 40px rgba(0,0,0,.45); transition:transform .15s ease; }
-  .promo-play svg { fill:currentColor; margin-left:4px; }
-  .promo-poster:hover .promo-play, .promo-poster:focus-visible .promo-play { transform:scale(1.07); }
+  .promo-play { position:absolute; left:14px; bottom:14px; display:inline-flex; align-items:center; gap:.7rem; padding:.45rem 1rem .45rem .45rem; border-radius:999px; background:rgba(7,9,14,.84); border:1px solid rgba(255,255,255,.2); color:#fff; font:600 .98rem var(--display); box-shadow:0 12px 34px rgba(0,0,0,.45); transition:transform .15s ease, background .15s; }
+  .promo-dot { width:44px; height:44px; border-radius:50%; display:grid; place-items:center; background:var(--accent); color:var(--on-accent); }
+  .promo-dot svg { fill:currentColor; margin-left:3px; }
+  .promo-play small { font:500 .78rem var(--mono); color:rgba(255,255,255,.72); }
+  .promo-poster:hover .promo-play, .promo-poster:focus-visible .promo-play { transform:translateY(-2px); background:rgba(7,9,14,.94); }
   .promo-poster:focus-visible { outline:3px solid var(--accent); outline-offset:-3px; }
-  .promo-time { position:absolute; right:14px; bottom:14px; padding:.25rem .55rem; border-radius:8px; background:rgba(0,0,0,.72); color:#fff; font:500 .85rem var(--mono); }
-  .promo-note { margin-top:.9rem; }
+  .promo-note { margin:1.3rem 0 0; }
+  .promo-note { line-height:1.7; }
   @media (prefers-reduced-motion: reduce) { .promo-play { transition:none; } }
-  @media(max-width:640px) { .promo-frame { border-radius:18px; } .promo-play { width:64px; height:64px; margin:-32px 0 0 -32px; } .promo-note a { display:inline-flex; align-items:center; min-height:44px; } }
+  @media(max-width:900px) { .promo { grid-template-columns:1fr; } }
+  @media(max-width:640px) { .promo-play { left:auto; right:10px; bottom:10px; font-size:.9rem; } .promo-dot { width:40px; height:40px; } .promo-note a { display:inline-flex; align-items:center; min-height:44px; } }
 </style>
