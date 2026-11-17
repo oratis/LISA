@@ -20,7 +20,7 @@ Updated after the v0.9 product review. **One primary hook, one supporting hook:*
 
 Both link the same repo.
 
-Repo: https://github.com/oratis/LISA · Site: https://meetlisa.ai · Demo: https://www.youtube.com/watch?v=J_00iwAB_WI
+Repo: https://github.com/oratis/LISA · Site: https://meetlisa.ai · Demo: https://www.youtube.com/watch?v=QggT1pvKpBU
 
 ---
 
@@ -195,7 +195,7 @@ github.com/oratis/LISA
 |---|---|
 | 主仓 | https://github.com/oratis/LISA |
 | 站点 | https://meetlisa.ai |
-| Demo | https://www.youtube.com/watch?v=J_00iwAB_WI |
+| Demo | https://www.youtube.com/watch?v=QggT1pvKpBU |
 | Tagline (EN) — orchestrator | The agent that watches your agents |
 | Tagline (EN) — soul | An AI agent with a real self |
 | Tagline (CN) | 替你盯住整支 agent 舰队的、有灵魂的本地 AI |

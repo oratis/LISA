@@ -135,11 +135,11 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 ### 演示视频
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">
-    <img src="../assets/demo-thumbnail.png" alt="在 YouTube 观看 LISA 演示" width="720">
+  <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">
+    <img src="../assets/demo-thumbnail.png" alt="在 YouTube 观看 LISA 0.32 影片" width="720">
   </a>
   <br>
-  <i>▶️ <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">在 YouTube 观看 2 分钟演示</a></i>
+  <i>▶️ <a href="https://www.youtube.com/watch?v=QggT1pvKpBU">在 YouTube 观看 0.32 影片</a> · 1:24</i>
 </p>
 
 ### 截图
@@ -202,7 +202,7 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 - **心跳** — `lisa heartbeat run`（手动）或 `lisa heartbeat install`（macOS launchd / Linux cron）
 - **开机自启** — `lisa autostart install` 让 `lisa serve --web` 从登录起就常驻（macOS launchd；Linux 打印 `systemd --user` unit），这样 app、灵动岛、通道随时在线。`lisa autostart status` / `uninstall` 查看 / 移除。
 - **Mac 菜单栏** — Lisa.app 常驻菜单栏，带心情字形 + 实时 agent 状态、一个带 changelog + 更新发现的 About 窗口，以及 ⌘, 偏好面板（灵动岛开关、screen-advisor 间隔、backend 控制）。
-- **iOS — Lisa Pocket** — 1.2 已在[美区 App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058) 上架，支持 iOS/iPadOS 17 及以上的 iPhone / iPad。登录 LISA Cloud 即可聊天，也可配对可达的 Mac，与该实例聊天并管理其 agent。Cloud 与 Mac 分别保存数据。可用性因地区而异，见[当前验证记录](REVIEW_POCKET_LIVE_2026-10-24.md)。
+- **iOS — Lisa Pocket** — 1.4 已在[美区 App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058) 上架，支持 iOS/iPadOS 17 及以上的 iPhone / iPad。登录 LISA Cloud 即可聊天，也可配对可达的 Mac，与该实例聊天并管理其 agent。Cloud 与 Mac 分别保存数据。可用性因地区而异，当前 App Store 状态见 [0.32.0 发布清单](RELEASE_CHECKLIST_v0.32.0.md)。
 
 ### 看着——并操纵——你其它的 agent（编排器）
 
