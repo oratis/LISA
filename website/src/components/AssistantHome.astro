@@ -1,6 +1,8 @@
 ---
 import Base from "../layouts/Base.astro";
 import { appIcon } from "../data/brand.json";
+import PromoVideo from "./PromoVideo.astro";
+import video from "../data/video.json";
 const { lang = "en" } = Astro.props;
 const zh = lang === "zh-CN";
 const prefix = zh ? "/zh-CN" : "";
@@ -70,6 +72,7 @@ const copy = zh ? {
       <ul>{copy.prompts.map((prompt) => <li>{prompt}</li>)}</ul>
     </aside>
   </section>
+  <PromoVideo lang={lang} />
   <section class="section">
     <h2>{copy.featureTitle}</h2>
     <div class="feature-grid">{copy.features.map(([label, title, text]) => <article class="card"><p class="clabel">{label}</p><h3>{title}</h3><p>{text}</p></article>)}</div>
@@ -85,7 +88,7 @@ const copy = zh ? {
   </section>
   <section class="cta-band">
     <h2>{copy.cta}</h2>
-    <div class="actions"><a class="btn-primary" href="https://cloud.meetlisa.ai">{copy.cloud} →</a><a class="btn-ghost" href={`${prefix}/install`}>{copy.install}</a><a class="btn-ghost" href="https://www.youtube.com/watch?v=J_00iwAB_WI">{copy.demo} ↗</a></div>
+    <div class="actions"><a class="btn-primary" href="https://cloud.meetlisa.ai">{copy.cloud} →</a><a class="btn-ghost" href={`${prefix}/install`}>{copy.install}</a><a class="btn-ghost" href={`https://www.youtube.com/watch?v=${video.youtubeId}`}>{copy.demo} ↗</a></div>
   </section>
 </Base>
 <style>
