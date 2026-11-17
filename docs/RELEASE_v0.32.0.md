@@ -2,7 +2,7 @@
 
 Lisa gains natural seated animations, a shared chat sticker collection, a clearer Rêve and Control layout, and a Dashboard catalog of 22 connectors including Box and Obsidian. Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.
 
-The local Mac build was accepted on November 17, 2026, and PR #516 is merged. Channel publication and remaining live-account/device checks are tracked independently in the [release checklist](RELEASE_CHECKLIST_v0.32.0.md).
+The local Mac build was accepted on November 17, 2026, and PR #516 is merged. GitHub artifacts, the signed/notarized Mac app, npm, Homebrew, the hosted backend, relay and website are published and verified. See the [publication record](RELEASE_VERIFICATION_v0.32.0.md) and the [release checklist](RELEASE_CHECKLIST_v0.32.0.md) for channel evidence and remaining live-account/device checks.
 
 ## Companion animation and chat stickers
 
@@ -30,7 +30,7 @@ The local Mac build was accepted on November 17, 2026, and PR #516 is merged. Ch
 - The executing Mac records task events and operation receipts together. Retrying a request cannot start the work twice; reconnecting clients page from their last sequence number. Missing or expired history is marked rather than silently hidden.
 - Task recovery releases an execution slot only after checking the old process identity. Approval outcomes remain visible after the request closes; revocation removes access on the next read and closes live device streams.
 - The owner can share a specific task with a v2-paired Pocket, including a finished task. Pocket receives the task state, agent, turn summaries and approval outcomes, with no source-code diff or tool arguments under the default read-only grant. A separate approval grant is described below. Revocation and re-pairing invalidate the old grant.
-- Pocket keeps its last received timeline in memory across temporary disconnections, catches up on reconnect, and clears it when the account, Mac or authorization changes. This entry requires the new Pocket binary; App Store 1.3 does not include it.
+- Pocket keeps its last received timeline in memory across temporary disconnections, catches up on reconnect, and clears it when the account, Mac or authorization changes. Pocket features require a compatible Pocket binary; the public and complete-extension TestFlight builds are distinguished below.
 
 ## Pocket multi-Mac and task approvals
 
@@ -87,7 +87,7 @@ Feishu adds selected document reads alongside the existing sources and the new T
 
 Pocket 1.4 source opens into Room with nine destinations, real memory/request/session summaries and editable chat starters. Paper and botanical colors, improved reading widths and Chinese copy carry through the app. iPad keeps adaptive layouts and native navigation. Approval payloads scroll above fixed one-time action buttons. Keyboard dismissal and unconfigured-chat setup links are fixed.
 
-Pocket is published separately from this Mac/CLI version. The public App Store version was **1.3** when checked on November 14, 2026. TestFlight upload, App Store submission and approval are separate states; see the [release checklist](RELEASE_CHECKLIST_v0.32.0.md).
+Pocket is published separately from this Mac/CLI version. On November 17, Apple confirmed public **1.4**, build **1794650503**, released November 15. Complete-extension build **1794678341** is valid and available in internal TestFlight; it is not that public binary. The public build was preserved during this release. See the [release checklist](RELEASE_CHECKLIST_v0.32.0.md).
 
 ## Knowledge-base history isolation
 
@@ -95,7 +95,7 @@ Knowledge-base Git history now binds every command to that instance's own reposi
 
 ## Upgrade and remaining limits
 
-- Replace Lisa.app and restart its background service (or restart the Mac) to load the bundled backend. CLI users can run `npm install -g @oratis/lisa@0.32.0` or upgrade the Homebrew formula after it is updated.
+- Replace Lisa.app and restart its background service (or restart the Mac) to load the bundled backend. CLI users can run `npm install -g @oratis/lisa@0.32.0` or `brew update && brew upgrade lisa`.
 - Existing workspaces continue to run without checkpoints until a new isolated workspace is created and granted. Older clients default to Claude; historical tasks without full saved requests cannot generate a handoff packet.
 - The private Fleet ledger retains requests/results for the first 100 turns and confirmed handoff packets. Checkpoint cleanup does not erase those records. Full cleanup now erases those records, task shares and receipts, deletes snapshots and compacts SQLite/WAL. It rotates the operation generation so old requests cannot recreate tasks. Checkpoint quota defaults to 512 MiB across tasks; optional retention clears only old ended-task checkpoints. Finished tasks can preview and confirm one commit into the unchanged clean source branch, with separate source-workspace authorization and optional cleanup of the owned worktree. Cleanup retains task history and refuses ignored files or changed contents. Uncertain filesystem operations reserve the host until the owner verifies them; retries never repeat the write.
 - Pocket saves up to 32 Macs with isolated credentials and pins, explicit switching and safe single-Mac migration. Account changes remove all account-based Macs; direct LAN/QR profiles remain separate. Cloud/Mac histories and credentials do not automatically synchronize.

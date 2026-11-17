@@ -36,15 +36,18 @@ Updated November 17, 2026. Baseline: `01563b84` (PR #510 merged), followed by th
 
 - [x] Complete-extension PR #511 reviewed locally, CI passed and merged. Devin full review was unavailable (expired credits).
 - [x] Knowledge-base Git isolation follow-up PR #512 passed CI/review and merged as `0aadbf40`.
-- [ ] v0.32.0 tag points at the reviewed merge commit.
-- [ ] GitHub artifacts/checksums and npm publication verified.
-- [ ] Signed/notarized Mac DMG verified.
-- [ ] Homebrew formula updated from the published npm tarball.
-- [ ] Cloud Run backend and relay published and smoke-tested, with existing deployment configuration retained.
-- [ ] Website rebuilt after the GitHub release exists, deployed and checked.
+- [x] v0.32.0 tag points at reviewed release-notes merge `47cd9a05` (PR #517), including accepted PR #516. The published tag remains unchanged.
+- [x] GitHub artifacts/checksums and npm publication verified; the npm tarball matches the GitHub source artifact and registry integrity. An isolated npm install reports 0.32.0 and passes CLI help.
+- [x] Signed/notarized universal Mac DMG verified, including checksum, signature, stapled ticket and Gatekeeper. The final official app replaced the local acceptance candidate after backup; backend 0.32.0, native UI, existing sessions, remote identity and account connection were verified.
+- [x] Homebrew formula updated from the published npm tarball; its live URL and SHA-256 match the downloaded package.
+- [x] Cloud Run backend and relay published and smoke-tested, with existing deployment configuration retained. Backend `lisa-cloud-v0-32-0` serves 100% of traffic; relay version `1faddc46-b866-4176-bcca-69b3a1db01a4` passed account authentication, encrypted pairing/requests, heartbeat and revocation after backend promotion.
+- [x] Website rebuilt after the GitHub release exists, deployed as `lisa-web-v0-32-0-notes` and checked at canary and production URLs. Both languages, changelogs, privacy pages and linked styles passed.
 - [x] Pocket 1.4 (1794678341) uploaded successfully through CI on November 15.
 - [x] Apple API verified build 1794678341 as `VALID`, `IN_BETA_TESTING` (internal), `READY_FOR_BETA_SUBMISSION` (external).
-- [ ] Pocket App Store submission (explicitly requested); Apple approval remains a separate external outcome. Public version at the audit was 1.3, released November 7, 2026. A separate UI-release task submitted an earlier 1.4 build (1794650503) at November 14 23:39 Asia/Shanghai; it is waiting for review with automatic release after approval. The complete-extension build 1794678341 is not that submission. Preserve the existing review until the owner chooses replacement versus a subsequent version.
+- [x] Read-only Apple status check on November 17 confirms public Pocket **1.4**, build **1794650503**, is `READY_FOR_DISTRIBUTION`; the public listing records its November 15 release. This was the separate UI-release submission, not a new upload during the Mac release.
+- [ ] Complete-extension Pocket build **1794678341** remains in internal TestFlight and is not the public 1.4 build. Its physical-device acceptance and subsequent App Store publication remain separate work; the existing public binary was preserved.
+
+Channel evidence, artifact checksums and retained rollback revisions are recorded in [v0.32.0 publication verification](RELEASE_VERIFICATION_v0.32.0.md).
 
 ## Complete-extension scope and final validation
 

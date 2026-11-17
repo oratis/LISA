@@ -20,7 +20,7 @@
 | **Mac app** | Web 工作区、菜单栏灵动岛、本地工具和 agent 控制 | 从 Releases 下载已签名、公证的 **Lisa-Suite.dmg**，内置 Node 与后端 |
 | **CLI / 自托管 Web** | 本地助手、自选模型、知识库、集成与开发工具 | Node **22.19+**，以及供应商密钥或本地模型 |
 | **LISA Cloud** | 账号聊天、记忆和知识工具，无需配置 Mac | [登录](https://meetlisa.ai/cloud/)，使用额度与可选充值适用 |
-| **Lisa Pocket（iOS）** | 云聊天或连接可达的 Mac，分别保存两套连接 | **1.3 已在[美区 App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058) 上架**；可用性因地区而异 |
+| **Lisa Pocket（iOS）** | 云聊天或连接可达的 Mac，分别保存两套连接 | **1.4 已在[美区 App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058) 上架**；可用性因地区而异 |
 
 Cloud 与 Mac 是**两个独立实例**，不会自动同步聊天、记忆和凭据。本地工具要求 Mac 开机且网络可达；云端不开放你 Mac 的 shell、邮箱、编程 agent 或主机级推送服务。
 
@@ -80,17 +80,17 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 
 ## 开发状态
 
-**v0.32.0** 汇总已验收的动画与表情包、包含 Box 和 Obsidian 的 22 种连接器、本地化 Control 工作流，以及三期 Fleet 工作流、连接恢复和会话续期（[发布说明](docs/RELEASE_v0.32.0.md)、[更新日志](CHANGELOG.md)）。GitHub Releases、npm、Homebrew、托管服务与 Pocket 分别发布；代码合并不代表所有渠道已更新。验证和剩余门槛见[发布清单](docs/RELEASE_CHECKLIST_v0.32.0.md)。
+**v0.32.0** 汇总已验收的动画与表情包、包含 Box 和 Obsidian 的 22 种连接器、本地化 Control 工作流，以及三期 Fleet 工作流、连接恢复和会话续期（[发布说明](docs/RELEASE_v0.32.0.md)、[更新日志](CHANGELOG.md)）。GitHub 安装包、已公证 Mac 应用、npm、Homebrew、托管后端、中继及官网均已发布并验证；Pocket 单独发布。详见[发布验证记录](docs/RELEASE_VERIFICATION_v0.32.0.md)和[发布清单](docs/RELEASE_CHECKLIST_v0.32.0.md)。
 
 | 工作方向 | 当前状态 |
 | --- | --- |
 | Fleet 时间线、Pocket 指定任务查看、每轮 diff 与 agent 交接 | [#504](https://github.com/oratis/LISA/pull/504)、[#505](https://github.com/oratis/LISA/pull/505)、[#508](https://github.com/oratis/LISA/pull/508) 已实现；Pocket 查看需要新版客户端 |
 | Mac 连接与账号会话 | 已实现局域网/中继恢复、会话续期和撤销、关闭已撤权的流、可操作的连接错误；真机 iPhone 网络切换验收仍待完成 |
 | Pocket Room 与 iPad 布局 | [#509](https://github.com/oratis/LISA/pull/509) 已更新；1.4 源码包含 Room 导航、可编辑起始草稿和共享 Fleet 任务 |
-| iOS App Store | **1.3 已上架**，11 月 7 日发布，2026 年 11 月 14 日复核；源码中的 1.4 新功能不在该安装包中 |
+| iOS App Store | **1.4 已上架**（构建 1794650503），11 月 15 日发布，2026 年 11 月 17 日复核；完整扩展构建 1794678341 仍在内部 TestFlight |
 | Warden、持久目标、例程与 watcher | 已提供；Warden Web 策略需主动启用，托管任务默认关闭 |
 | 模型选择与费用 | 按用途选模型、主动接入的估算预算；不是全局费用上限 |
-| 完整方案扩展 | 多 Mac/独立审批、文件回退、确认合并、账本清理/配额、显式续跑、Codex 工作区、T3 只读与截图上下文已实现，待整体验收发布；[实施记录](docs/EXECUTION_FLEET_COMPLETE_RELEASE_2026-11-14.md) |
+| 完整方案扩展 | 多 Mac/独立审批、文件回退、确认合并、账本清理/配额、显式续跑、Codex 工作区、T3 只读与截图上下文已随 Mac/CLI 0.32.0 发布；完整扩展 Pocket 发布及剩余真实账号/设备验证仍待完成；[实施记录](docs/EXECUTION_FLEET_COMPLETE_RELEASE_2026-11-14.md) |
 | 其他方向 | 跨设备记忆同步和通用写入连接器仍属独立的未来工作 |
 
 Muse 与其他 PA 产品的调研用于指导方向，实现边界见 [Muse 对照](docs/RESEARCH_MUSE_2026-09-27.md)、[全天候助手调研](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md)及[升级计划](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)。LISA 是独立项目。
