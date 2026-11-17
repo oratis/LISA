@@ -1,6 +1,6 @@
 # v0.32.0 release checklist
 
-Updated November 16, 2026. Baseline: `01563b84` (PR #510 merged), followed by the complete-extension candidate. This checklist separates implemented work, verified behavior and channel publication; an unchecked item is not a passing result.
+Updated November 17, 2026. Baseline: `01563b84` (PR #510 merged), followed by the complete-extension candidate. This checklist separates implemented work, verified behavior and channel publication; an unchecked item is not a passing result.
 
 ## Three-phase scope
 
@@ -32,10 +32,10 @@ Updated November 16, 2026. Baseline: `01563b84` (PR #510 merged), followed by th
 - [x] Control integration/localization PR #516 passed Node 22/24, coverage, browser, website, audit and docs CI. Local validation: 4,377 default Node tests plus two opt-in native Codex fixtures; 129 browser tests; 25 final Control/Fleet regressions.
 - [x] Local Mac acceptance candidate built as a universal 0.32.0 app and installed over 0.31.0 after backing up the app, user data and previous backend override. All 39 native tests passed; bundled backend health reports 0.32.0, sessions and remote identity are retained, and the existing account connection is online.
 - [x] Native-window upgrade verification exposed stale cached Fleet assets. Content-versioned paths fixed the mismatch; 29 server tests and 33 Control/Fleet/mobile browser tests passed, including an installed-app offline-cache regression. The rebuilt app's Control → Remote Macs layout was visually verified in the native window.
-- [ ] Owner acceptance of the locally installed 0.32.0 candidate, then merge PR #516 before tagging.
+- [x] Owner accepted the updated local 0.32.0 build on November 17, 2026; PR #516 merged as `30769980`. The final source passed Node 22/24, coverage, 135 browser tests, website, audit and docs CI. Local Node suite: 4,382 passed and two opt-in native Codex skips. Native verification covered 12 stickers, 24 expressions, 22 connector statuses, Rêve, Control and the new seated animation; existing sessions, identity and account connection were preserved.
 
 - [x] Complete-extension PR #511 reviewed locally, CI passed and merged. Devin full review was unavailable (expired credits).
-- [ ] Final knowledge-base Git isolation follow-up PR CI/review and merge.
+- [x] Knowledge-base Git isolation follow-up PR #512 passed CI/review and merged as `0aadbf40`.
 - [ ] v0.32.0 tag points at the reviewed merge commit.
 - [ ] GitHub artifacts/checksums and npm publication verified.
 - [ ] Signed/notarized Mac DMG verified.
@@ -59,7 +59,8 @@ The owner explicitly included the deferred proposals on November 14. Implementat
 - [x] Optional screenshot window/accessibility context, previewed and separately selected before Send.
 - [x] Final local validation: 4,379 Node tests after the final KB isolation fix, 124 Chromium tests, 145 iPhone logic tests (one existing opt-in relay skip), three iPhone UI tests, 11 Mac tests and four relay tests passed; types/contracts/build/docs/format pass, lint has zero errors / 72 existing warnings. Focused review found and fixed a multi-backend cleanup race with a red-to-green regression.
 - [x] Complete-extension candidate CI passed on PR #511.
-- [ ] Final knowledge-base isolation follow-up CI/review.
+- [x] Final knowledge-base isolation follow-up PR #512 passed CI/review and merged.
 - [ ] Real T3 authorization and selected-project read; the environment URL is still needed.
+- [ ] Real Box account authorization and file read; a configured Box OAuth application is still needed. Offline consent/read/refresh regressions passed. Obsidian filesystem acceptance used disposable vaults.
 
 Earlier baseline checks above are retained as evidence, not presented as full validation of these new changes. The second-Mac Control workflow is now verified as scoped above. Physical iPhone, remote sleep/wake and outstanding real-account acceptance remain unchecked until actually observed.
