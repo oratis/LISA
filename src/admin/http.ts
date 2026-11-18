@@ -371,24 +371,28 @@ export async function handleConsole(
     return true;
   }
   try {
-    if (
-      req.method === "GET" &&
-      ["/console", "/console/", "/console/app.js", "/console/app.css"].includes(url.pathname)
-    ) {
-      const asset = url.pathname.endsWith(".js")
-        ? "app.js"
-        : url.pathname.endsWith(".css")
-          ? "app.css"
-          : "index.html";
-      const contents = await fs.readFile(
-        new URL(`../web/assets/console/${asset}`, import.meta.url),
-      );
+    const assets: Record<string, [string, string]> = {
+      "/console": ["console/index.html", "text/html; charset=utf-8"],
+      "/console/": ["console/index.html", "text/html; charset=utf-8"],
+      "/console/app.js": ["console/app.js", "text/javascript; charset=utf-8"],
+      "/console/theme.js": ["console/theme.js", "text/javascript; charset=utf-8"],
+      "/console/app.css": ["console/app.css", "text/css; charset=utf-8"],
+      "/console/theme.css": ["brand/theme.css", "text/css; charset=utf-8"],
+      "/console/fonts/space-grotesk-latin.woff2": [
+        "brand/fonts/space-grotesk-latin.woff2",
+        "font/woff2",
+      ],
+      "/console/fonts/jetbrains-mono-latin.woff2": [
+        "brand/fonts/jetbrains-mono-latin.woff2",
+        "font/woff2",
+      ],
+      "/console/icon.png": ["lisa-app-icon.png", "image/png"],
+    };
+    if (req.method === "GET" && Object.hasOwn(assets, url.pathname)) {
+      const [asset, contentType] = assets[url.pathname]!;
+      const contents = await fs.readFile(new URL(`../web/assets/${asset}`, import.meta.url));
       res.writeHead(200, {
-        "content-type": asset.endsWith(".js")
-          ? "text/javascript; charset=utf-8"
-          : asset.endsWith(".css")
-            ? "text/css; charset=utf-8"
-            : "text/html; charset=utf-8",
+        "content-type": contentType,
       });
       res.end(contents);
       return true;

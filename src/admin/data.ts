@@ -70,6 +70,7 @@ export function paymentChannel(id: string): string {
   return /^\d+$/.test(id) ? "apple" : "other";
 }
 export async function consoleSnapshot(days: number, now = Date.now()) {
+  if (![7, 30, 90].includes(days)) throw new RangeError("Unsupported console range");
   const [accounts, state, paymentPage] = await Promise.all([
     loadAccounts(),
     readAdminState(),
@@ -80,6 +81,29 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
     : [];
   const dayMs = 86400000,
     since = Math.floor(now / dayMs) * dayMs - (days - 1) * dayMs;
+  const today = Math.floor(now / dayMs) * dayMs;
+  // Compare matching UTC calendar windows, including the same partial final day.
+  const previousSince = since - days * dayMs,
+    previousUntil = now - days * dayMs;
+  const previousActive = new Set<string>(),
+    previousPayers = new Set<string>();
+  const activeToday = new Set<string>(),
+    active7 = new Set<string>(),
+    active30 = new Set<string>();
+  const userActiveDays = new Map<string, Set<string>>();
+  const previous = {
+    registrations: 0,
+    active: 0,
+    turns: 0,
+    tokens: 0,
+    faceMicroUSD: 0,
+    creditMicroUSD: 0,
+    paidUsers: 0,
+  };
+  const tokenTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const autonomyTotals = { runs: 0, done: 0, noUpdate: 0, blocked: 0, error: 0, unknown: 0 };
+  let mediaDurationMs = 0,
+    mediaOperations = 0;
   const daily = Array.from({ length: days }, (_, i) => ({
     day: new Date(since + i * dayMs).toISOString().slice(0, 10),
     registrations: 0,
@@ -88,10 +112,19 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
     tokens: 0,
     faceMicroUSD: 0,
     creditMicroUSD: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    paidUsers: 0,
+    creditedTransactions: 0,
+    autonomyRuns: 0,
+    autonomyErrors: 0,
   }));
   const dayMap = new Map(daily.map((d) => [d.day, d]));
   const activeDays = new Map<string, Set<string>>();
   const activeUsers = new Set<string>();
+  const dailyPayers = new Map<string, Set<string>>();
   let totalUsage = 0;
   const models = new Map<
     string,
@@ -105,6 +138,8 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
     source: string;
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
     faceMicroUSD: number;
     durationMs: number;
   }[] = [];
@@ -136,6 +171,7 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
         );
         if (tokenRows.length >= 5000 || mediaRows.length >= 5000)
           warnings.push(`${acct.uid}: 用量日志仅保留最近 5000 条`);
+        if (runs.length >= 2000) warnings.push(`${acct.uid}: 自治日志仅保留最近 2000 条`);
         let lastActiveAt = 0,
           userTurns = 0,
           faceMicroUSD = 0,
@@ -155,18 +191,42 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
           }
           if (timestamp > now) continue;
           lastActiveAt = Math.max(lastActiveAt, timestamp);
+          const tokenCount =
+            num(row.inputTokens) +
+            num(row.outputTokens) +
+            num(row.cacheReadTokens) +
+            num(row.cacheWriteTokens);
+          if (timestamp >= today) activeToday.add(acct.uid);
+          if (timestamp >= today - 6 * dayMs) active7.add(acct.uid);
+          if (timestamp >= today - 29 * dayMs) active30.add(acct.uid);
+          if (timestamp >= previousSince && timestamp <= previousUntil) {
+            previousActive.add(acct.uid);
+            previous.turns++;
+            previous.tokens += tokenCount;
+            previous.faceMicroUSD += num(row.microUSD);
+          }
           if (timestamp < since) continue;
           const record = {
             uid: acct.uid,
-            at,
+            at: new Date(timestamp).toISOString(),
             model: str(row.model),
             source: str(row.source),
             inputTokens: num(row.inputTokens),
             outputTokens: num(row.outputTokens),
+            cacheReadTokens: num(row.cacheReadTokens),
+            cacheWriteTokens: num(row.cacheWriteTokens),
             faceMicroUSD: num(row.microUSD),
             durationMs: num(row.durationMs),
           };
           totalUsage++;
+          tokenTotals.input += record.inputTokens;
+          tokenTotals.output += record.outputTokens;
+          tokenTotals.cacheRead += record.cacheReadTokens;
+          tokenTotals.cacheWrite += record.cacheWriteTokens;
+          if (row.source === "voice_transcribe" || row.source === "voice_dictation") {
+            mediaOperations++;
+            mediaDurationMs += record.durationMs;
+          }
           activeUsers.add(acct.uid);
           usage.push(record);
           if (usage.length >= 2000) {
@@ -175,18 +235,20 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
           }
           userTurns++;
           faceMicroUSD += record.faceMicroUSD;
-          const tokenCount =
-            record.inputTokens +
-            record.outputTokens +
-            num(row.cacheReadTokens) +
-            num(row.cacheWriteTokens);
           tokens += tokenCount;
-          const day = at.slice(0, 10),
+          const day = record.at.slice(0, 10),
             point = dayMap.get(day);
+          const userDays = userActiveDays.get(acct.uid) ?? new Set<string>();
+          userDays.add(day);
+          userActiveDays.set(acct.uid, userDays);
           if (point) {
             point.turns++;
             point.tokens += tokenCount;
             point.faceMicroUSD += record.faceMicroUSD;
+            point.inputTokens += record.inputTokens;
+            point.outputTokens += record.outputTokens;
+            point.cacheReadTokens += record.cacheReadTokens;
+            point.cacheWriteTokens += record.cacheWriteTokens;
           }
           const active = activeDays.get(day) ?? new Set<string>();
           active.add(acct.uid);
@@ -211,16 +273,39 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
           sources.set(record.source, source);
         }
         for (const run of runs) {
-          const at = str(run.startedAt);
-          if (Date.parse(at) >= since && Date.parse(at) <= now)
+          const timestamp = Date.parse(str(run.startedAt));
+          if (!Number.isFinite(timestamp)) {
+            warnings.push(`${acct.uid}: 无效自治记录已跳过`);
+            continue;
+          }
+          if (timestamp >= since && timestamp <= now) {
+            const at = new Date(timestamp).toISOString();
+            const outcome = str(run.outcome);
+            autonomyTotals.runs++;
+            if (outcome === "no-update") autonomyTotals.noUpdate++;
+            else if (outcome === "done" || outcome === "blocked" || outcome === "error")
+              autonomyTotals[outcome]++;
+            else autonomyTotals.unknown++;
+            const point = dayMap.get(at.slice(0, 10));
+            if (point) {
+              point.autonomyRuns++;
+              if (outcome === "error") point.autonomyErrors++;
+            }
             autonomy.push({
               uid: acct.uid,
               at,
               kind: str(run.kind),
-              outcome: str(run.outcome),
+              outcome,
               durationMs: num(run.durationMs),
             });
+            if (autonomy.length >= 2000) {
+              autonomy.sort((a, b) => b.at.localeCompare(a.at));
+              autonomy.splice(1000);
+            }
+          }
         }
+        if (acct.createdAt >= previousSince && acct.createdAt <= previousUntil)
+          previous.registrations++;
         const registrationDay = dayMap.get(new Date(acct.createdAt).toISOString().slice(0, 10));
         if (registrationDay && acct.createdAt <= now) registrationDay.registrations++;
         return {
@@ -242,6 +327,7 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
           sessions,
           knowledge,
           tasks,
+          activeDays: userActiveDays.get(acct.uid)?.size ?? 0,
         };
       }),
     );
@@ -254,8 +340,36 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
   for (const p of payments) {
     if (p.status !== "credited" || !["apple", "stripe"].includes(p.channel)) continue;
     const day = dayMap.get(new Date(p.at).toISOString().slice(0, 10));
-    if (day) day.creditMicroUSD += p.microUSD;
+    if (day) {
+      day.creditMicroUSD += p.microUSD;
+      day.creditedTransactions++;
+      const payers = dailyPayers.get(day.day) ?? new Set<string>();
+      payers.add(p.uid);
+      dailyPayers.set(day.day, payers);
+      day.paidUsers = payers.size;
+    }
   }
+  for (const p of paymentPage.rows) {
+    if (
+      p.at >= previousSince &&
+      p.at <= previousUntil &&
+      p.status === "credited" &&
+      ["apple", "stripe"].includes(paymentChannel(p.transactionId))
+    ) {
+      previous.creditMicroUSD += p.microUSD;
+      previousPayers.add(p.uid);
+    }
+  }
+  previous.active = previousActive.size;
+  previous.paidUsers = previousPayers.size;
+  const formalPayments = payments.filter((p) => ["apple", "stripe"].includes(p.channel));
+  const credited = formalPayments.filter((p) => p.status === "credited");
+  const creditTotal = credited.reduce((s, p) => s + p.microUSD, 0);
+  const payerCount = new Set(credited.map((p) => p.uid)).size;
+  const ratio = (n: number, d: number) => (d > 0 ? n / d : null);
+  const returningActive = users.filter((u) => u.activeDays >= 2).length;
+  const accountKinds = new Map<string, number>();
+  for (const user of users) accountKinds.set(user.kind, (accountKinds.get(user.kind) ?? 0) + 1);
   usage.sort((a, b) => b.at.localeCompare(a.at));
   autonomy.sort((a, b) => b.at.localeCompare(a.at));
   payments.sort((a, b) => b.at - a.at);
@@ -274,6 +388,7 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
   return {
     generatedAt: now,
     range: { days, since, until: now, timezone: "UTC" },
+    comparison: { range: { since: previousSince, until: previousUntil }, summary: previous },
     warnings: [...new Set(warnings)].slice(0, 50),
     summary: {
       users: accounts.length,
@@ -294,6 +409,60 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
       sessions: users.reduce((s, u) => s + u.sessions, 0),
       tasks: users.reduce((s, u) => s + u.tasks, 0),
       suspended: users.filter((u) => u.suspended).length,
+      knowledge: users.reduce((s, u) => s + u.knowledge, 0),
+    },
+    analytics: {
+      engagement: {
+        activeToday: activeToday.size,
+        active7Days: active7.size,
+        active30Days: active30.size,
+        repeatActiveUsers: returningActive,
+        repeatActiveRate: ratio(returningActive, activeUsers.size),
+        turnsPerActiveUser: ratio(totalUsage, activeUsers.size),
+        newActiveUsers: users.filter(
+          (u) => u.createdAt >= since && u.createdAt <= now && u.turns > 0,
+        ).length,
+      },
+      tokens: {
+        ...tokenTotals,
+        cacheReadRate: ratio(
+          tokenTotals.cacheRead,
+          tokenTotals.input + tokenTotals.cacheRead + tokenTotals.cacheWrite,
+        ),
+      },
+      billing: {
+        creditedTransactions: credited.length,
+        averageCreditMicroUSD: ratio(creditTotal, credited.length),
+        creditPerPayerMicroUSD: ratio(creditTotal, payerCount),
+        costPerTurnMicroUSD: ratio(
+          daily.reduce((s, d) => s + d.faceMicroUSD, 0),
+          totalUsage,
+        ),
+        refundedTransactions: formalPayments.filter((p) => p.status === "refunded").length,
+        refundedMicroUSD: formalPayments
+          .filter((p) => p.status === "refunded")
+          .reduce((s, p) => s + p.microUSD, 0),
+        pendingTransactions: formalPayments.filter(
+          (p) => p.status === "pending" || p.status === "refund_pending",
+        ).length,
+        channels: ["apple", "stripe"].map((channel) => ({
+          channel,
+          transactions: credited.filter((p) => p.channel === channel).length,
+          creditMicroUSD: credited
+            .filter((p) => p.channel === channel)
+            .reduce((s, p) => s + p.microUSD, 0),
+        })),
+      },
+      autonomy: {
+        ...autonomyTotals,
+        healthyRate: ratio(autonomyTotals.done + autonomyTotals.noUpdate, autonomyTotals.runs),
+      },
+      media: { operations: mediaOperations, durationMs: mediaDurationMs },
+      accounts: {
+        scanned: users.length,
+        verified: users.filter((u) => u.verified).length,
+        kinds: [...accountKinds].map(([kind, count]) => ({ kind, users: count })),
+      },
     },
     daily,
     users,
@@ -303,6 +472,7 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
     models: modelList,
     sources: [...sources.values()],
     autonomy: autonomy.slice(0, 1000),
+    autonomyTruncated: autonomyTotals.runs > 1000,
     settings: state.settings,
     revision: state.revision,
     roles: state.roles,

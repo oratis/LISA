@@ -77,6 +77,37 @@ warnings identify truncation, invalid records and read failures. Reports read up
 to 2,000 users, 10,000 Firestore payments and 16 MiB per ledger, with warnings.
 Details/CSV usage are the newest 1,000 records; totals use all read records.
 
+Overview includes selectable daily trends and a daily table/CSV with token
+components, unique payers, credited transaction counts and autonomy counts.
+Comparisons shift both window boundaries back 7/30/90 days, including the same
+partial final UTC day. A zero comparison baseline is labelled explicitly,
+and ratios without a denominator display an em dash instead of a fabricated rate.
+
+DAU is the current UTC day; WAU/MAU cover 7/30 UTC days including today,
+independent of the selected report range. Repeat-active users have metered usage
+on at least two distinct UTC dates in the selected range; this is **not cohort
+retention**. New active users registered and used the product within that range.
+Cache-read share divides cache-read tokens by all input tokens (uncached input,
+cache reads and cache writes). Media duration measures audio length, not response
+latency. Average credit per transaction/payer uses formal credited face value.
+Refund/pending counts use the current status of transactions created in the range,
+not the time of refund settlement.
+
+Autonomy totals include every valid read record before the 1,000-row detail cap.
+Normal outcomes are `done` and `no-update`; blocked/error/unknown outcomes remain
+separate. Each user's autonomy ledger retains up to 2,000 rows, with a coverage
+warning at that boundary. All metrics and comparisons share the existing retention
+and read limits; they are not an unbounded historical warehouse.
+
+## Website appearance
+
+The website and console share `src/web/assets/brand/theme.css` and its self-hosted
+Space Grotesk / JetBrains Mono fonts. Both use `lisa-site-theme` for system/light/dark
+preferences. Console assets are explicitly allowlisted under `/console/`; the
+strict script/style CSP and authenticated API access are unchanged. The console
+uses the website's Lisa icon, mobile navigation with keyboard focus containment,
+and scrollable data tables.
+
 Compensation uses `admin:<UUID>` in the existing pending/credited payment state
 machine and balance-level deduplication. Retries after any interrupted write do
 not double-credit. Nobody can grant to their own account. Operators may grant up
