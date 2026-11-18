@@ -386,7 +386,7 @@ export async function handleConsole(
         "brand/fonts/jetbrains-mono-latin.woff2",
         "font/woff2",
       ],
-      "/console/icon.png": ["lisa-app-icon.png", "image/png"],
+      "/console/icon.png": ["brand/icon.png", "image/png"],
     };
     if (req.method === "GET" && Object.hasOwn(assets, url.pathname)) {
       const [asset, contentType] = assets[url.pathname]!;
