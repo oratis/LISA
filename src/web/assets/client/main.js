@@ -2692,6 +2692,7 @@ let historyExhausted = false;
 // after the first /api/history answer. Before that an empty #log just means
 // the fetch is still in flight.
 let historyFetched = false;
+let needsHistoryRefresh = false;
 
 function textOfMessage(msg) {
   if (typeof msg.content === 'string') return msg.content.trim();
@@ -2785,6 +2786,7 @@ log.addEventListener('scroll', () => {
 // server persists it into the session it started in).
 window.lisaResetChatLog = function () {
   chatGeneration++;
+  needsHistoryRefresh = false;
   historyPage = 0;
   historyLoading = false;
   historyExhausted = false;
@@ -3670,6 +3672,15 @@ function setChatStatus(text) {
   if (s) s.textContent = text || '';
 }
 
+// A stale turn can finish after we return to its session and send another
+// message. Reload persisted replies once the live turn releases the composer.
+function refreshChatWhenIdle() {
+  if (!needsHistoryRefresh || sendBtn.disabled) return;
+  const errors = Array.from(log.querySelectorAll('.err-block'));
+  window.lisaResetChatLog();
+  log.append(...errors); // Retry controls are live-only, absent from history.
+}
+
 function hideReplyWait(row) {
   if (!row.isConnected) return;
   window.LisaMotion.unbind(row.querySelector('img'));
@@ -3972,11 +3983,12 @@ async function runChat(message, filesToSend, expression) {
     // refresh if the user is back on that session, else mark it unread.
     if (gen !== chatGeneration && sid) {
       if (sid === window.lisaActiveSessionId) {
-        if (!sendBtn.disabled && typeof window.lisaResetChatLog === 'function') window.lisaResetChatLog();
+        needsHistoryRefresh = true;
       } else if (typeof window.lisaMarkUnread === 'function') {
         window.lisaMarkUnread(sid);
       }
     }
+    refreshChatWhenIdle();
   }
 }
 
@@ -5028,6 +5040,7 @@ if ('serviceWorker' in navigator) {
       input.disabled = on;
       sendBtn.disabled = on;
       input.placeholder = on ? 'switching session…' : composerHint();
+      if (!on) refreshChatWhenIdle();
     } catch (e) {}
   }
   try {

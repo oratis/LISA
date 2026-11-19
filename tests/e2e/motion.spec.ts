@@ -99,6 +99,53 @@ test.describe("LISA motion lifecycle", () => {
     await expect(send).toBeEnabled();
   });
 
+  test("a returning conversation reloads a late reply after its newer turn finishes", async ({
+    page,
+  }) => {
+    const turns: Route[] = [];
+    await page.route("**/chat", (route) => {
+      turns.push(route);
+    });
+    await page.goto(lisa.baseURL);
+    const active = page.locator(".tleaf.active[data-lisa-id]");
+    await expect(active).toHaveCount(1);
+    const id = await active.getAttribute("data-lisa-id");
+    const input = page.locator("#input");
+    const send = page.locator("#sendBtn");
+    await input.fill("First question");
+    await send.click();
+    await expect.poll(() => turns.length).toBe(1);
+    await page.locator("#sbNewSession").click();
+    await expect(active).not.toHaveAttribute("data-lisa-id", id!);
+    await page.locator(`.tleaf[data-lisa-id="${id}"]`).click();
+    await expect(active).toHaveAttribute("data-lisa-id", id!);
+    await input.fill("Second question");
+    await send.click();
+    await expect.poll(() => turns.length).toBe(2);
+    // The server serializes turns in A. On EOF their persisted rows are available.
+    const messages = [
+      { role: "user", content: "First question" },
+      { role: "assistant", content: "First answer" },
+      { role: "user", content: "Second question" },
+      { role: "assistant", content: "Second answer" },
+    ];
+    await page.route("**/api/history?*", (route) =>
+      route.fulfill({ json: { messages, hasMore: false } }),
+    );
+    async function finish(route: Route, text: string) {
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body: "data: " + JSON.stringify({ type: "text", text }) + '\n\ndata: {"type":"done"}\n\n',
+      });
+    }
+    await finish(turns[0]!, "First answer");
+    await expect(page.locator("#log .reply-wait img")).toBeVisible();
+    await expect(send).toBeDisabled();
+    await finish(turns[1]!, "Second answer");
+    await expect(page.locator("#log .msg")).toHaveText(messages.map((m) => m.content));
+    await expect(page.locator("#log .reply-wait")).toHaveCount(0);
+  });
+
   test("Room navigation, backgrounding and reduced motion replace animated sources", async ({
     page,
   }) => {
