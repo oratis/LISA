@@ -38,6 +38,8 @@ targets:
       - path: ../../src/web/assets/visuals/soft-ink-room-v2
         includes: ["read.webp", "work.webp", "tea.webp", "sleep.webp"]
         buildPhase: resources
+      - path: ../../src/web/assets/visuals/soft-ink-motion-v1/thinking.gif
+        buildPhase: resources
     dependencies:
       - target: LisaPocketWidgets
     info:

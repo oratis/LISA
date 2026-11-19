@@ -15,6 +15,7 @@ struct ChatMessage: Identifiable, Equatable {
     var expression: ConversationExpression?
     var expressionLive = false
     var status: Status = .ok
+    var awaitingReply = false
     /// The turn died because the session allowance is spent (HTTP 402). Drives
     /// the inline "Add credits…" button — a second route to the In-App
     /// Purchases that doesn't depend on the Settings quota card rendering.
@@ -160,7 +161,7 @@ final class ChatModel: ObservableObject {
     }
 
     private func runTurn(_ userText: String, client: LisaClient) {
-        messages.append(ChatMessage(role: .lisa, status: .streaming))
+        messages.append(ChatMessage(role: .lisa, status: .streaming, awaitingReply: true))
         let idx = messages.count - 1
         let config = client.config
         sending = true
@@ -172,14 +173,19 @@ final class ChatModel: ObservableObject {
                     guard messages.indices.contains(idx) else { break }
                     switch msg.type {
                     case "text":
-                        if let t = msg.text, !t.isEmpty { messages[idx].text += t }
+                        if let t = msg.text, !t.isEmpty {
+                            messages[idx].awaitingReply = false
+                            messages[idx].text += t
+                        }
                     case "expression":
                         if let expression = ConversationExpression.decode(msg.object["expression"]), messages[idx].expression?.id != expression.id {
+                            messages[idx].awaitingReply = false
                             messages[idx].expression = expression; messages[idx].expressionLive = true
                         }
                     case "tool_start":
-                        if let n = msg.object["name"] as? String, n != "reply_expression", !messages[idx].tools.contains(n) {
-                            messages[idx].tools.append(n)
+                        if let n = msg.object["name"] as? String, n != "reply_expression" {
+                            messages[idx].awaitingReply = true
+                            if !messages[idx].tools.contains(n) { messages[idx].tools.append(n) }
                         }
                     case "error":
                         messages[idx].status = .error
@@ -483,10 +489,10 @@ struct ChatView: View {
         msg.role == .lisa && msg.status == .streaming && msg.text.isEmpty && msg.tools.isEmpty && msg.expression == nil
     }
 
-    /// Show the typing indicator while the newest Lisa turn hasn't produced anything.
+    /// Keep the portrait below tool chips until Lisa resumes her reply.
     private var showTyping: Bool {
-        guard model.sending, let last = model.messages.last else { return false }
-        return isWaitingBubble(last)
+        guard model.sending, let last = model.messages.last, last.status == .streaming else { return false }
+        return last.awaitingReply || (last.text.isEmpty && last.expression != nil && app.expressionPreferences.display == .off)
     }
 
     /// Offer Retry only on the newest turn, when it ended with nothing useful.
@@ -674,23 +680,23 @@ struct MessageBubble: View {
     }
 }
 
-/// Animated "Lisa is typing" dots shown while a turn streams.
+/// Bundled so even a slow first connection shows Lisa immediately.
 struct TypingIndicator: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var animate = false
+    @Environment(\.scenePhase) private var scenePhase
+    private static let clip = Bundle.main.url(forResource: "thinking", withExtension: "gif")
+        .flatMap { try? Data(contentsOf: $0) }
+        .flatMap { LisaArtwork.decodeMotion($0)?.image }
+
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<3) { i in
-                Circle().fill(Theme.secondary).frame(width: 7, height: 7)
-                    .scaleEffect(animate ? 1 : 0.5)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: animate)
+        HStack(spacing: 6) {
+            if let clip = Self.clip, let still = clip.images?.first {
+                PortraitImage(image: still, animation: clip, playing: !reduceMotion && scenePhase == .active)
+                    .frame(width: 28, height: 28)
+                    .accessibilityHidden(true)
             }
+            Text("Lisa is thinking").font(.footnote).foregroundStyle(Theme.secondary)
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
-        .onAppear { animate = !reduceMotion }
-        .onChange(of: reduceMotion) { _, reduced in animate = !reduced }
-        .accessibilityLabel("Lisa is typing")
     }
 }
 

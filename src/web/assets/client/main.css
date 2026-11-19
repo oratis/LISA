@@ -2329,6 +2329,18 @@
      colour, so a stalled backend reads differently from normal thinking. */
   .thinking.waiting { color: var(--warm); font-style: normal; }
 
+  .reply-wait {
+    display: flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 6px;
+    flex-shrink: 0;
+    color: var(--fg-2);
+    font-style: normal;
+    letter-spacing: normal;
+  }
+  .reply-wait img { width: 28px; height: 28px; object-fit: contain; }
+
   /* Tool call card */
   .tool-block {
     background: var(--bg-card);

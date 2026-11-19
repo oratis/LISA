@@ -7,6 +7,12 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.32.1] — 2026-11-19
+
+Mac and Web chat show a 28-pixel animated Lisa portrait beside the waiting message. It appears when you send a message and during tool calls, then disappears when Lisa starts replying.
+
+[Release notes](docs/RELEASE_v0.32.1.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.32.1)
+
 ## [0.32.0] — 2026-11-17
 
 Lisa gains natural seated animations, a shared chat sticker collection, a clearer Rêve and Control layout, and a Dashboard catalog of 22 connectors including Box and Obsidian. Fleet now carries work from an isolated task through per-turn review, selected-file rollback and confirmed merge into its source branch. Pocket can switch between saved Macs, catch up on shared timelines and decide explicitly granted approvals. Codex gains an approved workspace mode alongside packet review. This release also adds full Fleet cleanup and storage controls, explicit continuation of verified-stopped tasks, selected-project T3 reads, optional screenshot context, steadier connections and selected Feishu document reads.

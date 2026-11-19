@@ -617,6 +617,17 @@
         }
       }
     },
+    "Lisa is thinking": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lisa 正在思考"
+          }
+        }
+      }
+    },
     "Lisa is working": {
       "extractionState": "manual",
       "localizations": {

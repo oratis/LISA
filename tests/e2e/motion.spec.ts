@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { startLisa, type LisaInstance } from "./helpers/lisa-server.js";
 
 test.describe("LISA motion lifecycle", () => {
@@ -14,6 +14,136 @@ test.describe("LISA motion lifecycle", () => {
   // server's unrelated initial neutral mood cannot race those snapshots.
   test.beforeEach(async ({ page }) => {
     await page.route("**/events", () => {});
+  });
+
+  test("chat loops the same Lisa portrait through slow replies and tool waits", async ({
+    page,
+  }) => {
+    await page.goto(lisa.baseURL);
+    // Advance the stream one frame at a time to inspect the gaps between replies.
+    await page.evaluate(() => {
+      const fetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (input !== "/chat") return fetch(input, init);
+        const body = new ReadableStream({
+          start(controller) {
+            window.addEventListener("test-chat-frame", (event) => {
+              const frame = (event as CustomEvent).detail;
+              controller.enqueue(
+                new TextEncoder().encode("data: " + JSON.stringify(frame) + "\n\n"),
+              );
+              if (frame.type === "done") controller.close();
+            });
+          },
+        });
+        return Promise.resolve(new Response(body));
+      };
+    });
+    const frame = (detail: Record<string, string>) =>
+      page.evaluate(
+        (detail) => window.dispatchEvent(new CustomEvent("test-chat-frame", { detail })),
+        detail,
+      );
+    await page.locator("#input").fill("Hello Lisa");
+    await page.locator("#sendBtn").click();
+    const wait = page.locator("#log .reply-wait");
+    const portrait = wait.locator("img");
+    await expect(portrait).toHaveAttribute("src", /\/thinking\.webp$/);
+    await expect
+      .poll(() => portrait.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    await expect(wait).toContainText("waiting for the backend");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(portrait).toHaveAttribute("src", /thinking-static\.webp$/);
+    await frame({ type: "text", text: "Let me check." });
+    await expect(wait).toHaveCount(0);
+    await frame({ type: "tool_start", name: "lookup" });
+    await expect(page.locator(".tool-block + .reply-wait")).toContainText("Lisa is thinking");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(portrait).toHaveAttribute("data-motion-state", "playing");
+    await frame({ type: "tool_end", name: "lookup" });
+    await expect(portrait).toBeVisible();
+    await frame({ type: "text", text: "Here it is." });
+    await expect(wait).toHaveCount(0);
+    await frame({ type: "done" });
+    await expect(page.locator("#sendBtn")).toBeEnabled();
+  });
+
+  test("a late reply leaves the new session's waiting portrait in place", async ({ page }) => {
+    const turns: Route[] = [];
+    await page.route("**/chat", (route) => {
+      turns.push(route);
+    });
+    await page.goto(lisa.baseURL);
+    const input = page.locator("#input");
+    const send = page.locator("#sendBtn");
+    const portrait = page.locator("#log .reply-wait img");
+    await input.fill("First turn");
+    await send.click();
+    await expect(portrait).toBeVisible();
+    await page.locator("#sbNewSession").click();
+    await expect(portrait).toHaveCount(0);
+    await input.fill("Second turn");
+    await send.click();
+    await expect.poll(() => turns.length).toBe(2);
+    await turns[0]!.fulfill({
+      contentType: "text/event-stream",
+      body: 'data: {"type":"done"}\n\n',
+    });
+    await expect(page.locator(".tleaf.unread")).toHaveCount(1);
+    await expect(portrait).toHaveAttribute("data-motion-state", "playing");
+    await expect(send).toBeDisabled();
+    await turns[1]!.fulfill({ status: 503, body: "Service unavailable" });
+    await expect(page.locator("#log .err-retry")).toBeVisible();
+    await expect(portrait).toHaveCount(0);
+    await expect(send).toBeEnabled();
+  });
+
+  test("a returning conversation reloads a late reply after its newer turn finishes", async ({
+    page,
+  }) => {
+    const turns: Route[] = [];
+    await page.route("**/chat", (route) => {
+      turns.push(route);
+    });
+    await page.goto(lisa.baseURL);
+    const active = page.locator(".tleaf.active[data-lisa-id]");
+    await expect(active).toHaveCount(1);
+    const id = await active.getAttribute("data-lisa-id");
+    const input = page.locator("#input");
+    const send = page.locator("#sendBtn");
+    await input.fill("First question");
+    await send.click();
+    await expect.poll(() => turns.length).toBe(1);
+    await page.locator("#sbNewSession").click();
+    await expect(active).not.toHaveAttribute("data-lisa-id", id!);
+    await page.locator(`.tleaf[data-lisa-id="${id}"]`).click();
+    await expect(active).toHaveAttribute("data-lisa-id", id!);
+    await input.fill("Second question");
+    await send.click();
+    await expect.poll(() => turns.length).toBe(2);
+    // The server serializes turns in A. On EOF their persisted rows are available.
+    const messages = [
+      { role: "user", content: "First question" },
+      { role: "assistant", content: "First answer" },
+      { role: "user", content: "Second question" },
+      { role: "assistant", content: "Second answer" },
+    ];
+    await page.route("**/api/history?*", (route) =>
+      route.fulfill({ json: { messages, hasMore: false } }),
+    );
+    async function finish(route: Route, text: string) {
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body: "data: " + JSON.stringify({ type: "text", text }) + '\n\ndata: {"type":"done"}\n\n',
+      });
+    }
+    await finish(turns[0]!, "First answer");
+    await expect(page.locator("#log .reply-wait img")).toBeVisible();
+    await expect(send).toBeDisabled();
+    await finish(turns[1]!, "Second answer");
+    await expect(page.locator("#log .msg")).toHaveText(messages.map((m) => m.content));
+    await expect(page.locator("#log .reply-wait")).toHaveCount(0);
   });
 
   test("Room navigation, backgrounding and reduced motion replace animated sources", async ({
