@@ -13,7 +13,7 @@
 
 **开源 AI Personal Assistant（个人 AI 助手），帮助你规划、写作和整理个人知识。** 用 Lisa 规划一天、起草消息、整理个人知识库，或在 Mac 上协调编程 agent。可以使用托管的 LISA Cloud 聊天，也可以自行运行、选择模型。
 
-[官网](https://meetlisa.ai) · [使用指南](docs/GUIDE.zh-CN.md) · [0.32 更新内容](docs/RELEASE_v0.32.0.md) · [最新版本](https://github.com/oratis/LISA/releases/latest) · [路线图](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
+[官网](https://meetlisa.ai) · [使用指南](docs/GUIDE.zh-CN.md) · [0.32.1 更新内容](docs/RELEASE_v0.32.1.md) · [最新版本](https://github.com/oratis/LISA/releases/latest) · [路线图](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=QggT1pvKpBU"><img src="assets/demo-thumbnail.png" alt="在 YouTube 观看 LISA 0.32 影片" width="860"></a><br>
@@ -88,11 +88,11 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 
 ## 开发状态
 
-**v0.32.0** 是当前版本：动画与表情包更新、包含 Box 和 Obsidian 的 22 种连接器、本地化的 Control 工作流，以及三期 Fleet 工作流、连接恢复和会话续期。GitHub 安装包、已公证 Mac 应用、npm、Homebrew、托管后端、中继及官网均已发布并验证；Pocket 单独发布。详见[发布说明](docs/RELEASE_v0.32.0.md)、[更新日志](CHANGELOG.md)、[发布验证记录](docs/RELEASE_VERIFICATION_v0.32.0.md)和[发布清单](docs/RELEASE_CHECKLIST_v0.32.0.md)。
+**v0.32.1** 在等待聊天回复时显示 Lisa 的小头像动画。详见[发布说明](docs/RELEASE_v0.32.1.md)及[更新日志](CHANGELOG.md)。
 
 | 方向 | 当前状态 |
 | --- | --- |
-| Mac app、CLI 与自托管 Web | 0.32.0 已在所有渠道发布 |
+| Mac app、CLI 与自托管 Web | 0.32.1 新增聊天等待头像 |
 | Fleet：时间线、每轮 diff、交接、文件恢复、确认合并、清理与配额 | 已随 Mac/CLI 0.32.0 发布。使用真实 Claude 供应商的第二台 Mac 验收已通过；新建文件 Write 与远程 Codex 实测不在该验收范围内。在 Pocket 查看被分享的任务需要包含该功能的 Pocket 版本 |
 | Mac 连接与账号会话 | 已实现局域网/中继恢复、会话续期和撤销；真机 iPhone 网络切换验收仍待完成 |
 | Lisa Pocket（iOS） | **1.4 已在美区 App Store 上架**（2026 年 11 月 15 日发布），包含 Room 与 iPad 更新。增加多 Mac 切换和任务审批的完整扩展构建仍在内部 TestFlight |

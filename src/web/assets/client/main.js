@@ -2790,7 +2790,9 @@ window.lisaResetChatLog = function () {
   historyExhausted = false;
   currentLisaSpan = null;
   pendingTools.clear();
-  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+  log.querySelectorAll('.reply-wait').forEach(hideReplyWait);
+  setChatStatus('');
+  if (!input.disabled) sendBtn.disabled = false;
   log.innerHTML = '';
   historyFetched = false;
   loadHistoryPage();
@@ -3607,7 +3609,6 @@ document.addEventListener('keydown', function (e) {
 
 let currentLisaSpan = null;
 let pendingTools = new Map();
-let thinkingEl = null;
 // Bumped by lisaResetChatLog on every session switch; runChat captures the
 // value at send time and stops rendering once it goes stale.
 let chatGeneration = 0;
@@ -3669,9 +3670,14 @@ function setChatStatus(text) {
   if (s) s.textContent = text || '';
 }
 
+function hideReplyWait(row) {
+  if (!row.isConnected) return;
+  window.LisaMotion.unbind(row.querySelector('img'));
+  row.remove();
+}
+
 function ensureLisaSpan() {
   if (currentLisaSpan) return currentLisaSpan;
-  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   el('div', 'role lisa', 'LISA');
   currentLisaSpan = el('span', 'msg', '');
   setChatStatus(tr('chat.replying'));
@@ -3790,7 +3796,6 @@ function maybeOfferKbIngest(message) {
 // turn. Kept separate from send() so retry never re-appends the user's bubble
 // or re-reads the (already-cleared) attachment tray.
 function showError(detail, message, filesToSend, expression) {
-  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   const block = el('div', 'err-block', null);
   const head = document.createElement('div');
   head.className = 'err-head';
@@ -3805,6 +3810,7 @@ function showError(detail, message, filesToSend, expression) {
   retry.className = 'err-retry';
   retry.textContent = tr('err.retry');
   retry.addEventListener('click', () => {
+    if (sendBtn.disabled) return;
     block.remove();
     runChat(message, filesToSend, expression);
   });
@@ -3821,24 +3827,39 @@ async function runChat(message, filesToSend, expression) {
   const sid = window.lisaActiveSessionId || null;
   currentLisaSpan = null;
   pendingTools.clear();
-  thinkingEl = el('div', 'thinking', '⋯ thinking');
-  setChatStatus(tr('chat.thinking'));
+  const waitRow = document.createElement('div');
+  waitRow.className = 'thinking reply-wait';
+  const portrait = document.createElement('img');
+  portrait.alt = '';
+  const label = document.createElement('span');
+  label.textContent = tr('chat.thinking');
+  waitRow.append(portrait, label);
+  function showReplyWait() {
+    if (waitRow.isConnected) return;
+    log.appendChild(waitRow);
+    window.LisaMotion.bind(portrait, 'thinking', '/assets/lisa/thoughtful.png');
+    setChatStatus(label.textContent);
+    log.scrollTop = log.scrollHeight;
+  }
+  showReplyWait();
   // UX-10: /chat answers within a few hundred ms normally. If two seconds
   // pass with no frame at all, the backend is busy or stalled — say so on the
   // same line rather than leaving "⋯ thinking" to mean both.
   let sawFrame = false;
   let waitTimer = setTimeout(function () {
-    if (sawFrame || gen !== chatGeneration || !thinkingEl) return;
-    thinkingEl.classList.add('waiting');
-    thinkingEl.textContent = tr('chat.waiting');
+    if (sawFrame || gen !== chatGeneration || !waitRow.isConnected) return;
+    waitRow.classList.add('waiting');
+    label.textContent = tr('chat.waiting');
+    setChatStatus(label.textContent);
   }, 2000);
   const noteFrame = () => {
     if (sawFrame) return;
     sawFrame = true;
     clearTimeout(waitTimer);
-    if (thinkingEl && thinkingEl.classList.contains('waiting')) {
-      thinkingEl.classList.remove('waiting');
-      thinkingEl.textContent = '⋯ thinking';
+    if (waitRow.classList.contains('waiting')) {
+      waitRow.classList.remove('waiting');
+      label.textContent = tr('chat.thinking');
+      setChatStatus(label.textContent);
     }
   };
   // The agent emits an error event AND the server re-sends it from its turn
@@ -3847,6 +3868,7 @@ async function runChat(message, filesToSend, expression) {
   const fail = (detail) => {
     if (errored || gen !== chatGeneration) return;
     errored = true;
+    hideReplyWait(waitRow);
     setChatStatus(tr('chat.failed'));
     showError(detail, message, filesToSend, expression);
   };
@@ -3856,6 +3878,7 @@ async function runChat(message, filesToSend, expression) {
       headers: {'content-type': 'application/json'},
       body: JSON.stringify({message, files: filesToSend, sessionId: sid, expressions: true, expression}),
     });
+    if (!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -3870,16 +3893,17 @@ async function runChat(message, filesToSend, expression) {
         const m = evRaw.match(/^data: (.*)$/m);
         if (!m) continue;
         const ev = JSON.parse(m[1]);
-        noteFrame();
         // Stale generation (the user switched sessions mid-reply): drain the
         // stream without touching the DOM; the reply persists server-side.
         if (gen !== chatGeneration) continue;
+        noteFrame();
         if (ev.type === 'text') {
+          if (!ev.text) continue;
+          hideReplyWait(waitRow);
           const span = ensureLisaSpan();
           span._md = (span._md || '') + ev.text;
           scheduleLisaRender();
         } else if (ev.type === 'tool_start') {
-          if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
           flushLisaRender();
           currentLisaSpan = null;
           const block = el('div', 'tool-block', null);
@@ -3896,6 +3920,9 @@ async function runChat(message, filesToSend, expression) {
             block.appendChild(p);
           }
           pendingTools.set(ev.name, block);
+          if (waitRow.isConnected) log.insertBefore(block, waitRow);
+          else showReplyWait();
+          log.scrollTop = log.scrollHeight;
         } else if (ev.type === 'tool_end') {
           const block = pendingTools.get(ev.name);
           if (block) {
@@ -3912,7 +3939,11 @@ async function runChat(message, filesToSend, expression) {
           }
         } else if (ev.type === 'expression') {
           flushLisaRender();
-          if (ev.expression && !log.querySelector('[data-expression-id="' + CSS.escape(ev.expression.id) + '"]')) log.appendChild(window.LisaExpressions.create(ev.expression, true));
+          if (ev.expression && !log.querySelector('[data-expression-id="' + CSS.escape(ev.expression.id) + '"]')) {
+            const bubble = window.LisaExpressions.create(ev.expression, true);
+            log.appendChild(bubble);
+            if (!bubble.hidden) hideReplyWait(waitRow);
+          }
           void window.LisaExpressions.refresh();
           log.scrollTop = log.scrollHeight;
         } else if (ev.type === 'mood') {
@@ -3920,20 +3951,20 @@ async function runChat(message, filesToSend, expression) {
         } else if (ev.type === 'error') {
           fail(ev.message);
         } else if (ev.type === 'done') {
-          if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+          hideReplyWait(waitRow);
           flushLisaRender();
           setChatStatus(tr('chat.done'));
         }
       }
     }
-    if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   } catch (err) {
     fail(err.message);
   } finally {
     // The turn is over one way or another — never let the 2s escalation fire
     // onto a finished (or failed) turn.
     clearTimeout(waitTimer);
-    sendBtn.disabled = false;
+    hideReplyWait(waitRow);
+    if (gen === chatGeneration && !input.disabled) sendBtn.disabled = false;
     void githubRefresh();
     // A completed reply must not reopen a dismissed phone keyboard.
     if (!window.matchMedia('(max-width: 720px)').matches) input.focus();
@@ -3941,7 +3972,7 @@ async function runChat(message, filesToSend, expression) {
     // refresh if the user is back on that session, else mark it unread.
     if (gen !== chatGeneration && sid) {
       if (sid === window.lisaActiveSessionId) {
-        if (typeof window.lisaResetChatLog === 'function') window.lisaResetChatLog();
+        if (!sendBtn.disabled && typeof window.lisaResetChatLog === 'function') window.lisaResetChatLog();
       } else if (typeof window.lisaMarkUnread === 'function') {
         window.lisaMarkUnread(sid);
       }

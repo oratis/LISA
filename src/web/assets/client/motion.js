@@ -54,18 +54,20 @@
     element.dataset.motionClip = id || '';
     render(binding);
   }
+  function unbind(element) {
+    if (observer) observer.unobserve(element);
+    bindings.delete(element);
+    element.onload = element.onerror = null;
+    element.removeAttribute('src');
+  }
   // Hosts repeat themselves (macOS reports every window's occlusion change,
   // the shell re-posts Room visibility on each view switch). Listeners reset
   // timers and the camera, so they only hear about real transitions.
   let announced = '';
   function refresh() {
     for (const [element, binding] of bindings) {
-      if (!element.isConnected) {
-        if (observer) observer.unobserve(element);
-        bindings.delete(element);
-        element.onload = element.onerror = null;
-        element.removeAttribute('src');
-      } else render(binding);
+      if (!element.isConnected) unbind(element);
+      else render(binding);
     }
     const playing = active();
     document.documentElement.dataset.motion = playing ? 'playing' : 'paused';
@@ -86,7 +88,7 @@
   window.addEventListener('message', event => {
     if (event.source === window.parent && event.origin === location.origin && event.data && event.data.type === 'lisa-room-visibility') setHostVisible(event.data.visible);
   });
-  window.LisaMotion = Object.freeze({ bind, active, setHostVisible, portraits: manifest.portraits, poses: manifest.poses, stickers: manifest.stickers });
+  window.LisaMotion = Object.freeze({ bind, unbind, active, setHostVisible, portraits: manifest.portraits, poses: manifest.poses, stickers: manifest.stickers });
   refresh();
   if (window.parent !== window) window.parent.postMessage({ type: 'lisa-room-ready' }, location.origin);
 })();
