@@ -82,7 +82,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",
-    "@google/genai": "^2.32.0",
+    "@google/genai": "^3.3.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "imapflow": "^2.10.2",
     "music-metadata": "^12.3.4",
