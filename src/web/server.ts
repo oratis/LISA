@@ -1,3 +1,8 @@
+import { gameReadIntent, type GamingProvider } from "../connectors/gaming/catalog.js";
+import { ItchDriver } from "../connectors/gaming/itch.js";
+import { SteamDriver } from "../connectors/gaming/steam.js";
+import { GameImportDriver, openGameImportStore } from "../connectors/gaming/import.js";
+import { PublicGames } from "../connectors/gaming/public-games.js";
 import { ObsidianDriver, isObsidianReadRequest } from "../connectors/obsidian.js";
 import { handleConsole } from "../admin/http.js";
 import { featureAllowed } from "../admin/store.js";
@@ -110,7 +115,12 @@ import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
 import { aiRecipients } from "./ai-disclosure.js";
-import { providerForModel, resolveDefaultModel } from "../providers/registry.js";
+import {
+  providerForModel,
+  providerForExactModel,
+  exactModelRecipient,
+  resolveDefaultModel,
+} from "../providers/registry.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
 import { listSessionsOnDisk } from "../sessions/list.js";
@@ -440,6 +450,9 @@ export interface WebServerOptions {
   driveDriver?: ReadonlyDriver<DriveAccount, DriveResource>;
   workspaceDrivers?: Partial<
     Record<WorkspaceId, ReadonlyDriver<WorkspaceResource, WorkspaceResource>>
+  >;
+  gameDrivers?: Partial<
+    Record<GamingProvider, ReadonlyDriver<WorkspaceResource, WorkspaceResource>>
   >;
   obsidianDriver?: ReadonlyDriver<WorkspaceResource, WorkspaceResource>;
   t3Driver?: ReadonlyDriver<T3Account, T3Resource>;
@@ -1062,6 +1075,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     signal,
     commit,
     provider,
+    recipient,
+    persistTrace,
   }: ConnectorResume<unknown, unknown>) => {
     const chat = await ctxForSessionId(request.sessionId);
     ctxTurnStart(chat);
@@ -1071,13 +1086,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         await commit(async () => {});
         return;
       }
-      const fresh = await rebuildPrompt();
+      // A game grant carries only this request and the selected records. Prior turns
+      // and personal memory may belong to a different grant or model.
+      const system = recipient
+        ? "You are Lisa. Answer the user’s game-library question in their language."
+        : (await rebuildPrompt()).text;
       const context = selectWebModelContextForTurn({
-        history: chat.history,
-        systemPrompt: fresh.text,
+        history: recipient ? [] : chat.history,
+        systemPrompt: system,
         text: request.prompt,
         budgetTokens: Math.min(webContextBudgetTokens(), 24_000),
-        latestReflection: chat.reflectionSummary,
+        latestReflection: recipient ? undefined : chat.reflectionSummary,
       });
       // A fresh, closed tool snapshot. No legacy gh writes, shell, plugins, nested agents,
       // arbitrary web egress or hooks are available in this authorization continuation.
@@ -1091,7 +1110,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         ...tools,
       ];
       const prompt =
-        fresh.text +
+        system +
         context.systemSuffix +
         `\n[Trusted connector continuation]\nThe user has granted ${provider} read access in the connection UI. ` +
         `Continue the original user task using ${tools.map((t) => t.name).join(", ")}, starting with operation=list. ` +
@@ -1112,8 +1131,29 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         hasAttachments: false,
         hasHistory: context.history.length > 0,
       });
+      if (recipient && recipient !== exactModelRecipient(activeModel))
+        throw new GitHubError("connector_recipient_changed");
+      // Bind gaming grants to the chosen recipient. A fallback chain can send the
+      // same tool output to a second model, so these continuations use one provider.
+      const model = activeModel;
+      const selectedProvider = recipient
+        ? (opts.provider ?? providerForExactModel(model, true))
+        : getProvider();
       const result = await runAgent({
-        provider: getProvider(),
+        provider: persistTrace
+          ? {
+              name: selectedProvider.name,
+              runTurn: async (options) => {
+                let pending!: ReturnType<typeof selectedProvider.runTurn>;
+                await persistTrace(async () => {
+                  pending = selectedProvider.runTurn(options);
+                  // The response may settle before the state lock is released.
+                  void pending.catch(() => {});
+                });
+                return pending;
+              },
+            }
+          : selectedProvider,
         systemPrompt: prompt,
         tools: readTools,
         toolCtx: {
@@ -1125,15 +1165,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         },
         history: context.history,
         userMessage: `[Connector system event: ${provider} read access is ready. Resume the original request.]`,
-        model: activeModel,
+        model,
         thinking: policy.thinking,
         maxIterations: 12,
         maxTokens: 4096,
         budgetTokens: 50_000,
         approval: wardenTurn?.approval ?? webApproval,
         onEvent: (ev) => wardenTurn?.observe(ev),
-        onMessagePersist: (message) => chat.session.appendConnectorTrace(request.id, message),
-        onPromptPersist: (text, reason) => chat.session.appendPrompt(text, reason),
+        onMessagePersist: (message) => {
+          const write = () => chat.session.appendConnectorTrace(request.id, message);
+          return persistTrace ? persistTrace(write) : write();
+        },
+        onPromptPersist: (text, reason) => {
+          const write = async () => {
+            await chat.session.appendPrompt(text, reason);
+          };
+          return persistTrace ? persistTrace(write) : write();
+        },
       });
       if (["max_iterations", "budget_exceeded", "max_tokens"].includes(result.stopReason))
         throw new GitHubError("resume_limit_reached");
@@ -1174,7 +1222,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         })
       : undefined;
   const taskConnectors = new Map<ConnectorProvider, ConnectorService>();
+  const publicGames =
+    !cloudEdition && capabilityProfile === "local-owner" && connectorSecrets
+      ? new PublicGames()
+      : undefined;
   if (!cloudEdition && capabilityProfile === "local-owner" && connectorSecrets) {
+    for (const builtIn of [new GameImportDriver(), new ItchDriver(), new SteamDriver()] as const) {
+      const provider = builtIn.id;
+      const driver: ReadonlyDriver<WorkspaceResource, WorkspaceResource> =
+        opts.gameDrivers?.[provider] ?? builtIn;
+      // Keep an existing grant available for disconnect even if the operator removes its app keys.
+      if (
+        driver.configured &&
+        !(await driver.configured()) &&
+        !existsSync(path.join(lisaHome(), "connectors", provider, "state.json"))
+      )
+        continue;
+      taskConnectors.set(
+        provider,
+        new ReadonlyConnector({
+          home: lisaHome(),
+          driver,
+          secrets:
+            provider === "game-library"
+              ? (opts.connectorSecrets ?? openGameImportStore(lisaHome()))
+              : connectorSecrets,
+          recipient: () => exactModelRecipient(activeModel),
+          forgetGrantOnDisconnect: true,
+          resume: resumeConnector,
+          changed: (sessionId) =>
+            broadcast({ type: "connector_connection_changed", provider, sessionId }, null),
+        }),
+      );
+    }
     taskConnectors.set(
       "obsidian",
       new ReadonlyConnector({
@@ -3474,6 +3554,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         taskConnectors,
         !cloud && !accountUid && isLoopbackAddress(remoteAddr),
         githubConnector?.service,
+        publicGames,
+        publicGames ? exactModelRecipient(activeModel) : undefined,
       )
     )
       return;
@@ -6066,14 +6148,25 @@ self.addEventListener('fetch', (event) => {
         !accountUid &&
         isLoopbackAddress(remoteAddr) &&
         !crossSiteProblem(req, true, null);
-      const catalogReply =
-        connectorOwner && !files?.length
-          ? connectorCatalogReply(
-              message,
-              req.headers["accept-language"],
-              (id) => id === "github" || taskConnectors.has(id),
-            )
+      const gamingProvider = connectorOwner ? gameReadIntent(message) : undefined;
+      const gameSetupReply =
+        gamingProvider && !taskConnectors.has(gamingProvider)
+          ? /[一-龥]/u.test(message)
+            ? "本机尚未配置这个游戏连接器。打开总览中的应用连接器查看配置要求，或使用 Playnite CSV 导入你选定的游戏。"
+            : "This game connector needs setup on this host. Open App connectors on the dashboard for setup details, or import selected games from a Playnite CSV."
           : undefined;
+      const catalogReply =
+        gamingProvider && files?.length
+          ? /[一-龥]/u.test(message)
+            ? "请使用游戏清单连接器的本机 CSV 选择器。你可以先预览，再把选定的游戏交给聊天模型。"
+            : "Use the Game Library connector’s local CSV picker to preview the file and share only selected games with chat."
+          : connectorOwner && !files?.length
+            ? (connectorCatalogReply(
+                message,
+                req.headers["accept-language"],
+                (id) => id === "github" || taskConnectors.has(id),
+              ) ?? gameSetupReply)
+            : undefined;
       const connectorRevision =
         connectorOwner && !catalogReply
           ? (chat.connectorRevision = (chat.connectorRevision ?? 0) + 1)
@@ -6182,6 +6275,7 @@ self.addEventListener('fetch', (event) => {
             return;
           }
           const requestedProviders: ConnectorProvider[] = [
+            ...(gamingProvider ? [gamingProvider] : []),
             ...workspaceReadIntents(message).filter((id) => taskConnectors.has(id)),
             ...(isObsidianReadRequest(message) ? ["obsidian" as const] : []),
             ...googleReadIntents(message),
@@ -6242,7 +6336,10 @@ self.addEventListener('fetch', (event) => {
               send({ type: "done" });
               return;
             }
-            const request = await requestedConnector.create(chat.session.id, message);
+            const newFile =
+              gamingProvider === "game-library" &&
+              /\b(?:import|CSV|TSV|new file)\b|导入|新文件|换一[份个]/iu.test(message);
+            const request = await requestedConnector.create(chat.session.id, message, newFile);
             if (chat.connectorRevision !== connectorRevision) {
               await requestedConnector.cancel(request.id);
               send({ type: "done" });

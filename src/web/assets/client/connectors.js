@@ -5,6 +5,8 @@ let githubRefreshing = false;
 let githubHistoryDirty = false;
 let githubLastSession = '';
 const workspaceCards = new Map();
+let gamingModelName = "";
+const gameNames = {itch: "itch.io", steam: "Steam", "game-library": "Game Library · Playnite"};
 function workspaceLoginUrl(url, vendor) {
   if (new Set(url.searchParams.keys()).size !== url.searchParams.size || url.username || url.password || url.hash || url.searchParams.get('redirect_uri') !== 'http://localhost:4870/oauth/' + vendor) return false;
   if (vendor === 'microsoft') return url.origin === 'https://login.microsoftonline.com' && /^\/(?:[a-f\d-]{36}|consumers)\/oauth2\/v2\.0\/authorize$/i.test(url.pathname);
@@ -18,6 +20,10 @@ const githubStatus = {
   cancelled: tr('github.status.cancelled'), failed: tr('github.status.failed'), expired: tr('github.status.expired')
 };
 const githubErrors = {
+  connector_recipient_changed: tr('game.recipientChanged'),
+  game_library_unavailable: tr('game.unavailable'), game_library_incomplete: tr('game.incomplete'),
+  game_provider_unconfigured: tr('game.unconfigured'), game_import_required: tr('game.importInvalid'),
+  game_import_invalid: tr('game.importInvalid'), game_import_scope: tr('game.scope'),
   t3_endpoint_not_configured: tr('connector.error.t3_endpoint_not_configured'),
   t3_reauthorization_required: tr('connector.error.t3_reauthorization_required'),
   t3_read_scope_required: tr('connector.error.t3_read_scope_required'),
@@ -277,10 +283,22 @@ function workspaceCard(app) {
   };
 }
 function connectorCard(provider) {
+  if (Object.hasOwn(gameNames, provider)) {
+    const name = gameNames[provider];
+    return {
+      name, detail: tr('game.' + provider + '.detail'), account: a => a.name,
+      authorizeDetail: tr('game.authorize', {name}), open: tr('game.open', {name}),
+      modes: {login: tr('workspace.login', {name})}, custom: undefined,
+      loginUrl: url => !url.hash && (provider === 'itch'
+        ? url.origin === 'https://itch.io' && url.pathname === '/user/oauth' && url.searchParams.get('code_challenge_method') === 'S256'
+        : provider === 'steam' && url.origin === 'https://steamcommunity.com' && url.pathname === '/openid/login'),
+    };
+  }
   const app = workspaceCards.get(provider);
   return app ? workspaceCard(app) : connectorCards[provider] || connectorCards.github;
 }
 function renderResourcePicker(card, footer, request, provider, custom) {
+  const recipient = Object.hasOwn(gameNames, provider) ? gamingModelName : undefined;
   const limit = 30; // ConnectorService.confirm grant limit and resource page size.
   const isGitHub = provider === 'github';
   const key = card.dataset.connectorKey;
@@ -312,7 +330,7 @@ function renderResourcePicker(card, footer, request, provider, custom) {
     confirm.textContent = tr('connector.connecting');
     try {
       const ids = Array.from(selected);
-      await githubAction(request.id, 'confirm', isGitHub ? { repositories: ids } : { resources: ids }, provider);
+      await githubAction(request.id, 'confirm', isGitHub ? { repositories: ids } : { resources: ids, recipient }, provider);
     } finally {
       picker.disabled = false;
       confirm.textContent = tr('github.confirm');
@@ -379,9 +397,10 @@ function renderResourcePicker(card, footer, request, provider, custom) {
         addChoice(isGitHub ? item.fullName : item.id, isGitHub ? item.fullName + (item.private ? tr('github.private') : '') : item.name);
       }
       draft.hasMore = items.length === limit && draft.page < (isGitHub ? 100 : 10);
+      const limited = Object.hasOwn(gameNames, provider) && items.length === limit && !draft.hasMore;
       draft.page++;
       more.textContent = tr('connector.load');
-      notice.textContent = choices.size ? '' : tr('connector.empty');
+      notice.textContent = limited ? tr('game.pickerLimit') : choices.size ? '' : tr('connector.empty');
     } catch (error) {
       notice.textContent = githubErrorText(error.message);
       more.textContent = tr('connector.retryLoad');
@@ -450,7 +469,7 @@ function githubRender(request, provider) {
   badge.prepend(connectorGlyph('connector-ui-lock'));
   header.append(mark, identity, badge);
   card.appendChild(header);
-  const status = githubNode('p', selecting ? tr('connector.choose.' + provider) : githubStatus[request.status] || request.status, 'github-status');
+  const status = githubNode('p', selecting ? tr(Object.hasOwn(gameNames, provider) ? 'game.choose' : 'connector.choose.' + provider) : githubStatus[request.status] || request.status, 'github-status');
   status.setAttribute('role', 'status');
   card.appendChild(status);
   const footer = githubNode('div', '', 'connector-footer');
@@ -464,6 +483,10 @@ function githubRender(request, provider) {
     addLoginActions(card);
   }
   function addLoginActions(target) {
+    if (provider === 'game-library') {
+      renderGameImport(target, games => action('authorize', {mode: 'import', games}));
+      return;
+    }
     for (const [mode, label] of Object.entries(info.modes)) {
       if (selecting && mode === 'existing') continue;
       githubButton(target, label, async () => { githubSelections.delete(key); await action('authorize', { mode }); });
@@ -495,7 +518,7 @@ function githubRender(request, provider) {
     settings.appendChild(summary);
     addLoginActions(settings);
     identity.appendChild(settings);
-    card.appendChild(githubNode('p', tr('connector.scope.' + provider), 'github-detail'));
+    card.appendChild(githubNode('p', Object.hasOwn(gameNames, provider) ? tr('game.confirmScope', {model: gamingModelName || tr('game.model')}) : tr('connector.scope.' + provider), 'github-detail'));
   }
   if (!['completed', 'cancelled', 'expired'].includes(request.status))
     githubButton(footer, tr('github.cancel'), () => action('cancel'), 'github-button github-secondary');
@@ -514,6 +537,7 @@ async function githubRefresh() {
       fetch('/api/connectors?sessionId=' + encodeURIComponent(sid)),
     ]);
     const data = catalog.ok ? await catalog.json() : {connectors:[], requests:[]};
+    gamingModelName = data.gameModel || '';
     for (const app of data.connectors) if (app.workspace) workspaceCards.set(app.id,app);
     const entries = github.ok ? (await github.json()).requests.map(request => ({request,provider:'github'})) : [];
     entries.push(...(data.requests || []));
@@ -523,7 +547,7 @@ async function githubRefresh() {
       const key = provider + ':' + request.id;
       const prior = githubCards.get(key);
       if (prior?.status !== 'completed' && request.status === 'completed') githubHistoryDirty = true;
-      const fingerprint = JSON.stringify(request);
+      const fingerprint = JSON.stringify(request) + (Object.hasOwn(gameNames, provider) ? gamingModelName : "");
       const current = document.querySelector('[data-connector-key="' + key + '"]');
       if (!current || prior?.fingerprint !== fingerprint) {
         const next = githubRender(request, provider);
@@ -619,6 +643,10 @@ async function loadDashboardConnectors() {
     }
     filter.value = dashboardConnectorFilter;
     toolbar.append(search, filter); root.append(toolbar);
+    const gameLookup = githubNode('button', tr('game.lookup'), 'connector-text-button dc-game-lookup');
+    gameLookup.type = 'button';
+    gameLookup.addEventListener('click', () => window.lisaOpenPublicGames());
+    root.appendChild(gameLookup);
     const list = githubNode('div', '', 'dc-grid'); root.append(list);
     const labels = { authorized: tr('dashboard.connectors.authorized'), disconnected: tr('dashboard.connectors.not.connected'), pending: tr('dashboard.connectors.awaiting.confirmation'), unavailable: tr('dashboard.connectors.needs.setup'), error: tr('dashboard.connectors.status.unavailable') };
     function renderList() {
@@ -626,7 +654,7 @@ async function loadDashboardConnectors() {
       const query = dashboardConnectorQuery.trim().toLowerCase();
       const visible = apps.filter(app => {
         const state = app.connection?.status || 'error';
-        const matches = !query || [app.name, app.id, app.example.en, app.example['zh-CN']].some(v => v.toLowerCase().includes(query));
+        const matches = !query || [app.name, app.id, app.example.en, app.example['zh-CN']].some(v => v.toLowerCase().includes(query)) || app.importSources?.some(source => source.toLowerCase().startsWith(query));
         const kind = dashboardConnectorFilter;
         return matches && (kind === 'all' || (kind === 'ready' ? app.available && state === 'disconnected' : kind === 'attention' ? ['pending', 'error'].includes(state) || !!app.connection?.lastError : state === kind));
       });
@@ -657,6 +685,7 @@ async function loadDashboardConnectors() {
             openModal(app.name, '');
             modalBody.append(githubNode('p', tr('dashboard.connectors.this.connector.is.included.but.sign.in.is.not.configured.on.this.mac.an.administrator.must.configure.its.oauth.application.and.restart.lisa.before.you.can.connect')));
             if (app.workspace?.vendor === 'apple') modalBody.replaceChildren(githubNode('p', tr('dashboard.connectors.use.the.lisa.macos.app.with.its.calendar.and.reminders.reader.installed')));
+            if (app.id === 'itch' || app.id === 'steam') modalBody.replaceChildren(githubNode('p', tr('game.' + app.id + '.setup')));
             if (app.id === 'box') {
               modalBody.append(githubNode('p', tr('dashboard.connectors.box.requires.an.oauth.2.0.app.with.the.read.only.scope.root.readonly.and.callback.http.localhost.4870.oauth.box.store.its.client.id.and.secret.in.the.protected.workspace.client.configuration.on.this.mac')));
             }

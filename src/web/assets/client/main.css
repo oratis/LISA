@@ -3892,6 +3892,7 @@ details.ctrl-policy { display: block; margin-bottom: 18px; padding: 12px 16px; b
 .dc-heading { justify-content: space-between; flex-wrap: wrap; margin-bottom: 20px; }
 .dc-heading .dc-refresh { display: inline-flex; gap: 7px; align-items: center; justify-content: center; margin: 0; }
 .dc-refresh svg { width: 16px; height: 16px; }
+.dc-game-lookup { margin: 0 0 14px; min-height: 34px; }
 .dc-heading h3 { margin: 0 0 6px; font-size: 23px; letter-spacing: -.025em; color: var(--fg); }
 .dc-caption { margin: 0; font-size: 12px; line-height: 1.6; color: var(--fg-3); overflow-wrap: anywhere; }
 .dc-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border-new); border-radius: 14px; overflow: hidden; background: var(--bg-card); margin-bottom: 18px; }

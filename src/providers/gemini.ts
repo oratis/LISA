@@ -31,6 +31,8 @@ import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
 export interface GeminiProviderOptions {
+  /** Freeze API mode when the user has confirmed a specific game-data recipient. */
+  enterprise?: boolean;
   apiKey?: string;
   baseURL?: string;
   /**
@@ -71,6 +73,9 @@ export class GeminiProvider implements Provider {
       // via httpOptions.
       this.client = new GoogleGenAI({
         apiKey: this.clientOpts.apiKey,
+        ...(this.clientOpts.enterprise !== undefined
+          ? { enterprise: this.clientOpts.enterprise }
+          : {}),
         ...(this.clientOpts.baseURL || this.clientOpts.headers
           ? {
               httpOptions: {

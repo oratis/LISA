@@ -53,6 +53,9 @@ import { renderMarkdown } from "./md-render.js";
  */
 const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
 
+const GAME_CLIENT_JS = ["game-import.js", "public-games.js"]
+  .map((name) => readFileSync(new URL("./assets/client/" + name, import.meta.url), "utf8"))
+  .join("\n");
 const CONNECTOR_MARKS = readFileSync(
   new URL("./assets/connector-marks.svg", import.meta.url),
   "utf8",
@@ -468,6 +471,7 @@ ${MD_RENDER_JS}
 ${SOFT_INK_JS}
 window.LISA_EXPRESSION_CATALOG = ${JSON.stringify(expressionCatalog).replace(/</g, "\\u003c")};
 ${MAIN_CLIENT_JS}
+${opts.connectorCatalog ? GAME_CLIENT_JS : ""}
 </script>
 </body></html>`;
 }

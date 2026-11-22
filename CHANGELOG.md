@@ -7,6 +7,16 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.33.0] — 2026-11-22
+
+Lisa 0.33.0 adds local game library imports and product icons across the connector directory, chat picker and permission cards. Online game connectors are off by default. Dashboard cards show setup requirements and the current grant. The directory works at phone widths and supports keyboard navigation. The iOS Room and native Mac account and device windows also have updated layouts. Pocket changes follow its separate native release channel.
+
+- Organize games from a file
+- Online game connectors are off by default
+- Follow-up verification
+
+[Release notes](docs/RELEASE_v0.33.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.33.0)
+
 ## [0.32.1] — 2026-11-19
 
 Mac and Web chat show a 28-pixel animated Lisa portrait beside the waiting message. It appears when you send a message and during tool calls, then disappears when Lisa starts replying.

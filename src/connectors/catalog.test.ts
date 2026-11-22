@@ -1,3 +1,4 @@
+import { gameReadIntent } from "./gaming/catalog.js";
 import { isObsidianReadRequest } from "./obsidian.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -26,6 +27,7 @@ test("every directory example routes to exactly its own read connector in either
         ...(isFeishuReadRequest(example) ? ["feishu"] : []),
         ...(isSlackReadRequest(example) ? ["slack"] : []),
         ...workspaceReadIntents(example),
+        ...[gameReadIntent(example)].filter(Boolean),
       ];
       assert.deepEqual(matches, [app.id], example);
       assert.equal(connectorCatalogReply(example), undefined);
@@ -60,4 +62,16 @@ test("the directory only offers sources this install can serve", () => {
   assert.match(reply, /GitHub/);
   assert.doesNotMatch(reply, /Jira|Dropbox|Apple Reminders/);
   assert.match(connectorCatalogReply("/connectors jira", "en", onlyBuiltIns)!, /No matching/);
+});
+
+test("game requests keep general CSVs and write requests in the ordinary chat", () => {
+  assert.equal(gameReadIntent("Read my monthly salary CSV"), undefined);
+  assert.equal(gameReadIntent("Buy my selected Steam game"), undefined);
+  assert.equal(gameReadIntent("Review my Steam invoice"), undefined);
+  assert.equal(gameReadIntent("show my Switch settings"), undefined);
+  assert.equal(gameReadIntent("总结我的 PlayStation 合同"), undefined);
+  assert.equal(gameReadIntent("Review my Epic Games invoice"), undefined);
+  assert.equal(gameReadIntent("整理我选定的 Nintendo 游戏"), "game-library");
+  assert.equal(gameReadIntent("Import my Steam library CSV"), "game-library");
+  assert.match(connectorCatalogReply("/connectors PlayStation")!, /Playnite/);
 });

@@ -28,6 +28,8 @@
     "src/web/assets/client/room-effects.js",
     "src/web/assets/client/soft-ink.js",
     "src/web/assets/client/connectors.js",
+    "src/web/assets/client/public-games.js",
+    "src/web/assets/client/game-import.js",
     "types/web-client.d.ts"
   ]
 }

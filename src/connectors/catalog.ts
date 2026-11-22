@@ -1,3 +1,4 @@
+import { gameCatalog } from "./gaming/catalog.js";
 import { workspaceApps, workspaceIds, workspaceScopes } from "./workspace/catalog.js";
 
 /**
@@ -103,6 +104,7 @@ export const CONNECTOR_CATALOG = [
     },
     workspace: { vendor: "local", unit: "vault", hint: "", scope: "selected_markdown_vaults" },
   },
+  ...gameCatalog,
   ...workspaceIds.map((id) => {
     const { name, vendor, unit, hint, example } = workspaceApps[id];
     return {
@@ -140,9 +142,11 @@ export function connectorCatalogReply(
   const entries = CONNECTOR_CATALOG.filter(
     (app) =>
       available(app.id) &&
-      [app.id, app.name, app.example.en, app.example["zh-CN"]].some((v) =>
+      ([app.id, app.name, app.example.en, app.example["zh-CN"]].some((v) =>
         v.toLowerCase().includes(query),
-      ),
+      ) ||
+        ("importSources" in app &&
+          app.importSources.some((name) => name.toLowerCase().startsWith(query)))),
   );
   if (!entries.length)
     return zh

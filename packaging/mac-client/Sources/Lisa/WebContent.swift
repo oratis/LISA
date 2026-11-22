@@ -64,6 +64,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
 
         // Bridge so the offline splash's "Start backend" button can reach Swift.
         config.userContentController.add(self, name: "lisa")
+        config.userContentController.add(GameTemplateBridge(origin: Self.lisaURL), name: GameTemplateBridge.name)
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = self
@@ -201,9 +202,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         guard let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }
         if type == "appearance" {
-            guard message.frameInfo.isMainFrame,
-                  message.frameInfo.securityOrigin.host == "localhost",
-                  message.frameInfo.securityOrigin.port == 5757,
+            guard GameTemplateBridge.isOwnerFrame(message.frameInfo, at: Self.lisaURL),
                   let preference = body["preference"] as? String,
                   ["system", "calm", "nebula"].contains(preference) else { return }
             UserDefaults.standard.set(preference, forKey: "lisaAppearancePreference")

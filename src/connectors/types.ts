@@ -36,6 +36,13 @@ export interface ReadonlyDriver<A, R> {
   account(credentials: CredentialAccess, signal: AbortSignal): Promise<A>;
   resources(credentials: CredentialAccess, page: number, signal: AbortSignal): Promise<R[]>;
   resource(credentials: CredentialAccess, name: string, signal: AbortSignal): Promise<R>;
+  /** Fetch selected resources together when the provider supports exact ID filters.
+   * Return one resource per requested ID, in the same order. */
+  resolveResources?(
+    credentials: CredentialAccess,
+    ids: string[],
+    signal: AbortSignal,
+  ): Promise<Array<R & { id: string }>>;
   tool: Pick<ToolDefinition, "name" | "description" | "inputSchema">;
   read(
     credentials: CredentialAccess,

@@ -1,3 +1,4 @@
+import type { PublicGames } from "../connectors/gaming/public-games.js";
 import type http from "node:http";
 import type { ConnectorService } from "../connectors/service.js";
 import { CONNECTOR_CATALOG, type ConnectorProvider } from "../connectors/catalog.js";
@@ -12,6 +13,8 @@ export async function handleConnectorApi(
   services: Map<ConnectorProvider, ConnectorService>,
   localOwner: boolean,
   github?: Pick<ConnectorService, "summary">,
+  publicGames?: Pick<PublicGames, "configured" | "query">,
+  gameModel?: string,
 ): Promise<boolean> {
   const url = new URL(rawUrl, "http://localhost");
   const match =
@@ -20,6 +23,7 @@ export async function handleConnectorApi(
     );
   if (
     url.pathname !== "/api/connectors" &&
+    url.pathname !== "/api/games/public" &&
     (!match || match[1] === "github" || !CONNECTOR_CATALOG.some((c) => c.id === match[1]))
   )
     return false;
@@ -33,6 +37,31 @@ export async function handleConnectorApi(
     return true;
   }
   try {
+    if (url.pathname === "/api/games/public") {
+      if (!publicGames) {
+        json(403, { error: "local_owner_required" });
+      } else if (req.method === "GET") {
+        json(200, publicGames.configured());
+      } else if (req.method !== "POST") {
+        json(405, { error: "method_not_allowed" });
+      } else if (
+        req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json"
+      ) {
+        json(415, { error: "content_type_must_be_json" });
+      } else {
+        const input: unknown = JSON.parse(await readCappedText(req, 4096));
+        const abort = new AbortController();
+        const cancel = () => abort.abort();
+        res.once("close", cancel);
+        try {
+          const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(20_000)]);
+          json(200, await publicGames.query(input, signal));
+        } finally {
+          res.off("close", cancel);
+        }
+      }
+      return true;
+    }
     if (req.method === "GET" && url.pathname === "/api/connectors") {
       const session = url.searchParams.get("sessionId");
       if (session !== null && !/^[a-zA-Z0-9_-]{1,100}$/.test(session))
@@ -86,6 +115,7 @@ export async function handleConnectorApi(
         // Unavailable sources (no OAuth client, or no EventKit reader in this build) stay
         // listed so a client can explain why they cannot be connected here.
         connectors,
+        ...(session && gameModel ? { gameModel } : {}),
         ...(session === null ? {} : { requests, unavailableProviders }),
       });
       return true;
@@ -119,13 +149,28 @@ export async function handleConnectorApi(
       json(415, { error: "content_type_must_be_json" });
       return true;
     }
-    const data: unknown = JSON.parse(await readCappedText(req, 16_384));
+    const importing = match[1] === "game-library" && action === "authorize";
+    const data: unknown = JSON.parse(await readCappedText(req, importing ? 128 * 1024 : 16_384));
     if (!data || typeof data !== "object" || Array.isArray(data))
       throw new ConnectorError("invalid_body");
     const body = data as Record<string, unknown>;
-    if (action === "authorize") await service.authorize(id, String(body.mode ?? "login"));
+    if (importing) {
+      if (
+        body.mode !== "import" ||
+        !Array.isArray(body.games) ||
+        !body.games.length ||
+        body.games.length > 30
+      )
+        throw new ConnectorError("game_import_invalid");
+      await service.authorize(id, "import", JSON.stringify(body.games));
+    } else if (action === "authorize") await service.authorize(id, String(body.mode ?? "login"));
     else if (action === "confirm")
-      await service.confirm(id, body.resources, AbortSignal.timeout(90_000));
+      await service.confirm(
+        id,
+        body.resources,
+        AbortSignal.timeout(90_000),
+        typeof body.recipient === "string" ? body.recipient : undefined,
+      );
     else if (action === "cancel") await service.cancel(id);
     else if (action === "retry") await service.retry(id);
     else if (action === "disconnect") await service.disconnect();
@@ -141,7 +186,9 @@ export async function handleConnectorApi(
         : error instanceof SyntaxError
           ? 400
           : error instanceof ConnectorError
-            ? 409
+            ? url.pathname === "/api/games/public"
+              ? (error.httpStatus ?? 409)
+              : 409
             : 503,
       {
         error:
