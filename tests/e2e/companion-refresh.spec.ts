@@ -24,6 +24,20 @@ test("dashboard lists every connector with truthful status and keeps setup draft
   ).toBe("disconnected");
   await page.goto(lisa.baseURL + "/#dashboard");
   await expect(page.locator(".dc-card")).toHaveCount(22);
+  await page.getByRole("button", { name: "应用连接器", exact: true }).click();
+  await expect(page.locator("#dashboardConnectors")).toBeFocused();
+  const missingMarks = await page.locator(".dc-card").evaluateAll((cards) =>
+    cards
+      .filter((card) => {
+        const use = card.querySelector<SVGUseElement>(".connector-mark use");
+        return (
+          use?.getAttribute("href") !== "#product-" + card.getAttribute("data-provider") ||
+          !use.getBBox().width
+        );
+      })
+      .map((card) => card.getAttribute("data-provider")),
+  );
+  expect(missingMarks).toEqual([]);
   await page.locator(".dc-toolbar input").fill("Box");
   await expect(page.locator(".dc-card")).toHaveCount(2); // Box and Dropbox
   await expect(page.locator('.dc-card[data-provider="box"]')).toContainText("待配置");

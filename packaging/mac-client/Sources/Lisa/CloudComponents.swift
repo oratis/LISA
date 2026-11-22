@@ -11,11 +11,12 @@ enum CloudStyle {
 struct CloudCard<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
+        let surface = RoundedRectangle(cornerRadius: 16, style: .continuous)
         VStack(alignment: .leading, spacing: 16) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
-            .background(CloudStyle.card, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(CloudStyle.border, lineWidth: 1))
+            .background { surface.fill(CloudStyle.card).shadow(color: .black.opacity(0.06), radius: 4, y: 2) }
+            .overlay { surface.strokeBorder(CloudStyle.border, lineWidth: 1).allowsHitTesting(false) }
     }
 }
 
@@ -36,17 +37,20 @@ struct CloudHeader: View {
     let title: String
     let subtitle: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: symbol).font(.system(size: 19, weight: .medium))
-                    .foregroundColor(CloudStyle.accent).frame(width: 42, height: 42)
-                    .background(CloudStyle.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 13))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 13) {
+                Image(systemName: symbol).font(.system(size: 23, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(CloudStyle.accent).frame(width: 50, height: 50)
+                    .background(CloudStyle.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 14))
                     .accessibilityHidden(true)
-                Text(eyebrow).font(.system(size: 11, weight: .semibold)).tracking(1.5)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(eyebrow).font(.system(size: 11, weight: .semibold)).tracking(1.2)
+                        .foregroundColor(.secondary)
+                    Text(title).font(.system(size: 27, weight: .semibold))
+                        .tracking(-0.6).fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
+                }
             }
-            Text(title).font(.system(size: 29, weight: .bold, design: .rounded))
-                .tracking(-0.6).accessibilityAddTraits(.isHeader)
             Text(subtitle).font(.system(size: 14)).foregroundColor(.secondary)
                 .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
         }
@@ -111,7 +115,9 @@ struct CloudStatusRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol).font(.system(size: 18)).foregroundColor(color)
-                .frame(width: 26, height: 26).accessibilityHidden(true)
+                .frame(width: 32, height: 32)
+                .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.system(size: 14, weight: .semibold))
                 Text(detail).font(.system(size: 12)).foregroundColor(.secondary)

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expressionCatalog } from "../expressions/catalog.js";
 /**
  * Lisa.app chat HTML — the main /web shell.
@@ -51,6 +52,11 @@ import { renderMarkdown } from "./md-render.js";
  * unused there. (md-render.test.ts rebuilds under the same shim.)
  */
 const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
+
+const CONNECTOR_MARKS = readFileSync(
+  new URL("./assets/connector-marks.svg", import.meta.url),
+  "utf8",
+);
 
 /**
  * Content-Security-Policy for the shell (T-4).
@@ -132,6 +138,7 @@ try { if (localStorage.getItem('lisaRightbar') !== 'open') document.body.classLi
 catch (e) { document.body.classList.add('rb-collapsed'); }
 </script>
 
+${opts.connectorCatalog ? CONNECTOR_MARKS : ""}
 <div class="frame">
 
   <!-- ╔════════════════ Title bar (drag zone) ════════════════╗ -->

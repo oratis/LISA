@@ -524,12 +524,13 @@ const LISA_STRINGS = {
     "connector.choose.linear": "Choose teams",
     "connector.scope.gmail": "LISA can read message headers and short snippets in the selected labels until you disconnect.",
     "connector.scope.google-calendar": "LISA can read the selected calendars at the access level you granted until you disconnect.",
-    "dashboard.connectors.your.connected.knowledge": "Your connected knowledge",
+    "dashboard.connectors.title": "App connectors",
     "dashboard.connectors.all.connectors.saved.authorization.status.read.only.access": "All connectors · saved authorization status · read-only access",
     "dashboard.connectors.refresh.status": "Refresh status",
     "dashboard.connectors.available.integrations": "Included connectors",
     "dashboard.connectors.authorized": "Authorized",
     "dashboard.connectors.need.setup": "Need setup",
+    "dashboard.connectors.search": "Search apps",
     "dashboard.connectors.find.an.app.or.capability": "Find an app or capability",
     "dashboard.connectors.filter.connectors": "Filter connectors",
     "dashboard.connectors.all.connectors": "All connectors",
@@ -1162,12 +1163,13 @@ const LISA_STRINGS = {
     "connector.choose.linear": "选择可读取的团队",
     "connector.scope.gmail": "LISA 可读取勾选标签内的邮件头和摘要，直到你断开连接。",
     "connector.scope.google-calendar": "LISA 将按你授予的权限读取勾选的日历，直到你断开连接。",
-    "dashboard.connectors.your.connected.knowledge": "你的知识与应用",
+    "dashboard.connectors.title": "应用连接器",
     "dashboard.connectors.all.connectors.saved.authorization.status.read.only.access": "全部连接器 · 已保存的授权状态 · 只读访问",
     "dashboard.connectors.refresh.status": "刷新状态",
     "dashboard.connectors.available.integrations": "收录的连接器",
     "dashboard.connectors.authorized": "已授权",
     "dashboard.connectors.need.setup": "待配置",
+    "dashboard.connectors.search": "搜索应用",
     "dashboard.connectors.find.an.app.or.capability": "搜索应用或能力",
     "dashboard.connectors.filter.connectors": "筛选连接器",
     "dashboard.connectors.all.connectors": "全部连接器",
@@ -6247,10 +6249,18 @@ if ('serviceWorker' in navigator) {
       '</div>';
   }
   function loadDashboard() {
+    var hasConnectors = !!document.getElementById('pmConnectors');
     views.dashboard.innerHTML =
       '<div class="view-head"><div><h2>' + esc(LISA_LOCALE === 'zh-CN' ? '总览' : 'Dashboard') + '</h2><div class="vh-sub">' + esc(LISA_LOCALE === 'zh-CN' ? '任务、动态与已连接的应用' : 'Tasks, activity and connected apps') + '</div></div>' +
-      '<button class="view-act" id="dashDelegate">' + esc(tr('control.delegate')) + '</button></div>' +
-      '<div class="view-scroll" id="dashScroll"><div id="dashOperations"><div class="view-empty">' + esc(tr('control.loading')) + '</div></div>' + (!!document.getElementById('pmConnectors') ? '<section id="dashboardConnectors" class="dc-section" aria-label="Connectors"></section>' : '') + '</div>';
+      '<div class="dash-actions">' + (hasConnectors ? '<button type="button" class="view-act dash-catalog" id="dashCatalog">' + esc(tr('dashboard.connectors.title')) + '</button>' : '') +
+      '<button class="view-act" id="dashDelegate">' + esc(tr('control.delegate')) + '</button></div></div>' +
+      '<div class="view-scroll" id="dashScroll"><div id="dashOperations"><div class="view-empty">' + esc(tr('control.loading')) + '</div></div>' + (hasConnectors ? '<section id="dashboardConnectors" class="dc-section" tabindex="-1" aria-label="' + esc(tr('dashboard.connectors.title')) + '"></section>' : '') + '</div>';
+    var catalogButton = document.getElementById('dashCatalog');
+    if (catalogButton) catalogButton.addEventListener('click', function () {
+      var section = document.getElementById('dashboardConnectors');
+      section.scrollIntoView({ block: 'start' });
+      section.focus({ preventScroll: true });
+    });
     var del = document.getElementById('dashDelegate');
     if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
     renderDashboard();
@@ -6751,19 +6761,21 @@ if ('serviceWorker' in navigator) {
   }
 
   // ── Memory (launchers for the existing modal panels) ────────────
-  function memBtn(key, ico, title, sub) {
-    return '<button class="mem-btn" data-mem="' + key + '"><span class="mem-ico">' + ico + '</span>' + title + '<span class="mem-sub">' + sub + '</span></button>';
+  function memBtn(key, path, title, sub) {
+    return '<button type="button" class="mem-btn" data-mem="' + key + '"><span class="mem-ico" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + path + '"/></svg></span>' +
+      '<span class="mem-name">' + title + '</span><span class="mem-sub">' + sub + '</span></button>';
   }
   function loadMemory() {
     views.memory.innerHTML =
       '<div class="view-head"><div><h2>Memory</h2><div class="vh-sub">Soul · skills · memory · tools</div></div></div>' +
-      '<div class="view-scroll">' +
-      memBtn('soul', '★', 'Soul', 'identity · values · emotions') +
-      memBtn('skills', '✦', 'Skills', 'saved workflows') +
-      memBtn('memory', '▤', 'Memory', 'USER.md · MEMORY.md') +
-      memBtn('tools', '⚒', 'Tools', 'capabilities') +
-      memBtn('plans', '◆', 'Coding plans', 'subscription CLIs') +
-      '</div>';
+      '<div class="view-scroll"><div class="memory-grid">' +
+      memBtn('soul', 'M12 20s-8-5-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 9c0 6-8 11-8 11z', 'Soul', 'identity · values · emotions') +
+      memBtn('skills', 'm12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6z', 'Skills', 'saved workflows') +
+      memBtn('memory', 'M6 3h13v18H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 3v18 M11 8h5 M11 12h4', 'Memory', 'USER.md · MEMORY.md') +
+      memBtn('tools', 'm15 4-3 3 3 3 4-4a6 6 0 0 1-7.5 7.5L6 20a2 2 0 0 1-3-3l6.5-6.5A6 6 0 0 1 15 4z', 'Tools', 'capabilities') +
+      memBtn('plans', 'M4 5h16v14H4z M7 9l3 3-3 3 M13 15h4', 'Coding plans', 'subscription CLIs') +
+      '</div></div>';
     var mbs = views.memory.querySelectorAll('.mem-btn');
     for (var i = 0; i < mbs.length; i++) {
       mbs[i].addEventListener('click', function () {

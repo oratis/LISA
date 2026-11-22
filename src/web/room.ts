@@ -391,7 +391,7 @@ ${MD_RENDER_CSS}
   #topbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 20;
     display: flex; align-items: center; gap: 10px;
-    padding: 14px 18px;
+    padding: max(12px, env(safe-area-inset-top)) 14px 16px;
     background: linear-gradient(180deg, rgba(4,6,14,0.55), transparent);
     pointer-events: none;
   }
@@ -409,15 +409,20 @@ ${MD_RENDER_CSS}
   #dot.offline  { background: var(--fg-faint); }
   @keyframes blink { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
   #status .name { font-weight: 700; letter-spacing: 0.02em; }
-  #status .doing { color: var(--fg-dim); font-size: 13px; }
+  #status .doing { color: var(--fg-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #status { min-width: 0; }
   #spacer { flex: 1; }
   .chip {
     pointer-events: auto; cursor: pointer;
-    padding: 7px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 7px;
+    min-height: 40px; min-width: 40px; padding: 8px 12px; border-radius: 12px; font-family: inherit; font-size: 13px; line-height: 1.3; font-weight: 600;
     color: var(--fg); background: var(--ink); border: 1px solid rgba(255,255,255,0.09);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     transition: background 160ms, transform 160ms var(--spring);
   }
+  .chip svg { width: 17px; height: 17px; }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (pointer: coarse) { .chip { min-height: 44px; min-width: 44px; } }
   .chip:hover { background: rgba(106,212,255,0.16); transform: translateY(-1px); }
 
   /* Desire ticker — what she's currently pursuing, bottom center. */
@@ -511,8 +516,8 @@ ${MD_RENDER_CSS}
       <span class="doing" id="doing">at home</span>
     </div>
     <div id="spacer"></div>
-    <div class="chip" id="chip-theme" title="Redecorate the room" aria-label="Change room theme">❖</div>
-    <div class="chip" id="chip-chat">Talk to her ▸</div>
+    <button type="button" class="chip" id="chip-theme" title="Redecorate the room" aria-label="Change room theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z M3 12l9 5 9-5 M3 16l9 5 9-5"/></svg></button>
+    <button type="button" class="chip" id="chip-chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v12H9l-5 4z"/></svg>Talk to her</button>
   </div>
 
   <div id="desire"><span class="star">✦</span><span class="txt" id="desire-txt"></span></div>

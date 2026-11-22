@@ -97,10 +97,11 @@ extension Color {
 struct ConsoleCard: ViewModifier {
     var padding: CGFloat = 16
     func body(content: Content) -> some View {
+        let surface = RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
         content
             .padding(padding)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
-            .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius).strokeBorder(Theme.border, lineWidth: Theme.hairline))
+            .background { surface.fill(Theme.card).shadow(color: .black.opacity(0.045), radius: 3, y: 2) }
+            .overlay { surface.strokeBorder(Theme.border, lineWidth: Theme.hairline).allowsHitTesting(false) }
     }
 }
 
@@ -153,12 +154,12 @@ struct StatCell: View {
     var tint: Color = Theme.accent
     private var display: String { value.map(String.init) ?? "—" }
     var body: some View {
-        VStack(spacing: 2) {
-            Text(display).font(.title3.weight(.medium)).foregroundStyle(tint)
-            Text(LocalizedStringKey(label)).font(.caption2).foregroundStyle(Theme.tertiary)
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Text(display).font(.title2.weight(.semibold)).monospacedDigit().foregroundStyle(tint)
+            Text(LocalizedStringKey(label)).font(.caption).foregroundStyle(Theme.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .consoleCard(padding: 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .consoleCard(padding: 12)
         // "Needs you: 2", not "2" then "needs you" as two stray elements (D5).
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(display)")
