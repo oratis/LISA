@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expressionCatalog } from "../expressions/catalog.js";
 /**
  * Lisa.app chat HTML — the main /web shell.
@@ -51,6 +52,14 @@ import { renderMarkdown } from "./md-render.js";
  * unused there. (md-render.test.ts rebuilds under the same shim.)
  */
 const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
+
+const GAME_CLIENT_JS = ["game-import.js", "public-games.js"]
+  .map((name) => readFileSync(new URL("./assets/client/" + name, import.meta.url), "utf8"))
+  .join("\n");
+const CONNECTOR_MARKS = readFileSync(
+  new URL("./assets/connector-marks.svg", import.meta.url),
+  "utf8",
+);
 
 /**
  * Content-Security-Policy for the shell (T-4).
@@ -132,6 +141,7 @@ try { if (localStorage.getItem('lisaRightbar') !== 'open') document.body.classLi
 catch (e) { document.body.classList.add('rb-collapsed'); }
 </script>
 
+${opts.connectorCatalog ? CONNECTOR_MARKS : ""}
 <div class="frame">
 
   <!-- ╔════════════════ Title bar (drag zone) ════════════════╗ -->
@@ -461,6 +471,7 @@ ${MD_RENDER_JS}
 ${SOFT_INK_JS}
 window.LISA_EXPRESSION_CATALOG = ${JSON.stringify(expressionCatalog).replace(/</g, "\\u003c")};
 ${MAIN_CLIENT_JS}
+${opts.connectorCatalog ? GAME_CLIENT_JS : ""}
 </script>
 </body></html>`;
 }

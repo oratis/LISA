@@ -42,6 +42,7 @@ interface Request<A, R> extends Omit<ConnectionRequestView<A, R>, "connected"> {
 }
 interface Connection<A, R> {
   id: string;
+  recipient?: string;
   account: A;
   resources: R[];
   secret: string;
@@ -56,6 +57,10 @@ export interface ConnectorResume<A, R> {
   tools: ToolDefinition[];
   signal: AbortSignal;
   provider: string;
+  /** Recipient approved for this grant when the provider binds model disclosure. */
+  recipient?: string;
+  /** Persists trace data only while the same grant and recipient are still active. */
+  persistTrace?: (persist: () => Promise<void>) => Promise<void>;
   /** Commits transcript and completion together under the request lock. */
   commit: (persist: () => Promise<void>) => Promise<void>;
 }
@@ -66,11 +71,17 @@ export interface ConnectorOptions<A, R> {
   resume: (run: ConnectorResume<A, R>) => Promise<void>;
   changed: (sessionId: string) => void;
   now?: () => number;
+  /** Current model disclosure recipient. Configured for personal game data. */
+  recipient?: () => string;
   /** Upper bound on best-effort upstream revocation during disconnect (tests shorten it). */
   revokeTimeoutMs?: number;
+  /** Remove the selected games and original request from saved cards on disconnect. */
+  forgetGrantOnDisconnect?: boolean;
 }
 const terminal = (s: Status) => ["completed", "cancelled", "expired"].includes(s);
 const idOK = (s: unknown): s is string => typeof s === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(s);
+const validRecipient = (value: unknown): value is string =>
+  typeof value === "string" && !!value.trim() && value.length <= 1024 && !/\p{Cc}/u.test(value);
 function validate<A, R>(value: unknown, driver: ReadonlyDriver<A, R>): State<A, R> {
   const s = value as State<A, R>;
   const accountOK = driver.validAccount;
@@ -113,6 +124,7 @@ function validate<A, R>(value: unknown, driver: ReadonlyDriver<A, R>): State<A, 
     (s.connection !== undefined &&
       (!s.connection ||
         !idOK(s.connection.id) ||
+        (s.connection.recipient !== undefined && !validRecipient(s.connection.recipient)) ||
         s.connection.secret !== `${driver.id}/${s.connection.id}` ||
         !accountOK(s.connection.account) ||
         !reposOK(s.connection.resources) ||
@@ -208,11 +220,40 @@ export class ReadonlyConnector<A, R> {
     if (!r) throw new ConnectorError("request_not_found");
     return r;
   }
+  private recipientMatches(value?: string) {
+    return !this.options.recipient || (validRecipient(value) && value === this.options.recipient());
+  }
+  private requireRecipient(value?: string) {
+    if (!this.recipientMatches(value)) throw new ConnectorError("connector_recipient_changed");
+  }
+  /** Call inside the state lock before releasing data or writing transcript evidence. */
+  private activeGrant(
+    s: State<A, R>,
+    id: string,
+    signal: AbortSignal,
+    grantId?: string,
+    error = "connection_not_granted",
+  ) {
+    const r = this.find(s, id),
+      connection = s.connection;
+    if (
+      r.status !== "resuming" ||
+      !connection ||
+      connection.id !== r.connectionId ||
+      (grantId !== undefined && connection.id !== grantId) ||
+      r.expiresAt <= this.now() ||
+      signal.aborted
+    )
+      throw new ConnectorError(r.error ?? error);
+    this.requireRecipient(connection.recipient);
+    return { request: r, connection };
+  }
   private view(r: Request<A, R>, s: State<A, R>): ConnectionRequestView<A, R> {
     const connected =
       !["authorizing", "selecting"].includes(r.status) &&
       !!r.connectionId &&
-      s.connection?.id === r.connectionId;
+      s.connection?.id === r.connectionId &&
+      this.recipientMatches(s.connection.recipient);
     return {
       id: r.id,
       sessionId: r.sessionId,
@@ -257,7 +298,11 @@ export class ReadonlyConnector<A, R> {
       false,
     );
   }
-  async create(sessionId: string, prompt: string): Promise<ConnectionRequestView<A, R>> {
+  async create(
+    sessionId: string,
+    prompt: string,
+    forceSelection = false,
+  ): Promise<ConnectionRequestView<A, R>> {
     if (!idOK(sessionId) || !prompt.trim() || prompt.length > 32_000)
       throw new ConnectorError("invalid_request");
     const view = await this.state((s) => {
@@ -270,16 +315,20 @@ export class ReadonlyConnector<A, R> {
         if (i < 0) throw new ConnectorError("too_many_connection_requests");
         s.requests.splice(i, 1);
       }
+      const grant =
+        !forceSelection && this.recipientMatches(s.connection?.recipient)
+          ? s.connection
+          : undefined;
       const r: Request<A, R> = {
         id: randomUUID(),
         sessionId,
         prompt,
         createdAt: this.now(),
         expiresAt: this.now() + 24 * 3600_000,
-        status: s.connection ? "ready" : "waiting",
-        resources: s.connection?.resources ?? [],
-        account: s.connection?.account,
-        connectionId: s.connection?.id,
+        status: grant ? "ready" : "waiting",
+        resources: grant?.resources ?? [],
+        account: grant?.account,
+        connectionId: grant?.id,
         attempts: 0,
       };
       s.requests.push(r);
@@ -331,6 +380,11 @@ export class ReadonlyConnector<A, R> {
       delete r.stagedSecret;
       delete r.stagedConnectionId;
       r.status = "authorizing";
+      if (this.options.recipient) {
+        delete r.connectionId;
+        delete r.account;
+        r.resources = [];
+      }
       delete r.error;
       delete r.userCode;
       delete r.authorizationUrl;
@@ -425,7 +479,7 @@ export class ReadonlyConnector<A, R> {
     const { credentials } = await this.state((s) => this.staged(this.find(s, id)), false);
     return this.options.driver.resources(credentials, page, signal);
   }
-  async confirm(id: string, names: unknown, signal: AbortSignal) {
+  async confirm(id: string, names: unknown, signal: AbortSignal, expectedRecipient?: string) {
     if (
       !Array.isArray(names) ||
       names.length === 0 ||
@@ -434,6 +488,7 @@ export class ReadonlyConnector<A, R> {
     )
       throw new ConnectorError("invalid_resources");
     const staged = await this.state(async (s) => {
+      this.requireRecipient(expectedRecipient);
       const r = this.find(s, id);
       if (["ready", "resuming", "completed"].includes(r.status)) return;
       return this.staged(r);
@@ -443,12 +498,27 @@ export class ReadonlyConnector<A, R> {
     const actual = await this.options.driver.account(credentials, signal);
     if (this.options.driver.accountId(actual) !== this.options.driver.accountId(account))
       throw new ConnectorError("connector_account_changed");
+    const driver = this.options.driver;
+    const ids = [...new Set(names)];
     const repos: R[] = [];
-    for (const name of [...new Set(names)])
-      repos.push(await this.options.driver.resource(credentials, name, signal));
-    if (!repos.every(this.options.driver.validResource))
-      throw new ConnectorError("connector_invalid_response");
+    if (driver.resolveResources) {
+      const resolved = await driver.resolveResources(credentials, ids, signal);
+      if (
+        !Array.isArray(resolved) ||
+        resolved.length !== ids.length ||
+        !ids.every(
+          (id, index) => driver.validResource(resolved[index]) && resolved[index]?.id === id,
+        )
+      )
+        throw new ConnectorError("connector_invalid_response");
+      repos.push(...resolved);
+    } else {
+      for (const id of ids) repos.push(await driver.resource(credentials, id, signal));
+      if (!repos.every(driver.validResource))
+        throw new ConnectorError("connector_invalid_response");
+    }
     const sid = await this.state(async (s) => {
+      this.requireRecipient(expectedRecipient);
       const r = this.find(s, id);
       if (["ready", "resuming", "completed"].includes(r.status)) return r.sessionId;
       if (
@@ -466,6 +536,7 @@ export class ReadonlyConnector<A, R> {
       }
       s.connection = {
         id: r.stagedConnectionId,
+        recipient: this.options.recipient ? expectedRecipient : undefined,
         account: actual,
         resources: repos,
         secret: r.stagedSecret,
@@ -501,6 +572,12 @@ export class ReadonlyConnector<A, R> {
       delete s.connection;
       for (const r of s.requests) {
         if (!terminal(r.status)) r.status = "cancelled";
+        if (this.options.forgetGrantOnDisconnect) {
+          r.prompt = "";
+          r.resources = [];
+          delete r.account;
+          delete r.connectionId;
+        }
         if (r.stagedSecret) await take(r.stagedSecret);
         delete r.stagedSecret;
         delete r.stagedConnectionId;
@@ -543,9 +620,11 @@ export class ReadonlyConnector<A, R> {
         r.status !== "failed" ||
         r.attempts >= 3 ||
         r.expiresAt <= this.now() ||
-        r.connectionId !== s.connection?.id
+        !s.connection ||
+        r.connectionId !== s.connection.id
       )
         throw new ConnectorError("request_cannot_retry");
+      this.requireRecipient(s.connection.recipient);
       r.status = "ready";
       delete r.error;
     });
@@ -575,26 +654,15 @@ export class ReadonlyConnector<A, R> {
       });
     this.jobs.set(id, { abort, promise });
   }
-  private tool(id: string): ToolDefinition {
+  private tool(id: string, grantId: string): ToolDefinition {
     return {
       ...this.options.driver.tool,
       execute: async (input, ctx) => {
         const { connection, token, credentials } = await this.state(async (s) => {
-          const r = this.find(s, id);
-          if (
-            r.status !== "resuming" ||
-            !s.connection ||
-            s.connection.id !== r.connectionId ||
-            r.expiresAt <= this.now() ||
-            ctx.signal.aborted
-          )
-            throw new ConnectorError("connection_not_granted");
-          const token = await this.options.secrets.get(s.connection.secret);
-          return {
-            connection: s.connection,
-            token,
-            credentials: this.credentials(s.connection.secret),
-          };
+          const { connection } = this.activeGrant(s, id, ctx.signal, grantId);
+          const token = await this.options.secrets.get(connection.secret);
+          this.requireRecipient(connection.recipient);
+          return { connection, token, credentials: this.credentials(connection.secret) };
         }, false);
         try {
           if (!token) throw new ConnectorError(this.options.driver.reauthorizationCode);
@@ -605,6 +673,8 @@ export class ReadonlyConnector<A, R> {
             input,
             ctx.signal,
           );
+          if (this.options.recipient)
+            await this.state((s) => this.activeGrant(s, id, ctx.signal, grantId), false);
           return JSON.parse(JSON.stringify(output).split(token).join("[redacted]")) as unknown;
         } catch (error) {
           if (
@@ -691,31 +761,46 @@ export class ReadonlyConnector<A, R> {
             path.join(this.dir, `${id}.run.lock`),
             async () => {
               acquired = true;
-              const request = await this.state((s) => {
+              const task = await this.state((s) => {
                 const r = this.find(s, id);
                 if (!["ready", "resuming"].includes(r.status)) return null;
                 if (r.attempts >= 3) throw new ConnectorError("resume_attempts_exhausted");
                 r.status = "resuming";
                 r.attempts++;
-                return { ...this.view(r, s), prompt: r.prompt };
+                const { connection } = this.activeGrant(s, id, signal);
+                return {
+                  request: { ...this.view(r, s), prompt: r.prompt },
+                  recipient: connection.recipient,
+                  grantId: connection.id,
+                };
               });
-              if (!request) return;
+              if (!task) return;
+              const { request, recipient, grantId } = task;
               this.options.changed(request.sessionId);
               const deadline = AbortSignal.any([signal, AbortSignal.timeout(5 * 60_000)]);
               await this.options.resume({
                 request,
                 provider: this.options.driver.id,
-                tools: [this.tool(id)],
+                recipient,
+                persistTrace: this.options.recipient
+                  ? async (persist) => {
+                      await this.state(async (s) => {
+                        this.activeGrant(s, id, deadline, grantId);
+                        await persist();
+                      }, false);
+                    }
+                  : undefined,
+                tools: [this.tool(id, grantId)],
                 signal: deadline,
                 commit: async (persist) => {
                   await this.state(async (s) => {
-                    const r = this.find(s, id);
-                    if (
-                      r.status !== "resuming" ||
-                      deadline.aborted ||
-                      s.connection?.id !== r.connectionId
-                    )
-                      throw new ConnectorError(r.error ?? "request_cancelled");
+                    const { request: r } = this.activeGrant(
+                      s,
+                      id,
+                      deadline,
+                      grantId,
+                      "request_cancelled",
+                    );
                     await persist();
                     r.status = "completed";
                     delete r.error;

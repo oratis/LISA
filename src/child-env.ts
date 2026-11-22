@@ -9,7 +9,7 @@
  * the model: one `env` command would otherwise hand a confidential client
  * secret (Notion's has no PKCE behind it) to whatever read that output.
  */
-const CLIENT_SECRET_ENV = /^LISA_[A-Z0-9_]*CLIENT_SECRET$/i;
+const CLIENT_SECRET_ENV = /^LISA_(?:[A-Z0-9_]*CLIENT_SECRET|STEAM_WEB_API_KEY|ITAD_API_KEY)$/i;
 
 export function isClientSecretEnv(name: string): boolean {
   return CLIENT_SECRET_ENV.test(name);

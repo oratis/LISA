@@ -5,6 +5,8 @@ let githubRefreshing = false;
 let githubHistoryDirty = false;
 let githubLastSession = '';
 const workspaceCards = new Map();
+let gamingModelName = "";
+const gameNames = {itch: "itch.io", steam: "Steam", "game-library": "Game Library · Playnite"};
 function workspaceLoginUrl(url, vendor) {
   if (new Set(url.searchParams.keys()).size !== url.searchParams.size || url.username || url.password || url.hash || url.searchParams.get('redirect_uri') !== 'http://localhost:4870/oauth/' + vendor) return false;
   if (vendor === 'microsoft') return url.origin === 'https://login.microsoftonline.com' && /^\/(?:[a-f\d-]{36}|consumers)\/oauth2\/v2\.0\/authorize$/i.test(url.pathname);
@@ -18,6 +20,10 @@ const githubStatus = {
   cancelled: tr('github.status.cancelled'), failed: tr('github.status.failed'), expired: tr('github.status.expired')
 };
 const githubErrors = {
+  connector_recipient_changed: tr('game.recipientChanged'),
+  game_library_unavailable: tr('game.unavailable'), game_library_incomplete: tr('game.incomplete'),
+  game_provider_unconfigured: tr('game.unconfigured'), game_import_required: tr('game.importInvalid'),
+  game_import_invalid: tr('game.importInvalid'), game_import_scope: tr('game.scope'),
   t3_endpoint_not_configured: tr('connector.error.t3_endpoint_not_configured'),
   t3_reauthorization_required: tr('connector.error.t3_reauthorization_required'),
   t3_read_scope_required: tr('connector.error.t3_read_scope_required'),
@@ -155,37 +161,21 @@ function githubButton(parent, label, action, kind) {
   parent.appendChild(button);
   return button;
 }
-// Match the shell's outline icons. All paths are local constants.
-const connectorIconPaths = {
-  gmail: 'M3 5h18v14H3z M3 6l9 7 9-7',
-  'google-calendar': 'M3 5h18v16H3z M3 10h18 M8 3v4 M16 3v4 M8 14h2 M14 14h2',
-  'google-drive': 'M9 3h6l8 14-3 5H4l-3-5z M9 3l8 14h6 M1 17h16 M15 3L4 22',
-  github: 'M6 8v8 M8 16c6 0 10-2 10-8 M6 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 16a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M18 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z',
-  slack: 'M10 3L7 21 M17 3l-3 18 M4 9h17 M3 15h17',
-  feishu: 'M5 3h10l4 4v14H5z M14 3v5h5 M8 12h8 M8 16h6',
-  notion: 'M5 3h10l4 4v14H5z M14 3v5h5 M8 12h8 M8 16h6',
-  linear: 'M4 17l3 3 M3 12l9 9 M5 7l12 12 M8 5a9 9 0 0 1 12 12z',
-  todoist: 'M4 7l2 2 3-3 M12 8h8 M4 15l2 2 3-3 M12 16h8',
-  'outlook-mail': 'M3 4h18v16H3z M3 13h5l2 3h4l2-3h5',
-  'outlook-calendar': 'M3 5h18v16H3z M3 10h18 M8 3v4 M16 3v4 M9 15l2 2 4-4',
-  onedrive: 'M7 18h11a4 4 0 0 0 0-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 7 18z',
-  sharepoint: 'M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M5 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M19 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M10.5 8.5l-4 7 M13.5 8.5l4 7 M8 18h8',
-  jira: 'M3 4h18v16H3z M9 4v16 M15 4v16 M5 8h2 M11 8h2 M17 8h2',
-  confluence: 'M8 3h9l4 4v11H8z M16 3v5h5 M4 7v14h11',
-  figma: 'M12 2l6 9-6 11-6-11z M12 2v9 M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
-  dropbox: 'M3 8l9-5 9 5-9 5z M3 8v8l9 5 9-5V8 M12 13v8',
-  'apple-calendar': 'M4 5h16v16H4z M4 10h16 M9 3v4 M15 3v4 M10 14h4v4h-4z',
-  'apple-reminders': 'M4 6a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z M10 6h10 M4 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z M10 12h10 M4 18a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z M10 18h10',
-  lock: 'M5 10h14v11H5z M8 10V7a4 4 0 0 1 8 0v3',
-};
-function connectorIcon(name) {
+// The symbol sheet is bundled with the owner page. Only local symbol IDs can be referenced.
+function connectorGlyph(id) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(svg.namespaceURI, 'path');
-  path.setAttribute('d', connectorIconPaths[name]);
-  svg.appendChild(path);
+  svg.setAttribute('focusable', 'false');
+  const use = document.createElementNS(svg.namespaceURI, 'use');
+  const symbol = document.getElementById(id);
+  use.setAttribute('href', symbol?.localName === 'symbol' ? '#' + id : '#product-unknown');
+  svg.appendChild(use);
   return svg;
+}
+function connectorMark(provider) {
+  const mark = githubNode('span', '', 'connector-mark');
+  mark.appendChild(connectorGlyph('product-' + provider));
+  return mark;
 }
 
 // Per-provider card copy, login modes and authorization-link checks. Workspace providers
@@ -293,10 +283,22 @@ function workspaceCard(app) {
   };
 }
 function connectorCard(provider) {
+  if (Object.hasOwn(gameNames, provider)) {
+    const name = gameNames[provider];
+    return {
+      name, detail: tr('game.' + provider + '.detail'), account: a => a.name,
+      authorizeDetail: tr('game.authorize', {name}), open: tr('game.open', {name}),
+      modes: {login: tr('workspace.login', {name})}, custom: undefined,
+      loginUrl: url => !url.hash && (provider === 'itch'
+        ? url.origin === 'https://itch.io' && url.pathname === '/user/oauth' && url.searchParams.get('code_challenge_method') === 'S256'
+        : provider === 'steam' && url.origin === 'https://steamcommunity.com' && url.pathname === '/openid/login'),
+    };
+  }
   const app = workspaceCards.get(provider);
   return app ? workspaceCard(app) : connectorCards[provider] || connectorCards.github;
 }
 function renderResourcePicker(card, footer, request, provider, custom) {
+  const recipient = Object.hasOwn(gameNames, provider) ? gamingModelName : undefined;
   const limit = 30; // ConnectorService.confirm grant limit and resource page size.
   const isGitHub = provider === 'github';
   const key = card.dataset.connectorKey;
@@ -328,7 +330,7 @@ function renderResourcePicker(card, footer, request, provider, custom) {
     confirm.textContent = tr('connector.connecting');
     try {
       const ids = Array.from(selected);
-      await githubAction(request.id, 'confirm', isGitHub ? { repositories: ids } : { resources: ids }, provider);
+      await githubAction(request.id, 'confirm', isGitHub ? { repositories: ids } : { resources: ids, recipient }, provider);
     } finally {
       picker.disabled = false;
       confirm.textContent = tr('github.confirm');
@@ -395,9 +397,10 @@ function renderResourcePicker(card, footer, request, provider, custom) {
         addChoice(isGitHub ? item.fullName : item.id, isGitHub ? item.fullName + (item.private ? tr('github.private') : '') : item.name);
       }
       draft.hasMore = items.length === limit && draft.page < (isGitHub ? 100 : 10);
+      const limited = Object.hasOwn(gameNames, provider) && items.length === limit && !draft.hasMore;
       draft.page++;
       more.textContent = tr('connector.load');
-      notice.textContent = choices.size ? '' : tr('connector.empty');
+      notice.textContent = limited ? tr('game.pickerLimit') : choices.size ? '' : tr('connector.empty');
     } catch (error) {
       notice.textContent = githubErrorText(error.message);
       more.textContent = tr('connector.retryLoad');
@@ -457,17 +460,16 @@ function githubRender(request, provider) {
   if (isGitHub) card.dataset.githubRequest = request.id;
   card.setAttribute('aria-label', isGitHub ? tr('github.label') : tr('connector.label', { name }));
   const header = githubNode('div', '', 'github-card-header');
-  const mark = githubNode('span', '', 'connector-mark');
-  mark.appendChild(connectorIcon(provider));
+  const mark = connectorMark(provider);
   const identity = githubNode('div', '', 'connector-identity');
   identity.appendChild(githubNode('strong', name));
   const accountName = request.account ? info.account(request.account) : '';
   if (!selecting && accountName) identity.appendChild(githubNode('span', accountName, 'github-account'));
   const badge = githubNode('span', tr('github.readonly'), 'github-readonly');
-  badge.prepend(connectorIcon('lock'));
+  badge.prepend(connectorGlyph('connector-ui-lock'));
   header.append(mark, identity, badge);
   card.appendChild(header);
-  const status = githubNode('p', selecting ? tr('connector.choose.' + provider) : githubStatus[request.status] || request.status, 'github-status');
+  const status = githubNode('p', selecting ? tr(Object.hasOwn(gameNames, provider) ? 'game.choose' : 'connector.choose.' + provider) : githubStatus[request.status] || request.status, 'github-status');
   status.setAttribute('role', 'status');
   card.appendChild(status);
   const footer = githubNode('div', '', 'connector-footer');
@@ -481,6 +483,10 @@ function githubRender(request, provider) {
     addLoginActions(card);
   }
   function addLoginActions(target) {
+    if (provider === 'game-library') {
+      renderGameImport(target, games => action('authorize', {mode: 'import', games}));
+      return;
+    }
     for (const [mode, label] of Object.entries(info.modes)) {
       if (selecting && mode === 'existing') continue;
       githubButton(target, label, async () => { githubSelections.delete(key); await action('authorize', { mode }); });
@@ -512,7 +518,7 @@ function githubRender(request, provider) {
     settings.appendChild(summary);
     addLoginActions(settings);
     identity.appendChild(settings);
-    card.appendChild(githubNode('p', tr('connector.scope.' + provider), 'github-detail'));
+    card.appendChild(githubNode('p', Object.hasOwn(gameNames, provider) ? tr('game.confirmScope', {model: gamingModelName || tr('game.model')}) : tr('connector.scope.' + provider), 'github-detail'));
   }
   if (!['completed', 'cancelled', 'expired'].includes(request.status))
     githubButton(footer, tr('github.cancel'), () => action('cancel'), 'github-button github-secondary');
@@ -531,6 +537,7 @@ async function githubRefresh() {
       fetch('/api/connectors?sessionId=' + encodeURIComponent(sid)),
     ]);
     const data = catalog.ok ? await catalog.json() : {connectors:[], requests:[]};
+    gamingModelName = data.gameModel || '';
     for (const app of data.connectors) if (app.workspace) workspaceCards.set(app.id,app);
     const entries = github.ok ? (await github.json()).requests.map(request => ({request,provider:'github'})) : [];
     entries.push(...(data.requests || []));
@@ -540,7 +547,7 @@ async function githubRefresh() {
       const key = provider + ':' + request.id;
       const prior = githubCards.get(key);
       if (prior?.status !== 'completed' && request.status === 'completed') githubHistoryDirty = true;
-      const fingerprint = JSON.stringify(request);
+      const fingerprint = JSON.stringify(request) + (Object.hasOwn(gameNames, provider) ? gamingModelName : "");
       const current = document.querySelector('[data-connector-key="' + key + '"]');
       if (!current || prior?.fingerprint !== fingerprint) {
         const next = githubRender(request, provider);
@@ -577,8 +584,10 @@ function showConnectorCatalog() {
     // is not offered: its example would never reach a connection card.
     for (const app of data.connectors.filter(a => a.available !== false)) {
       const example = app.example[LISA_LOCALE];
-      const row = githubNode('div', '', 'item');
-      row.append(githubNode('strong', app.name), githubNode('p', example, 'desc'));
+      const row = githubNode('div', '', 'connector-example');
+      const copy = githubNode('div', '', 'connector-example-copy');
+      copy.append(githubNode('strong', app.name), githubNode('p', example, 'desc'));
+      row.append(connectorMark(app.id), copy);
       const pick = githubNode('button', tr('connector.pick'), 'github-button');
       pick.type = 'button';
       pick.setAttribute('aria-label', app.name + ' · ' + tr('connector.pick'));
@@ -586,7 +595,7 @@ function showConnectorCatalog() {
         closeModal();
         window.lisaPrefillComposer(input.value.trim() ? input.value + '\n' + example : example);
       });
-      row.appendChild(pick);
+      copy.appendChild(pick);
       modalBody.appendChild(row);
     }
   }, showConnectorCatalog);
@@ -609,9 +618,14 @@ async function loadDashboardConnectors() {
     root.replaceChildren();
     const heading = githubNode('div', '', 'dc-heading');
     const title = githubNode('div');
-    title.append(githubNode('h3', tr('dashboard.connectors.your.connected.knowledge')),
+    title.append(githubNode('h3', tr('dashboard.connectors.title')),
       githubNode('p', tr('dashboard.connectors.all.connectors.saved.authorization.status.read.only.access'), 'dc-caption'));
-    const refresh = githubNode('button', tr('dashboard.connectors.refresh.status'), 'github-button');
+    const refreshLabel = tr('dashboard.connectors.refresh.status');
+    const refresh = githubNode('button', '', 'github-button dc-refresh');
+    refresh.title = refreshLabel;
+    refresh.setAttribute('aria-label', refreshLabel);
+    refresh.appendChild(connectorGlyph('connector-ui-refresh'));
+    refresh.append(githubNode('span', refreshLabel));
     refresh.type = 'button'; refresh.addEventListener('click', loadDashboardConnectors);
     heading.append(title, refresh); root.append(heading);
     const authorized = apps.filter(a => a.connection?.status === 'authorized').length;
@@ -622,13 +636,17 @@ async function loadDashboardConnectors() {
     root.append(totals);
     const toolbar = githubNode('div', '', 'dc-toolbar');
     const search = document.createElement('input'); search.type = 'search'; search.value = dashboardConnectorQuery;
-    search.placeholder = tr('dashboard.connectors.find.an.app.or.capability'); search.setAttribute('aria-label', search.placeholder);
+    search.placeholder = tr('dashboard.connectors.search'); search.setAttribute('aria-label', tr('dashboard.connectors.find.an.app.or.capability'));
     const filter = document.createElement('select'); filter.setAttribute('aria-label', tr('dashboard.connectors.filter.connectors'));
     for (const [value, label] of [['all', tr('dashboard.connectors.all.connectors')], ['authorized', tr('dashboard.connectors.authorized')], ['ready', tr('dashboard.connectors.ready.to.connect')], ['unavailable', tr('dashboard.connectors.need.setup')], ['attention', tr('dashboard.connectors.needs.attention')]]) {
       const option = document.createElement('option'); option.value = value; option.textContent = label; filter.append(option);
     }
     filter.value = dashboardConnectorFilter;
     toolbar.append(search, filter); root.append(toolbar);
+    const gameLookup = githubNode('button', tr('game.lookup'), 'connector-text-button dc-game-lookup');
+    gameLookup.type = 'button';
+    gameLookup.addEventListener('click', () => window.lisaOpenPublicGames());
+    root.appendChild(gameLookup);
     const list = githubNode('div', '', 'dc-grid'); root.append(list);
     const labels = { authorized: tr('dashboard.connectors.authorized'), disconnected: tr('dashboard.connectors.not.connected'), pending: tr('dashboard.connectors.awaiting.confirmation'), unavailable: tr('dashboard.connectors.needs.setup'), error: tr('dashboard.connectors.status.unavailable') };
     function renderList() {
@@ -636,7 +654,7 @@ async function loadDashboardConnectors() {
       const query = dashboardConnectorQuery.trim().toLowerCase();
       const visible = apps.filter(app => {
         const state = app.connection?.status || 'error';
-        const matches = !query || [app.name, app.id, app.example.en, app.example['zh-CN']].some(v => v.toLowerCase().includes(query));
+        const matches = !query || [app.name, app.id, app.example.en, app.example['zh-CN']].some(v => v.toLowerCase().includes(query)) || app.importSources?.some(source => source.toLowerCase().startsWith(query));
         const kind = dashboardConnectorFilter;
         return matches && (kind === 'all' || (kind === 'ready' ? app.available && state === 'disconnected' : kind === 'attention' ? ['pending', 'error'].includes(state) || !!app.connection?.lastError : state === kind));
       });
@@ -645,8 +663,9 @@ async function loadDashboardConnectors() {
         const canConnect = app.available && state !== 'unavailable';
         const card = githubNode('article', '', 'dc-card'); card.dataset.provider = app.id; card.dataset.status = state;
         const top = githubNode('div', '', 'dc-card-head');
-        const icon = githubNode('span', app.name.slice(0, 2).toUpperCase(), 'dc-icon'); icon.setAttribute('aria-hidden', 'true');
-        top.append(icon, githubNode('h4', app.name), githubNode('span', labels[state] || labels.error, 'dc-state ' + state));
+        const identity = githubNode('div', '', 'dc-identity');
+        identity.append(githubNode('h4', app.name), githubNode('span', labels[state] || labels.error, 'dc-state ' + state));
+        top.append(connectorMark(app.id), identity);
         card.append(top, githubNode('p', app.example[LISA_LOCALE], 'dc-description'));
         const scope = state === 'authorized'
           ? tr('dashboard.connectors.scope', { n: app.connection.resourceCount })
@@ -666,6 +685,7 @@ async function loadDashboardConnectors() {
             openModal(app.name, '');
             modalBody.append(githubNode('p', tr('dashboard.connectors.this.connector.is.included.but.sign.in.is.not.configured.on.this.mac.an.administrator.must.configure.its.oauth.application.and.restart.lisa.before.you.can.connect')));
             if (app.workspace?.vendor === 'apple') modalBody.replaceChildren(githubNode('p', tr('dashboard.connectors.use.the.lisa.macos.app.with.its.calendar.and.reminders.reader.installed')));
+            if (app.id === 'itch' || app.id === 'steam') modalBody.replaceChildren(githubNode('p', tr('game.' + app.id + '.setup')));
             if (app.id === 'box') {
               modalBody.append(githubNode('p', tr('dashboard.connectors.box.requires.an.oauth.2.0.app.with.the.read.only.scope.root.readonly.and.callback.http.localhost.4870.oauth.box.store.its.client.id.and.secret.in.the.protected.workspace.client.configuration.on.this.mac')));
             }

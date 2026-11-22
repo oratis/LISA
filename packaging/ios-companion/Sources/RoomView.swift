@@ -17,6 +17,13 @@ enum RoomDestination: String, CaseIterable, Hashable {
         case .settings: return "Settings"
         }
     }
+    var tint: Color {
+        switch self {
+        case .room, .reve, .memory: return Theme.gold
+        case .chat, .knowledge, .sense: return Theme.accent
+        case .dashboard, .control, .settings: return Theme.secondary
+        }
+    }
     var symbol: String {
         switch self {
         case .chat: return "bubble.left.and.bubble.right"
@@ -199,13 +206,19 @@ struct RoomView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 2 : 3), spacing: 8) {
                 ForEach(RoomDestination.allCases, id: \.self) { destination in
                     Button { open(destination) } label: {
-                        VStack(spacing: 7) {
-                            Image(systemName: destination.symbol).font(.title3.weight(.medium))
-                                .foregroundStyle(Theme.accent)
-                            Text(destination.title).font(.subheadline.weight(.medium))
-                                .multilineTextAlignment(.center).foregroundStyle(Theme.text)
+                        VStack(alignment: .leading, spacing: 7) {
+                            Image(systemName: destination.symbol)
+                                .font(.body.weight(.semibold))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(destination.tint)
+                                .padding(6)
+                                .background(destination.tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                                .accessibilityHidden(true)
+                            Text(destination.title).font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Theme.text)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 58).padding(.vertical, 5)
+                        .padding(.vertical, 9).padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
                         .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
                         .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.border, lineWidth: Theme.hairline) }
                         .contentShape(Rectangle())

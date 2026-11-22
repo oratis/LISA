@@ -10,6 +10,9 @@ import { runHook } from "./hooks/runner.js";
 import { PtyAgent, type PtyModuleLike } from "./agents/pty.js";
 
 const SECRETS = {
+  LISA_STEAM_WEB_API_KEY: "steam-application-test-secret",
+  LISA_ITAD_API_KEY: "itad-application-test-secret",
+  LISA_IGDB_CLIENT_SECRET: "igdb-application-test-secret",
   LISA_GOOGLE_CLIENT_SECRET: "google-client-secret-value",
   LISA_NOTION_CLIENT_SECRET: "notion-client-secret-value",
 };

@@ -277,77 +277,125 @@ export function makeProvider(name: ProviderName): Provider {
   }
 }
 
-/**
- * Resolve a SINGLE Provider instance for a model name. Looks up preset →
- * LISA_BASE_URL override → vanilla provider, in that order. (No fallback chain —
- * that's providerForModel's job.)
- */
-function resolveProvider(model: string): Provider {
-  const provider = detectProvider(model);
-  // Managed inference (B6): no own key for this model + a signed-in session →
-  // the LISA gateway, with the session token as the credential. The gateway
-  // swaps in the real provider key, meters, and enforces quota (402s surface
-  // through the normal provider error path).
-  const managed = managedConfig();
-  if (managed && !hasOwnCredentialsForModel(model)) {
-    if (provider === "anthropic") {
-      return new AnthropicProvider({
-        authToken: managed.session,
-        baseURL: `${managed.base}/gw/anthropic`,
-      });
-    }
-    if (provider === "openai") {
-      return new OpenAIProvider({
-        apiKey: managed.session,
-        baseURL: `${managed.base}/gw/openai/v1`,
-      });
-    }
-    if (provider === "gemini" && managedGeminiServed(model)) {
-      // The Google client sends its key as x-goog-api-key; the gateway reads
-      // the account session from Authorization, so pass it there as well.
-      return new GeminiProvider({
-        apiKey: managed.session,
-        baseURL: `${managed.base}/gw/gemini`,
-        headers: { authorization: `Bearer ${managed.session}` },
-      });
-    }
-    // Any other gemini model: not served by the gateway — fall through.
+/** Configuration for a single model, shared by inference and recipient disclosure. */
+function exactModelRoute(model: string, env: NodeJS.ProcessEnv) {
+  const provider = detectProvider(model, env);
+  const managed = managedConfig(env);
+  if (managed && !hasOwnCredentialsForModel(model, env)) {
+    if (provider === "anthropic")
+      return {
+        managed: true,
+        provider,
+        options: { authToken: managed.session, baseURL: managed.base + "/gw/anthropic" },
+      };
+    if (provider === "openai")
+      return {
+        managed: true,
+        provider,
+        options: { apiKey: managed.session, baseURL: managed.base + "/gw/openai/v1" },
+      };
+    if (managedGeminiServed(model))
+      return {
+        managed: true,
+        provider,
+        options: {
+          apiKey: managed.session,
+          baseURL: managed.base + "/gw/gemini",
+          headers: { authorization: "Bearer " + managed.session },
+        },
+      };
   }
-  if (provider === "anthropic") {
-    return new AnthropicProvider({
-      ...resolveAnthropicAuth(),
-      baseURL: process.env.ANTHROPIC_BASE_URL,
-    });
-  }
-  if (provider === "gemini") {
-    return new GeminiProvider({
-      apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY,
-      baseURL: process.env.GEMINI_BASE_URL,
-    });
-  }
-  // OpenAI / OpenAI-compatible. Three nested fallbacks for baseURL + apiKey:
+  if (provider === "anthropic")
+    return { provider, options: { ...resolveAnthropicAuth(env), baseURL: env.ANTHROPIC_BASE_URL } };
+  if (provider === "gemini")
+    return {
+      provider,
+      options: { apiKey: env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY, baseURL: env.GEMINI_BASE_URL },
+    };
   const preset = findPreset(model);
-  if (preset) {
-    return new OpenAIProvider({
-      baseURL: preset.baseURL,
-      apiKey: process.env[preset.apiKeyEnv],
-      defaultHeaders: preset.defaultHeaders,
-    });
-  }
-  if (process.env.LISA_BASE_URL) {
-    // Catch-all (Ollama, self-hosted, the TakoAPI gateway, unknown providers).
-    return new OpenAIProvider({
-      baseURL: process.env.LISA_BASE_URL,
-      // LISA_API_KEY first, then TAKO_KEY (so pointing LISA_BASE_URL at
-      // https://takoapi.com/v1 just works), then OPENAI_API_KEY for compat.
-      apiKey: process.env.LISA_API_KEY ?? process.env.TAKO_KEY ?? process.env.OPENAI_API_KEY,
-    });
-  }
-  // Vanilla OpenAI.
-  return new OpenAIProvider({
-    baseURL: process.env.OPENAI_BASE_URL,
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  if (preset)
+    return {
+      provider,
+      options: {
+        baseURL: preset.baseURL,
+        apiKey: env[preset.apiKeyEnv],
+        defaultHeaders: preset.defaultHeaders,
+      },
+    };
+  if (env.LISA_BASE_URL)
+    return {
+      provider,
+      options: {
+        baseURL: env.LISA_BASE_URL,
+        apiKey: env.LISA_API_KEY ?? env.TAKO_KEY ?? env.OPENAI_API_KEY,
+      },
+    };
+  return { provider, options: { baseURL: env.OPENAI_BASE_URL, apiKey: env.OPENAI_API_KEY } };
+}
+
+/** Freeze the SDK's Gemini API mode and base URL together for personal disclosures. */
+function geminiGameRoute(
+  baseURL: string | undefined,
+  hasKey: boolean,
+  managed: boolean | undefined,
+  env: NodeJS.ProcessEnv,
+) {
+  const enterprise =
+    !managed &&
+    (env.GOOGLE_GENAI_USE_ENTERPRISE ?? env.GOOGLE_GENAI_USE_VERTEXAI)?.toLowerCase() === "true";
+  const configured =
+    baseURL || (enterprise ? env.GOOGLE_VERTEX_BASE_URL : env.GOOGLE_GEMINI_BASE_URL);
+  if (configured) return { enterprise, baseURL: configured };
+  if (!enterprise) return { enterprise, baseURL: "https://generativelanguage.googleapis.com" };
+  // Explicit API keys use Vertex Express. Project credentials can use a regional endpoint.
+  const location =
+    hasKey || !env.GOOGLE_CLOUD_PROJECT ? "global" : env.GOOGLE_CLOUD_LOCATION || "global";
+  const host =
+    location === "global"
+      ? "aiplatform.googleapis.com"
+      : ["us", "eu"].includes(location)
+        ? "aiplatform." + location + ".rep.googleapis.com"
+        : location + "-aiplatform.googleapis.com";
+  return { enterprise, baseURL: "https://" + host };
+}
+
+/** Only display the model and network origin. A custom endpoint can contain credentials. */
+export function exactModelRecipient(model: string, env: NodeJS.ProcessEnv = process.env): string {
+  const { provider, options, managed } = exactModelRoute(model, env);
+  const defaults = {
+    anthropic: "https://api.anthropic.com",
+    openai: "https://api.openai.com",
+    gemini: "https://generativelanguage.googleapis.com",
+  };
+  const gemini =
+    provider === "gemini"
+      ? geminiGameRoute(options.baseURL, !!options.apiKey, managed, env)
+      : undefined;
+  const endpoint = gemini?.baseURL || options.baseURL || defaults[provider];
+  const url = URL.canParse(endpoint) ? new URL(endpoint) : undefined;
+  if (!url || !["http:", "https:"].includes(url.protocol)) return "";
+  return (
+    model +
+    " · " +
+    (managed ? "LISA Cloud · " : "") +
+    (gemini?.enterprise ? "Vertex · " : "") +
+    url.origin
+  );
+}
+
+export function providerForExactModel(model: string, bindRecipient = false): Provider {
+  const { provider, options, managed } = exactModelRoute(model, process.env);
+  if (provider === "anthropic") return new AnthropicProvider(options);
+  if (provider === "gemini")
+    return new GeminiProvider(
+      bindRecipient
+        ? {
+            ...options,
+            ...geminiGameRoute(options.baseURL, !!options.apiKey, managed, process.env),
+          }
+        : options,
+    );
+  return new OpenAIProvider(options);
 }
 
 /**
@@ -360,8 +408,11 @@ export function providerForModel(model: string): Provider {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (fallbacks.length === 0) return resolveProvider(model);
-  const chain = [model, ...fallbacks].map((m) => ({ model: m, provider: resolveProvider(m) }));
+  if (fallbacks.length === 0) return providerForExactModel(model);
+  const chain = [model, ...fallbacks].map((m) => ({
+    model: m,
+    provider: providerForExactModel(m),
+  }));
   return new FallbackProvider(chain);
 }
 

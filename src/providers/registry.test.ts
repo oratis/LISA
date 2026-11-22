@@ -2,6 +2,7 @@ import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   detectProvider,
+  exactModelRecipient,
   resolveAnthropicAuth,
   hasCredentialsForModel,
   hasOwnCredentialsForModel,
@@ -211,4 +212,52 @@ describe("OPENAI_COMPAT_PRESETS — table integrity", () => {
       }
     }
   });
+});
+
+test("disclosure binds the primary game model to its actual service without exposing URL credentials", () => {
+  const a = exactModelRecipient("custom", {
+    LISA_BASE_URL: "https://user:pass@a.example:8443/v1?secret=never",
+    LISA_MODEL_FALLBACK: "gpt-4o",
+  });
+  assert.equal(a, "custom · https://a.example:8443");
+  assert.notEqual(a, exactModelRecipient("custom", { LISA_BASE_URL: "https://b.example/v1" }));
+  assert.equal(
+    exactModelRecipient("gpt-4o", {
+      LISA_MANAGED_BASE: "https://same.example",
+      LISA_MANAGED_SESSION: "test",
+    }),
+    "gpt-4o · LISA Cloud · https://same.example",
+  );
+  assert.equal(
+    exactModelRecipient("gpt-4o", {
+      OPENAI_API_KEY: "test",
+      OPENAI_BASE_URL: "https://same.example",
+    }),
+    "gpt-4o · https://same.example",
+  );
+});
+
+test("Gemini game consent follows SDK endpoint aliases, Vertex region, and explicit mode precedence", () => {
+  const model = "gemini-2.5-flash";
+  assert.equal(
+    exactModelRecipient(model, { GOOGLE_GEMINI_BASE_URL: "https://developer.example/v1" }),
+    model + " · https://developer.example",
+  );
+  const vertex = {
+    GOOGLE_GENAI_USE_VERTEXAI: "true",
+    GOOGLE_CLOUD_PROJECT: "p",
+    GOOGLE_CLOUD_LOCATION: "eu",
+  };
+  assert.equal(
+    exactModelRecipient(model, vertex),
+    model + " · Vertex · https://aiplatform.eu.rep.googleapis.com",
+  );
+  assert.equal(
+    exactModelRecipient(model, { ...vertex, GOOGLE_VERTEX_BASE_URL: "https://vertex.example" }),
+    model + " · Vertex · https://vertex.example",
+  );
+  assert.equal(
+    exactModelRecipient(model, { ...vertex, GOOGLE_GENAI_USE_ENTERPRISE: "false" }),
+    model + " · https://generativelanguage.googleapis.com",
+  );
 });

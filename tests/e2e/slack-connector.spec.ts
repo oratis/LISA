@@ -179,12 +179,14 @@ test.describe("Slack read-only connector", () => {
     const offered = catalog.connectors.filter((c) => c.available !== false).length;
     expect(offered).toBeGreaterThanOrEqual(7);
     await expect(panel.getByRole("button")).toHaveCount(offered);
+    await expect(panel.locator('.connector-mark use[href="#product-slack"]')).toHaveCount(1);
     await panel.getByRole("button", { name: "Slack · 将示例加入草稿" }).click();
     await expect(draft).toHaveValue(/只返回数量。\n总结我选定的 Slack/);
     const card = page.getByRole("region", { name: "Slack 只读连接" });
     await expect(card).toHaveCount(0);
     await page.locator("#sendBtn").click();
     await expect(card.getByRole("button", { name: "登录 Slack，只读连接" })).toBeVisible();
+    await expect(card.locator(".connector-mark use")).toHaveAttribute("href", "#product-slack");
     await draft.fill("/connectors Gmail");
     await page.locator("#sendBtn").click();
     await expect(page.locator("#log .msg").last()).toContainText("Gmail");

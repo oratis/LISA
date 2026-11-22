@@ -33,13 +33,22 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     ["t3", fake],
   ]);
   for (const id of workspaceIds) services.set(id, fake);
+  const publicGames = {
+    configured: () => ({ igdb: false, itad: false }),
+    query: async () => {
+      throw new ConnectorError("public_games_not_configured", 503);
+    },
+  };
+  services.set("game-library", fake);
   const server = http.createServer((req, res) => {
-    void handleConnectorApi(req, res, req.url!, services, owner).then((handled) => {
-      if (!handled) {
-        res.writeHead(404);
-        res.end();
-      }
-    });
+    void handleConnectorApi(req, res, req.url!, services, owner, undefined, publicGames).then(
+      (handled) => {
+        if (!handled) {
+          res.writeHead(404);
+          res.end();
+        }
+      },
+    );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(async () => {
@@ -57,7 +66,7 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
   assert.equal(catalog.status, 200);
   assert.equal(
     ((await catalog.json()) as { connectors: unknown[] }).connectors.length,
-    10 + workspaceIds.length,
+    13 + workspaceIds.length,
   );
   for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }])
     assert.equal((await post("{}", headers)).status, 403, JSON.stringify(headers));
@@ -83,9 +92,31 @@ test("generic connector routes enforce owner/origin, bounded JSON, and scoped pr
     assert.equal((await post("{}", { origin: "https://evil.example" }, provider)).status, 403);
     assert.equal((await post("{}", {}, provider)).status, 200);
   }
+  assert.deepEqual(await (await fetch(base + "/api/games/public")).json(), {
+    igdb: false,
+    itad: false,
+  });
+  const lookup = (body: string, headers: Record<string, string> = {}) =>
+    fetch(base + "/api/games/public", {
+      method: "POST",
+      body,
+      headers: { "content-type": "application/json", ...headers },
+    });
+  assert.equal((await lookup("{}", { origin: "https://example.org" })).status, 403);
+  assert.equal((await lookup("{}", { "content-type": "text/plain" })).status, 415);
+  assert.equal((await lookup("x".repeat(4097))).status, 413);
+  assert.equal((await lookup("{}")).status, 503);
+  assert.equal((await post('{"mode":"import","games":[]}', {}, "game-library")).status, 409);
+  assert.equal(
+    (await post('{"mode":"import","games":[{"title":"test"}]}', { origin: "null" }, "game-library"))
+      .status,
+    403,
+  );
   owner = false;
   for (const route of [
     "/api/connectors",
+    "/api/games/public",
+    "/api/connectors/game-library/requests?sessionId=test",
     "/api/connectors/google-calendar/requests?sessionId=test",
     "/api/connectors/gmail/requests/test/resources",
     "/api/connectors/linear/requests?sessionId=test",

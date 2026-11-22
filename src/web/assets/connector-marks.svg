@@ -1,0 +1,237 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;overflow:hidden">
+  <!-- Product artwork for the local Connector catalog.
+       Vectors from SVG Logos (gilbarbara/logos, CC0, via @iconify-json/logos 1.2.20).
+       Obsidian from https://obsidian.md/images/obsidian-logo-gradient.svg.
+       Outlook and SharePoint from Microsoft Office Fabric CDN brand-icons/product/svg (20230815.002).
+       Calendar, Reminders and Feishu/Lark use the macOS application icons.
+       T3 Code uses apps/marketing/public/apple-touch-icon.png from pingdotgg/t3code at e89abada.
+       itch.io from Simple Icons v15. Playnite from JosefNemec/Playnite media/playnite-logo-default.svg.
+       Product names and marks belong to their respective owners. -->
+  <symbol id="product-github" viewBox="0 0 256 250">
+    <path fill="#161614" d="M128.001 0C57.317 0 0 57.307 0 128.001c0 56.554 36.676 104.535 87.535 121.46c6.397 1.185 8.746-2.777 8.746-6.158c0-3.052-.12-13.135-.174-23.83c-35.61 7.742-43.124-15.103-43.124-15.103c-5.823-14.795-14.213-18.73-14.213-18.73c-11.613-7.944.876-7.78.876-7.78c12.853.902 19.621 13.19 19.621 13.19c11.417 19.568 29.945 13.911 37.249 10.64c1.149-8.272 4.466-13.92 8.127-17.116c-28.431-3.236-58.318-14.212-58.318-63.258c0-13.975 5-25.394 13.188-34.358c-1.329-3.224-5.71-16.242 1.24-33.874c0 0 10.749-3.44 35.21 13.121c10.21-2.836 21.16-4.258 32.038-4.307c10.878.049 21.837 1.47 32.066 4.307c24.431-16.56 35.165-13.12 35.165-13.12c6.967 17.63 2.584 30.65 1.255 33.873c8.207 8.964 13.173 20.383 13.173 34.358c0 49.163-29.944 59.988-58.447 63.157c4.591 3.972 8.682 11.762 8.682 23.704c0 17.126-.148 30.91-.148 35.126c0 3.407 2.304 7.398 8.792 6.14C219.37 232.5 256 184.537 256 128.002C256 57.307 198.691 0 128.001 0m-80.06 182.34c-.282.636-1.283.827-2.194.39c-.929-.417-1.45-1.284-1.15-1.922c.276-.655 1.279-.838 2.205-.399c.93.418 1.46 1.293 1.139 1.931m6.296 5.618c-.61.566-1.804.303-2.614-.591c-.837-.892-.994-2.086-.375-2.66c.63-.566 1.787-.301 2.626.591c.838.903 1 2.088.363 2.66m4.32 7.188c-.785.545-2.067.034-2.86-1.104c-.784-1.138-.784-2.503.017-3.05c.795-.547 2.058-.055 2.861 1.075c.782 1.157.782 2.522-.019 3.08m7.304 8.325c-.701.774-2.196.566-3.29-.49c-1.119-1.032-1.43-2.496-.726-3.27c.71-.776 2.213-.558 3.315.49c1.11 1.03 1.45 2.505.701 3.27m9.442 2.81c-.31 1.003-1.75 1.459-3.199 1.033c-1.448-.439-2.395-1.613-2.103-2.626c.301-1.01 1.747-1.484 3.207-1.028c1.446.436 2.396 1.602 2.095 2.622m10.744 1.193c.036 1.055-1.193 1.93-2.715 1.95c-1.53.034-2.769-.82-2.786-1.86c0-1.065 1.202-1.932 2.733-1.958c1.522-.03 2.768.818 2.768 1.868m10.555-.405c.182 1.03-.875 2.088-2.387 2.37c-1.485.271-2.861-.365-3.05-1.386c-.184-1.056.893-2.114 2.376-2.387c1.514-.263 2.868.356 3.061 1.403"/>
+  </symbol>
+  <symbol id="product-google-calendar" viewBox="0 0 256 256">
+    <path fill="#fff" d="M195.368 60.632H60.632v134.736h134.736z"/>
+    <path fill="#ea4335" d="M195.368 256L256 195.368l-30.316-5.172l-30.316 5.172l-5.533 27.73z"/>
+    <path fill="#188038" d="M0 195.368v40.421C0 246.956 9.044 256 20.21 256h40.422l6.225-30.316l-6.225-30.316l-33.033-5.172z"/>
+    <path fill="#1967d2" d="M256 60.632V20.21C256 9.044 246.956 0 235.79 0h-40.422q-5.532 22.554-5.533 33.196q0 10.641 5.533 27.436q20.115 5.76 30.316 5.76T256 60.631"/>
+    <path fill="#fbbc04" d="M256 60.632h-60.632v134.736H256z"/>
+    <path fill="#34a853" d="M195.368 195.368H60.632V256h134.736z"/>
+    <path fill="#4285f4" d="M195.368 0H20.211C9.044 0 0 9.044 0 20.21v175.158h60.632V60.632h134.736z"/>
+    <path fill="#4285f4" d="M88.27 165.154c-5.036-3.402-8.523-8.37-10.426-14.94l11.689-4.816q1.59 6.063 5.558 9.398c2.627 2.223 5.827 3.318 9.566 3.318q5.734 0 9.852-3.487c2.746-2.324 4.127-5.288 4.127-8.875q0-5.508-4.345-8.994c-2.897-2.324-6.535-3.486-10.88-3.486h-6.754v-11.57h6.063q5.608 0 9.448-3.033c2.56-2.02 3.84-4.783 3.84-8.303c0-3.132-1.145-5.625-3.435-7.494c-2.29-1.87-5.188-2.813-8.708-2.813c-3.436 0-6.164.91-8.185 2.745a16.1 16.1 0 0 0-4.413 6.754l-11.57-4.817c1.532-4.345 4.345-8.185 8.471-11.503s9.398-4.985 15.798-4.985c4.733 0 8.994.91 12.767 2.745c3.772 1.836 6.736 4.379 8.875 7.613c2.14 3.25 3.2 6.888 3.2 10.93c0 4.126-.993 7.613-2.98 10.476s-4.43 5.052-7.327 6.585v.69a22.25 22.25 0 0 1 9.398 7.327c2.442 3.284 3.672 7.208 3.672 11.79c0 4.58-1.163 8.673-3.487 12.26c-2.324 3.588-5.54 6.417-9.617 8.472c-4.092 2.055-8.69 3.1-13.793 3.1c-5.912.016-11.369-1.685-16.405-5.087m71.797-58.005l-12.833 9.28l-6.417-9.734l23.023-16.607h8.825v78.333h-12.598z"/>
+  </symbol>
+  <symbol id="product-gmail" viewBox="0 0 256 193">
+    <path fill="#4285f4" d="M58.182 192.05V93.14L27.507 65.077L0 49.504v125.091c0 9.658 7.825 17.455 17.455 17.455z"/>
+    <path fill="#34a853" d="M197.818 192.05h40.727c9.659 0 17.455-7.826 17.455-17.455V49.505l-31.156 17.837l-27.026 25.798z"/>
+    <path fill="#ea4335" d="m58.182 93.14l-4.174-38.647l4.174-36.989L128 69.868l69.818-52.364l4.669 34.992l-4.669 40.644L128 145.504z"/>
+    <path fill="#fbbc04" d="M197.818 17.504V93.14L256 49.504V26.231c0-21.585-24.64-33.89-41.89-20.945z"/>
+    <path fill="#c5221f" d="m0 49.504l26.759 20.07L58.182 93.14V17.504L41.89 5.286C24.61-7.66 0 4.646 0 26.23z"/>
+  </symbol>
+  <symbol id="product-linear" viewBox="0 0 256 256">
+    <path fill="#222326" d="m8.174 102.613l145.213 145.213c2.12 2.12 1.097 5.72-1.85 6.27a128 128 0 0 1-15.02 1.896a3.78 3.78 0 0 1-2.92-1.109L1.117 122.403a3.78 3.78 0 0 1-1.109-2.92c.34-5.095.978-10.107 1.896-15.02c.55-2.947 4.15-3.97 6.27-1.85m-4.092 58.796c-.97-3.614 3.3-5.894 5.946-3.248l87.81 87.811c2.647 2.646.367 6.915-3.247 5.946c-44.03-11.805-78.704-46.478-90.51-90.509m12.727-97.245c1.233-2.135 4.147-2.463 5.89-.719L192.556 233.3c1.744 1.744 1.417 4.658-.72 5.891a128 128 0 0 1-11.1 5.705c-1.43.65-3.11.322-4.22-.79L11.893 79.487c-1.111-1.112-1.439-2.79-.79-4.221a128 128 0 0 1 5.706-11.1M127.86 0C198.63 0 256 57.37 256 128.14c0 37.57-16.168 71.362-41.926 94.8c-1.487 1.354-3.768 1.264-5.19-.157L33.217 47.116c-1.421-1.422-1.51-3.703-.158-5.19C56.498 16.168 90.291 0 127.86 0"/>
+  </symbol>
+  <symbol id="product-google-drive" viewBox="0 0 256 229">
+    <path fill="#0066da" d="m19.354 196.034l11.29 19.5c2.346 4.106 5.718 7.332 9.677 9.678q17.009-21.591 23.68-33.137q6.77-11.717 16.641-36.655q-26.604-3.502-40.32-3.502q-13.165 0-40.322 3.502c0 4.545 1.173 9.09 3.519 13.196z"/>
+    <path fill="#ea4335" d="M215.681 225.212c3.96-2.346 7.332-5.572 9.677-9.677l4.692-8.064l22.434-38.855a26.57 26.57 0 0 0 3.518-13.196q-27.315-3.502-40.247-3.502q-13.899 0-40.248 3.502q9.754 25.075 16.422 36.655q6.724 11.683 23.752 33.137"/>
+    <path fill="#00832d" d="M128.001 73.311q19.68-23.768 27.125-36.655q5.996-10.377 13.196-33.137C164.363 1.173 159.818 0 155.126 0h-54.25C96.184 0 91.64 1.32 87.68 3.519q9.16 26.103 15.544 37.154q7.056 12.213 24.777 32.638"/>
+    <path fill="#2684fc" d="M175.36 155.42H80.642l-40.32 69.792c3.958 2.346 8.503 3.519 13.195 3.519h148.968c4.692 0 9.238-1.32 13.196-3.52z"/>
+    <path fill="#00ac47" d="M128.001 73.311L87.681 3.52c-3.96 2.346-7.332 5.571-9.678 9.677L3.519 142.224A26.57 26.57 0 0 0 0 155.42h80.642z"/>
+    <path fill="#ffba00" d="m215.242 77.71l-37.243-64.514c-2.345-4.106-5.718-7.331-9.677-9.677l-40.32 69.792l47.358 82.109h80.496c0-4.546-1.173-9.09-3.519-13.196z"/>
+  </symbol>
+  <symbol id="product-slack" viewBox="0 0 256 256">
+    <path fill="#e01e5a" d="M53.841 161.32c0 14.832-11.987 26.82-26.819 26.82S.203 176.152.203 161.32c0-14.831 11.987-26.818 26.82-26.818H53.84zm13.41 0c0-14.831 11.987-26.818 26.819-26.818s26.819 11.987 26.819 26.819v67.047c0 14.832-11.987 26.82-26.82 26.82c-14.83 0-26.818-11.988-26.818-26.82z"/>
+    <path fill="#36c5f0" d="M94.07 53.638c-14.832 0-26.82-11.987-26.82-26.819S79.239 0 94.07 0s26.819 11.987 26.819 26.819v26.82zm0 13.613c14.832 0 26.819 11.987 26.819 26.819s-11.987 26.819-26.82 26.819H26.82C11.987 120.889 0 108.902 0 94.069c0-14.83 11.987-26.818 26.819-26.818z"/>
+    <path fill="#2eb67d" d="M201.55 94.07c0-14.832 11.987-26.82 26.818-26.82s26.82 11.988 26.82 26.82s-11.988 26.819-26.82 26.819H201.55zm-13.41 0c0 14.832-11.988 26.819-26.82 26.819c-14.831 0-26.818-11.987-26.818-26.82V26.82C134.502 11.987 146.489 0 161.32 0s26.819 11.987 26.819 26.819z"/>
+    <path fill="#ecb22e" d="M161.32 201.55c14.832 0 26.82 11.987 26.82 26.818s-11.988 26.82-26.82 26.82c-14.831 0-26.818-11.988-26.818-26.82V201.55zm0-13.41c-14.831 0-26.818-11.988-26.818-26.82c0-14.831 11.987-26.818 26.819-26.818h67.25c14.832 0 26.82 11.987 26.82 26.819s-11.988 26.819-26.82 26.819z"/>
+  </symbol>
+  <symbol id="product-notion" viewBox="0 0 256 268">
+    <path fill="#fff" d="M16.092 11.538L164.09.608c18.179-1.56 22.85-.508 34.28 7.801l47.243 33.282C253.406 47.414 256 48.975 256 55.207v182.527c0 11.439-4.155 18.205-18.696 19.24L65.44 267.378c-10.913.517-16.11-1.043-21.825-8.327L8.826 213.814C2.586 205.487 0 199.254 0 191.97V29.726c0-9.352 4.155-17.153 16.092-18.188"/>
+    <path d="M164.09.608L16.092 11.538C4.155 12.573 0 20.374 0 29.726v162.245c0 7.284 2.585 13.516 8.826 21.843l34.789 45.237c5.715 7.284 10.912 8.844 21.825 8.327l171.864-10.404c14.532-1.035 18.696-7.801 18.696-19.24V55.207c0-5.911-2.336-7.614-9.21-12.66l-1.185-.856L198.37 8.409C186.94.1 182.27-.952 164.09.608M69.327 52.22c-14.033.945-17.216 1.159-25.186-5.323L23.876 30.778c-2.06-2.086-1.026-4.69 4.163-5.207l142.274-10.395c11.947-1.043 18.17 3.12 22.842 6.758l24.401 17.68c1.043.525 3.638 3.637.517 3.637L71.146 52.095zm-16.36 183.954V81.222c0-6.767 2.077-9.887 8.3-10.413L230.02 60.93c5.724-.517 8.31 3.12 8.31 9.879v153.917c0 6.767-1.044 12.49-10.387 13.008l-161.487 9.361c-9.343.517-13.489-2.594-13.489-10.921M212.377 89.53c1.034 4.681 0 9.362-4.681 9.897l-7.783 1.542v114.404c-6.758 3.637-12.981 5.715-18.18 5.715c-8.308 0-10.386-2.604-16.609-10.396l-50.898-80.079v77.476l16.1 3.646s0 9.362-12.989 9.362l-35.814 2.077c-1.043-2.086 0-7.284 3.63-8.318l9.351-2.595V109.823l-12.98-1.052c-1.044-4.68 1.55-11.439 8.826-11.965l38.426-2.585l52.958 81.113v-71.76l-13.498-1.552c-1.043-5.733 3.111-9.896 8.3-10.404z"/>
+  </symbol>
+  <symbol id="product-obsidian" viewBox="0 0 512 512" fill="none">
+  <radialGradient id="paint-obsidian-logo-bottom-left" cx="0" cy="0" gradientTransform="matrix(-59 -225 150 -39 161.4 470)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".4"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </radialGradient>
+  <radialGradient id="paint-obsidian-logo-top-right" cx="0" cy="0" gradientTransform="matrix(50 -379 280 37 360 374.2)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".6"/>
+    <stop offset="1" stop-color="#fff" stop-opacity=".1"/>
+  </radialGradient>
+  <radialGradient id="paint-obsidian-logo-top-left" cx="0" cy="0" gradientTransform="matrix(69 -319 218 47 175.4 307)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".8"/>
+    <stop offset="1" stop-color="#fff" stop-opacity=".4"/>
+  </radialGradient>
+  <radialGradient id="paint-obsidian-logo-bottom-right" cx="0" cy="0" gradientTransform="matrix(-96 -163 187 -111 335.3 512.2)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".3"/>
+    <stop offset="1" stop-opacity=".3"/>
+  </radialGradient>
+  <radialGradient id="paint-obsidian-logo-top-edge" cx="0" cy="0" gradientTransform="matrix(-36 166 -112 -24 310 128.2)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+    <stop offset="1" stop-color="#fff" stop-opacity=".2"/>
+  </radialGradient>
+  <radialGradient id="paint-obsidian-logo-left-edge" cx="0" cy="0" gradientTransform="matrix(88 89 -190 187 111 220.2)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".2"/>
+    <stop offset="1" stop-color="#fff" stop-opacity=".4"/>
+  </radialGradient>
+  <radialGradient id="paint-obsidian-logo-bottom-edge" cx="0" cy="0" gradientTransform="matrix(9 130 -276 20 215 284)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".2"/>
+    <stop offset="1" stop-color="#fff" stop-opacity=".3"/>
+  </radialGradient>
+  <radialGradient id="paint-obsidian-logo-middle-edge" cx="0" cy="0" gradientTransform="matrix(-198 -104 327 -623 400 399.2)" gradientUnits="userSpaceOnUse" r="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".2"/>
+    <stop offset=".5" stop-color="#fff" stop-opacity=".2"/>
+    <stop offset="1" stop-color="#fff" stop-opacity=".3"/>
+  </radialGradient>
+  <clipPath id="paint-obsidian-clip">
+    <path d="M.2.2h512v512H.2z"/>
+  </clipPath>
+  <g clip-path="url(#paint-obsidian-clip)">
+    <path d="M382.3 475.6c-3.1 23.4-26 41.6-48.7 35.3-32.4-8.9-69.9-22.8-103.6-25.4l-51.7-4a34 34 0 0 1-22-10.2l-89-91.7a34 34 0 0 1-6.7-37.7s55-121 57.1-127.3c2-6.3 9.6-61.2 14-90.6 1.2-7.9 5-15 11-20.3L248 8.9a34.1 34.1 0 0 1 49.6 4.3L386 125.6a37 37 0 0 1 7.6 22.4c0 21.3 1.8 65 13.6 93.2 11.5 27.3 32.5 57 43.5 71.5a17.3 17.3 0 0 1 1.3 19.2 1494 1494 0 0 1-44.8 70.6c-15 22.3-21.9 49.9-25 73.1z" fill="#6c31e3"/>
+    <path d="M165.9 478.3c41.4-84 40.2-144.2 22.6-187-16.2-39.6-46.3-64.5-70-80-.6 2.3-1.3 4.4-2.2 6.5L60.6 342a34 34 0 0 0 6.6 37.7l89.1 91.7a34 34 0 0 0 9.6 7z" fill="url(#paint-obsidian-logo-bottom-left)"/>
+    <path d="M278.4 307.8c11.2 1.2 22.2 3.6 32.8 7.6 34 12.7 65 41.2 90.5 96.3 1.8-3.1 3.6-6.2 5.6-9.2a1536 1536 0 0 0 44.8-70.6 17 17 0 0 0-1.3-19.2c-11-14.6-32-44.2-43.5-71.5-11.8-28.2-13.5-72-13.6-93.2 0-8.1-2.6-16-7.6-22.4L297.6 13.2a34 34 0 0 0-1.5-1.7 96 96 0 0 1 2 54 198.3 198.3 0 0 1-17.6 41.3l-7.2 14.2a171 171 0 0 0-19.4 71c-1.2 29.4 4.8 66.4 24.5 115.8z" fill="url(#paint-obsidian-logo-top-right)"/>
+    <path d="M278.4 307.8c-19.7-49.4-25.8-86.4-24.5-115.9a171 171 0 0 1 19.4-71c2.3-4.8 4.8-9.5 7.2-14.1 7.1-13.9 14-27 17.6-41.4a96 96 0 0 0-2-54A34.1 34.1 0 0 0 248 9l-105.4 94.8a34.1 34.1 0 0 0-10.9 20.3l-12.8 85-.5 2.3c23.8 15.5 54 40.4 70.1 80a147 147 0 0 1 7.8 24.8c28-6.8 55.7-11 82.1-8.3z" fill="url(#paint-obsidian-logo-top-left)"/>
+    <path d="M333.6 511c22.7 6.2 45.6-12 48.7-35.4a187 187 0 0 1 19.4-63.9c-25.6-55-56.5-83.6-90.4-96.3-36-13.4-75.2-9-115 .7 8.9 40.4 3.6 93.3-30.4 162.2 4 1.8 8.1 3 12.5 3.3 0 0 24.4 2 53.6 4.1 29 2 72.4 17.1 101.6 25.2z" fill="url(#paint-obsidian-logo-bottom-right)"/>
+    <g clip-rule="evenodd" fill-rule="evenodd">
+      <path d="M254.1 190c-1.3 29.2 2.4 62.8 22.1 112.1l-6.2-.5c-17.7-51.5-21.5-78-20.2-107.6a174.7 174.7 0 0 1 20.4-72c2.4-4.9 8-14.1 10.5-18.8 7.1-13.7 11.9-21 16-33.6 5.7-17.5 4.5-25.9 3.8-34.1 4.6 29.9-12.7 56-25.7 82.4a177.1 177.1 0 0 0-20.7 72z" fill="url(#paint-obsidian-logo-top-edge)"/>
+      <path d="M194.3 293.4c2.4 5.4 4.6 9.8 6 16.5L195 311c-2.1-7.8-3.8-13.4-6.8-20-17.8-42-46.3-63.6-69.7-79.5 28.2 15.2 57.2 39 75.7 81.9z" fill="url(#paint-obsidian-logo-left-edge)"/>
+      <path d="M200.6 315.1c9.8 46-1.2 104.2-33.6 160.9 27.1-56.2 40.2-110.1 29.3-160z" fill="url(#paint-obsidian-logo-bottom-edge)"/>
+      <path d="M312.5 311c53.1 19.9 73.6 63.6 88.9 100-19-38.1-45.2-80.3-90.8-96-34.8-11.8-64.1-10.4-114.3 1l-1.1-5c53.2-12.1 81-13.5 117.3 0z" fill="url(#paint-obsidian-logo-middle-edge)"/>
+    </g>
+  </g>
+  </symbol>
+  <symbol id="product-box" viewBox="0 0 512 277">
+    <path fill="#0061d5" d="M507.486 245.434c6.391 8.948 5.113 20.453-2.557 26.844c-8.948 6.392-21.73 5.113-28.122-2.556l-44.741-57.524l-43.462 56.245c-6.392 8.948-19.175 8.948-28.123 2.557c-8.948-6.392-10.226-17.896-3.835-26.844l51.132-66.472l-51.132-66.472c-6.391-8.948-3.835-21.73 3.835-28.122c8.948-6.392 21.731-3.835 28.123 3.835l43.462 57.523l44.74-54.967c6.392-8.948 17.897-10.226 28.123-3.835c8.948 6.392 8.948 19.175 2.557 28.123l-49.854 65.193zm-232.651-7.67c-33.236 0-60.08-25.566-60.08-58.802c0-31.957 26.844-58.802 60.08-58.802s60.08 26.845 60.08 58.802c-1.278 33.236-28.123 58.802-60.08 58.802m-176.406 0c-33.236 0-60.08-25.566-60.08-58.802c0-31.957 26.844-58.802 60.08-58.802s60.08 26.845 60.08 58.802c0 33.236-26.844 58.802-60.08 58.802M274.835 81.811c-37.07 0-70.307 20.453-86.925 51.132c-16.618-30.679-49.853-51.132-88.202-51.132c-23.01 0-43.463 7.67-60.08 19.175V19.175C39.627 8.948 30.678 0 20.452 0C8.948 0 0 8.948 0 19.175V180.24c1.278 53.688 44.74 95.872 98.43 95.872c38.348 0 71.584-21.73 88.202-52.41c16.618 30.68 49.854 52.41 86.925 52.41c54.967 0 99.707-43.462 99.707-98.43c1.278-52.41-43.462-95.872-98.43-95.872"/>
+  </symbol>
+  <symbol id="product-todoist" viewBox="0 0 256 256">
+    <path fill="#e44332" d="M224.002 0H31.998C14.358.04.061 14.337 0 32v192c0 17.6 14.397 32 31.998 32h192.004c17.6 0 31.998-14.4 31.998-32V32c0-17.6-14.397-32-31.998-32"/>
+    <path fill="#fff" d="M54.133 120.802c4.463-2.606 100.343-58.325 102.535-59.616c2.192-1.275 2.311-5.196-.16-6.615c-2.454-1.41-7.117-4.089-8.846-5.117a8.03 8.03 0 0 0-7.907.096c-1.227.717-83.151 48.299-85.885 49.86c-3.292 1.882-7.333 1.914-10.6 0L0 74.019v21.583c10.52 6.2 36.718 21.599 43.062 25.225c3.786 2.152 7.413 2.105 11.079-.024"/>
+    <path fill="#fff" d="M54.133 161.61c4.463-2.607 100.343-58.326 102.535-59.617c2.192-1.275 2.311-5.196-.16-6.615c-2.454-1.41-7.117-4.089-8.846-5.117a8.03 8.03 0 0 0-7.907.096c-1.227.717-83.151 48.298-85.885 49.86c-3.292 1.882-7.333 1.913-10.6 0L0 114.826v21.583c10.52 6.2 36.718 21.599 43.062 25.225c3.786 2.152 7.413 2.104 11.079-.024"/>
+    <path fill="#fff" d="M54.133 204.967c4.463-2.607 100.343-58.326 102.535-59.617c2.192-1.275 2.311-5.196-.16-6.615c-2.454-1.41-7.117-4.088-8.846-5.117a8.03 8.03 0 0 0-7.907.096c-1.227.717-83.151 48.299-85.885 49.86c-3.292 1.882-7.333 1.914-10.6 0L0 158.183v21.583c10.52 6.2 36.718 21.6 43.062 25.225c3.786 2.152 7.413 2.105 11.079-.023"/>
+  </symbol>
+  <symbol id="product-onedrive" viewBox="0 0 256 165">
+    <path fill="#0364b8" d="m154.66 110.682l52.842-50.534c-10.976-42.8-54.57-68.597-97.37-57.62a80 80 0 0 0-46.952 33.51c.817-.02 91.48 74.644 91.48 74.644"/>
+    <path fill="#0078d4" d="m97.618 45.552l-.002.009a63.7 63.7 0 0 0-33.619-9.543c-.274 0-.544.017-.818.02C27.852 36.476-.432 65.47.005 100.798a63.97 63.97 0 0 0 11.493 35.798l79.165-9.915l60.694-48.94z"/>
+    <path fill="#1490df" d="M207.502 60.148a53 53 0 0 0-3.51-.131a51.8 51.8 0 0 0-20.61 4.254l-.002-.005l-32.022 13.475l35.302 43.607l63.11 15.341c13.62-25.283 4.164-56.82-21.12-70.44a52 52 0 0 0-21.148-6.1"/>
+    <path fill="#28a8ea" d="M11.498 136.596a63.91 63.91 0 0 0 52.5 27.417h139.994a51.99 51.99 0 0 0 45.778-27.323l-98.413-58.95z"/>
+  </symbol>
+  <symbol id="product-jira" viewBox="0 0 256 256">
+    <defs>
+    <linearGradient id="paint-jira-SVGSBI7obaC" x1="98.031%" x2="58.888%" y1=".161%" y2="40.766%">
+    <stop offset="18%" stop-color="#0052cc"/>
+    <stop offset="100%" stop-color="#2684ff"/>
+    </linearGradient>
+    <linearGradient id="paint-jira-SVGHifZlbzE" x1="100.665%" x2="55.402%" y1=".455%" y2="44.727%">
+    <stop offset="18%" stop-color="#0052cc"/>
+    <stop offset="100%" stop-color="#2684ff"/>
+    </linearGradient>
+    </defs>
+    <path fill="#2684ff" d="M244.658 0H121.707a55.5 55.5 0 0 0 55.502 55.502h22.649V77.37c.02 30.625 24.841 55.447 55.466 55.467V10.666C255.324 4.777 250.55 0 244.658 0"/>
+    <path fill="url(#paint-jira-SVGSBI7obaC)" d="M183.822 61.262H60.872c.019 30.625 24.84 55.447 55.466 55.467h22.649v21.938c.039 30.625 24.877 55.43 55.502 55.43V71.93c0-5.891-4.776-10.667-10.667-10.667"/>
+    <path fill="url(#paint-jira-SVGHifZlbzE)" d="M122.951 122.489H0c0 30.653 24.85 55.502 55.502 55.502h22.72v21.867c.02 30.597 24.798 55.408 55.396 55.466V133.156c0-5.891-4.776-10.667-10.667-10.667"/>
+  </symbol>
+  <symbol id="product-confluence" viewBox="0 0 256 246">
+    <defs>
+    <linearGradient id="paint-confluence-SVGvnhR7dox" x1="99.14%" x2="33.859%" y1="112.708%" y2="37.755%">
+    <stop offset="18%" stop-color="#0052cc"/>
+    <stop offset="100%" stop-color="#2684ff"/>
+    </linearGradient>
+    <linearGradient id="paint-confluence-SVGgker3cTp" x1=".926%" x2="66.18%" y1="-12.582%" y2="62.306%">
+    <stop offset="18%" stop-color="#0052cc"/>
+    <stop offset="100%" stop-color="#2684ff"/>
+    </linearGradient>
+    </defs>
+    <path fill="url(#paint-confluence-SVGvnhR7dox)" d="M9.26 187.33c-2.64 4.307-5.607 9.305-8.126 13.287a8.127 8.127 0 0 0 2.722 11.052l52.823 32.507a8.127 8.127 0 0 0 11.256-2.763c2.113-3.536 4.835-8.127 7.801-13.044c20.926-34.538 41.974-30.312 79.925-12.19l52.376 24.908a8.127 8.127 0 0 0 10.93-4.063l25.152-56.886a8.127 8.127 0 0 0-4.063-10.646c-11.052-5.201-33.034-15.562-52.823-25.111c-71.189-34.579-131.691-32.344-177.972 42.949"/>
+    <path fill="url(#paint-confluence-SVGgker3cTp)" d="M246.115 58.232c2.641-4.307 5.607-9.305 8.127-13.287a8.127 8.127 0 0 0-2.723-11.052L198.696 1.386a8.127 8.127 0 0 0-11.58 2.682c-2.113 3.535-4.835 8.127-7.802 13.043c-20.926 34.538-41.974 30.313-79.925 12.19L47.176 4.515a8.127 8.127 0 0 0-10.93 4.063L11.093 65.465a8.127 8.127 0 0 0 4.063 10.645c11.052 5.202 33.035 15.563 52.823 25.112c71.351 34.538 131.854 32.222 178.135-42.99"/>
+  </symbol>
+  <symbol id="product-figma" viewBox="0 0 256 384">
+    <path fill="#0acf83" d="M64 384c35.328 0 64-28.672 64-64v-64H64c-35.328 0-64 28.672-64 64s28.672 64 64 64"/>
+    <path fill="#a259ff" d="M0 192c0-35.328 28.672-64 64-64h64v128H64c-35.328 0-64-28.672-64-64"/>
+    <path fill="#f24e1e" d="M0 64C0 28.672 28.672 0 64 0h64v128H64C28.672 128 0 99.328 0 64"/>
+    <path fill="#ff7262" d="M128 0h64c35.328 0 64 28.672 64 64s-28.672 64-64 64h-64z"/>
+    <path fill="#1abcfe" d="M256 192c0 35.328-28.672 64-64 64s-64-28.672-64-64s28.672-64 64-64s64 28.672 64 64"/>
+  </symbol>
+  <symbol id="product-dropbox" viewBox="0 0 256 218">
+    <path fill="#0061ff" d="M63.995 0L0 40.771l63.995 40.772L128 40.771zM192 0l-64 40.775l64 40.775l64.001-40.775zM0 122.321l63.995 40.772L128 122.321L63.995 81.55zM192 81.55l-64 40.775l64 40.774l64-40.774zM64 176.771l64.005 40.772L192 176.771L128.005 136z"/>
+  </symbol>
+  <symbol id="product-outlook-mail" viewBox="0 0 48 48">
+    <defs>
+    <linearGradient id="paint-outlook-mail-a" x1="28.5" y1="25" x2="28.5" y2="44" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#35b8f1"/>
+    <stop offset="1" stop-color="#28a8ea"/>
+    </linearGradient>
+    <linearGradient id="paint-outlook-mail-b" x1="5.822" y1="11.568" x2="20.178" y2="36.432" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#1784d9"/>
+    <stop offset=".5" stop-color="#107ad5"/>
+    <stop offset="1" stop-color="#0a63c9"/>
+    </linearGradient>
+    </defs>
+    <path d="M45 25a.96.96 0 0 0-.458-.825h-.005l-.018-.01-14.9-8.82a2.026 2.026 0 0 0-.2-.119 2 2 0 0 0-1.834 0 2.026 2.026 0 0 0-.2.119l-14.9 8.82-.018.01a.971.971 0 0 0 .023 1.663l14.9 8.82a2.241 2.241 0 0 0 .2.119 2 2 0 0 0 1.834 0 2.241 2.241 0 0 0 .2-.119l14.9-8.82A.959.959 0 0 0 45 25z" fill="#0a2767"/>
+    <path fill="#0364b8" d="M14.222 19.111H24v8.963h-9.778zM43 10V5.9A1.858 1.858 0 0 0 41.187 4H15.813A1.858 1.858 0 0 0 14 5.9V10l15 4z"/>
+    <path fill="#0078d4" d="M14 10h10v9H14z"/>
+    <path fill="#28a8ea" d="M34 10H24v9l10 9h9v-9l-9-9z"/>
+    <path fill="#0078d4" d="M24 19h10v9H24z"/>
+    <path fill="#0364b8" d="M24 28h10v9H24z"/>
+    <path fill="#14447d" d="M14.222 28.074H24v8.148h-9.778z"/>
+    <path fill="#0078d4" d="M34 28h9v9h-9z"/>
+    <path d="M44.542 25.783l-.019.01-14.9 8.38c-.065.04-.131.078-.2.112a2.077 2.077 0 0 1-.808.2l-.814-.476a2.033 2.033 0 0 1-.2-.115l-15.1-8.618h-.007L12 25v16.964A2.05 2.05 0 0 0 14.063 44h28.906c.017 0 .032-.008.05-.008a2.531 2.531 0 0 0 .7-.146A2.019 2.019 0 0 0 44 43.7c.067-.038.182-.121.182-.121A2.019 2.019 0 0 0 45 41.964V25a.9.9 0 0 1-.458.783z" fill="url(#paint-outlook-mail-a)"/>
+    <path d="M44.2 24.933v1.04L28.62 36.7 12.49 25.283a.01.01 0 0 0-.01-.01l-1.48-.89v-.75l.61-.01 1.29.74.03.01.11.07s15.16 8.65 15.2 8.67l.58.34c.05-.02.1-.04.16-.06.03-.02 15.05-8.47 15.05-8.47z" fill="#0a2767" opacity=".5"/>
+    <path fill="none" d="M0 0h48v48H0z"/>
+    <path d="M44.542 25.783l-.019.011-14.9 8.38c-.065.04-.131.078-.2.112a2.089 2.089 0 0 1-1.834 0 2.264 2.264 0 0 1-.2-.112l-14.9-8.38-.018-.011A.9.9 0 0 1 12 25v16.964A2.049 2.049 0 0 0 14.062 44h28.876A2.049 2.049 0 0 0 45 41.964V25a.9.9 0 0 1-.458.783z" fill="#1490df"/>
+    <path d="M29.84 34.05l-.223.125a2.183 2.183 0 0 1-.2.113 2.071 2.071 0 0 1-.786.208L34.3 41.2l9.889 2.383a2.038 2.038 0 0 0 .627-.783z" opacity=".1"/>
+    <path d="M30.85 33.482l-1.233.693a2.183 2.183 0 0 1-.2.113 2.071 2.071 0 0 1-.786.208l2.656 7.323 12.905 1.761A2.022 2.022 0 0 0 45 41.964v-.219z" opacity=".05"/>
+    <path d="M14.09 44h28.845a2.074 2.074 0 0 0 1.235-.4L27.8 34.011a2.033 2.033 0 0 1-.2-.115l-15.1-8.618h-.007L12 25v16.906A2.092 2.092 0 0 0 14.09 44z" fill="#28a8ea"/>
+    <path d="M26 13.833v21.33a1.838 1.838 0 0 1-1.15 1.7 1.723 1.723 0 0 1-.68.14H12V13h2v-1h10.17A1.837 1.837 0 0 1 26 13.833z" opacity=".1"/>
+    <path d="M25 14.833v21.33a1.629 1.629 0 0 1-.15.7A1.822 1.822 0 0 1 23.17 38H12V13h11.17a1.679 1.679 0 0 1 .83.21 1.818 1.818 0 0 1 1 1.623z" opacity=".2"/>
+    <path d="M25 14.833v19.33A1.846 1.846 0 0 1 23.17 36H12V13h11.17a1.679 1.679 0 0 1 .83.21 1.818 1.818 0 0 1 1 1.623z" opacity=".2"/>
+    <path d="M24 14.833v19.33A1.839 1.839 0 0 1 22.17 36H12V13h10.17A1.831 1.831 0 0 1 24 14.833z" opacity=".2"/>
+    <rect x="2" y="13" width="22" height="22" rx="1.833" fill="url(#paint-outlook-mail-b)"/>
+    <path d="M7.729 20.688a5.332 5.332 0 0 1 2.094-2.313 6.33 6.33 0 0 1 3.327-.834 5.892 5.892 0 0 1 3.079.791 5.284 5.284 0 0 1 2.037 2.21 7.133 7.133 0 0 1 .714 3.25 7.528 7.528 0 0 1-.735 3.4 5.41 5.41 0 0 1-2.1 2.287 6.126 6.126 0 0 1-3.194.812 6.02 6.02 0 0 1-3.147-.8 5.366 5.366 0 0 1-2.064-2.214 6.963 6.963 0 0 1-.722-3.211 7.733 7.733 0 0 1 .711-3.378zm2.232 5.43a3.461 3.461 0 0 0 1.178 1.522 3.077 3.077 0 0 0 1.84.554 3.223 3.223 0 0 0 1.964-.572 3.315 3.315 0 0 0 1.144-1.522 5.908 5.908 0 0 0 .365-2.123 6.463 6.463 0 0 0-.344-2.15A3.4 3.4 0 0 0 15 20.241a3.043 3.043 0 0 0-1.947-.6 3.175 3.175 0 0 0-1.883.559 3.49 3.49 0 0 0-1.2 1.535 6.1 6.1 0 0 0-.008 4.385z" fill="#fff"/>
+    <path fill="#50d9ff" d="M34 10h9v9h-9z"/>
+  </symbol>
+  <symbol id="product-sharepoint" viewBox="0 0 48 48">
+    <defs>
+    <linearGradient id="paint-sharepoint-a" x1="5.822" y1="11.568" x2="20.178" y2="36.432" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#058f92"/>
+    <stop offset=".5" stop-color="#038489"/>
+    <stop offset="1" stop-color="#026d71"/>
+    </linearGradient>
+    </defs>
+    <circle cx="24" cy="15" r="12" fill="#036c70"/>
+    <circle cx="34" cy="26" r="11" fill="#1a9ba1"/>
+    <circle cx="25.5" cy="36.5" r="8.5" fill="#37c6d0"/>
+    <path fill="none" d="M0 0h48v48H0z"/>
+    <path d="M26 13.83v21.34a1.841 1.841 0 0 1-1.14 1.69 1.772 1.772 0 0 1-.69.14h-7.16c-.01-.17-.01-.33-.01-.5a4.18 4.18 0 0 1 .02-.5 8.473 8.473 0 0 1 5.09-7.29v-1.86A11.986 11.986 0 0 1 12.17 13a8.455 8.455 0 0 1 .21-1h11.79A1.837 1.837 0 0 1 26 13.83z" opacity=".1"/>
+    <path d="M23.17 13h-11a11.987 11.987 0 0 0 10.4 13.915c-3.1 1.47-5.359 5.645-5.551 9.085a4.18 4.18 0 0 0-.02.5c0 .17 0 .33.01.5a6.673 6.673 0 0 0 .13 1h6.03a1.841 1.841 0 0 0 1.69-1.14 1.772 1.772 0 0 0 .14-.69V14.83A1.837 1.837 0 0 0 23.17 13z" opacity=".2"/>
+    <path d="M23.17 13h-11a11.988 11.988 0 0 0 10.208 13.891c-3 1.576-5.17 5.741-5.358 9.109h6.15A1.844 1.844 0 0 0 25 34.17V14.83A1.837 1.837 0 0 0 23.17 13z" opacity=".2"/>
+    <path d="M22.17 13h-10a11.988 11.988 0 0 0 8.87 13.632A16.522 16.522 0 0 0 17.02 36h5.15A1.837 1.837 0 0 0 24 34.17V14.83A1.831 1.831 0 0 0 22.17 13z" opacity=".2"/>
+    <rect x="2" y="13" width="22" height="22" rx="1.833" fill="url(#paint-sharepoint-a)"/>
+    <path d="M10.187 23.776a3.384 3.384 0 0 1-1.049-1.109 3.018 3.018 0 0 1-.365-1.517 2.919 2.919 0 0 1 .679-1.965 4.011 4.011 0 0 1 1.806-1.178 7.629 7.629 0 0 1 2.467-.382 9.392 9.392 0 0 1 3.25.455v2.3a5.073 5.073 0 0 0-1.47-.6 7.159 7.159 0 0 0-1.719-.206 3.719 3.719 0 0 0-1.767.374 1.159 1.159 0 0 0-.7 1.062 1.076 1.076 0 0 0 .3.752 2.69 2.69 0 0 0 .8.572q.5.249 1.5.662a1.519 1.519 0 0 1 .214.086 12.341 12.341 0 0 1 1.892.933 3.387 3.387 0 0 1 1.118 1.126 3.264 3.264 0 0 1 .4 1.7 3.162 3.162 0 0 1-.636 2.046 3.557 3.557 0 0 1-1.7 1.144 7.71 7.71 0 0 1-2.424.352 12.824 12.824 0 0 1-2.2-.18 7.534 7.534 0 0 1-1.783-.524v-2.425a5.746 5.746 0 0 0 1.8.86 7.042 7.042 0 0 0 1.986.318 3.42 3.42 0 0 0 1.8-.382A1.208 1.208 0 0 0 15 26.971a1.15 1.15 0 0 0-.34-.826 3.425 3.425 0 0 0-.937-.653q-.6-.3-1.767-.791a10.044 10.044 0 0 1-1.769-.925z" fill="#fff"/>
+  </symbol>
+  <symbol id="product-outlook-calendar" viewBox="0 0 48 48">
+    <use href="#product-outlook-mail" width="48" height="48"/>
+  </symbol>
+  <symbol id="product-apple-calendar" viewBox="0 0 96 96">
+    <image width="96" height="96" href="data:image/webp;base64,UklGRkYLAABXRUJQVlA4WAoAAAAQAAAAXgAAXwAAQUxQSO8CAAANoLz9nyFJ+v4iMrIqURg2nml3z+po296j97T/2J5t27bHNguJiN9v2fzdNyImAIskgEQARGmeNRtRbAwRVqMIh8oXRb/fEwBEIlhWEhHK251OZolZwALB6iSQgSHD4eypM2f7AoIsAwnZ1vjUxPj6OGKsaoIxURQ3IgrDY/v27D1YBCFZChF8dsmt51TCIlijLl83MnfBLL598ZfaEsuiDLxcc3/WY4CwhgmEZO7qK/548nuy4EWYwJ2HNp2GjlE+fvnET8+UhuQ/TMDE7QkUHblq8tjzJ4nkXwg8ec0kVKXLbvruw+OGGACR7942CW2nH3/rs56RfwkPJ9B34oHP3yHDRFJdvx4aXzz127eRACa/+4xKuNW96sl4d0kCncfOP/6VIclv6ymFcxZeYbjRedZq7Jyfj/vOZAmt7UTjD7QnWS3kM7+iOyp6xfPbTLuj2ZZDiYsVi9YPcmOgt+n4nFgxyiUVaB7bJqtmnHLWRVDdkGPVyBrobvRj3YigHP7fJxOpJgLlmJQLsKoFb4xm4r04zQIKqxrXBTU0C35ALlKsDD0g14v7ZuBDl/Q6GRdVuQlq++Mt3zsxQ2pVezfj9KFzode2rj21bzpR6/T+lu3tjaasUtUeSqg6+tPluVL7f0sabIevXTai1C+7E2bjf9t16UaVtm1PUxZI8eLE5RrVb0bOEkPcV7snLtSH3+u7tDACkcZTJ2+c0Mb//va6tCCCMEfF6z8+tkUX+fWJkdQxARBhe+qzD++/UJPq3fdH8oQJ/5RAOPXVtxPXj6qx7e3B+rQJwr8JE/U+2BmfszBiFSgP/LojamYxY5ESxLovPjw5OzeRxc5aWiMSfFWf3vPHnk7SKoOhxYiwpMX3b/0RTc+Mr29nsbFEq0qYQ3n2zMm92w7YTqdtCyIsnoUZBid2/b7z6LCGjW1kjSFaFSIcQqh9MFE2Prax2wpMhrBUYQRiDnU9LIZFWfsQRERWBREZa5xrJEmj6ZwjGCwSAFZQOCAwCAAAUCsAnQEqXwBgAD4xFIhCoiEhFcp3ICADBKAIXjU365+MHCBR9HJ/Gf+N6QHiZ/4D8gO215iv2H/WDhAP1m6y/0APLM/Y74Qv2s/bD2i7xq/D/hv+3fcQ+fPVP9pPdtfFPkn2w/J/j7+2//D58/Tn+LvwBfiX8l/sH4x/zr/mf6/ktuPfzv+q/ll/afSp/nfSLvKf0D/bflVzelAD80/772XP5L/sf5X8ovbj9E/833Av1P/1/6+f9j/C+A30Rf2JBoL+YGfPR4o+weXuu4oBWCOgVIlw/7DVIXWWJ87+d7W4SKvrT+yOLnU+/RBjxev7QvXmC/A9ClQUJn4dHmlgEDe+C6Zr72wO3AqHnDYvxUjvUN2mhHshDrgCT3SYPYl1U7IVuHSgwsEXHh3utsnWGa56NQhx7nsZsTxwTWv25VUsc8cKA505d3oKVEie3iTv8h64kjAZk+A/NSKETfhG9rCS4AD+/rbCKW/+dJGslrMjRkksT0B0vnYIjpw83gvliKFKvpXrRDIpGaXE9eDFcEZfvrPi+LYWQ+tS1m1GhjtrX9pLwocyJx6NS2QCvxDSWXU7jmiN7pGh4I5LF2rCi1339XfRFxaqnISiw77UeDyXtVGe2EpG/xYeVPGGfEwUQ/1pqxA+v6afY5hYSi7hTrurpXEvJyKwjmYKCcs37uuoMPJu8rN+jhOrsJP6/0kZv9mQm+cgAkR4QajI9Yh/19Y7Gk/rqDtFJqjQBmwd6ZWD93Yth2leGAIIDlorIMnWJK84W0I3gf4NiYV5fM85XSc8xgppKD70fxJi6TPJkugFR1mz6ETDbYd7a/HuMLaZRLz8mkyOz1vgiZvG8fqokfhhNz4jVuKQPot8HwBDWmQ6R61H6GbGKZBHI5lm9Hq4onJk9a51aWtE9tAPc60PQIPmzLqgndSAXWZNiApN6KG9yFZ34M5RtOafy3W/euAmVspNYOe1AO+ipoiZi9b9IbOEXdK4qfgJRJqHSrn4ap5M78EFiQWaoPX35wZjl2BDTtGkL/lHg/xmTBcx/pMCVdR5Lf5+9+nSacInrEFKWEqAvokOGXzUgZfaL2CNYQiQWtE4B5c2qvOVj03Dnyn3VtR49BS/pIWxVpe3bvaLV/3fxYWkdwWveW2V6BpZJEqWIfSGJmKX2qSp2L+LmgJJHzT3vcLXyispr5+yoHLX6fgx7D9PAnblF/1+/ZVLCTQ4gXPy1uOxHOBSp2G7eig/4TNSDz2uACskveUwbEgmKl6cWJvkFRvHbD5JKaPZ4sPDDdpagTt/AwUVndREnbc5O/8Uf2VS8if9bHvx8Qvu6ar7qwyHNsF+FKqIK0Nf9nk/2W5s9ftdEmGGX5osXepewuDCHFmYAtsOTMvV9x2AH45HahY0hOWz36A0t8uso1OhmvJEOal2GUH7B5++GLw4Nrote5Cty1pEj9niM+i/QouzafJeGjaXLJ4AuJ515bifkj2FPlaOo5r0RHSWDoSWB6VYPV82LPf4SCMy6gaxGM3aTATIjDAOKoRDc4slpyM8FBhOCK+CZl82j0mu7/zD25qh/baWGi3jO/fWKEkg390uZ/3ms8d9+6+QvCoAP7HPWxBcrsz6INy7PfbhOG5Y4nHdAH4L4LEAUTC6xYN6yL/+8nLvapZsfFGkWvzdNceF7Yv9VigALvfjqfr72Zlq916RmKZ/aP56pzcLWNWnhaCsVAR9/s1M1R4i7HN/2M1KugUiLfDoLcM9oSpgIq0iE+8rIyYs9IpsENS9h+UE235O/9HF99z8aky1EC5+DJ0XYH/fE+SU9K4S/IFTHYAXE87C+xwHaF7mwh9UycTCV0c0jUY49d/YH0m+Flw+/GS6U535TPm0QaeHSL/ySBHo90aEElNlzh572jgRhNLod/AT6TzaPSl6MN7QllHPZRL8FAElgxei/nDsjCvNQhSmSNpei1ZPM2TsmStpxju8Lq7vdQDI6NYbgz0VDFJuOhIn0P80pEfmjlbZkHW+s4DLdzQ3IhxsdT6nMO8VyhLwt3N5rAF0hBxjR2wL6N1cC8pcKO4MIfxGxfCeCuT+pUi5j2f+LF61D8R26YeNVqBBPyg5mO9Z8IGdV3xQLnUoWAvgcOfLil+/W6msBxDH/i1wZrsANss2Qj5O4rvGeoEBEwI3ChOan7Wmn+it+/nwH+TWVz2IlbCi6ejzA/+hkuJWXG0CePb3jrqznGYgxyCg8v3t+f78aGBDvhWGfUD3VIw2MPUrYvyYQoJZ4csU2X+446HeX+zeF0aFB4gGosVoT+SePoivX99EV3BazlmGBgDyrNXPfl2lma0fL5f0jKrdg95CjaTt873nyXP8M8+NiCahygdmMy2SQ4jhaOdv7YveAFagM//Bj2+m2rZYADD0n1vZZ363AIbVK/t/ALR5uRly4lCeAGKuTcDUeIw5env0xehRBiDGFE9i4bWJr/0N40AUVyIPMjASAGn7DVzqOx8xg3HYCTWLaTUKVaGQtorgv4qU6DImIyVVPBl48dl296k9TQssiZKzmtnlyA2K+dcNzWYwkAZm+394gmydFjC9dG2KEe01mjG739nkAgCaEZI5gMKM59D7xIpOFDZRHHFC+pKw7KRPv/jeOwuTpOIXMR5AGAZwumWCOguxdLIxfIRo2hsAL8kz4Mxxpj6DbLTtWurpzebb4mpDJTg4D4hGSw8AxGaudWyP+I9ao4BNklUm+uDYTG6XXq5uh+Am9TeHJ0QCuWc+bX5ffnQJJXZD8SORX2xmqd+OgZyqOiFoYmfjZxnlRM9NnEXAwEAAAAA="/>
+  </symbol>
+  <symbol id="product-apple-reminders" viewBox="0 0 96 96">
+    <image width="96" height="96" href="data:image/webp;base64,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"/>
+  </symbol>
+  <symbol id="product-t3" viewBox="0 0 96 96">
+    <image width="96" height="96" href="data:image/webp;base64,UklGRm4DAABXRUJQVlA4WAoAAAAQAAAAXwAAXwAAQUxQSIgAAAABcBvbdhO9wfeiUUugLnHx2kYE5Gu/9F8DPyciJgAFurBuL4O3pW9RoIB/Ummy8ulRwEVKUos0CaNDdeGfZv95qQYKDReGkdmyzPGgWqY8XjT+dfrvBNNBtUx5jMyWZY6BYplwqC782/XnpYKLlKQWaRJGhwL+SaXJyqdHgQJtv2wvg7c1dCgAVlA4IMACAADQEgCdASpgAGAAPjEYiUOiIaEQ7AZYIAMEtIAJ8o+2cmEeU/evx6z/n475EB+OniAfhnzFHEDQa/TK/rvuA9qf5T/hP+N7h/8c/ov+q/NrjZv1VM39CoFgSI9aUdmcfnEDpp3cW3yqmsvdHb5NowL1BMWE4p/SOcqOBnMPZ7CVU6iuVw+RKFOhGbz3FWjoLFvqgBv+mFxhCahPn7GLUYAA/v7uqhOw5r4MGOPycYPVfyIRGEUX/4AhGUIAAtfZ6D5a0ArnUg/loaGq4fGJ3Ri59kMAUCIhghtwtHLPqUSChwNNz/KbH2zU87TkgDXWsWXkFnEzTETtLzfu6PdzX+P8G/kXDnr04tZqmcWcQQzufMXdS2jyrDAYpUS+RKpIabXbK1eslhI4CHD/xB7/V7fMo/+FUnK1uS9XONI4/78k2UbDq1lUz3C7s00qb2QErqSUTuH/XV220+TTGMhucy7IGr5GjhW8CBdo2RAAXxJUlP3rF67Pqad4h7Y/Of3vAwwq3Q2SGkjW7kPs6E2I2/+F3mfQREQv+ST06EUocFIR/IfPPlratGI9Ce1nBLcAXgU6hG/6X8VIQRH5KzvSDBE3rFO6I8p6D82tdQU7us6q73SUh4pcf2F5EPYJ8RvpZ//8Ic9K289jafa2/nC/hiBd/C/U3xgOZWuuS8yvNYvt/2S4XYI6o4QRZIBmgBZlQlbPAs8Xwv9pi4qYagzIZMim9+qYxwU3TGi1eTkYrrZR69/Pnu7l0D4X+PKn/z818N5SKXnP9UfwvqzT1Q38OHanB86nVBH/0d3fPPfwvxF702kYwMwdJCJlUWSmcjTu59/Fj+aj2xecQGe8EwqcDQ4+SRWm5WQdb5N5ZrSVkSTTt6MsfME+/uon1fKgxOzKKXL+D4+CyvQjZ0anv7x03L1F7EAILlHlZEDfd9sAAAAAAA=="/>
+  </symbol>
+  <symbol id="product-feishu" viewBox="0 0 96 96">
+    <image width="96" height="96" href="data:image/webp;base64,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"/>
+  </symbol>
+  <symbol id="product-steam" viewBox="0 0 256 259"><path fill="#1a1918" d="M127.779 0C60.42 0 5.24 52.412 0 119.014l68.724 28.674a35.8 35.8 0 0 1 20.426-6.366q1.023 0 2.02.056l30.566-44.71v-.626c0-26.903 21.69-48.796 48.353-48.796c26.662 0 48.352 21.893 48.352 48.796s-21.69 48.804-48.352 48.804c-.37 0-.73-.009-1.098-.018l-43.593 31.377c.028.582.046 1.163.046 1.735c0 20.204-16.283 36.636-36.294 36.636c-17.566 0-32.263-12.658-35.584-29.412L4.41 164.654c15.223 54.313 64.673 94.132 123.369 94.132c70.818 0 128.221-57.938 128.221-129.393C256 57.93 198.597 0 127.779 0M80.352 196.332l-15.749-6.568c2.787 5.867 7.621 10.775 14.033 13.47c13.857 5.83 29.836-.803 35.612-14.799a27.56 27.56 0 0 0 .046-21.035c-2.768-6.79-7.999-12.086-14.706-14.909c-6.67-2.795-13.811-2.694-20.085-.304l16.275 6.79c10.222 4.3 15.056 16.145 10.794 26.46c-4.253 10.314-15.998 15.195-26.22 10.895m121.957-100.29c0-17.925-14.457-32.52-32.217-32.52c-17.769 0-32.226 14.595-32.226 32.52s14.457 32.512 32.226 32.512c17.76 0 32.217-14.586 32.217-32.512m-56.37-.055c0-13.488 10.84-24.42 24.2-24.42c13.368 0 24.208 10.932 24.208 24.42s-10.84 24.421-24.209 24.421c-13.359 0-24.2-10.933-24.2-24.42"/></symbol>
+  <symbol id="product-itch" viewBox="0 0 24 24"><path fill="#fa5c5c" d="M3.13 1.338C2.08 1.96.02 4.328 0 4.95v1.03c0 1.303 1.22 2.45 2.325 2.45 1.33 0 2.436-1.102 2.436-2.41 0 1.308 1.07 2.41 2.4 2.41 1.328 0 2.362-1.102 2.362-2.41 0 1.308 1.137 2.41 2.466 2.41h.024c1.33 0 2.466-1.102 2.466-2.41 0 1.308 1.034 2.41 2.363 2.41 1.33 0 2.4-1.102 2.4-2.41 0 1.308 1.106 2.41 2.435 2.41C22.78 8.43 24 7.282 24 5.98V4.95c-.02-.62-2.082-2.99-3.13-3.612-3.253-.114-5.508-.134-8.87-.133-3.362 0-7.945.053-8.87.133zm6.376 6.477a2.74 2.74 0 0 1-.468.602c-.5.49-1.19.795-1.947.795a2.786 2.786 0 0 1-1.95-.795c-.182-.178-.32-.37-.446-.59-.127.222-.303.412-.486.59a2.788 2.788 0 0 1-1.95.795c-.092 0-.187-.025-.264-.052-.107 1.113-.152 2.176-.168 2.95v.005l-.006 1.167c.02 2.334-.23 7.564 1.03 8.85 1.952.454 5.545.662 9.15.663 3.605 0 7.198-.21 9.15-.664 1.26-1.284 1.01-6.514 1.03-8.848l-.006-1.167v-.004c-.016-.775-.06-1.838-.168-2.95-.077.026-.172.052-.263.052a2.788 2.788 0 0 1-1.95-.795c-.184-.178-.36-.368-.486-.59-.127.22-.265.412-.447.59a2.786 2.786 0 0 1-1.95.794c-.76 0-1.446-.303-1.948-.793a2.74 2.74 0 0 1-.468-.602 2.738 2.738 0 0 1-.463.602 2.787 2.787 0 0 1-1.95.794h-.16a2.787 2.787 0 0 1-1.95-.793 2.738 2.738 0 0 1-.464-.602zm-2.004 2.59v.002c.795.002 1.5 0 2.373.953.687-.072 1.406-.108 2.125-.107.72 0 1.438.035 2.125.107.873-.953 1.578-.95 2.372-.953.376 0 1.876 0 2.92 2.934l1.123 4.028c.832 2.995-.266 3.068-1.636 3.07-2.03-.075-3.156-1.55-3.156-3.025-1.124.184-2.436.276-3.748.277-1.312 0-2.624-.093-3.748-.277 0 1.475-1.125 2.95-3.156 3.026-1.37-.004-2.468-.077-1.636-3.072l1.122-4.027c1.045-2.934 2.545-2.934 2.92-2.934zM12 12.714c-.002.002-2.14 1.964-2.523 2.662l1.4-.056v1.22c0 .056.56.033 1.123.007.562.026 1.124.05 1.124-.008v-1.22l1.4.055C14.138 14.677 12 12.713 12 12.713z"/></symbol>
+  <symbol id="product-game-library" viewBox="0 0 1024 1024"><linearGradient id="product-playnite-gradient" gradientUnits="userSpaceOnUse" x1="132.7031" y1="316.9633" x2="934.0948" y2="837.3931"><stop offset="0" stop-color="#FF1658"/><stop offset="0.4357" stop-color="#FF612E"/><stop offset="0.8182" stop-color="#FF9D0D"/><stop offset="1" stop-color="#FFB400"/></linearGradient><path fill="url(#product-playnite-gradient)" d="M966.686,623.899c-9.773-81.666-29.323-161.25-54.514-239.447c-13.759-42.709-30.419-84.189-56.091-121.452 c-31.701-46.014-74.789-72.958-130.812-78.579c-29.631-2.973-57.785,4.118-85.677,12.35 c-61.172,18.056-123.359,25.124-186.493,14.903c-30.919-5.006-61.308-13.526-91.743-21.225 c-76.445-19.338-145.323,4.995-191.165,69.261c-11.441,16.04-21.194,33.543-29.78,51.312 c-25.091,51.925-40.443,107.249-54.53,162.924c-18.822,74.393-33.019,149.491-33.664,226.571c0,7.184-0.342,14.386,0.061,21.547 c1.557,27.727,4.354,55.289,16.045,80.97c15.334,33.68,45.905,46.725,79.471,31.198c18.291-8.461,36.293-19.857,50.766-33.743 c24.597-23.598,46.616-49.934,69.125-75.64c17.934-20.481,39.086-35.301,66.115-40.203c15.779-2.862,31.802-6.006,47.736-6.118 c87.888-0.62,175.783-0.602,263.673-0.278c51.4,0.189,93.314,19.382,124.091,62.134c12.518,17.388,27.83,32.889,42.78,48.371 c18.598,19.259,38.974,36.431,64.412,46.39c32.967,12.907,62.547,1.677,77.882-30.198c3.965-8.242,6.963-17.122,9.155-26.017 C976.198,727.534,972.874,675.607,966.686,623.899z M315.471,527.643c-44.289,0.213-80.733-36.32-80.847-81.045 c-0.115-45.048,35.472-81.194,80.197-81.458c44.521-0.263,80.718,35.897,80.884,80.801 C395.871,490.671,359.773,527.429,315.471,527.643z M708.857,319.301c21.859,0.06,39.486,17.884,39.471,39.91 c-0.015,22.133-17.489,39.677-39.523,39.682c-22.045,0.005-39.456-17.53-39.444-39.724 C669.372,337.125,687.089,319.241,708.857,319.301z M622.269,486.36c-21.542,0.085-39.7-18.08-39.808-39.822 c-0.108-21.888,17.617-39.622,39.62-39.641c22.066-0.018,39.759,17.552,39.718,39.442 C661.758,468.205,643.909,486.275,622.269,486.36z M708.967,573.333c-21.823,0.096-39.537-17.668-39.611-39.721 c-0.074-22.079,17.523-39.992,39.338-40.044c21.715-0.052,39.597,17.908,39.645,39.816 C748.386,555.477,730.883,573.237,708.967,573.333z M795.752,486.362c-21.764,0.155-39.671-17.882-39.651-39.938 c0.021-22.15,17.628-39.639,39.793-39.525c22.091,0.114,39.527,17.993,39.155,40.152 C834.686,468.733,817.216,486.209,795.752,486.362z"/></symbol>
+  <symbol id="product-unknown" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="m9 15 6-6m-5 5-2 2a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0m0 10a3.5 3.5 0 0 0 5 0l4-4a3.5 3.5 0 0 0-5-5l-2 2"/>
+  </symbol>
+  <symbol id="connector-ui-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+    <path d="M5 10h14v11H5z M8 10V7a4 4 0 0 1 8 0v3"/>
+  </symbol>
+  <symbol id="connector-ui-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 4v5h-5 M19 8a8 8 0 1 0 1 7"/>
+  </symbol>
+</svg>

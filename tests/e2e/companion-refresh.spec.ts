@@ -15,7 +15,7 @@ test("dashboard lists every connector with truthful status and keeps setup draft
   request,
 }) => {
   const catalog = await (await request.get(lisa.baseURL + "/api/connectors")).json();
-  expect(catalog.connectors).toHaveLength(22);
+  expect(catalog.connectors).toHaveLength(25);
   expect(catalog.connectors.find((a: { id: string }) => a.id === "box").connection.status).toBe(
     "unavailable",
   );
@@ -23,7 +23,21 @@ test("dashboard lists every connector with truthful status and keeps setup draft
     catalog.connectors.find((a: { id: string }) => a.id === "obsidian").connection.status,
   ).toBe("disconnected");
   await page.goto(lisa.baseURL + "/#dashboard");
-  await expect(page.locator(".dc-card")).toHaveCount(22);
+  await expect(page.locator(".dc-card")).toHaveCount(25);
+  await page.getByRole("button", { name: "应用连接器", exact: true }).click();
+  await expect(page.locator("#dashboardConnectors")).toBeFocused();
+  const missingMarks = await page.locator(".dc-card").evaluateAll((cards) =>
+    cards
+      .filter((card) => {
+        const use = card.querySelector<SVGUseElement>(".connector-mark use");
+        return (
+          use?.getAttribute("href") !== "#product-" + card.getAttribute("data-provider") ||
+          !use.getBBox().width
+        );
+      })
+      .map((card) => card.getAttribute("data-provider")),
+  );
+  expect(missingMarks).toEqual([]);
   await page.locator(".dc-toolbar input").fill("Box");
   await expect(page.locator(".dc-card")).toHaveCount(2); // Box and Dropbox
   await expect(page.locator('.dc-card[data-provider="box"]')).toContainText("待配置");
@@ -65,7 +79,7 @@ test("room, Rêve, Control and sticker picker fit desktop and narrow center pane
   for (const view of ["reve", "control", "dashboard"]) {
     await page.locator('.nav-item[data-view="' + view + '"]').click();
     if (view === "reve") await expect(page.locator(".rv-grid > .rv-card")).toHaveCount(6);
-    if (view === "dashboard") await expect(page.locator(".dc-card")).toHaveCount(22);
+    if (view === "dashboard") await expect(page.locator(".dc-card")).toHaveCount(25);
     await page.screenshot({ path: path.join(dir, view + "-desktop.png") });
   }
   await page.goto(lisa.baseURL + "/#control/remote");
@@ -92,7 +106,7 @@ test("room, Rêve, Control and sticker picker fit desktop and narrow center pane
   for (const view of ["reve", "control", "dashboard"]) {
     await page.goto(lisa.baseURL + "/#" + view);
     if (view === "reve") await expect(page.locator(".rv-grid > .rv-card")).toHaveCount(6);
-    if (view === "dashboard") await expect(page.locator(".dc-card")).toHaveCount(22);
+    if (view === "dashboard") await expect(page.locator(".dc-card")).toHaveCount(25);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
     ).toBeTruthy();

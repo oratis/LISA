@@ -83,6 +83,7 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/advisor/",
   "/api/claude/",
   "/api/config/",
+  "/api/games/public",
   // Consent state is stored per-machine, not per-tenant (src/consent/store.ts
   // resolves ~/.lisa/consent.json directly instead of going through the
   // per-user home scope in src/paths.ts). Leaving these routes open in the

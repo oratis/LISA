@@ -26,7 +26,10 @@ export async function loopbackAuthorization<T>(
       | "/oauth/dropbox"
       | "/oauth/todoist"
       | "/oauth/figma"
-      | "/oauth/box";
+      | "/oauth/box"
+      | "/oauth/steam";
+    /** Steam OpenID returns a signed assertion instead of an OAuth authorization code. */
+    openidResponse?: boolean;
     /** Error code when a fixed callback port is already taken on either loopback. */
     portInUseCode?: string;
   } = {},
@@ -71,12 +74,17 @@ export async function loopbackAuthorization<T>(
       return;
     }
     consumed = true;
-    if (url.searchParams.has("error")) {
+    if (
+      url.searchParams.has("error") ||
+      (options.openidResponse && url.searchParams.get("openid.mode") === "cancel")
+    ) {
       res.end("Authorization cancelled. Return to LISA.");
       reject(new ConnectorError("authorization_cancelled"));
       return;
     }
-    const receivedCode = url.searchParams.get("code");
+    const receivedCode = options.openidResponse
+      ? url.searchParams.toString()
+      : url.searchParams.get("code");
     if (!receivedCode || receivedCode.length > 4096) {
       res.writeHead(400);
       res.end("Invalid authorization response.");

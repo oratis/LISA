@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { MAIN_HTML } from "./lisa-html.js";
+import { MAIN_HTML, renderMainHtml } from "./lisa-html.js";
 import { MAIN_CSS } from "./lisa-css.js";
 import { MAIN_CLIENT_JS } from "./lisa-client.js";
 import { ROOM_HTML } from "./room.js";
@@ -32,7 +32,11 @@ import { ROOM_HTML } from "./room.js";
 // source must be embedded intact in at least one actual served document.
 const clientDir = new URL("./assets/client/", import.meta.url);
 const CLIENT_FILES = readdirSync(clientDir).sort();
-const servedPages = { main: MAIN_HTML, room: ROOM_HTML };
+const servedPages = {
+  main: MAIN_HTML,
+  owner: renderMainHtml({ connectorCatalog: true }),
+  room: ROOM_HTML,
+};
 
 function assertEmbeddedSource(name: string, source: string, pages: Record<string, string>): void {
   assert.match(name, /\.(css|js)$/, `${name} is not a client stylesheet or script`);

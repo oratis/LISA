@@ -524,12 +524,13 @@ const LISA_STRINGS = {
     "connector.choose.linear": "Choose teams",
     "connector.scope.gmail": "LISA can read message headers and short snippets in the selected labels until you disconnect.",
     "connector.scope.google-calendar": "LISA can read the selected calendars at the access level you granted until you disconnect.",
-    "dashboard.connectors.your.connected.knowledge": "Your connected knowledge",
+    "dashboard.connectors.title": "App connectors",
     "dashboard.connectors.all.connectors.saved.authorization.status.read.only.access": "All connectors · saved authorization status · read-only access",
     "dashboard.connectors.refresh.status": "Refresh status",
     "dashboard.connectors.available.integrations": "Included connectors",
     "dashboard.connectors.authorized": "Authorized",
     "dashboard.connectors.need.setup": "Need setup",
+    "dashboard.connectors.search": "Search apps",
     "dashboard.connectors.find.an.app.or.capability": "Find an app or capability",
     "dashboard.connectors.filter.connectors": "Filter connectors",
     "dashboard.connectors.all.connectors": "All connectors",
@@ -553,6 +554,25 @@ const LISA_STRINGS = {
     "dashboard.connectors.use": "Use in chat",
     "dashboard.connectors.connect": "Set up in chat",
     "connector.choose.box": "Choose Box files",
+    "game.recipientChanged": "The receiving model changed. Review the model and confirm the selection again.",
+    "game.choose": "Choose games",
+    "game.confirmScope": "Only the selected games and their approved fields go to {model} and may appear in chat history. Disconnect clears saved game selections on this host.",
+    "game.model": "the configured chat model",
+    "game.itch.detail": "Read claimed games from your itch.io library. Disconnecting also attempts to revoke the itch.io token shared by installations of this app.",
+    "game.steam.detail": "Steam confirms your identity. Game details and achievements depend on your Steam privacy settings.",
+    "game.game-library.detail": "Import a Playnite or game-list CSV from this device. Review games and fields locally before sharing.",
+    "game.itch.setup": "Register a desktop OAuth client on itch.io with the loopback callback http://127.0.0.1/oauth/connector. Set LISA_ITCH_CLIENT_ID on this host and restart LISA.",
+    "game.steam.setup": "On a host you operate, configure LISA_STEAM_WEB_API_KEY for your registered application and restart LISA. Players then sign in through Steam.",
+    "game.open": "Continue on {name}",
+    "game.authorize": "Finish signing in with {name} and return to choose games.",
+    "game.lookup": "Look up game details and prices",
+    "game.incomplete": "This library exceeded the discovery limit. The selection is incomplete.",
+    "game.unavailable": "Game data is unavailable. Check the account and its game visibility settings.",
+    "game.importInvalid": "Choose a supported CSV and select up to 30 games.",
+    "game.scope": "Choose the games again to grant access to this selection.",
+    "game.unconfigured": "Open the app connector directory for this host’s setup requirements.",
+    "game.pickerLimit": "Reached the selection preview limit. Additional games may exist.",
+    "game.attachment": "Use the local CSV picker in the Game Library connector to preview and share selected games.",
     "connector.choose.obsidian": "Choose vaults",
     "obsidian.noVaults": "Open a vault in Obsidian on this Mac, then try again.",
     "obsidian.config": "The local vault configuration could not be read.",
@@ -1162,12 +1182,13 @@ const LISA_STRINGS = {
     "connector.choose.linear": "选择可读取的团队",
     "connector.scope.gmail": "LISA 可读取勾选标签内的邮件头和摘要，直到你断开连接。",
     "connector.scope.google-calendar": "LISA 将按你授予的权限读取勾选的日历，直到你断开连接。",
-    "dashboard.connectors.your.connected.knowledge": "你的知识与应用",
+    "dashboard.connectors.title": "应用连接器",
     "dashboard.connectors.all.connectors.saved.authorization.status.read.only.access": "全部连接器 · 已保存的授权状态 · 只读访问",
     "dashboard.connectors.refresh.status": "刷新状态",
     "dashboard.connectors.available.integrations": "收录的连接器",
     "dashboard.connectors.authorized": "已授权",
     "dashboard.connectors.need.setup": "待配置",
+    "dashboard.connectors.search": "搜索应用",
     "dashboard.connectors.find.an.app.or.capability": "搜索应用或能力",
     "dashboard.connectors.filter.connectors": "筛选连接器",
     "dashboard.connectors.all.connectors": "全部连接器",
@@ -1191,6 +1212,25 @@ const LISA_STRINGS = {
     "dashboard.connectors.use": "在对话中使用",
     "dashboard.connectors.connect": "在对话中连接",
     "connector.choose.box": "选择 Box 文件",
+    "game.recipientChanged": "接收模型已变更。请核对新模型后重新确认读取范围。",
+    "game.choose": "选择游戏",
+    "game.confirmScope": "仅将勾选游戏的获准字段发送给 {model}，相关结果可能保存在聊天记录中。断开时会清除本机保存的游戏选择。",
+    "game.model": "当前配置的聊天模型",
+    "game.itch.detail": "读取 itch.io 游戏库中已领取的游戏。断开时也会尝试撤销此应用各安装实例共用的 itch.io 令牌。",
+    "game.steam.detail": "Steam 将验证你的身份，可读取的游戏详情和成就取决于你的隐私设置。",
+    "game.game-library.detail": "从本机导入 Playnite 或其他游戏清单 CSV，先在本机预览并选择游戏与字段。",
+    "game.itch.setup": "在 itch.io 注册桌面 OAuth 客户端，使用回环地址 http://127.0.0.1/oauth/connector。本机设置 LISA_ITCH_CLIENT_ID 后重启 LISA。",
+    "game.steam.setup": "在你运营的主机上为已登记的应用配置 LISA_STEAM_WEB_API_KEY 后重启 LISA，玩家通过 Steam 登录。",
+    "game.open": "前往 {name} 登录",
+    "game.authorize": "在 {name} 完成登录后返回选择游戏。",
+    "game.lookup": "查询游戏资料与价格",
+    "game.incomplete": "此游戏库超过浏览上限，当前选择列表仅包含部分游戏。",
+    "game.unavailable": "无法读取游戏数据，请检查账号及游戏可见性设置。",
+    "game.importInvalid": "请选择支持的 CSV 文件，每次可选最多 30 款游戏。",
+    "game.scope": "请重新选择要授权读取的游戏。",
+    "game.unconfigured": "打开应用连接器目录，查看本机的配置要求。",
+    "game.pickerLimit": "已达到预览上限，游戏库中可能还有其他游戏。",
+    "game.attachment": "请在游戏清单连接器中使用本机 CSV 选择器预览并分享选定的游戏。",
     "connector.choose.obsidian": "选择保险库",
     "obsidian.noVaults": "请先在本机 Obsidian 中打开一个保险库，再重试。",
     "obsidian.config": "无法读取本机保险库配置。",
@@ -6247,10 +6287,18 @@ if ('serviceWorker' in navigator) {
       '</div>';
   }
   function loadDashboard() {
+    var hasConnectors = !!document.getElementById('pmConnectors');
     views.dashboard.innerHTML =
       '<div class="view-head"><div><h2>' + esc(LISA_LOCALE === 'zh-CN' ? '总览' : 'Dashboard') + '</h2><div class="vh-sub">' + esc(LISA_LOCALE === 'zh-CN' ? '任务、动态与已连接的应用' : 'Tasks, activity and connected apps') + '</div></div>' +
-      '<button class="view-act" id="dashDelegate">' + esc(tr('control.delegate')) + '</button></div>' +
-      '<div class="view-scroll" id="dashScroll"><div id="dashOperations"><div class="view-empty">' + esc(tr('control.loading')) + '</div></div>' + (!!document.getElementById('pmConnectors') ? '<section id="dashboardConnectors" class="dc-section" aria-label="Connectors"></section>' : '') + '</div>';
+      '<div class="dash-actions">' + (hasConnectors ? '<button type="button" class="view-act dash-catalog" id="dashCatalog">' + esc(tr('dashboard.connectors.title')) + '</button>' : '') +
+      '<button class="view-act" id="dashDelegate">' + esc(tr('control.delegate')) + '</button></div></div>' +
+      '<div class="view-scroll" id="dashScroll"><div id="dashOperations"><div class="view-empty">' + esc(tr('control.loading')) + '</div></div>' + (hasConnectors ? '<section id="dashboardConnectors" class="dc-section" tabindex="-1" aria-label="' + esc(tr('dashboard.connectors.title')) + '"></section>' : '') + '</div>';
+    var catalogButton = document.getElementById('dashCatalog');
+    if (catalogButton) catalogButton.addEventListener('click', function () {
+      var section = document.getElementById('dashboardConnectors');
+      section.scrollIntoView({ block: 'start' });
+      section.focus({ preventScroll: true });
+    });
     var del = document.getElementById('dashDelegate');
     if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
     renderDashboard();
@@ -6751,19 +6799,21 @@ if ('serviceWorker' in navigator) {
   }
 
   // ── Memory (launchers for the existing modal panels) ────────────
-  function memBtn(key, ico, title, sub) {
-    return '<button class="mem-btn" data-mem="' + key + '"><span class="mem-ico">' + ico + '</span>' + title + '<span class="mem-sub">' + sub + '</span></button>';
+  function memBtn(key, path, title, sub) {
+    return '<button type="button" class="mem-btn" data-mem="' + key + '"><span class="mem-ico" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + path + '"/></svg></span>' +
+      '<span class="mem-name">' + title + '</span><span class="mem-sub">' + sub + '</span></button>';
   }
   function loadMemory() {
     views.memory.innerHTML =
       '<div class="view-head"><div><h2>Memory</h2><div class="vh-sub">Soul · skills · memory · tools</div></div></div>' +
-      '<div class="view-scroll">' +
-      memBtn('soul', '★', 'Soul', 'identity · values · emotions') +
-      memBtn('skills', '✦', 'Skills', 'saved workflows') +
-      memBtn('memory', '▤', 'Memory', 'USER.md · MEMORY.md') +
-      memBtn('tools', '⚒', 'Tools', 'capabilities') +
-      memBtn('plans', '◆', 'Coding plans', 'subscription CLIs') +
-      '</div>';
+      '<div class="view-scroll"><div class="memory-grid">' +
+      memBtn('soul', 'M12 20s-8-5-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 9c0 6-8 11-8 11z', 'Soul', 'identity · values · emotions') +
+      memBtn('skills', 'm12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6z', 'Skills', 'saved workflows') +
+      memBtn('memory', 'M6 3h13v18H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 3v18 M11 8h5 M11 12h4', 'Memory', 'USER.md · MEMORY.md') +
+      memBtn('tools', 'm15 4-3 3 3 3 4-4a6 6 0 0 1-7.5 7.5L6 20a2 2 0 0 1-3-3l6.5-6.5A6 6 0 0 1 15 4z', 'Tools', 'capabilities') +
+      memBtn('plans', 'M4 5h16v14H4z M7 9l3 3-3 3 M13 15h4', 'Coding plans', 'subscription CLIs') +
+      '</div></div>';
     var mbs = views.memory.querySelectorAll('.mem-btn');
     for (var i = 0; i < mbs.length; i++) {
       mbs[i].addEventListener('click', function () {

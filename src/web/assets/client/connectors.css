@@ -24,25 +24,29 @@
   border-radius: 20px 20px 0 0;
   background: linear-gradient(105deg, var(--accent-soft), transparent 72%);
 }
-.github-card-header svg {
-  width: 24px;
-  height: 24px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
 .connector-mark {
-  display: grid;
+  display: inline-grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--accent-glow);
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border: 1px solid #e2e5eb;
   border-radius: 13px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  background: #fff;
+  color: #344152;
+  box-shadow: 0 1px 3px #10182812;
 }
+.connector-mark svg { display: block; width: 68%; height: 68%; }
+.connector-example {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding-block: 16px;
+  border-top: 1px solid var(--border-new);
+}
+.connector-example-copy strong { font-size: 15px; color: var(--fg); }
+.connector-example-copy .desc { margin: 5px 0 8px; line-height: 1.6; }
 .connector-identity { min-width: 0; line-height: 1.4; }
 .connector-identity strong { font-size: 17px; letter-spacing: -.015em; }
 .github-account, .github-repositories { font-size: 13px; overflow-wrap: anywhere; color: var(--fg-2); }
