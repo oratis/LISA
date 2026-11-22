@@ -198,6 +198,7 @@ finding is never mistaken for a commitment.
 
 | Note | Subject |
 |---|---|
+| [Game platform connectors (中文)](./RESEARCH_GAME_PLATFORM_CONNECTORS_2026-11-22.md) | Player authorization, publisher-only APIs, local library exports, and a read-only integration roadmap for LISA. |
 | [THREAT_MODEL.md](./THREAT_MODEL.md) | The threat model: what Warden, taint, hygiene and the relay defend against, and what is shipped vs planned. |
 | [RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md](./RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md) | Manus, Dot and Muse research with a [source register and LISA capability inventory](./research/product-alignment-2026-10/README.md). |
 | [RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md](./RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md) | Grok Bot and Manus plugin/connector research, in-chat authorization, and the LISA baseline. |
