@@ -15,12 +15,12 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^7.4.8"
+    "astro": "^7.4.13"
   },
   "engines": {
     "node": ">=22.19.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.65.0"
+    "@playwright/test": "1.65.1"
   }
 }
