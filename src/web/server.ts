@@ -317,6 +317,7 @@ import {
 } from "./push.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
+import { ClipboardSource } from "../sense/clipboard.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
@@ -1822,6 +1823,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // granted); ScreenSource polls. Both no-op until their signal is granted.
   const voiceSource = new VoiceSource();
   senseService.register(new ScreenSource());
+  senseService.register(new ClipboardSource());
   senseService.register(voiceSource);
   const senseStarted = senseService
     .start((e) => {

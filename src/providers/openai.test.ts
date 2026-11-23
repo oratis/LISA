@@ -156,3 +156,58 @@ describe("OpenAIProvider — usage", () => {
     assert.ok(costMicroUSD("gpt-4o", usage) < cost({ ...usage, inputTokens: 1000 }));
   });
 });
+
+describe("OpenAIProvider — compaction and length stopReason (M4)", () => {
+  test("maps finish_reason='length' to 'max_tokens'", async () => {
+    const provider = new OpenAIProvider({ apiKey: "test-key" });
+    (provider as unknown as { client: unknown }).client = makeFakeClient({}, [
+      { choices: [{ delta: { content: "partial" }, finish_reason: "length" }] },
+    ]);
+
+    const res = await provider.runTurn(baseOpts());
+    assert.equal(res.stopReason, "max_tokens");
+    assert.deepEqual(res.content, [{ type: "text", text: "partial", citations: null }]);
+  });
+
+  test("strips empty assistant turns and compacts oversized histories when compaction=true", async () => {
+    const provider = new OpenAIProvider({ apiKey: "test-key" });
+    const captured: Captured = {};
+    (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
+    const prev = process.env.LISA_COMPACT_THRESHOLD_CHARS;
+    process.env.LISA_COMPACT_THRESHOLD_CHARS = "400";
+    try {
+      const longMessages: ProviderRunOpts["messages"] = [];
+      for (let i = 0; i < 8; i++) {
+        longMessages.push({ role: "user", content: `Question ${i}: ` + "x".repeat(60) });
+        longMessages.push({ role: "assistant", content: [] });
+        longMessages.push({ role: "assistant", content: `Answer ${i}: ` + "y".repeat(60) });
+      }
+      longMessages.push({ role: "user", content: "Final question" });
+
+      await provider.runTurn({ ...baseOpts(), messages: longMessages, compaction: true });
+      const sent =
+        (captured.params?.messages as Array<{ role: string; content: string | null }>) ?? [];
+      assert.ok(
+        sent.some(
+          (m) =>
+            m.role === "user" &&
+            typeof m.content === "string" &&
+            m.content.includes("<compacted-history"),
+        ),
+      );
+      assert.equal(
+        sent.some(
+          (m) =>
+            m.role === "assistant" &&
+            (m.content === null || m.content === "") &&
+            !("tool_calls" in m),
+        ),
+        false,
+      );
+      assert.ok(sent.length < 1 + 17);
+    } finally {
+      if (prev === undefined) delete process.env.LISA_COMPACT_THRESHOLD_CHARS;
+      else process.env.LISA_COMPACT_THRESHOLD_CHARS = prev;
+    }
+  });
+});

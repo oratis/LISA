@@ -239,3 +239,42 @@ describe("GeminiProvider — SDK client apiVersion pinning", () => {
     }
   });
 });
+
+describe("GeminiProvider — compaction and MAX_TOKENS stopReason (M4)", () => {
+  test("maps finishReason='MAX_TOKENS' to 'max_tokens' when no tool calls occurred", async () => {
+    const provider = new GeminiProvider({ apiKey: "test-key" });
+    (provider as unknown as { client: unknown }).client = makeFakeClient({}, [
+      { candidates: [{ content: { parts: [{ text: "cut" }] }, finishReason: "MAX_TOKENS" }] },
+    ]);
+
+    const res = await provider.runTurn(baseOpts());
+    assert.equal(res.stopReason, "max_tokens");
+    assert.deepEqual(res.content, [{ type: "text", text: "cut", citations: null }]);
+  });
+
+  test("compacts oversized histories when compaction=true", async () => {
+    const provider = new GeminiProvider({ apiKey: "test-key" });
+    const captured: Captured = {};
+    (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
+    const prev = process.env.LISA_COMPACT_THRESHOLD_CHARS;
+    process.env.LISA_COMPACT_THRESHOLD_CHARS = "400";
+    try {
+      const longMessages: ProviderRunOpts["messages"] = [];
+      for (let i = 0; i < 8; i++) {
+        longMessages.push({ role: "user", content: `Prompt ${i}: ` + "x".repeat(60) });
+        longMessages.push({ role: "assistant", content: [] });
+        longMessages.push({ role: "assistant", content: `Reply ${i}: ` + "y".repeat(60) });
+      }
+      longMessages.push({ role: "user", content: "Latest prompt" });
+
+      await provider.runTurn({ ...baseOpts(), messages: longMessages, compaction: true });
+      const sent = captured.params?.contents ?? [];
+      assert.ok(sent.length < 17);
+      const firstText = (sent[0]?.parts?.[0] as { text?: string } | undefined)?.text ?? "";
+      assert.ok(firstText.includes("<compacted-history"));
+    } finally {
+      if (prev === undefined) delete process.env.LISA_COMPACT_THRESHOLD_CHARS;
+      else process.env.LISA_COMPACT_THRESHOLD_CHARS = prev;
+    }
+  });
+});
