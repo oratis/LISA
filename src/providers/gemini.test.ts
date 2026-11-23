@@ -1,3 +1,5 @@
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { GeminiProvider, geminiWireModel } from "./gemini.js";
@@ -191,4 +193,49 @@ test("Gemini surfaces malformed function calls instead of silent empty success",
     { candidates: [{ finishReason: "MALFORMED_FUNCTION_CALL" }] },
   ]);
   await assert.rejects(provider.runTurn(baseOpts()), /could not form a valid tool call/);
+});
+
+describe("GeminiProvider — SDK client apiVersion pinning", () => {
+  test("real @google/genai client sends v1beta even without baseURL/headers, and preserves custom headers", async () => {
+    const defaultClient = await (
+      new GeminiProvider({ apiKey: "test-key" }) as unknown as {
+        getClient(): Promise<{
+          apiClient: { clientOptions: { httpOptions?: { apiVersion?: string } } };
+        }>;
+      }
+    ).getClient();
+    assert.equal(defaultClient.apiClient.clientOptions.httpOptions?.apiVersion, "v1beta");
+
+    const seen: Array<{ url?: string; header?: string | string[] }> = [];
+    const server = http.createServer((req, res) => {
+      seen.push({ url: req.url, header: req.headers["x-test-route"] });
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end(
+        `data: ${JSON.stringify({
+          candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+          usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1 },
+        })}\n\n`,
+      );
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}/gw/gemini`;
+    try {
+      const provider = new GeminiProvider({
+        apiKey: "test-key",
+        baseURL,
+        headers: { "x-test-route": "pinned" },
+      });
+      const res = await provider.runTurn(baseOpts());
+      assert.equal(res.stopReason, "end_turn");
+      assert.equal(seen.length, 1);
+      assert.equal(
+        seen[0]?.url,
+        "/gw/gemini/v1beta/models/gemini-test:streamGenerateContent?alt=sse",
+      );
+      assert.equal(seen[0]?.header, "pinned");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

@@ -70,20 +70,18 @@ export class GeminiProvider implements Provider {
       const { GoogleGenAI } = await import("@google/genai");
       // GoogleGenAI doesn't accept a custom fetch; relies on undici globally,
       // which proxy-bootstrap.ts has already configured. baseURL is supported
-      // via httpOptions.
+      // via httpOptions. @google/genai 3.x defaults Gemini Developer API calls
+      // to v1, so pin v1beta explicitly for gateway routing and VALIDATED tools.
       this.client = new GoogleGenAI({
         apiKey: this.clientOpts.apiKey,
         ...(this.clientOpts.enterprise !== undefined
           ? { enterprise: this.clientOpts.enterprise }
           : {}),
-        ...(this.clientOpts.baseURL || this.clientOpts.headers
-          ? {
-              httpOptions: {
-                ...(this.clientOpts.baseURL ? { baseUrl: this.clientOpts.baseURL } : {}),
-                ...(this.clientOpts.headers ? { headers: this.clientOpts.headers } : {}),
-              },
-            }
-          : {}),
+        httpOptions: {
+          apiVersion: "v1beta",
+          ...(this.clientOpts.baseURL ? { baseUrl: this.clientOpts.baseURL } : {}),
+          ...(this.clientOpts.headers ? { headers: this.clientOpts.headers } : {}),
+        },
       });
     }
     return this.client;
