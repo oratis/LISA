@@ -17,6 +17,7 @@ export type AgentKind =
   | "opencode"
   | "aider"
   | "gemini"
+  | "gemini-cli"
   | "cursor"
   | "github-pr"
   | "mcp"

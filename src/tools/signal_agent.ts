@@ -27,6 +27,7 @@ import {
   entryIsAlive,
   type DispatchEntry,
 } from "../integrations/dispatch-ledger.js";
+import { releaseCwdLock } from "../integrations/cwd-lock.js";
 
 interface SignalInput {
   action: "list" | "cancel";
@@ -141,6 +142,7 @@ export const signalAgentTool: ToolDefinition<SignalInput, string> = {
     if (!delivered && !entryIsAlive(entry)) {
       // It exited on its own between the lookup and the signal — clean up.
       removeDispatch(entry.id);
+      releaseCwdLock(entry.cwd, { pid: entry.pid });
       return `${entry.agent} (pid ${entry.pid}) had already exited; removed it from the ledger.`;
     }
 
@@ -154,15 +156,12 @@ export const signalAgentTool: ToolDefinition<SignalInput, string> = {
     }
 
     removeDispatch(entry.id);
+    releaseCwdLock(entry.cwd, { pid: entry.pid });
     ctx.log(
       `[signal] cancelled ${entry.agent} (pid ${entry.pid}) in ${entry.cwd}${escalated ? " [SIGKILL]" : ""}`,
     );
 
-    const how = input.force
-      ? "SIGKILL"
-      : escalated
-        ? "SIGTERM then SIGKILL"
-        : "SIGTERM";
+    const how = input.force ? "SIGKILL" : escalated ? "SIGTERM then SIGKILL" : "SIGTERM";
     return `Cancelled ${entry.agent} (pid ${entry.pid}) in ${entry.cwd} via ${how}. Removed from the dispatch ledger.`;
   },
 };

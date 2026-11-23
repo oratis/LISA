@@ -6,18 +6,11 @@
  * adapters slot in by importing one more module.
  */
 
-import type {
-  AgentIntegrationConfig,
-  AgentObserver,
-  AgentObserverFactory,
-} from "./types.js";
+import type { AgentIntegrationConfig, AgentObserver, AgentObserverFactory } from "./types.js";
 
 const FACTORIES = new Map<string, AgentObserverFactory>();
 
-export function registerIntegration(
-  name: string,
-  factory: AgentObserverFactory,
-): void {
+export function registerIntegration(name: string, factory: AgentObserverFactory): void {
   FACTORIES.set(name, factory);
 }
 
@@ -74,6 +67,8 @@ export async function registerBuiltinIntegrations(): Promise<void> {
   const before = new Set(FACTORIES.keys());
   await import("./claude-code/observer.js");
   await import("./codex/observer.js");
+  await import("./cursor/observer.js");
+  await import("./gemini-cli/observer.js");
   await import("./github-pr/observer.js");
   await import("./opencode/observer.js");
   await import("./aider/observer.js");
