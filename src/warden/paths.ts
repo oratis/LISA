@@ -33,7 +33,7 @@ export function realPath(p: string): string {
 
 function relativeInside(parent: string, child: string): boolean {
   const rel = path.relative(parent, child);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  return rel === "" || (rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel));
 }
 
 /** True when `child` resolves to `parent` or something under it. */

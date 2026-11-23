@@ -2868,9 +2868,11 @@
     #attachPreview:empty { padding: 0; }
     #form {
       grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
-      gap: 4px; padding: 10px 10px 12px; align-items: end;
+      gap: 4px; padding: 6px 10px 8px; align-items: end;
       background: var(--bg-deep); border-top-color: transparent;
     }
+    .chat-controls { gap: 4px; }
+    .chat-controls summary, .chat-controls select { padding: 2px 7px; }
     body[data-theme="calm"] #form { background: var(--bg-deep); }
     #form .plus-wrap { grid-column: 1; grid-row: 1; align-self: end; }
     #input { grid-column: 2; grid-row: 1; min-width: 0; font-size: 16px; line-height: 22px; padding: 10px 12px; border-radius: 22px; max-height: min(144px, 28dvh); }
@@ -3944,3 +3946,31 @@ body.force-compact #form { grid-template-columns: 36px 36px 36px minmax(0, 1fr) 
 #dashOperations .stat-bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 #dashOperations .stat { min-width: 0; }
 @container (max-width: 680px) { #dashOperations .stat-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.chat-controls {
+  grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center;
+  gap: 6px; min-width: 0; color: var(--fg-2); font-size: 12px;
+}
+.chat-controls[hidden], .chat-controls [hidden] { display: none; }
+.chat-controls summary, .chat-controls select {
+  max-width: 100%; border: 1px solid var(--border-new); border-radius: 16px;
+  padding: 4px 9px; color: inherit; background: var(--bg-deep); font: inherit; cursor: pointer;
+}
+.chat-controls select { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.chat-controls select:first-of-type { margin-left: auto; }
+.permission-menu { position: relative; flex-shrink: 0; }
+.permission-menu summary { list-style: none; white-space: nowrap; }
+.permission-menu summary::-webkit-details-marker { display: none; }
+.permission-menu summary::after { content: ' ▾'; }
+.permission-menu[data-mode="full"] summary { color: var(--warn-color, #ca732b); }
+.permission-options {
+  position: absolute; z-index: 15; bottom: calc(100% + 6px); left: 0; width: min(320px, 84vw);
+  background: var(--bg-deep); border: 1px solid var(--border-strong); border-radius: 12px;
+  padding: 5px; box-shadow: 0 8px 30px #0003;
+}
+.permission-options button {
+  display: block; width: 100%; text-align: left; border-radius: 8px; border: 0;
+  background: transparent; color: var(--fg); padding: 9px 10px; font: inherit; cursor: pointer;
+}
+.permission-options button:hover, .permission-options button[aria-pressed="true"] { background: var(--accent-soft); }
+.permission-options small { display: block; color: var(--fg-2); margin-top: 3px; line-height: 1.4; }

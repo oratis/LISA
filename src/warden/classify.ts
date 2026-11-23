@@ -283,6 +283,29 @@ function writePaths(name: string, input: Record<string, unknown>): string[] | nu
   return p ? [p] : null;
 }
 
+/** Both the resolved file and the actual directory entry used by rename/unlink. */
+export function fileMutationTargets(
+  name: string,
+  input: unknown,
+  root: string,
+  includeSpelling = false,
+): string[] | null {
+  const paths = writePaths(name, asRecord(input));
+  if (!paths) return null;
+  return [
+    ...new Set(
+      paths.flatMap((p) => {
+        const abs = path.resolve(root, p);
+        return [
+          realPath(abs),
+          path.join(realPath(path.dirname(abs)), path.basename(abs)),
+          ...(includeSpelling ? [abs] : []),
+        ];
+      }),
+    ),
+  ];
+}
+
 // ── tool-name vocabulary ─────────────────────────────────────────────────
 
 /** `sendMessage`, `create_payment`, `mcp-x.runSQL` → ["send","message"], … lower-cased. */
@@ -978,6 +1001,37 @@ export function classifyToolCall(
     };
   }
 
+  const readonlyConnectors: Record<string, { connector: string; ops: string[]; egress: boolean }> =
+    {
+      obsidian_read: { connector: "obsidian", ops: ["list", "search", "read"], egress: false },
+      t3_read: { connector: "t3", ops: ["list", "threads"], egress: true },
+      game_library_import_read: {
+        connector: "game-library",
+        ops: ["list", "read"],
+        egress: false,
+      },
+      itch_owned_games: { connector: "itch", ops: ["list", "read"], egress: true },
+      steam_selected_games: {
+        connector: "steam",
+        ops: ["list", "read", "achievements"],
+        egress: true,
+      },
+    };
+  if (Object.hasOwn(readonlyConnectors, name)) {
+    const spec = readonlyConnectors[name]!;
+    const operation = str(rec.operation);
+    return {
+      ...base,
+      category: operation && spec.ops.includes(operation) ? "read" : "write",
+      connector: spec.connector,
+      method: operation,
+      targets: [str(rec.resourceId) ?? "selected resources"],
+      egress: spec.egress,
+      destination: spec.egress ? "fixed" : undefined,
+      taintSource: true,
+    };
+  }
+
   if (name === "github") {
     const action = str(rec.action);
     const repo = str(rec.repo) ?? str(rec.cwd);
@@ -1109,10 +1163,10 @@ export function classifyToolCall(
   if (DRAFT_TOOLS.has(name)) return { ...base, category: "draft" };
 
   if (WRITE_TOOLS.has(name)) {
-    const paths = writePaths(name, rec);
-    const targets = paths ? paths.map((p) => resolveTarget(ctx.workspaceRoot, p)) : [];
+    const resolved = fileMutationTargets(name, input, ctx.workspaceRoot);
+    const targets = resolved ?? [];
     const within =
-      paths !== null && targets.every((target) => isInsideWorkspace(ctx.workspaceRoot, target));
+      resolved !== null && targets.every((target) => isInsideWorkspace(ctx.workspaceRoot, target));
     const deletes =
       name === "apply_patch" &&
       Array.isArray(rec.patches) &&
@@ -1121,7 +1175,7 @@ export function classifyToolCall(
       ...base,
       category: deletes ? "delete" : "write",
       targets,
-      targetsComplete: paths !== null,
+      targetsComplete: resolved !== null,
       withinWorkspace: within,
       sandboxed: within && confined,
       sensitivePath: targets.some(sensitive),

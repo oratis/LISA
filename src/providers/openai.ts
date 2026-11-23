@@ -6,6 +6,13 @@ import type { StoredMessage } from "../types.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 import { openaiUsage } from "./usage.js";
 
+/** Chat Completions reasoning controls exposed by the local chat picker. */
+export function openAIChatEfforts(model: string): readonly ("low" | "medium" | "high" | "xhigh")[] {
+  return /^gpt-6-astra(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
+    ? ["low", "medium", "high", "xhigh"]
+    : [];
+}
+
 export class OpenAIProvider implements Provider {
   readonly name = "openai";
   private client: OpenAI;
@@ -22,6 +29,7 @@ export class OpenAIProvider implements Provider {
   }
 
   async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+    const reasoning = openAIChatEfforts(opts.model);
     const messages = anthropicToOpenAI(opts.systemPrompt, opts.messages);
     const tools = opts.tools.map((t) => ({
       type: "function" as const,
@@ -40,7 +48,14 @@ export class OpenAIProvider implements Provider {
           model: opts.model,
           messages,
           tools: tools.length ? tools : undefined,
-          max_tokens: opts.maxTokens ?? 16_000,
+          ...(reasoning.length
+            ? {
+                max_completion_tokens: opts.maxTokens ?? 16_000,
+                ...(opts.effort && reasoning.some((e) => e === opts.effort)
+                  ? { reasoning_effort: opts.effort }
+                  : {}),
+              }
+            : { max_tokens: opts.maxTokens ?? 16_000 }),
           stream: true,
           stream_options: { include_usage: true },
         },

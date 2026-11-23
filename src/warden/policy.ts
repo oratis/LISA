@@ -15,6 +15,7 @@
  * No I/O, no clock other than `ctx.now`, no model. Every path returns a
  * Decision; anything this function does not recognise resolves to "ask".
  */
+import { chatApprovalReason, type ChatPermissionPolicy } from "./chat-permissions.js";
 import path from "node:path";
 import { matchGrants, scopeProblem, type MatchOptions, type StoredGrant } from "./grants.js";
 import { isInsideProtected } from "./paths.js";
@@ -40,6 +41,7 @@ import type {
 } from "./types.js";
 
 export interface PolicyContext {
+  chat?: ChatPermissionPolicy;
   rules: WardenRules;
   grants: StoredGrant[];
   /** The rules file existed but could not be trusted: nothing side-effecting is "auto". */
@@ -468,7 +470,10 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
   // The untainted default, so that when taint is what forces the ask, the
   // floor below — not a generic default — is recorded as the reason.
   const fallback: MatchedRule = {
-    behavior: defaultBehavior({ ...req, tainted: false }),
+    behavior:
+      ctx.chat?.mode === "full" && req.origin.kind === "chat"
+        ? "auto"
+        : defaultBehavior({ ...req, tainted: false }),
     ruleId: `default:${req.category}`,
   };
   const user = resolveRule(ctx.rules, req, fallback);
@@ -483,6 +488,28 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
     });
   }
 
+  // These decisions precede even exact grants. A prior click, rule or task
+  // envelope cannot stand in for the person reviewing this invocation.
+  if (ctx.chat && ["write", "edit", "apply_patch"].includes(req.tool) && !req.targetsComplete) {
+    return {
+      verdict: "deny",
+      reason: "Every file in the change must have a path.",
+      ruleId: "system:unknown-file-target",
+    };
+  }
+  const reason = ctx.chat && chatApprovalReason(req, ctx.chat);
+  if (reason) {
+    return finalize(
+      req,
+      req.origin.kind === "chat"
+        ? { verdict: "ask", reason, ruleId: "system:chat-explicit-approval", scopes: ["once"] }
+        : {
+            verdict: "deny",
+            reason: "This action requires a local owner chat.",
+            ruleId: "system:local-owner-required",
+          },
+    );
+  }
   const forced = forcedAsk(req, ctx);
   // A user rule stricter than a grant wins, whichever is newer: under an
   // explicit "ask" only the approval of this exact payload counts.

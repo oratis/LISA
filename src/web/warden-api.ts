@@ -16,6 +16,7 @@
  * cross-site requests, because these routes are exactly what a hostile page or
  * a prompt-injected model would want to reach.
  */
+import { lisaCodeRoots, type ChatPermission } from "../warden/chat-permissions.js";
 import type http from "node:http";
 import type { ApprovalCallback } from "../agent.js";
 import type { AgentEvent, ToolDefinition } from "../types.js";
@@ -453,6 +454,9 @@ export interface WebWardenTurn {
 }
 
 export interface WebWardenTurnOptions {
+  chatPermission?: ChatPermission;
+  connectorContinuation?: boolean;
+  hostHookTools?: string[];
   uid: string | null;
   sandboxMode: SandboxMode | undefined;
   workspaceRoot: string;
@@ -481,9 +485,8 @@ export interface WebWarden {
   /** True when the runtime policy selected approval mode "warden". */
   enabled: boolean;
   /**
-   * The Warden session for one chat turn, or undefined when the mode is not
-   * "warden" (the caller then keeps its legacy approval callback). Call it
-   * inside the request's home scope.
+   * Creates the turn gate for a local chat preset or an operator-enabled
+   * Warden surface. Call inside the request's home scope.
    */
   turn(opts: WebWardenTurnOptions): Promise<WebWardenTurn | undefined>;
   /**
@@ -545,7 +548,7 @@ export function createWebWarden(
       await markConversationTainted(conversationId, lisaHome());
     },
     async turn(turn) {
-      if (!enabled) return undefined;
+      if (!enabled && !turn.chatPermission) return undefined;
       const home = lisaHome();
       const conversationId = turn.conversationId;
       const key = `${turn.uid ?? ""}\u0000${conversationId ?? ""}`;
@@ -559,6 +562,26 @@ export function createWebWarden(
             hasHistory: turn.hasHistory === true,
           })));
       const session = createWardenSession({
+        chat: turn.chatPermission
+          ? {
+              mode: turn.chatPermission,
+              askAll: policy.approval === "ask",
+              codeRoots: lisaCodeRoots(turn.workspaceRoot),
+              hostHookTools: new Set(turn.hostHookTools),
+              connectorReads: turn.connectorContinuation
+                ? new Set(
+                    turn.tools
+                      .filter(
+                        (t) =>
+                          t.name.endsWith("_read") ||
+                          t.name === "itch_owned_games" ||
+                          t.name === "steam_selected_games",
+                      )
+                      .map((t) => t.name),
+                  )
+                : undefined,
+            }
+          : undefined,
         surface: policy.surface,
         uid: turn.uid,
         origin:
