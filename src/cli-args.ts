@@ -59,6 +59,7 @@ export interface ParsedArgs {
     | "approvals"
     | "warden"
     | "reve"
+    | "telemetry"
     | "forget"
     | "export"
     | "import";
@@ -92,6 +93,7 @@ const PASSTHROUGH_SUBCOMMANDS = new Set([
   "approvals",
   "warden",
   "reve",
+  "telemetry",
   // `pair --host <tailnet> --port N --name <label>`: --host/--port are global
   // flags too, so without passthrough they were silently eaten (and --name /
   // --port=N rejected as unknown) before `pair` ever saw them.
@@ -345,6 +347,7 @@ function parseArgvOnce(argv: string[], dataSubcommands: boolean): ParsedArgs {
       first === "approvals" ||
       first === "warden" ||
       first === "reve" ||
+      first === "telemetry" ||
       (dataSubcommands && isDataSubcommand(first))
     ) {
       out.subcommand = first;
