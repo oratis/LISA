@@ -176,7 +176,10 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
           userTurns = 0,
           faceMicroUSD = 0,
           tokens = 0;
-        for (const row of [...tokenRows, ...mediaRows]) {
+        for (const [isMedia, row] of [
+          ...tokenRows.map((row) => [false, row] as const),
+          ...mediaRows.map((row) => [true, row] as const),
+        ]) {
           const at = str(row.at),
             timestamp = Date.parse(at);
           if (
@@ -223,7 +226,7 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
           tokenTotals.output += record.outputTokens;
           tokenTotals.cacheRead += record.cacheReadTokens;
           tokenTotals.cacheWrite += record.cacheWriteTokens;
-          if (row.source === "voice_transcribe" || row.source === "voice_dictation") {
+          if (isMedia) {
             mediaOperations++;
             mediaDurationMs += record.durationMs;
           }

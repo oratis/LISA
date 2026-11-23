@@ -254,8 +254,12 @@ function chart() {
   const isMoney = key.endsWith("MicroUSD");
   const format = (value) =>
     isMoney ? (value < 10000 && value > 0 ? precise(value) : money(value)) : count(value);
-  const peak = Math.max(...points.map((d) => d[key]), 1);
-  const maximum = isMoney ? peak : Math.ceil(peak / 3) * 3,
+  const peak = Math.max(...points.map((d) => d[key]), 0);
+  const maximum = isMoney
+      ? peak === 0
+        ? 30000
+        : Math.max(peak, 300)
+      : Math.ceil(Math.max(peak, 1) / 3) * 3,
     w = 660,
     baseline = 178,
     top = 22;
@@ -349,6 +353,7 @@ function sourceBars() {
     reflect: "反思",
     birth: "首次初始化",
     task: "后台任务",
+    voice_transcription: "语音转写",
     voice_transcribe: "语音转写",
     voice_dictation: "语音听写",
   };

@@ -697,10 +697,10 @@ test("analytics aggregate all rows before capping details and separate audio dur
   await fs.mkdir(runs, { recursive: true });
   await fs.writeFile(
     path.join(bill, "usage.jsonl"),
-    Array.from({ length: 2105 }, () =>
+    Array.from({ length: 2105 }, (_, i) =>
       JSON.stringify({
         at,
-        source: "chat",
+        source: i === 0 ? "voice_dictation" : "chat",
         model: "model",
         inputTokens: 1,
         outputTokens: 2,
@@ -712,7 +712,7 @@ test("analytics aggregate all rows before capping details and separate audio dur
     path.join(bill, "media-usage.jsonl"),
     JSON.stringify({
       at,
-      source: "voice_transcribe",
+      source: "voice_transcription",
       model: "whisper",
       durationMs: 90000,
       microUSD: 500,
@@ -735,6 +735,8 @@ test("analytics aggregate all rows before capping details and separate audio dur
   assert.equal(result.usageTruncated, true);
   assert.equal(result.summary.tokens, 6315);
   assert.deepEqual(result.analytics.media, { operations: 1, durationMs: 90000 });
+  assert.equal(result.sources.find((s) => s.source === "voice_transcription")?.turns, 1);
+  assert.equal(result.sources.find((s) => s.source === "voice_dictation")?.turns, 1);
   assert.equal(result.analytics.billing.costPerTurnMicroUSD, 21550 / 2106);
   assert.deepEqual(result.analytics.autonomy, {
     runs: 2000,
