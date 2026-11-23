@@ -40,10 +40,12 @@ function lisaBanner(msg, opts) {
   cmd.textContent = o.cmd || '';
   cmd.hidden = !o.cmd;
   // Ride just above the composer while the chat view is up; hug the window
-  // edge on views that have none. Re-measured on every call, so a textarea
-  // that grew while the user typed never ends up covering the toast.
+  // edge on views that have none or when a modal backdrop covers the viewport.
+  // Re-measured on every call, so a textarea that grew while the user typed
+  // never ends up covering the toast.
   var composer = document.getElementById('form');
-  var lift = (composer && composer.offsetParent)
+  var modalOpen = !!document.querySelector('.modal-bg.open');
+  var lift = (!modalOpen && composer && composer.offsetParent)
     ? Math.round(window.innerHeight - composer.getBoundingClientRect().top) + 14
     : 18;
   el.style.bottom = lift + 'px';
@@ -87,6 +89,42 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    "controls.ask": "Ask for approval",
+    "controls.askHelp": "Ask before external edits, network requests and commands.",
+    "controls.smart": "Smart approval",
+    "controls.smartHelp": "Warden checks the tool, destination and conversation for risk.",
+    "controls.full": "Full access",
+    "controls.fullHelp": "Allow ordinary actions. Changes to Lisa and host code execution still ask once.",
+    "controls.confirmFull": "Allow ordinary edits and network actions within the server sandbox and safety rules for this chat? Changes to Lisa and host code execution still require approval.",
+    "controls.model": "Chat model",
+    "controls.defaultModel": "Default · ",
+    "controls.unavailable": " (unavailable)",
+    "controls.defaultEffort": "Default effort",
+    "controls.low": "Low",
+    "controls.medium": "Medium",
+    "controls.high": "High",
+    "controls.xhigh": "Extra high",
+    "controls.effort": "Reasoning effort",
+    "controls.loadError": "Could not load local chat controls",
+    "controls.wait": "The chat is still opening. Retry when its controls appear.",
+    "approval.once": "Approve once",
+    "approval.task": "Approve for this task",
+    "approval.target": "Always for this destination",
+    "approval.day": "For 24 hours",
+    "approval.always": "Always",
+    "approval.approved": "Approved",
+    "approval.denied": "Denied",
+    "approval.expired": "Expired — not run",
+    "approval.dismissed": "Dismissed",
+    "approval.deny": "Deny",
+    "approval.handoff": "This needs you",
+    "approval.request": "Lisa is asking to run: ",
+    "approval.chat": "Chat · ",
+    "approval.reason.code": "This changes Lisa’s own files. Review the paths and the complete change before approving once.",
+    "approval.reason.restart": "Rebuild or restart Lisa. Review and authorize this deployment once.",
+    "approval.reason.host": "This tool can run host code or change what runs on your machine, including Lisa herself. Authorize only this invocation.",
+    "approval.reason.private": "This directly modifies Lisa’s private state or configuration. Review this invocation once.",
+    "approval.reason.ask": "Your chat permissions require approval for this action.",
     "shell.sessions": "Sessions",
     "shell.new": "＋ New",
     "shell.more": "More",
@@ -747,6 +785,42 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    "controls.ask": "逐次询问",
+    "controls.askHelp": "修改外部文件、联网和执行命令前询问。",
+    "controls.smart": "智能审批",
+    "controls.smartHelp": "Warden 按工具、目标和当前对话的风险决定是否询问。",
+    "controls.full": "完全访问",
+    "controls.fullHelp": "放行常规操作。修改 LISA 本体和运行主机代码仍需单次确认。",
+    "controls.confirmFull": "允许本会话在服务器沙箱和安全规则范围内自动修改文件、联网和执行常规操作？修改 LISA 本体和运行主机代码仍会单独询问。",
+    "controls.model": "对话模型",
+    "controls.defaultModel": "默认 · ",
+    "controls.unavailable": "（不可用）",
+    "controls.defaultEffort": "默认推理",
+    "controls.low": "低",
+    "controls.medium": "中",
+    "controls.high": "高",
+    "controls.xhigh": "超高",
+    "controls.effort": "推理强度",
+    "controls.loadError": "无法加载本机对话设置",
+    "controls.wait": "会话正在打开，请在权限选项出现后重试。",
+    "approval.once": "仅批准这一次",
+    "approval.task": "批准此任务",
+    "approval.target": "始终允许此目标",
+    "approval.day": "允许 24 小时",
+    "approval.always": "始终允许",
+    "approval.approved": "已批准",
+    "approval.denied": "已拒绝",
+    "approval.expired": "已过期，操作未执行",
+    "approval.dismissed": "已关闭",
+    "approval.deny": "拒绝",
+    "approval.handoff": "需要你来处理",
+    "approval.request": "LISA 请求执行 ",
+    "approval.chat": "会话 · ",
+    "approval.reason.code": "这次操作将修改 LISA 自身文件。请核对路径和完整修改内容，再决定是否批准这一次。",
+    "approval.reason.restart": "这次操作将重新构建或重启 LISA，需要单独批准。",
+    "approval.reason.host": "此工具可以在本机执行代码，包括修改 LISA。请核对命令或任务内容，授权仅适用于这次调用。",
+    "approval.reason.private": "这次操作将直接修改 LISA 的本地数据或配置，需要单独批准。",
+    "approval.reason.ask": "当前会话的权限设置要求你批准这次操作。",
     "shell.sessions": "会话",
     "shell.new": "＋ 新建",
     "shell.more": "更多",
@@ -1965,9 +2039,114 @@ document.addEventListener('paste', (ev) => {
 // tree clicks, tab clicks, ＋New, and the session_switched SSE frame from
 // another window — so they all converge on the same reload behavior.
 let activeSessionId = null;
+// Only the local owner's page contains these elements. Each send carries a
+// snapshot so switching tabs or models cannot change a running turn.
+const composerControls = (() => {
+  const bar = document.getElementById('chatControls');
+  if (!bar) return null;
+  const menu = /** @type {HTMLDetailsElement} */ (document.getElementById('permissionMenu'));
+  const summary = document.getElementById('chatPermission');
+  const choices = document.getElementById('permissionOptions');
+  const model = /** @type {HTMLSelectElement} */ (document.getElementById('chatModel'));
+  const effort = /** @type {HTMLSelectElement} */ (document.getElementById('chatEffort'));
+  const full = new Set();
+  const selections = new Map();
+  let catalog = null;
+  let loading = null;
+  const sessionKey = id => 'lisa.chatControls.' + id;
+  function readSelection(id) {
+    if (!selections.has(id)) {
+      let saved = {};
+      try { saved = JSON.parse(sessionStorage.getItem(sessionKey(id)) || '{}') || {}; } catch {}
+      selections.set(id, saved);
+    }
+    return selections.get(id);
+  }
+  function snapshot(id) {
+    const saved = readSelection(id);
+    let permission = catalog.permissions[0];
+    if (saved.permission !== 'full' && catalog.permissions.includes(saved.permission)) permission = saved.permission;
+    if (full.has(id) && catalog.permissions.includes('full')) permission = 'full';
+    return { permission, model: saved.model || undefined, effort: saved.effort || undefined };
+  }
+  function save(id, value) {
+    selections.set(id, value);
+    try { sessionStorage.setItem(sessionKey(id), JSON.stringify(value)); } catch {}
+    render();
+  }
+  function render() {
+    if (!catalog || !activeSessionId) return;
+    const id = activeSessionId;
+    const current = snapshot(id);
+    const mode = current.permission;
+    bar.hidden = false;
+    menu.dataset.mode = mode;
+    summary.textContent = tr('controls.' + mode);
+    summary.title = tr('controls.' + mode + 'Help');
+    choices.replaceChildren();
+    for (const key of ['ask', 'smart', 'full'].filter(k => catalog.permissions.includes(k))) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = tr('controls.' + key);
+      button.setAttribute('aria-pressed', String(key === mode));
+      const detail = document.createElement('small');
+      detail.textContent = tr('controls.' + key + 'Help');
+      button.append(detail);
+      button.onclick = () => {
+        menu.open = false;
+        summary.focus();
+        if (key === 'full' && mode !== 'full' && !window.confirm(tr('controls.confirmFull'))) return;
+        if (key === 'full') full.add(id); else full.delete(id);
+        const saved = readSelection(id);
+        save(id, { ...saved, permission: key === 'full' ? saved.permission : key });
+      };
+      choices.append(button);
+    }
+    model.setAttribute('aria-label', tr('controls.model'));
+    model.replaceChildren(new Option(tr('controls.defaultModel') + catalog.defaultModel, ''));
+    for (const m of catalog.models) model.add(new Option(m.id, m.id));
+    // Keep an unavailable pin visible. Never send the transcript to a new
+    // model just because the provider configuration changed under this tab.
+    if (current.model && !catalog.models.some(m => m.id === current.model))
+      model.add(new Option(current.model + (tr('controls.unavailable')), current.model));
+    model.value = current.model || '';
+    const selected = catalog.models.find(m => m.id === (current.model || catalog.defaultModel));
+    effort.replaceChildren(new Option(tr('controls.defaultEffort'), ''));
+    const levels = { low: tr('controls.low'), medium: tr('controls.medium'), high: tr('controls.high'), xhigh: tr('controls.xhigh') };
+    for (const e of selected?.efforts || []) effort.add(new Option(levels[e], e));
+    effort.value = current.effort || '';
+    effort.hidden = !selected?.efforts?.length;
+    effort.setAttribute('aria-label', tr('controls.effort'));
+  }
+  function refresh() {
+    if (loading) return loading;
+    loading = fetch('/api/chat-controls').then(async r => {
+      if (!r.ok) throw new Error(tr('controls.loadError'));
+      catalog = await r.json();
+      render();
+    }).finally(() => { loading = null; });
+    return loading;
+  }
+  model.onchange = () => save(activeSessionId, { ...readSelection(activeSessionId), model: model.value, effort: '' });
+  effort.onchange = () => save(activeSessionId, { ...readSelection(activeSessionId), effort: effort.value });
+  document.addEventListener('click', e => { if (!menu.contains(/** @type {Node} */ (e.target))) menu.open = false; });
+  menu.addEventListener('keydown', e => { if (e.key === 'Escape') { menu.open = false; summary.focus(); } });
+  return {
+    render() { menu.open = false; render(); },
+    refresh,
+    async forTurn(id) {
+      if (!id) throw new Error(tr('controls.wait'));
+      if (!catalog) await refresh();
+      return snapshot(id);
+    },
+  };
+})();
+
+if (composerControls) void composerControls.refresh().catch(e => lisaBanner(e.message));
 function setActiveSessionUI(id) {
   activeSessionId = id;
   window.lisaActiveSessionId = id;
+  composerControls?.render();
   window.dispatchEvent(new Event('lisa-session-change'));
   sessionEl.textContent = id;
   updateTitlebarSession();
@@ -2422,6 +2601,7 @@ cfgForm.addEventListener('submit', async (ev) => {
       return;
     }
     cfgKey.value = '';
+    if (composerControls) void composerControls.refresh().catch(e => lisaBanner(e.message));
     cfgOverlay.classList.remove('open');
     // A repair restarts the ritual in place — no location.reload(), so the
     // page keeps its SSE connection, its log and its scroll position.
@@ -3931,7 +4111,7 @@ async function runChat(message, filesToSend, expression) {
     const res = await fetch('/chat', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({message, files: filesToSend, sessionId: sid, expressions: true, expression}),
+      body: JSON.stringify({message, files: filesToSend, sessionId: sid, expressions: true, expression, controls: await composerControls?.forTurn(sid)}),
     });
     if (!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
     const reader = res.body.getReader();
@@ -7027,6 +7207,7 @@ if ('serviceWorker' in navigator) {
             throw new Error(window.lisaProviderUnsupportedNote(pv));
           }
           if (keyEl) keyEl.value = '';
+          if (composerControls) void composerControls.refresh().catch(e => lisaBanner(e.message));
           if (msg) { msg.style.color = 'var(--proactive)'; msg.textContent = 'Saved.'; }
           loadSettings();
         })
@@ -7297,18 +7478,20 @@ if ('serviceWorker' in navigator) {
   var panelList = null;
   var panelTitle = null;
   var SCOPE_LABELS = {
-    once: 'Approve once',
-    task: 'Approve for this task',
-    target: 'Always for this destination',
-    '24h': 'For 24 hours',
-    always: 'Always',
+    once: tr('approval.once'),
+    task: tr('approval.task'),
+    target: tr('approval.target'),
+    '24h': tr('approval.day'),
+    always: tr('approval.always'),
   };
   var RESULT_WORDS = {
-    approved: 'Approved',
-    denied: 'Denied',
-    expired: 'Expired — not run',
-    dismissed: 'Dismissed',
+    approved: tr('approval.approved'),
+    denied: tr('approval.denied'),
+    expired: tr('approval.expired'),
+    dismissed: tr('approval.dismissed'),
   };
+  const reasons = Object.fromEntries(Object.entries(LISA_STRINGS.en)
+    .filter(([key]) => key.startsWith('approval.reason.')).map(([key, reason]) => [reason, key]));
   function own(map, key) {
     return typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
   }
@@ -7394,7 +7577,7 @@ if ('serviceWorker' in navigator) {
           add(label, scope === 'once' ? 'approve' : 'approve-wide', 'approve', { scope: scope, digest: digest });
         });
       }
-      add('Deny', 'deny', 'deny', {});
+      add(tr('approval.deny'), 'deny', 'deny', {});
     }
     wrap.appendChild(status);
     return wrap;
@@ -7415,7 +7598,7 @@ if ('serviceWorker' in navigator) {
     var card = el('div', 'warden-card' + (item.kind === 'handoff' ? ' handoff' : ''));
     card.setAttribute('data-approval-id', item.id);
     card.appendChild(el('div', 'warden-title',
-      item.kind === 'handoff' ? 'This needs you' : 'Lisa is asking to run: ' + item.tool));
+      item.kind === 'handoff' ? (tr('approval.handoff')) : (tr('approval.request')) + item.tool));
     var payload = el('div', 'warden-payload');
     payload.appendChild(el('div', 'warden-preview', item.preview));
     card.appendChild(payload);
@@ -7423,7 +7606,9 @@ if ('serviceWorker' in navigator) {
       card.appendChild(el('div', 'warden-meta', 'To: ' + item.targets.join(', ')));
     }
     if (item.purpose) card.appendChild(el('div', 'warden-meta', 'For: ' + item.purpose));
-    card.appendChild(el('div', 'warden-meta', item.reason || ''));
+    if (item.origin?.kind === 'chat' && item.origin.id) card.appendChild(el('div', 'warden-meta', (tr('approval.chat')) + item.origin.id));
+    const reasonKey = own(reasons, item.reason);
+    card.appendChild(el('div', 'warden-meta', reasonKey ? tr(reasonKey) : item.reason || ''));
     if (item.kind !== 'handoff' && item.expiresAt) {
       var when = new Date(item.expiresAt);
       if (!isNaN(when.getTime())) {

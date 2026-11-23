@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { withFileLock } from "../soul/lock.js";
 import type { SecretStore } from "../warden/secrets.js";
 import type { ToolDefinition } from "../types.js";
+import type { ChatControls } from "../web/chat-controls.js";
 import { ConnectorError, type CredentialAccess, type ReadonlyDriver } from "./types.js";
 
 export const CONNECTOR_STATES = [
@@ -34,6 +35,7 @@ export interface ConnectionRequestView<A, R> {
 }
 interface Request<A, R> extends Omit<ConnectionRequestView<A, R>, "connected"> {
   prompt: string;
+  chatControls?: ChatControls;
   connectionId?: string;
   stagedSecret?: string;
   stagedConnectionId?: string;
@@ -53,7 +55,7 @@ interface State<A, R> {
   connection?: Connection<A, R>;
 }
 export interface ConnectorResume<A, R> {
-  request: ConnectionRequestView<A, R> & { prompt: string };
+  request: ConnectionRequestView<A, R> & { prompt: string; chatControls?: ChatControls };
   tools: ToolDefinition[];
   signal: AbortSignal;
   provider: string;
@@ -82,6 +84,20 @@ const terminal = (s: Status) => ["completed", "cancelled", "expired"].includes(s
 const idOK = (s: unknown): s is string => typeof s === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(s);
 const validRecipient = (value: unknown): value is string =>
   typeof value === "string" && !!value.trim() && value.length <= 1024 && !/\p{Cc}/u.test(value);
+const validChatControls = (value: unknown): value is ChatControls => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const rec = value as Record<string, unknown>;
+  if (Object.keys(rec).some((k) => !["permission", "model", "effort"].includes(k))) return false;
+  if (!["ask", "smart", "full"].includes(String(rec.permission))) return false;
+  if (
+    rec.model !== undefined &&
+    (typeof rec.model !== "string" || !rec.model || rec.model.length > 120)
+  )
+    return false;
+  if (rec.effort !== undefined && !["low", "medium", "high", "xhigh"].includes(String(rec.effort)))
+    return false;
+  return true;
+};
 function validate<A, R>(value: unknown, driver: ReadonlyDriver<A, R>): State<A, R> {
   const s = value as State<A, R>;
   const accountOK = driver.validAccount;
@@ -100,6 +116,7 @@ function validate<A, R>(value: unknown, driver: ReadonlyDriver<A, R>): State<A, 
         !CONNECTOR_STATES.includes(r.status) ||
         typeof r.prompt !== "string" ||
         r.prompt.length > 32_000 ||
+        (r.chatControls !== undefined && !validChatControls(r.chatControls)) ||
         !Number.isFinite(r.createdAt) ||
         !Number.isFinite(r.expiresAt) ||
         !Number.isInteger(r.attempts) ||
@@ -302,6 +319,7 @@ export class ReadonlyConnector<A, R> {
     sessionId: string,
     prompt: string,
     forceSelection = false,
+    chatControls?: ChatControls,
   ): Promise<ConnectionRequestView<A, R>> {
     if (!idOK(sessionId) || !prompt.trim() || prompt.length > 32_000)
       throw new ConnectorError("invalid_request");
@@ -323,6 +341,7 @@ export class ReadonlyConnector<A, R> {
         id: randomUUID(),
         sessionId,
         prompt,
+        ...(chatControls ? { chatControls } : {}),
         createdAt: this.now(),
         expiresAt: this.now() + 24 * 3600_000,
         status: grant ? "ready" : "waiting",
@@ -575,6 +594,7 @@ export class ReadonlyConnector<A, R> {
         if (this.options.forgetGrantOnDisconnect) {
           r.prompt = "";
           r.resources = [];
+          delete r.chatControls;
           delete r.account;
           delete r.connectionId;
         }
@@ -769,7 +789,11 @@ export class ReadonlyConnector<A, R> {
                 r.attempts++;
                 const { connection } = this.activeGrant(s, id, signal);
                 return {
-                  request: { ...this.view(r, s), prompt: r.prompt },
+                  request: {
+                    ...this.view(r, s),
+                    prompt: r.prompt,
+                    ...(r.chatControls ? { chatControls: r.chatControls } : {}),
+                  },
                   recipient: connection.recipient,
                   grantId: connection.id,
                 };

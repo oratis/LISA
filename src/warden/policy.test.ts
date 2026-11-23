@@ -533,3 +533,45 @@ test("defaultBehavior never returns auto for an unrecognised category", () => {
   assert.equal(defaultBehavior(odd), "ask");
   assert.equal(evaluate(odd, ctx()).verdict, "ask");
 });
+
+test("local chat requires fresh consent for self changes even with an exact grant or an auto rule", () => {
+  for (const mode of ["ask", "smart", "full"] as const) {
+    for (const action of [
+      req({
+        tool: "edit",
+        category: "write",
+        targets: ["/lisa/src/main.ts"],
+        targetsComplete: true,
+      }),
+      req({
+        tool: "apply_patch",
+        category: "delete",
+        targets: ["/project/a", "/lisa/dist/cli.js"],
+        targetsComplete: true,
+      }),
+      req({ tool: "redeploy" }),
+      req({ tool: "bash", sandboxed: true }),
+      req({ tool: "dispatch_agent" }),
+      req({ tool: "mcp__fs__edit_file", category: "write" }),
+    ]) {
+      const rules = defaultRules();
+      rules.tools[action.tool] = "auto";
+      const policy = ctx({
+        chat: { mode, codeRoots: ["/lisa"] },
+        rules,
+        grants: grantsFor(action, "once", NOW),
+      });
+      const decision = evaluate(action, policy);
+      assert.equal(decision.verdict, "ask", mode + "/" + action.tool);
+      assert.deepEqual(decision.scopes, ["once"]);
+      assert.equal(evaluate({ ...action, origin: { kind: "channel" } }, policy).verdict, "deny");
+    }
+  }
+  assert.equal(
+    evaluate(
+      req({ tool: "apply_patch", category: "write", targetsComplete: false }),
+      ctx({ chat: { mode: "full", codeRoots: ["/lisa"] } }),
+    ).verdict,
+    "deny",
+  );
+});

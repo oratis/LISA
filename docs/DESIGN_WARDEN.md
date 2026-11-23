@@ -4,9 +4,9 @@ Warden is the deterministic layer that decides whether a tool call may run. The 
 
 Plan: [PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md](PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) §W2. Threat model: [THREAT_MODEL.md](THREAT_MODEL.md). Reach-out charter: [POLICY_REACH_OUT.md](POLICY_REACH_OUT.md).
 
-## Status: opt-in
+## Local Web chat
 
-Warden is off unless asked for. `lisa serve --web` with no flag behaves as before (`auto`). Turn it on with `--approval warden`, or with `LISA_APPROVAL=warden` for a backend an app launches. The default will flip in a later PR, once a native approver exists (see "Known limits").
+The local chat endpoint creates a Warden session on every turn. The owner can select a permission preset within the server's approval ceiling. Before evaluating grants, the local policy asks once for writes to Lisa's own code, raw host execution, executable extensions and redeployment. Cloud and unattended surfaces retain their own enablement policies. See the [local chat controls design](DESIGN_CHAT_CONTROLS.zh-CN.md).
 
 ## Pipeline
 
@@ -17,7 +17,7 @@ One Warden session per agent run (`createWardenSession`). For every tool call:
 3. **Evaluate** (`policy.ts`) — a pure function, in this order:
    1. system invariants;
    2. a user rule of `handoff`;
-   3. grants, narrowed by what the request is (see "Grants");
+   3. local chat protections, then grants narrowed by what the request is (see "Grants");
    4. forced asks (see below);
    5. user rules, then the default matrix, then the context floor.
 4. **Audit** (`audit.ts`) — one JSONL line per decision and per resolution.
@@ -166,12 +166,12 @@ Sandboxed commands cannot reach any of it: every bounded sandbox profile denies 
 
 ## Known limits
 
-- **There is no native approver yet, and that is why Warden is opt-in.** Over HTTP on loopback there is no way to tell the user's browser from a local process. A process the user runs unsandboxed can read `/api/approvals/{id}`, approve with the digest it finds there, or rewrite the rules — and so can a shell command the user approved. Until approvals are signed by a native approver (the Mac app with a Keychain-bound key, or a paired phone with Face ID), Warden protects against a model that has not been given an unconfined shell, not against one that has. That approver is the follow-up that gates flipping the default.
-- **A chat's workspace root is the server's working directory.** Under launchd and Lisa.app that is `/`. A workspace that is `/`, the user's home (or above it) or that contains a Lisa home confines nothing, so Warden treats `bash` and file writes there as unsandboxed on every surface — they ask — and every tainted read outside it asks too. Task runs no longer have this problem (each works in its own folder, below); giving chat turns a narrower workspace must still happen before the default flips.
+- **Local Web approvals trust the loopback peer.** Over HTTP on loopback there is no way to tell the user's browser from a local process. A process the user runs unsandboxed can read `/api/approvals/{id}`, approve with the digest it finds there, or rewrite the rules — and so can a shell command the user approved. Until approvals are signed by a native approver (the Mac app with a Keychain-bound key, or a paired phone with Face ID), Warden protects against a model that has not been given an unconfined shell, not against one that has.
+- **A chat's workspace root is the server's working directory.** Under launchd and Lisa.app that is `/`. A workspace that is `/`, the user's home (or above it) or that contains a Lisa home confines nothing, so Warden treats `bash` and file writes there as unsandboxed on every surface — they ask — and every tainted read outside it asks too. Task runs no longer have this problem (each works in its own folder, below); chat turns use the workspace chosen at launch.
 - **String checks are best effort.** The check for commands that name Warden's state, and the check for shell commands that reach the network, are string matches. `p=approvals; curl …/api/$p` passes the first; an alias or an encoded payload passes the second. They catch the common case and are not a boundary.
 - **Linux.** bubblewrap cannot filter one TCP port. With the network allowed, a sandboxed command on Linux can still connect to the LISA port.
 - **Memory poisoning.** In a tainted run `memory`, `soul_patch`, `kb_write` and `kb_add` are still `auto`, and what they write loads into later, untainted conversations and task runs. The audit log marks those writes as made in a tainted run; undoing them is provenance work that is not in this PR. (A tainted run's summary, folder and result card no longer carry its text anywhere untainted — "Taint" above; memory is the one channel that still does.)
-- **With Warden off, chat tools are not gated.** Nothing then stops a chat tool from reading `<lisaHome>/warden/digest.key` and signing a task confirmation. Unattended runs make read-only calls only while Warden is off, so such a confirmation does nothing until Warden is switched on.
+- **Other execution surfaces may run without Warden.** Nothing then stops a chat tool from reading `<lisaHome>/warden/digest.key` and signing a task confirmation. Unattended runs make read-only calls only while Warden is off, so such a confirmation does nothing until Warden is switched on.
 - **What the seals do not cover.** A run's message history is not sealed: a task-file writer could still edit what an interrupted run resumes with. Nor do the seals stop a rollback: putting back an earlier task file (or run record) together with the seal it genuinely had at the time — for example a `workspaceTainted: false` from before a tainted run wrote to the folder. Both still need a write under `<lisaHome>/tasks/`, which always asks (`system:task-state-guard`) and which the task sandbox denies.
 - **Reads inside the workspace do not taint.** `read`, `grep` and `kb_read` can return text someone else wrote (a cloned repository, an ingested page). Tainting on them would taint every coding conversation at once, so they are left out, knowingly.
 - **Known URLs are kept in memory.** After a restart a tainted conversation asks again for URLs it had already seen.

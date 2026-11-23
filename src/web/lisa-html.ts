@@ -101,7 +101,12 @@ export function mainHtmlCsp(nonce: string): string {
  * any non-HTTP consumer want.
  */
 export function renderMainHtml(
-  opts: { nonce?: string; remoteFleet?: boolean; connectorCatalog?: boolean } = {},
+  opts: {
+    nonce?: string;
+    remoteFleet?: boolean;
+    connectorCatalog?: boolean;
+    chatControls?: boolean;
+  } = {},
 ): string {
   const nonceAttr = opts.nonce ? ` nonce="${opts.nonce}"` : "";
   return `<!doctype html>
@@ -277,6 +282,18 @@ ${opts.connectorCatalog ? CONNECTOR_MARKS : ""}
         <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Send</span>
       </button>
+      ${
+        opts.chatControls
+          ? `<div class="chat-controls" id="chatControls" hidden>
+        <details class="permission-menu" id="permissionMenu">
+          <summary id="chatPermission"></summary>
+          <div class="permission-options" id="permissionOptions"></div>
+        </details>
+        <select id="chatModel" aria-label="Chat model"></select>
+        <select id="chatEffort" aria-label="Reasoning effort" hidden></select>
+      </div>`
+          : ""
+      }
     </form>
     </div><!-- /#viewChat -->
 

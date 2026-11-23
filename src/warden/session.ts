@@ -10,6 +10,7 @@
  * try/catch whose only outcome is a deny, and an "allow" for a side-effecting
  * call is returned only after its audit line has been written.
  */
+import type { ChatPermissionPolicy } from "./chat-permissions.js";
 import type { ApprovalCallback, ApprovalDecision } from "../agent.js";
 import type { AgentEvent, ToolDefinition } from "../types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
@@ -17,6 +18,7 @@ import { lisaGlobalHome, lisaHome } from "../paths.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { logWarn } from "../log.js";
 import path from "node:path";
+import { fileMutationTargets } from "./classify.js";
 import { auditDecision, auditQuietly } from "./audit.js";
 import { loadGrants, useGrants, type LoadedGrants } from "./grants.js";
 import type { ApprovalOutcome, InboxItemView, WardenInbox } from "./inbox.js";
@@ -68,6 +70,7 @@ export class KnownUrls {
 }
 
 export interface WardenSessionOptions {
+  chat?: ChatPermissionPolicy;
   surface: RuntimeSurface;
   /** Authenticated tenant; null on the single-user Mac edition. Never client-supplied. */
   uid: string | null;
@@ -217,6 +220,7 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
       grants = { grants: [], corrupt: true };
     }
     return evaluate(req, {
+      chat: opts.chat,
       rules: rules.rules,
       rulesCorrupt: rules.corrupt,
       grants: grants.grants,
@@ -256,6 +260,12 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         now: started,
       },
     );
+    const directFileChange = opts.chat && ["write", "edit", "apply_patch"].includes(toolName);
+    if (directFileChange) {
+      // Include the caller's spelling: writing through a dependency symlink
+      // inside Lisa also changes code that Lisa loads.
+      req.targets = fileMutationTargets(toolName, toolInput, opts.workspaceRoot, true) ?? [];
+    }
     // A command that names Warden's state directory, its approval API or its
     // CLI is flagged, which makes the policy ask for this exact command
     // whatever grants or rules exist. Defence in depth only: a string match
@@ -288,6 +298,18 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
     }
 
     const allow = (): WardenOutcome => {
+      if (directFileChange) {
+        const current = fileMutationTargets(toolName, toolInput, opts.workspaceRoot, true);
+        if (
+          !current ||
+          current.length !== req.targets.length ||
+          current.some((target, i) => target !== req.targets[i])
+        ) {
+          return deny(
+            "A file path changed while this action was awaiting approval. Request a fresh review.",
+          );
+        }
+      }
       if (taintSource) {
         armed.set(toolName, (armed.get(toolName) ?? 0) + 1);
         // Conservative: the run counts as tainted from the moment a
@@ -351,7 +373,10 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
           await pending;
           await quietly(() => opts.onApprovalSettled?.(outcome, req), "onApprovalSettled");
         }
-        if (outcome.approved) return allow();
+        if (outcome.approved) {
+          if (opts.signal?.aborted) return deny("The turn was cancelled.");
+          return allow();
+        }
         if (outcome.expired) {
           return deny(
             "Approval was requested but nobody answered before it expired, so this action was " +

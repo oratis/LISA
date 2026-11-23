@@ -1,3 +1,4 @@
+import type { ChatControls } from "../web/chat-controls.js";
 /** GitHub compatibility facade over the shared durable connector lifecycle. */
 import {
   ReadonlyConnector,
@@ -21,7 +22,7 @@ export type GitHubRequestView = Omit<
   "resources"
 > & { repositories: GitHubRepo[] };
 export type GitHubResume = Omit<ConnectorResume<GitHubAccount, GitHubRepo>, "request"> & {
-  request: GitHubRequestView & { prompt: string };
+  request: GitHubRequestView & { prompt: string; chatControls?: ChatControls };
 };
 type Options = Omit<ConnectorOptions<GitHubAccount, GitHubRepo>, "driver" | "resume"> & {
   driver: GitHubDriver;
@@ -113,8 +114,13 @@ export class GitHubConnector {
   async list(sessionId: string) {
     return (await this.service.list(sessionId)).map(view);
   }
-  async create(sessionId: string, prompt: string) {
-    return view(await this.service.create(sessionId, prompt));
+  async create(
+    sessionId: string,
+    prompt: string,
+    forceSelection = false,
+    chatControls?: ChatControls,
+  ) {
+    return view(await this.service.create(sessionId, prompt, forceSelection, chatControls));
   }
   authorize(id: string, mode: "existing" | "login") {
     return this.service.authorize(id, mode);
