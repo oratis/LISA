@@ -15,41 +15,25 @@
 
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var mainWindow: MainWindow?
+    private var workspace = Workspace.restore(in: .standard)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Auto-start the local backend if it isn't already up, so opening the
-        // app "just works" without a separate `lisa serve --web` in a terminal.
-        BackendController.shared.ensureRunning()
-
         installMenu()
         showMainWindow()
 
         // Quiet update discovery — throttled to once/day and surfaced at most
         // once per version, so it never nags. Only fires when a newer GitHub
         // release exists than this bundle's version.
-        Updater.shared.discoverInBackground { [weak self] info in
-            self?.presentUpdatePrompt(info)
+        if workspace != .welcome {
+            Updater.shared.discoverInBackground { [weak self] info in
+                self?.presentUpdatePrompt(info)
+            }
         }
 
-        // Phase 3.5 — menu bar mirror of Claude Code activity.
-        // Click the status item to bring the main window to front.
-        MenuBarController.shared.install { [weak self] in
-            self?.showMainWindow()
-        }
-
-        // Vision — global ⌃⌥S: screenshot straight into Lisa's composer,
-        // from anywhere. Brings the window forward, then runs the page's
-        // capture bridge (server-side screencapture → attachment).
-        HotkeyManager.shared.register { [weak self] includeContext in
-            self?.captureForLisa(includeContext: includeContext)
-        }
-
-        // Lisa Island — the notch pill, now a feature of this app rather than
-        // a separate LisaIsland.app. Toggle it from View ▸ Show Lisa Island;
-        // the on/off choice is remembered across launches.
-        IslandController.shared.applyInitialState()
+        updateLocalServices()
         // The island's "open full chat" bridge posts this so we can bring the
         // chat window forward in-process.
         NotificationCenter.default.addObserver(
@@ -60,7 +44,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    private func selectWorkspace(_ next: Workspace) {
+        guard next != workspace else { return }
+        let wasWelcome = workspace == .welcome
+        workspace = next
+        UserDefaults.standard.set(next.rawValue, forKey: Workspace.preference)
+        mainWindow?.display(next)
+        updateLocalServices()
+        if wasWelcome {
+            Updater.shared.discoverInBackground { [weak self] info in
+                self?.presentUpdatePrompt(info)
+            }
+        }
+    }
+
+    private func updateLocalServices() {
+        IslandController.shared.setWorkspaceActive(workspace == .mac)
+        guard workspace == .mac else {
+            HotkeyManager.shared.unregister()
+            MenuBarController.shared.uninstall()
+            return
+        }
+        // Auto-start the local backend if it isn't already up, so opening the
+        // app "just works" without a separate `lisa serve --web` in a terminal.
+        BackendController.shared.ensureRunning()
+        // Phase 3.5 — menu bar mirror of Claude Code activity.
+        // Click the status item to bring the main window to front.
+        MenuBarController.shared.install { [weak self] in
+            self?.showMainWindow()
+        }
+        // Vision — global ⌃⌥S (and ⌃⌥⇧S with context): screenshot straight into
+        // Lisa's composer, from anywhere.
+        HotkeyManager.shared.register { [weak self] includeContext in
+            self?.captureForLisa(includeContext: includeContext)
+        }
+    }
+
     @objc private func handleShowMainWindow(_ note: Notification) {
+        guard workspace == .mac else { return }
         let hadWindow = mainWindow != nil
         showMainWindow()
         // Screen-advisor "Optimize ▸" carries a prefill — drop it into the
@@ -77,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func captureForLisa(_ sender: Any?) { captureForLisa(includeContext: false) }
     @objc func captureContextForLisa(_ sender: Any?) { captureForLisa(includeContext: true) }
     private func captureForLisa(includeContext: Bool) {
+        guard workspace == .mac else { return }
         // Do NOT raise the Lisa window first — that would cover whatever the
         // user is trying to screenshot. screencapture's crosshair is a
         // system-level overlay that works regardless of which app is frontmost,
@@ -84,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // fires fine. We bring the window forward only AFTER a shot is actually
         // attached (so the user sees it land), and leave everything untouched
         // if they cancelled with Escape.
-        let fireCapture: () -> Void = { [weak self] in
+        let fireCapture: @MainActor @Sendable () -> Void = { [weak self] in
             self?.mainWindow?.triggerCapture(includeContext: includeContext) { attached in
                 if attached { self?.bringWindowToFront() }
             }
@@ -108,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showMainWindowInBackground() {
         if mainWindow == nil {
-            mainWindow = MainWindow()
+            mainWindow = makeMainWindow()
         }
         // orderFront (not makeKeyAndOrderFront) + no app activation: the
         // window exists to host the bridge but stays behind the capture target.
@@ -126,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // to a user — and the backend may have died since launch. ensureRunning
         // probes first and no-ops while a start is already in flight, so this is
         // free when everything is healthy.
-        BackendController.shared.ensureRunning()
+        if workspace == .mac { BackendController.shared.ensureRunning() }
         if !flag {
             showMainWindow()
         }
@@ -135,13 +157,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Window
 
+    private func makeMainWindow() -> MainWindow {
+        MainWindow(workspace: workspace) { [weak self] in self?.selectWorkspace($0) }
+    }
+
     private func showMainWindow() {
         if let win = mainWindow {
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let win = MainWindow()
+        let win = makeMainWindow()
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         mainWindow = win
@@ -158,7 +184,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor @objc func showAccount(_ sender: Any?) {
-        AccountWindowController.shared.show()
+        if workspace == .cloud {
+            showMainWindow()
+            mainWindow?.openCloudAccount()
+        } else {
+            AccountWindowController.shared.show()
+        }
     }
 
     @objc func showAbout(_ sender: Any?) {
@@ -205,6 +236,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Menu
+
+    @objc private func chooseCloud(_ sender: Any?) { selectWorkspace(.cloud); showMainWindow() }
+    @objc private func chooseMac(_ sender: Any?) { selectWorkspace(.mac); showMainWindow() }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(chooseCloud(_:)), #selector(chooseMac(_:)):
+            let choice: Workspace = menuItem.action == #selector(chooseCloud(_:)) ? .cloud : .mac
+            menuItem.state = choice == workspace ? .on : .off
+        case #selector(showAccount(_:)):
+            menuItem.title = workspace == .cloud ? workspaceText("Cloud Account…") : "Account & Devices…"
+            return workspace != .welcome
+        case #selector(reloadChat(_:)):
+            return workspace != .welcome
+        case #selector(openBackendSetup(_:)), #selector(openPreferences(_:)), #selector(showPocket(_:)),
+             #selector(captureForLisa(_:)), #selector(captureContextForLisa(_:)):
+            return workspace == .mac
+        default: break
+        }
+        return true
+    }
 
     private func installMenu() {
         let mainMenu = NSMenu()
@@ -311,6 +363,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
+
+        let workspaceItem = NSMenuItem()
+        let workspaceMenu = NSMenu(title: workspaceText("Workspace"))
+        workspaceMenu.addItem(withTitle: Workspace.cloud.title, action: #selector(chooseCloud(_:)), keyEquivalent: "").target = self
+        workspaceMenu.addItem(withTitle: Workspace.mac.title, action: #selector(chooseMac(_:)), keyEquivalent: "").target = self
+        workspaceItem.submenu = workspaceMenu
+        mainMenu.addItem(workspaceItem)
 
         // ── View menu ───────────────────────────────────────────────
         let viewItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")

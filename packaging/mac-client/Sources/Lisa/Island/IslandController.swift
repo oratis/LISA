@@ -21,20 +21,21 @@ final class IslandController {
 
     private static let enabledKey = "ai.meetlisa.island.enabled"
     private var window: IslandWindow?
+    private var workspaceActive = false
 
     /// Whether the island is switched on. Persisted; default off.
     var isEnabled: Bool {
         UserDefaults.standard.bool(forKey: Self.enabledKey)
     }
 
-    /// Show the island at launch if the user left it enabled.
-    func applyInitialState() {
-        if isEnabled { show() }
+    func setWorkspaceActive(_ active: Bool) {
+        workspaceActive = active
+        if active && isEnabled { show() } else { hide() }
     }
 
     func setEnabled(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: Self.enabledKey)
-        if on { show() } else { hide() }
+        if on && workspaceActive { show() } else { hide() }
     }
 
     func toggle() {

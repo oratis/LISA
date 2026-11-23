@@ -118,6 +118,7 @@ if [ -n "$APP_VERSION" ]; then
     echo "    version:  $APP_VERSION"
 fi
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
+cp -R Resources/*.lproj "$APP/Contents/Resources/"
 # Menu bar icon — small face crop loaded by MenuBarController. Bundled
 # at 36×36 (we set image.size to 18pt at runtime so AppKit treats it
 # as a retina-ready image source).
