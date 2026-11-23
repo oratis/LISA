@@ -29,12 +29,15 @@ import { EventEmitter } from "node:events";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { registerIntegration } from "../registry.js";
+import { classifyChecks, type RawPrCheck } from "./checks.js";
 import type {
   AgentIntegrationConfig,
   AgentObserver,
   AgentSession,
   AgentSessionState,
 } from "../types.js";
+
+export { classifyChecks };
 
 const pexec = promisify(execFile);
 
@@ -53,48 +56,10 @@ export interface RawPr {
   updatedAt?: string;
   headRefName?: string;
   reviewDecision?: string | null; // APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | "" | null
-  statusCheckRollup?: RawCheck[] | null;
+  statusCheckRollup?: RawPrCheck[] | null;
   repository?: { nameWithOwner?: string } | null;
   /** Injected by the fetcher for per-repo mode (search mode fills repository). */
   repoFullName?: string;
-}
-
-interface RawCheck {
-  __typename?: string;
-  status?: string; // CheckRun: QUEUED | IN_PROGRESS | COMPLETED
-  conclusion?: string; // CheckRun: SUCCESS | FAILURE | …
-  state?: string; // StatusContext: SUCCESS | PENDING | FAILURE | ERROR
-  name?: string;
-  context?: string;
-}
-
-const FAIL_CONCLUSIONS = new Set([
-  "FAILURE",
-  "TIMED_OUT",
-  "CANCELLED",
-  "ACTION_REQUIRED",
-  "STARTUP_FAILURE",
-]);
-const PENDING_STATUSES = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"]);
-
-/** Reduce a check rollup to one verdict. Pure. */
-export function classifyChecks(
-  rollup: RawCheck[] | null | undefined,
-): "failing" | "pending" | "passing" | "none" {
-  if (!Array.isArray(rollup) || rollup.length === 0) return "none";
-  let pending = false;
-  for (const c of rollup) {
-    const conclusion = (c.conclusion ?? "").toUpperCase();
-    const state = (c.state ?? "").toUpperCase();
-    const status = (c.status ?? "").toUpperCase();
-    if (FAIL_CONCLUSIONS.has(conclusion) || state === "FAILURE" || state === "ERROR") {
-      return "failing"; // any failure dominates
-    }
-    if ((status && status !== "COMPLETED" && PENDING_STATUSES.has(status)) || state === "PENDING") {
-      pending = true;
-    }
-  }
-  return pending ? "pending" : "passing";
 }
 
 function repoBasename(full: string | undefined): string {

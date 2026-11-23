@@ -143,6 +143,7 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   "idle.lock": { forget: "no_user_text", what: "lock" },
   "desire-review.lock": { forget: "no_user_text", what: "lock" },
   "heartbeat.lock": { forget: "no_user_text", what: "lock" },
+  "cwd-locks": { forget: "no_user_text", what: "advisory same-cwd concurrency lock files" },
   ".DS_Store": { forget: "no_user_text", what: "Finder metadata" },
 
   // ── other ──

@@ -36,13 +36,19 @@ const NO_BUILTINS = { registerBuiltins: false };
 
 describe("OrchestratorHub", () => {
   test("merges + sorts sessions from multiple observers, newest first", async () => {
-    const a = makeFake("claude-code", [session("claude-code", "c1", 100), session("claude-code", "c2", 300)]);
+    const a = makeFake("claude-code", [
+      session("claude-code", "c1", 100),
+      session("claude-code", "c2", 300),
+    ]);
     const b = makeFake("codex", [session("codex", "x1", 200)]);
     registerIntegration("claude-code", () => a.obs);
     registerIntegration("codex", () => b.obs);
 
     const hub = new OrchestratorHub(
-      { integrations: { "claude-code": { enabled: true }, codex: { enabled: true } }, visibility: "activity" },
+      {
+        integrations: { "claude-code": { enabled: true }, codex: { enabled: true } },
+        visibility: "activity",
+      },
       NO_BUILTINS,
     );
     await hub.start();
@@ -54,7 +60,10 @@ describe("OrchestratorHub", () => {
   test("re-emits observer updates as hub 'update' events", async () => {
     const a = makeFake("claude-code", []);
     registerIntegration("claude-code", () => a.obs);
-    const hub = new OrchestratorHub({ integrations: { "claude-code": {} }, visibility: "metadata" }, NO_BUILTINS);
+    const hub = new OrchestratorHub(
+      { integrations: { "claude-code": {} }, visibility: "metadata" },
+      NO_BUILTINS,
+    );
     const seen: AgentSession[] = [];
     hub.on("update", (s) => seen.push(s));
     await hub.start();
@@ -71,11 +80,17 @@ describe("OrchestratorHub", () => {
     registerIntegration("claude-code", () => a.obs);
     registerIntegration("codex", () => b.obs);
     const hub = new OrchestratorHub(
-      { integrations: { "claude-code": { enabled: true }, codex: { enabled: false } }, visibility: "metadata" },
+      {
+        integrations: { "claude-code": { enabled: true }, codex: { enabled: false } },
+        visibility: "metadata",
+      },
       NO_BUILTINS,
     );
     await hub.start();
-    assert.deepEqual(hub.list().map((s) => s.agent), ["claude-code"]);
+    assert.deepEqual(
+      hub.list().map((s) => s.agent),
+      ["claude-code"],
+    );
   });
 
   test("a failing integration doesn't take down the others", async () => {
@@ -89,7 +104,10 @@ describe("OrchestratorHub", () => {
       NO_BUILTINS,
     );
     await hub.start(); // must not throw
-    assert.deepEqual(hub.list().map((s) => s.sessionId), ["c1"]);
+    assert.deepEqual(
+      hub.list().map((s) => s.sessionId),
+      ["c1"],
+    );
   });
 
   test("listByAgent filters", async () => {
@@ -102,7 +120,10 @@ describe("OrchestratorHub", () => {
       NO_BUILTINS,
     );
     await hub.start();
-    assert.deepEqual(hub.listByAgent("codex").map((s) => s.sessionId), ["x1"]);
+    assert.deepEqual(
+      hub.listByAgent("codex").map((s) => s.sessionId),
+      ["x1"],
+    );
   });
 
   test("per-integration visibility overrides the global tier", async () => {
@@ -136,6 +157,8 @@ describe("built-in observer roster (the number the READMEs claim)", () => {
     "aider",
     "claude-code",
     "codex",
+    "cursor",
+    "gemini-cli",
     "git",
     "github-pr",
     "managed",
@@ -145,14 +168,15 @@ describe("built-in observer roster (the number the READMEs claim)", () => {
     "takoapi",
   ];
 
-  test("ten integrations ship, and they are exactly these", () => {
+  test("twelve integrations ship, and they are exactly these", () => {
     const keys = Object.keys(DEFAULT_ORCHESTRATOR_CONFIG.integrations).sort();
-    assert.equal(keys.length, 10, "README says ten observers — update both if this changes");
+    assert.equal(keys.length, 12, "docs list twelve observers — update both if this changes");
     assert.deepEqual(keys, EXPECTED);
   });
 
   test("registerBuiltinIntegrations registers one observer per configured key", async () => {
-    const { registerBuiltinIntegrations, listAvailableIntegrations } = await import("./registry.js");
+    const { registerBuiltinIntegrations, listAvailableIntegrations } =
+      await import("./registry.js");
     await registerBuiltinIntegrations();
     assert.deepEqual(listAvailableIntegrations().sort(), EXPECTED);
   });
@@ -197,6 +221,10 @@ describe("agents.json merges per key", () => {
   test("an explicit disable still wins over the default", async () => {
     const file = await mkTmp({ integrations: { "claude-code": { enabled: false } } });
     const cfg = await loadOrchestratorConfig(file);
-    assert.equal(cfg.integrations["claude-code"].enabled, false, "merge must not resurrect a default");
+    assert.equal(
+      cfg.integrations["claude-code"].enabled,
+      false,
+      "merge must not resurrect a default",
+    );
   });
 });
