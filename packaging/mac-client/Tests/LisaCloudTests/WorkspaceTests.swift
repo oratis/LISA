@@ -71,11 +71,20 @@ final class WorkspaceTests: XCTestCase {
 
         XCTAssertTrue(CloudWorkspace.allowsSubframeNavigation(cloud))
         XCTAssertTrue(CloudWorkspace.allowsSubframeNavigation(blank))
-        XCTAssertFalse(CloudWorkspace.allowsSubframeNavigation(local))
+        for address in ["https://cloud.meetlisa.ai@evil.com/", "https://user@checkout.stripe.com/",
+                        "http://localhost:5757/", "file:///etc/passwd", "javascript:alert(1)"] {
+            XCTAssertFalse(CloudWorkspace.allowsSubframeNavigation(try XCTUnwrap(URL(string: address))), address)
+        }
 
         XCTAssertTrue(CloudWorkspace.shouldOpenExternally(stripe, navigationType: .other))
         XCTAssertTrue(CloudWorkspace.shouldOpenExternally(try XCTUnwrap(URL(string: "https://example.com/docs")), navigationType: .linkActivated))
         XCTAssertFalse(CloudWorkspace.shouldOpenExternally(try XCTUnwrap(URL(string: "https://example.com/docs")), navigationType: .other))
+        XCTAssertFalse(CloudWorkspace.shouldOpenExternally(try XCTUnwrap(URL(string: "https://checkout.stripe.com:8443/pay")), navigationType: .other))
+        for address in ["https://cloud.meetlisa.ai@evil.com/", "https://user@checkout.stripe.com/", "https://user:pass@example.com/"] {
+            let spoofed = try XCTUnwrap(URL(string: address))
+            XCTAssertFalse(CloudWorkspace.shouldOpenExternally(spoofed, navigationType: .linkActivated), address)
+            XCTAssertFalse(CloudWorkspace.shouldOpenExternally(spoofed, navigationType: .other), address)
+        }
         XCTAssertFalse(CloudWorkspace.shouldOpenExternally(local, navigationType: .linkActivated))
     }
 }

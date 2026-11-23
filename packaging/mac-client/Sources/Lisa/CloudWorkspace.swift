@@ -30,11 +30,16 @@ final class CloudWorkspace: NSViewController, WKNavigationDelegate, WKUIDelegate
 
     static func allowsSubframeNavigation(_ url: URL) -> Bool {
         let scheme = url.scheme?.lowercased()
-        return scheme == "https" || scheme == "about"
+        if scheme == "https" {
+            return url.user == nil && url.password == nil
+        }
+        return scheme == "about"
     }
 
     static func shouldOpenExternally(_ url: URL, navigationType: WKNavigationType) -> Bool {
-        url.scheme?.lowercased() == "https" && (navigationType == .linkActivated || url.host?.lowercased() == "checkout.stripe.com")
+        guard url.scheme?.lowercased() == "https", url.user == nil, url.password == nil else { return false }
+        if navigationType == .linkActivated { return true }
+        return url.host?.lowercased() == "checkout.stripe.com" && (url.port ?? 443) == 443
     }
 
     override func loadView() {
@@ -126,7 +131,14 @@ final class CloudWorkspace: NSViewController, WKNavigationDelegate, WKUIDelegate
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        guard webView === web, let url = action.request.url else { return nil }
+        guard let url = action.request.url else { return nil }
+        if webView === signInWeb {
+            if Self.shouldOpenExternally(url, navigationType: action.navigationType) {
+                NSWorkspace.shared.open(url)
+            }
+            return nil
+        }
+        guard webView === web else { return nil }
         if Self.isCloud(url) { navigate(to: url); return nil }
         if Self.isIdentityProvider(url) || url.absoluteString == "about:blank" {
             signInWindow?.close()
@@ -145,7 +157,9 @@ final class CloudWorkspace: NSViewController, WKNavigationDelegate, WKUIDelegate
             popup.makeKeyAndOrderFront(nil)
             return child
         }
-        if url.scheme?.lowercased() == "https" && action.navigationType == .linkActivated { NSWorkspace.shared.open(url) }
+        if Self.shouldOpenExternally(url, navigationType: action.navigationType) {
+            NSWorkspace.shared.open(url)
+        }
         return nil
     }
 
