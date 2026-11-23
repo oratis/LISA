@@ -67,7 +67,9 @@ describe("_resetIntegrationsForTest is undoable", () => {
     await registerBuiltinIntegrations();
     const first = listAvailableIntegrations();
     assert.ok(first.includes("claude-code"), "built-ins register on the first call");
-    assert.equal(first.length, 10);
+    assert.ok(first.includes("cursor"), "cursor built-in registers");
+    assert.ok(first.includes("gemini-cli"), "gemini-cli built-in registers");
+    assert.equal(first.length, 12);
 
     _resetIntegrationsForTest();
     assert.deepEqual(listAvailableIntegrations(), [], "reset empties the registry");
