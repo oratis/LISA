@@ -681,6 +681,36 @@
                       "format"
                     ],
                     "additionalProperties": true
+                  },
+                  "controls": {
+                    "type": "object",
+                    "description": "Same-origin local owner only. Omit to use the service defaults for the turn.",
+                    "required": [
+                      "permission"
+                    ],
+                    "properties": {
+                      "permission": {
+                        "type": "string",
+                        "enum": [
+                          "ask",
+                          "smart",
+                          "full"
+                        ]
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "effort": {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": true
@@ -711,6 +741,9 @@
             "$ref": "#/components/responses/Error"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
             "$ref": "#/components/responses/Error"
           },
           "429": {
@@ -5415,6 +5448,75 @@
           },
           "501": {
             "description": "Capture unsupported on this platform"
+          }
+        }
+      }
+    },
+    "/api/chat-controls": {
+      "get": {
+        "operationId": "localChatControlOptions",
+        "description": "Allowed selections for this local Web composer. No provider credentials are returned.",
+        "responses": {
+          "200": {
+            "description": "Current default, allowed permission modes and model-specific effort levels.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "defaultModel",
+                    "permissions",
+                    "models"
+                  ],
+                  "properties": {
+                    "defaultModel": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "ask",
+                          "smart",
+                          "full"
+                        ]
+                      }
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "efforts"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "efforts": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "low",
+                                "medium",
+                                "high",
+                                "xhigh"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Local owner required."
           }
         }
       }

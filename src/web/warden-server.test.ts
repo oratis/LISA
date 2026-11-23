@@ -211,7 +211,7 @@ after(() => {
 });
 
 describe("web chat under approval mode warden", () => {
-  test("Warden is opt-in: with no flag a side-effecting call runs ungated, as before", async () => {
+  test("default local web chat blocks executable extensions without a human answer", async () => {
     const calls: unknown[] = [];
     const srv = await boot({
       approval: "default",
@@ -221,9 +221,9 @@ describe("web chat under approval mode warden", () => {
     try {
       const chat = sse(srv.port, "POST", "/chat", { message: "ship it" });
       const end = await chat.waitFor((e) => e.type === "tool_end");
-      assert.equal(end.isError, false);
+      assert.equal(end.isError, true);
       await chat.done;
-      assert.equal(calls.length, 1);
+      assert.equal(calls.length, 0);
       assert.deepEqual((await api(srv.port, "GET", "/api/approvals")).body.approvals, []);
     } finally {
       await srv.close();
@@ -394,7 +394,7 @@ describe("web chat under approval mode warden", () => {
     }
   });
 
-  test("reads are not gated; --approval auto keeps the legacy no-approval path", async () => {
+  test("reads run directly; full access allows ordinary writes", async () => {
     const readCalls: unknown[] = [];
     const warden = await boot({
       approval: "warden",
@@ -414,11 +414,20 @@ describe("web chat under approval mode warden", () => {
     const calls: unknown[] = [];
     const legacy = await boot({
       approval: "auto",
-      tool: recordingTool("deploy_widget", calls),
-      provider: scriptedProvider("deploy_widget", {}),
+      tool: recordingTool("write", calls),
+      provider: scriptedProvider("write", {
+        path: path.join(os.tmpdir(), "ordinary-note.txt"),
+        content: "note",
+      }),
     });
     try {
-      const chat = sse(legacy.port, "POST", "/chat", { message: "ship it" });
+      // Earlier tests deliberately taint the active chat by running an
+      // extension. Even full access keeps Warden's tainted-run floor.
+      await api(legacy.port, "POST", "/api/sessions", {});
+      const chat = sse(legacy.port, "POST", "/chat", {
+        message: "save note",
+        controls: { permission: "full" },
+      });
       const end = await chat.waitFor((e) => e.type === "tool_end");
       assert.equal(end.isError, false);
       await chat.done;
@@ -428,4 +437,117 @@ describe("web chat under approval mode warden", () => {
       await legacy.close();
     }
   });
+});
+
+test("full access still needs a one-use, payload-bound approval to edit Lisa via a symlink", async () => {
+  const { writeTool } = await import("../tools/write.js");
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-protected-source-"));
+  const link = path.join(TMP, "checkout");
+  fs.symlinkSync(source, link, "dir");
+  const filename = path.join(source, "..example.ts");
+  fs.writeFileSync(filename, "original");
+  const previous = process.env.LISA_SOURCE_ROOT;
+  process.env.LISA_SOURCE_ROOT = source;
+  const srv = await boot({
+    approval: "auto",
+    tool: writeTool,
+    provider: scriptedProvider("write", {
+      path: path.join(link, "..example.ts"),
+      content: "reviewed",
+    }),
+  });
+  const stream = sse(srv.port, "GET", "/events");
+  try {
+    await stream.waitFor((e) => e.type === "hello");
+    const turn = sse(srv.port, "POST", "/chat", {
+      message: "update Lisa",
+      controls: { permission: "full" },
+    });
+    const asked = await stream.waitFor((e) => e.type === "approval_requested");
+    assert.deepEqual(asked.scopes, ["once"]);
+    assert.match(String(asked.reason), /Lisa’s own files/);
+    const route = `/api/approvals/${asked.id}/approve`;
+    assert.notEqual(
+      (await api(srv.port, "POST", route, { scope: "always", digest: asked.digest })).status,
+      200,
+    );
+    assert.notEqual(
+      (await api(srv.port, "POST", route, { scope: "once", digest: "wrong" })).status,
+      200,
+    );
+    assert.equal(fs.readFileSync(filename, "utf8"), "original");
+    assert.equal(
+      (await api(srv.port, "POST", route, { scope: "once", digest: asked.digest })).status,
+      200,
+    );
+    await turn.done;
+    assert.equal(fs.readFileSync(filename, "utf8"), "reviewed");
+    assert.notEqual(
+      (await api(srv.port, "POST", route, { scope: "once", digest: asked.digest })).status,
+      200,
+    );
+  } finally {
+    stream.close();
+    await srv.close();
+    if (previous === undefined) delete process.env.LISA_SOURCE_ROOT;
+    else process.env.LISA_SOURCE_ROOT = previous;
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test("model and effort reach the provider for just the chosen turn; the server rejects elevation", async () => {
+  const seen: Array<[string, string | undefined]> = [];
+  const model = "claude-opus-4-6";
+  const oldList = process.env.LISA_CHAT_MODELS;
+  const oldKey = process.env.ANTHROPIC_API_KEY;
+  process.env.LISA_CHAT_MODELS = model;
+  process.env.ANTHROPIC_API_KEY = "test-only";
+  const srv = await boot({
+    approval: "warden",
+    tool: recordingTool("read", []),
+    provider: {
+      name: "fake",
+      async runTurn(opts) {
+        seen.push([opts.model, opts.effort]);
+        return {
+          content: [{ type: "text", text: "ok", citations: null }],
+          stopReason: "end_turn",
+          usage: USAGE,
+        };
+      },
+    },
+  });
+  try {
+    const options = await api(srv.port, "GET", "/api/chat-controls");
+    assert.deepEqual(options.body.permissions, ["smart", "ask"]);
+    for (const controls of [
+      { permission: "full" },
+      { permission: "smart", model: "unknown" },
+      { permission: "ask", effort: "bogus" },
+    ]) {
+      assert.equal((await api(srv.port, "POST", "/chat", { message: "hi", controls })).status, 400);
+    }
+    const csrf = await fetch(`http://127.0.0.1:${srv.port}/chat`, {
+      method: "POST",
+      headers: { origin: "https://other.test", "content-type": "application/json" },
+      body: JSON.stringify({ message: "hi", controls: { permission: "ask" } }),
+    });
+    assert.equal(csrf.status, 403);
+    assert.deepEqual(seen, []);
+    await sse(srv.port, "POST", "/chat", {
+      message: "use opus",
+      controls: { permission: "ask", model, effort: "low" },
+    }).done;
+    await sse(srv.port, "POST", "/chat", { message: "default" }).done;
+    assert.deepEqual(seen, [
+      [model, "low"],
+      ["claude-sonnet-4-6", process.env.LISA_EFFORT],
+    ]);
+  } finally {
+    await srv.close();
+    if (oldList === undefined) delete process.env.LISA_CHAT_MODELS;
+    else process.env.LISA_CHAT_MODELS = oldList;
+    if (oldKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = oldKey;
+  }
 });

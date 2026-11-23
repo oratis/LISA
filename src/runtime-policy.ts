@@ -110,10 +110,10 @@ function idleDreamFor(surface: RuntimeSurface, args: RuntimePolicyArgs): boolean
 }
 
 /**
- * The approval mode for a surface. An explicit `--approval` always wins. With
- * no flag the mode is the legacy `auto` on every surface — Warden is OPT-IN
- * (`--approval warden`), because only the web client can answer an approval
- * today and a native client would park a turn until it expired.
+ * The approval mode for a surface. An explicit `--approval` always wins. The process default
+ * is `auto`. Local Web chat interprets this value as the ceiling for its
+ * composer and always applies a per-turn Warden session. Other consumers
+ * can opt in to Warden with `--approval warden`.
  *
  * `LISA_APPROVAL` is the env form of the flag for the web surfaces, so a
  * backend launched by an app that cannot edit the command line can opt in. A

@@ -74,7 +74,7 @@ LISA's **SOUL** is a set of persistent files for identity, purpose, constitution
 
 Local data lives under `~/.lisa` by default. Choosing a remote model sends relevant context to that provider; local storage does not mean local-only inference. Lisa Pocket discloses recipients before AI chat and supports withdrawing permission. See the [privacy policy](https://meetlisa.ai/privacy/) and [security policy](docs/THREAT_MODEL.md).
 
-**Warden** provides deterministic action decisions, scoped grants, an approval inbox and audit records. It is **opt-in for web chat**:
+Local Web chat defaults to **Warden smart approval**. The composer lets the owner select permissions, a chat model and supported reasoning effort. Editing Lisa’s code and redeploying each require a separate one-time approval. The server’s approval setting limits which modes are available.
 
 ```sh
 # Warden ships in v0.28.1 and later.
@@ -97,7 +97,7 @@ The **reach-out gate** applies source controls, quiet hours, deduplication and b
 | Mac connections and account sessions | LAN/relay recovery, session renewal and revocation are implemented. Network-switch acceptance on a physical iPhone is still pending |
 | Lisa Pocket (iOS) | **1.4 is live** on the US App Store, released November 15, 2026, with the Room and iPad refresh. The complete-extension build, which adds multi-Mac switching and task approvals, remains in internal TestFlight |
 | Connectors | 22 read-only connectors. Box and Feishu document reads pass offline tests and have not been checked against live accounts |
-| Warden, durable goals, routines and watchers | Available. Warden web policy is opt-in and hosted tasks remain off by default |
+| Warden, durable goals, routines and watchers | Available. Local Web chat defaults to smart approval and hosted tasks remain off by default |
 | Model routing and costs | Purpose-based routing and opt-in estimated budgets; these are not a universal spending ceiling |
 | Not yet built | Cross-device memory synchronization and general write connectors |
 

@@ -93,6 +93,19 @@ describe("OpenAIProvider — empty turns", () => {
   });
 });
 
+test("GPT-6 Astra sends the chosen effort and reasoning-token ceiling; compatible models keep their existing request", async () => {
+  const provider = new OpenAIProvider({ apiKey: "test-key" });
+  const captured: Captured = {};
+  (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
+  await provider.runTurn({ ...baseOpts(), model: "gpt-6-astra", effort: "xhigh", maxTokens: 512 });
+  assert.equal(captured.params?.reasoning_effort, "xhigh");
+  assert.equal(captured.params?.max_completion_tokens, 512);
+  assert.equal(captured.params?.max_tokens, undefined);
+  await provider.runTurn({ ...baseOpts(), model: "deepseek-chat", effort: "high", maxTokens: 512 });
+  assert.equal(captured.params?.reasoning_effort, undefined);
+  assert.equal(captured.params?.max_tokens, 512);
+});
+
 describe("OpenAIProvider — usage", () => {
   test("the cached prefix is split out of prompt_tokens, so it is priced once", async () => {
     const provider = new OpenAIProvider({ apiKey: "test-key" });

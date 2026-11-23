@@ -46,22 +46,23 @@ export interface HookFireResult {
   rewriteResult?: string;
 }
 
+export function hookMatches(hook: HookSpec, event: HookSpec["event"], tool: string): boolean {
+  if (hook.event !== event) return false;
+  if (!hook.matcher) return true;
+  try {
+    return new RegExp(hook.matcher).test(tool);
+  } catch {
+    return tool === hook.matcher;
+  }
+}
+
 export async function fireHooks(
   event: HookSpec["event"],
   hooks: HookSpec[],
   env: HookEnv,
   cwd: string,
 ): Promise<HookFireResult> {
-  const matched = hooks.filter((h) => {
-    if (h.event !== event) return false;
-    if (!h.matcher) return true;
-    const target = env.TOOL_NAME ?? "";
-    try {
-      return new RegExp(h.matcher).test(target);
-    } catch {
-      return target === h.matcher;
-    }
-  });
+  const matched = hooks.filter((hook) => hookMatches(hook, event, env.TOOL_NAME ?? ""));
   const blocked: string[] = [];
   let rewrite: string | undefined;
   for (const hook of matched) {

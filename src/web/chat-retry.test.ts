@@ -63,7 +63,7 @@ const callTool =
   (id: string): Step =>
   () =>
     Promise.resolve({
-      content: [{ type: "tool_use", id, name: "lookup", input: {} }],
+      content: [{ type: "tool_use", id, name: "memory_search", input: {} }],
       stopReason: "tool_use",
       usage,
     } as unknown as ProviderResult);
@@ -87,7 +87,7 @@ before(async () => {
     host: "127.0.0.1",
     tools: [
       {
-        name: "lookup",
+        name: "memory_search",
         description: "look something up",
         inputSchema: { type: "object" as const },
         execute: () => Promise.resolve("found"),
