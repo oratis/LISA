@@ -203,6 +203,8 @@ export const OBSERVER_NAMES = [
   "codex",
   "opencode",
   "aider",
+  "cursor",
+  "gemini-cli",
   "github-pr",
   "git",
   "shell",
@@ -335,6 +337,8 @@ export const DISPATCH_AGENT_KINDS = keysOfExhaustive<DispatchAgentKind>({
   codex: true,
   opencode: true,
   aider: true,
+  cursor: true,
+  gemini: true,
   copilot: true,
 });
 export const QUOTA_TIERS = keysOfExhaustive<QuotaTier>({
