@@ -111,6 +111,10 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   reachout: { forget: "no_user_text", what: "reach-out settings and a ledger of hashes" },
   sovereignty: { forget: "no_user_text", what: "content-free audit of export/import/forget" },
   billing: { forget: "no_user_text", what: "usage and cost counters" },
+  telemetry: {
+    forget: "no_user_text",
+    what: "local-only lifecycle and usage counters (enums, booleans, and buckets; no user text)",
+  },
   analytics: {
     forget: "no_user_text",
     what: "hosted-edition funnel events (hashed account keys, event names, status codes)",

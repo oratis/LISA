@@ -190,6 +190,7 @@ Operational procedures for things that are live.
 | [WEBSITE_OPS.md](./WEBSITE_OPS.md) | meetlisa.ai — deploys, DNS, rollbacks. |
 | [FOOTPRINT.md](./FOOTPRINT.md) | What the resident service actually costs in CPU, memory and wakeups. |
 | [OBSERVER_FIDELITY.md](./OBSERVER_FIDELITY.md) | Which fields each observer really produces, with the live-verification log. |
+| [TELEMETRY.md](./TELEMETRY.md) | L1 local-only telemetry ledger schema, 30-day retention, opt-out (`LISA_TELEMETRY=off`), and L2/L3 scope. |
 
 ## Research
 

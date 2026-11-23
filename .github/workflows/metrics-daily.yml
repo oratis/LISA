@@ -1,0 +1,149 @@
+name: Metrics — daily L2 proxy snapshot
+
+# Read-only scheduled L2 proxy metrics workflow (docs/TELEMETRY.md).
+# Fetches public GitHub repository/release metadata and public npm weekly
+# downloads, then prints a summary and uploads a snapshot artifact.
+# Never commits to git, never reads repository secrets, and never sends
+# GitHub tokens to third-party endpoints.
+
+on:
+  schedule:
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run mode (summary and artifact only; always read-only)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: metrics-daily
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  metrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Collect L2 public proxy metrics (read-only)
+        env:
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == false && 'false' || 'true' }}
+          GH_TOKEN_READONLY: ${{ github.token }}
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from "node:fs";
+
+          const repo = process.env.REPO || "oratis/LISA";
+          if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+            throw new Error(`Invalid repository slug: ${repo}`);
+          }
+          const dryRun = process.env.DRY_RUN !== "false";
+          const ghHeaders = {
+            Accept: "application/vnd.github+json",
+            "User-Agent": "lisa-metrics-daily",
+          };
+          if (process.env.GH_TOKEN_READONLY) {
+            ghHeaders.Authorization = `Bearer ${process.env.GH_TOKEN_READONLY}`;
+          }
+
+          async function fetchJson(url, headers = { "User-Agent": "lisa-metrics-daily" }) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 15_000);
+            try {
+              const res = await fetch(url, { headers, signal: controller.signal });
+              if (!res.ok) {
+                throw new Error(`HTTP ${res.status} fetching ${url}`);
+              }
+              return await res.json();
+            } finally {
+              clearTimeout(timer);
+            }
+          }
+
+          const cleanCell = (v) => String(v ?? "—").replace(/[`|\r\n]/g, "");
+
+          const repoData = await fetchJson(`https://api.github.com/repos/${repo}`, ghHeaders);
+          const releases = await fetchJson(
+            `https://api.github.com/repos/${repo}/releases?per_page=10`,
+            ghHeaders,
+          );
+          const npmWeekly = await fetchJson(
+            "https://api.npmjs.org/downloads/point/last-week/@oratis/lisa",
+          );
+
+          const releaseSummary = Array.isArray(releases)
+            ? releases.slice(0, 5).map((rel) => ({
+                tag: cleanCell(typeof rel.tag_name === "string" ? rel.tag_name : "unknown"),
+                publishedAt:
+                  typeof rel.published_at === "string" ? cleanCell(rel.published_at) : null,
+                assetDownloads: Array.isArray(rel.assets)
+                  ? rel.assets.reduce(
+                      (sum, a) => sum + (typeof a.download_count === "number" ? a.download_count : 0),
+                      0,
+                    )
+                  : 0,
+              }))
+            : [];
+
+          const snapshot = {
+            collectedAt: new Date().toISOString(),
+            dryRun,
+            repo,
+            github: {
+              stars: Number(repoData.stargazers_count ?? 0),
+              forks: Number(repoData.forks_count ?? 0),
+              watchers: Number(repoData.subscribers_count ?? 0),
+              openIssues: Number(repoData.open_issues_count ?? 0),
+              pushedAt: typeof repoData.pushed_at === "string" ? repoData.pushed_at : null,
+              recentReleases: releaseSummary,
+            },
+            npm: {
+              package: "@oratis/lisa",
+              weeklyDownloads: Number(npmWeekly.downloads ?? 0),
+              start: typeof npmWeekly.start === "string" ? npmWeekly.start : null,
+              end: typeof npmWeekly.end === "string" ? npmWeekly.end : null,
+            },
+          };
+
+          fs.writeFileSync("metrics-snapshot.json", JSON.stringify(snapshot, null, 2) + "\n");
+
+          const lines = [
+            `## Daily L2 Proxy Metrics (${snapshot.collectedAt.slice(0, 10)})`,
+            "",
+            `- Mode: ${dryRun ? "dry-run (read-only)" : "read-only"}`,
+            `- Repository: \`${repo}\``,
+            `- GitHub Stars: **${snapshot.github.stars}** · Forks: **${snapshot.github.forks}** · Watchers: **${snapshot.github.watchers}** · Open issues: **${snapshot.github.openIssues}**`,
+            `- npm Weekly Downloads (\`@oratis/lisa\`, ${snapshot.npm.start ?? "?"}..${snapshot.npm.end ?? "?"}): **${snapshot.npm.weeklyDownloads}**`,
+            "",
+            "### Recent Releases",
+            "| Tag | Published | Asset Downloads |",
+            "| --- | --- | --- |",
+            ...releaseSummary.map(
+              (r) => `| \`${r.tag}\` | ${r.publishedAt ?? "—"} | ${r.assetDownloads} |`,
+            ),
+            "",
+          ].join("\n");
+
+          console.log(lines);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines);
+          }
+          EOF
+
+      - name: Upload L2 snapshot artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: l2-metrics-snapshot
+          path: metrics-snapshot.json
+          if-no-files-found: error
+          retention-days: 30
