@@ -128,7 +128,7 @@ describe("W7 PR patrol — buildPrPatrolSummary & auto-merge risk gate", () => {
     reviewDecision: "APPROVED",
     mergeable: "MERGEABLE",
     statusCheckRollup: [{ conclusion: "SUCCESS" }],
-    changedFiles: 2,
+    changedFiles: 1,
     additions: 20,
     deletions: 10,
     files: [{ path: "docs/GUIDE.md" }],
@@ -204,6 +204,17 @@ describe("W7 PR patrol — buildPrPatrolSummary & auto-merge risk gate", () => {
       }),
     );
     assert.equal(unknownMetrics.lowRisk, false);
+
+    // Omitted or truncated `files` list → fails closed so sensitive-path check cannot be bypassed.
+    const omittedFiles = classifyPrRisk(basePr({ files: undefined }));
+    assert.equal(omittedFiles.lowRisk, false);
+    assert.match(omittedFiles.reasons.join("; "), /changed file list unknown/);
+
+    const truncatedFiles = classifyPrRisk(
+      basePr({ changedFiles: 2, files: [{ path: "docs/GUIDE.md" }] }),
+    );
+    assert.equal(truncatedFiles.lowRisk, false);
+    assert.match(truncatedFiles.reasons.join("; "), /changed file list incomplete/);
 
     // Authorized BUT too many lines or blocking label → NOT low-risk.
     assert.equal(classifyPrRisk(basePr({ additions: 200, deletions: 10 })).lowRisk, false);

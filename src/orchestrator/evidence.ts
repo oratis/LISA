@@ -381,7 +381,12 @@ export function classifyPrRisk(
     }
   }
 
-  if (Array.isArray(pr.files)) {
+  if (!Array.isArray(pr.files)) {
+    reasons.push("changed file list unknown");
+  } else {
+    if (fileCount !== null && pr.files.length < fileCount) {
+      reasons.push(`changed file list incomplete (${pr.files.length} < ${fileCount})`);
+    }
     const sensitive = pr.files.map((f) => f.path ?? "").find((p) => p && SENSITIVE_PATH_RE.test(p));
     if (sensitive) reasons.push(`touches sensitive path (${sensitive})`);
   }

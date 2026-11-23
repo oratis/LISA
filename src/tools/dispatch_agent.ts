@@ -204,19 +204,22 @@ export function resolveDispatchBinary(
     }
     return { ok: true, cmd: resolved };
   }
-  return { ok: true, cmd: invocation.cmd };
+  const resolved = findExecutable(invocation.cmd, env);
+  if (!resolved) {
+    return {
+      ok: false,
+      cmd: invocation.cmd,
+      error: `No executable found for ${agent} ("${invocation.cmd}" not found on PATH).`,
+    };
+  }
+  return { ok: true, cmd: resolved };
 }
 
 /** Detect which dispatch backends currently have a resolvable CLI binary. */
 export function detectAvailableBackends(
   env: Record<string, string | undefined> = process.env,
 ): DispatchBackend[] {
-  return DISPATCH_BACKENDS.filter((backend) => {
-    if (backend === "opencode" || backend === "aider") {
-      return findExecutable(backend, env) !== null;
-    }
-    return resolveDispatchBinary(backend, env).ok;
-  });
+  return DISPATCH_BACKENDS.filter((backend) => resolveDispatchBinary(backend, env).ok);
 }
 
 export interface LaunchResult {
@@ -473,23 +476,28 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
     additionalProperties: false,
   },
   async execute(input, ctx) {
-    const hub = getCurrentHub();
-    const busyAgents = hub
-      ? hub
-          .list()
-          .filter((s) => s.state === "working" || s.state === "waiting")
-          .map((s) => s.agent)
-      : [];
-    const available = detectAvailableBackends();
-    const candidatePool = available.length > 0 ? available : undefined;
-    const recommendation = recommendAgentForTask(input.task, candidatePool, { busyAgents });
+    let chosenAgent: DispatchAgentKind;
+    let routeNote = "";
+    if (input.recommendOnly || input.agent === "auto") {
+      const hub = getCurrentHub();
+      const busyAgents = hub
+        ? hub
+            .list()
+            .filter((s) => s.state === "working" || s.state === "waiting")
+            .map((s) => s.agent)
+        : [];
+      const available = detectAvailableBackends();
+      const candidatePool = available.length > 0 ? available : undefined;
+      const recommendation = recommendAgentForTask(input.task, candidatePool, { busyAgents });
 
-    if (input.recommendOnly) {
-      return formatCapabilityRecommendation(recommendation);
+      if (input.recommendOnly) {
+        return formatCapabilityRecommendation(recommendation);
+      }
+      chosenAgent = recommendation.recommended ?? "claude";
+      routeNote = `\nRouting rationale: ${recommendation.rationale}.`;
+    } else {
+      chosenAgent = input.agent;
     }
-
-    const chosenAgent: DispatchAgentKind =
-      input.agent === "auto" ? (recommendation.recommended ?? "claude") : input.agent;
 
     const cwd = input.cwd && input.cwd.startsWith("/") ? input.cwd : ctx.cwd;
 
@@ -517,8 +525,6 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
     ctx.log(
       `[dispatch] launched ${chosenAgent} (pid ${pid}) in ${cwd}: ${input.task.slice(0, 80)}`,
     );
-    const routeNote =
-      input.agent === "auto" ? `\nRouting rationale: ${recommendation.rationale}.` : "";
     return (
       `Launched ${chosenAgent} (pid ${pid}) in ${cwd}.\n` +
       `Running autonomously — I won't block on it. Check whether it finished and read ` +

@@ -135,6 +135,26 @@ describe("resolveDispatchBinary — Cursor CLI & Gemini CLI binary resolution", 
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test("opencode and aider resolve strictly via absolute PATH entries (rejecting relative/empty PATH)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-oa-bin-"));
+    try {
+      const bin = path.join(tmp, "bin");
+      fs.mkdirSync(bin);
+      for (const agent of ["opencode", "aider"] as const) {
+        const miss = resolveDispatchBinary(agent, { PATH: ".:relative" });
+        assert.equal(miss.ok, false, `${agent} must reject relative PATH`);
+
+        const exe = path.join(bin, agent);
+        fs.writeFileSync(exe, "#!/bin/sh\necho ok\n", { mode: 0o755 });
+        const hit = resolveDispatchBinary(agent, { PATH: bin });
+        assert.equal(hit.ok, true);
+        if (hit.ok) assert.equal(hit.cmd, exe);
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("launchAgent captures the exit status (F4)", () => {
