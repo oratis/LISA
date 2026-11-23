@@ -2067,7 +2067,9 @@ const composerControls = (() => {
     let permission = catalog.permissions[0];
     if (saved.permission !== 'full' && catalog.permissions.includes(saved.permission)) permission = saved.permission;
     if (full.has(id) && catalog.permissions.includes('full')) permission = 'full';
-    return { permission, model: saved.model || undefined, effort: saved.effort || undefined };
+    const selected = catalog.models.find(m => m.id === (saved.model || catalog.defaultModel));
+    const effort = saved.effort && (!selected || selected.efforts?.includes(saved.effort)) ? saved.effort : undefined;
+    return { permission, model: saved.model || undefined, effort };
   }
   function save(id, value) {
     selections.set(id, value);

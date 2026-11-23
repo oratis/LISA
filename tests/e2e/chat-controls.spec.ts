@@ -84,3 +84,48 @@ test("editing Lisa pauses at a reviewable approval card even in full access", as
     await fs.rm(checkout, { recursive: true, force: true });
   }
 });
+
+test("stale effort is dropped when the default model changes to one without effort support", async ({
+  page,
+}) => {
+  const lisa = await startLisa({
+    label: "stale-effort",
+    env: {
+      LISA_APPROVAL: "auto",
+      LISA_MODEL: "claude-sonnet-4-6",
+      LISA_CHAT_MODELS: "claude-sonnet-4-6,claude-haiku-4-5",
+    },
+  });
+  try {
+    await page.goto(lisa.baseURL);
+    const effort = page.getByLabel("Reasoning effort", { exact: true });
+    await expect(effort).toBeVisible();
+    await effort.selectOption("high");
+    await expect(effort).toHaveValue("high");
+
+    // Change the server default model in Settings to a model with no efforts.
+    await page.locator('#navList .nav-item[data-view="settings"]').click();
+    await page.getByLabel("Model (optional)").fill("claude-haiku-4-5");
+    const refreshControls = page.waitForResponse(
+      (r) => r.url().endsWith("/api/chat-controls") && r.status() === 200,
+    );
+    await page.locator("#viewSettings").getByRole("button", { name: "Save", exact: true }).click();
+    await refreshControls;
+    await page.locator('#navList .nav-item[data-view="chat"]').click();
+    await expect(effort).toBeHidden();
+
+    const outgoing = page.waitForRequest((r) => r.url().endsWith("/chat") && r.method() === "POST");
+    const responsePromise = page.waitForResponse(
+      (r) => r.url().endsWith("/chat") && r.request().method() === "POST",
+    );
+    await page.locator("#input").fill("hello after model change");
+    await page.locator("#sendBtn").click();
+    expect((await outgoing).postDataJSON().controls).toEqual({
+      permission: "smart",
+    });
+    expect((await responsePromise).status()).toBe(200);
+    await expect(page.locator("#sendBtn")).toBeEnabled();
+  } finally {
+    await lisa.stop();
+  }
+});
