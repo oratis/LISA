@@ -93,6 +93,9 @@ INSPECTION
   lisa reachout <sub>          When Lisa may contact you on her own: show,
                                set dial <off|low|normal|high>, quiet
                                <HH:MM-HH:MM>, source <name> on|off, ledger.
+  lisa telemetry <sub>         Local-only L1 telemetry ledger (never leaves this
+                               machine): report [--days N] [--json], clear,
+                               status, events. Set LISA_TELEMETRY=off to opt out.
   lisa sense [list]            Recent ambient sense events + granted signals.
   lisa sense social            Social connector manifests + publish drafts.
   lisa agents                  Snapshot of agent sessions across all observers.
@@ -468,6 +471,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "reachout") {
     const { runReachOutCommand } = await import("./cli/reachout.js");
     process.exit(await runReachOutCommand(args.subargs));
+  }
+
+  if (args.subcommand === "telemetry") {
+    const { runTelemetryCommand } = await import("./cli/telemetry.js");
+    process.exit(await runTelemetryCommand(args.subargs));
   }
 
   if (args.subcommand === "sense") {
