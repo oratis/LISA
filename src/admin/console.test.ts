@@ -604,6 +604,238 @@ test("snapshots use real records, distinguish grants/sandbox from sales and reda
     assert.ok(!raw.includes(key), key);
   assert.equal((await request("/console/api/snapshot?days=800", admin)).response.status, 400);
 });
+test("analytics align UTC days, equal partial comparison windows, and fixed active windows", async () => {
+  const now = Date.parse("2026-11-18T12:00:00Z");
+  const accountsFile = path.join(home, "accounts.json");
+  const accounts = JSON.parse(await fs.readFile(accountsFile, "utf8")) as AccountRecord[];
+  for (const account of accounts) account.createdAt = Date.parse("2026-10-01T00:00:00Z");
+  accounts.find((a) => a.uid === regular.uid)!.createdAt = Date.parse("2026-11-12T00:00:00Z");
+  accounts.find((a) => a.uid === admin.uid)!.createdAt = Date.parse("2026-11-05T00:00:00Z");
+  accounts.find((a) => a.uid === operator.uid)!.createdAt = now + 1000;
+  await fs.writeFile(accountsFile, JSON.stringify(accounts));
+  const rows = [
+    { at: "2026-11-18T08:00:00+08:00", microUSD: 100 }, // UTC today
+    { at: "2026-11-18T00:30:00+08:00", microUSD: 200 }, // UTC yesterday
+    { at: "2026-11-12T00:00:00Z", microUSD: 300 }, // current window inclusive
+    { at: "2026-11-11T12:00:00Z", microUSD: 400 }, // previous partial day inclusive
+    { at: "2026-11-11T12:00:01Z", microUSD: 500 }, // not in either comparison window
+    { at: "2026-11-05T00:00:00Z", microUSD: 600 }, // previous window inclusive
+    { at: "2026-11-18T12:00:01Z", microUSD: 700 }, // future excluded
+    { at: "invalid", microUSD: 800 },
+  ];
+  const bill = path.join(homeForUid(regular.uid), "billing");
+  await fs.mkdir(bill, { recursive: true });
+  await fs.writeFile(
+    path.join(bill, "usage.jsonl"),
+    rows
+      .map((r) =>
+        JSON.stringify({
+          model: "gemini-2.5-flash",
+          source: "chat",
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 3,
+          cacheWriteTokens: 2,
+          ...r,
+        }),
+      )
+      .join("\n"),
+  );
+  const olderBill = path.join(homeForUid(analyst.uid), "billing");
+  await fs.mkdir(olderBill, { recursive: true });
+  await fs.writeFile(
+    path.join(olderBill, "usage.jsonl"),
+    JSON.stringify({
+      at: "2026-10-20T00:00:00Z",
+      model: "gemini-2.5-flash",
+      source: "chat",
+      microUSD: 50,
+    }),
+  );
+  const snapshot = await consoleSnapshot(7, now);
+  assert.equal(snapshot.summary.turns, 3);
+  assert.equal(snapshot.summary.registrations, 1);
+  assert.equal(snapshot.comparison.summary.registrations, 1);
+  assert.equal(snapshot.summary.faceMicroUSD, 600);
+  assert.equal(snapshot.summary.tokens, 60);
+  assert.deepEqual(snapshot.analytics.tokens, {
+    input: 30,
+    output: 15,
+    cacheRead: 9,
+    cacheWrite: 6,
+    cacheReadRate: 0.2,
+  });
+  assert.equal(snapshot.daily.at(-1)!.turns, 1);
+  assert.equal(snapshot.daily.at(-2)!.turns, 1);
+  assert.equal(snapshot.comparison.summary.turns, 2);
+  assert.equal(snapshot.comparison.summary.faceMicroUSD, 1000);
+  assert.equal(snapshot.comparison.summary.active, 1);
+  assert.deepEqual(snapshot.analytics.engagement, {
+    activeToday: 1,
+    active7Days: 1,
+    active30Days: 2,
+    repeatActiveUsers: 1,
+    repeatActiveRate: 1,
+    turnsPerActiveUser: 3,
+    newActiveUsers: 1,
+  });
+  assert.equal(snapshot.users.find((u) => u.uid === regular.uid)!.activeDays, 3);
+  assert.ok(snapshot.warnings.some((w) => w.includes("无效计量")));
+  const longer = await consoleSnapshot(30, now);
+  assert.equal(longer.analytics.engagement.active7Days, 1);
+  assert.equal(longer.analytics.engagement.active30Days, 2);
+  assert.equal(longer.summary.active, 2);
+});
+
+test("analytics aggregate all rows before capping details and separate audio duration from tokens", async () => {
+  const now = Date.now(),
+    at = new Date(now - 1000).toISOString();
+  const userHome = homeForUid(regular.uid),
+    bill = path.join(userHome, "billing"),
+    runs = path.join(userHome, "autonomy");
+  await fs.mkdir(bill, { recursive: true });
+  await fs.mkdir(runs, { recursive: true });
+  await fs.writeFile(
+    path.join(bill, "usage.jsonl"),
+    Array.from({ length: 2105 }, (_, i) =>
+      JSON.stringify({
+        at,
+        source: i === 0 ? "voice_dictation" : "chat",
+        model: "model",
+        inputTokens: 1,
+        outputTokens: 2,
+        microUSD: 10,
+      }),
+    ).join("\n"),
+  );
+  await fs.writeFile(
+    path.join(bill, "media-usage.jsonl"),
+    JSON.stringify({
+      at,
+      source: "voice_transcription",
+      model: "whisper",
+      durationMs: 90000,
+      microUSD: 500,
+    }),
+  );
+  await fs.writeFile(
+    path.join(runs, "runs.jsonl"),
+    Array.from({ length: 2000 }, (_, i) =>
+      JSON.stringify({
+        startedAt: at,
+        kind: "idle",
+        outcome: ["done", "no-update", "blocked", "error"][i % 4],
+        durationMs: 200,
+      }),
+    ).join("\n"),
+  );
+  const result = await consoleSnapshot(7, now);
+  assert.equal(result.summary.turns, 2106);
+  assert.equal(result.usage.length, 1000);
+  assert.equal(result.usageTruncated, true);
+  assert.equal(result.summary.tokens, 6315);
+  assert.deepEqual(result.analytics.media, { operations: 1, durationMs: 90000 });
+  assert.equal(result.sources.find((s) => s.source === "voice_transcription")?.turns, 1);
+  assert.equal(result.sources.find((s) => s.source === "voice_dictation")?.turns, 1);
+  assert.equal(result.analytics.billing.costPerTurnMicroUSD, 21550 / 2106);
+  assert.deepEqual(result.analytics.autonomy, {
+    runs: 2000,
+    done: 500,
+    noUpdate: 500,
+    blocked: 500,
+    error: 500,
+    unknown: 0,
+    healthyRate: 0.5,
+  });
+  assert.equal(result.autonomy.length, 1000);
+  assert.equal(result.autonomyTruncated, true);
+  assert.equal(
+    result.daily.reduce((n, d) => n + d.autonomyErrors, 0),
+    500,
+  );
+  assert.ok(result.warnings.some((w) => w.includes("自治日志仅保留")));
+});
+
+test("billing analytics exclude grants and sandbox, deduplicate payers, and distinguish refund states", async () => {
+  const now = Date.parse("2026-11-18T12:00:00Z"),
+    at = now - 1000;
+  const transaction = (
+    transactionId: string,
+    microUSD: number,
+    status = "credited",
+    timestamp = at,
+  ) => ({
+    transactionId,
+    uid: regular.uid,
+    productId: "credits.5",
+    microUSD,
+    status,
+    at: timestamp,
+  });
+  await fs.writeFile(
+    path.join(home, "iap-transactions.json"),
+    JSON.stringify([
+      transaction("1234", 5000000),
+      transaction("stripe-paid", 10000000),
+      transaction("admin:gift", 9000000),
+      transaction("sandbox:test", 8000000),
+      transaction("2345", 4000000, "refunded"),
+      transaction("stripe-pending", 3000000, "pending"),
+      transaction("stripe-refund", 2000000, "refund_pending"),
+      transaction("3456", 6000000, "credited", Date.parse("2026-11-11T12:00:00Z")),
+      transaction("4567", 1000000, "credited", Date.parse("2026-11-11T12:00:01Z")),
+    ]),
+  );
+  const result = await consoleSnapshot(7, now),
+    b = result.analytics.billing;
+  assert.equal(result.summary.creditMicroUSD, 15000000);
+  assert.equal(result.summary.paidUsers, 1);
+  assert.equal(b.creditedTransactions, 2);
+  assert.equal(b.averageCreditMicroUSD, 7500000);
+  assert.equal(b.creditPerPayerMicroUSD, 15000000);
+  assert.equal(b.refundedTransactions, 1);
+  assert.equal(b.refundedMicroUSD, 4000000);
+  assert.equal(b.pendingTransactions, 2);
+  assert.equal(result.daily.at(-1)!.paidUsers, 1);
+  assert.equal(result.daily.at(-1)!.creditedTransactions, 2);
+  assert.equal(result.comparison.summary.creditMicroUSD, 6000000);
+  assert.equal(result.comparison.summary.paidUsers, 1);
+  assert.deepEqual(b.channels, [
+    { channel: "apple", transactions: 1, creditMicroUSD: 5000000 },
+    { channel: "stripe", transactions: 1, creditMicroUSD: 10000000 },
+  ]);
+});
+
+test("empty analytics have no invented rates and new assets retain the strict console policy", async () => {
+  const result = await consoleSnapshot(7);
+  assert.equal(result.analytics.engagement.repeatActiveRate, null);
+  assert.equal(result.analytics.engagement.turnsPerActiveUser, null);
+  assert.equal(result.analytics.tokens.cacheReadRate, null);
+  assert.equal(result.analytics.billing.averageCreditMicroUSD, null);
+  assert.equal(result.analytics.autonomy.healthyRate, null);
+  for (const [asset, type] of [
+    ["theme.css", "text/css"],
+    ["theme.js", "text/javascript"],
+    ["icon.png", "image/png"],
+    ["fonts/space-grotesk-latin.woff2", "font/woff2"],
+    ["fonts/jetbrains-mono-latin.woff2", "font/woff2"],
+  ]) {
+    const response = await fetch(base + "/console/" + asset);
+    assert.equal(response.status, 200, asset);
+    assert.ok(response.headers.get("content-type")!.startsWith(type!));
+    assert.ok(!response.headers.get("content-security-policy")!.includes("unsafe-inline"));
+  }
+  assert.equal((await fetch(base + "/console/fonts/not-allowed.woff2")).status, 401);
+  const report = await fetch(base + "/console/api/export?dataset=daily&days=7", {
+    headers: { cookie: `lisa_console=${token(analyst)}` },
+  });
+  assert.equal(report.status, 200);
+  const csv = await report.text();
+  assert.match(csv, /cacheReadTokens/);
+  assert.match(csv, /autonomyErrors/);
+  assert.match(csv, /creditedTransactions/);
+});
+
 test("console fails closed on store corruption without overwriting; concurrent updates preserve all audit entries", async () => {
   await Promise.all(
     Array.from({ length: 8 }, (_, i) =>
