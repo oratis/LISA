@@ -1,14 +1,11 @@
-import fs from "node:fs/promises";
 import http from "node:http";
 import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { ConnectorError } from "./types.js";
 import type { GoogleHttp } from "./google-http.js";
+import type { GoogleClient } from "./google-client.js";
+export { googleClient, type GoogleClient } from "./google-client.js";
 
-export interface GoogleClient {
-  clientId: string;
-  clientSecret?: string;
-}
 export interface GoogleCredential extends GoogleClient {
   accessToken: string;
   refreshToken: string;
@@ -29,33 +26,6 @@ export const GOOGLE_SCOPES = {
   ],
   freebusy: ["https://www.googleapis.com/auth/calendar.freebusy"],
 } as const;
-
-export async function googleClient(): Promise<GoogleClient> {
-  const file = process.env.LISA_GOOGLE_CLIENT_FILE;
-  let client: GoogleClient;
-  if (file) {
-    try {
-      if ((await fs.stat(file)).size > 32_000) throw new Error();
-      const data = JSON.parse(await fs.readFile(file, "utf8")) as {
-        installed?: { client_id?: string; client_secret?: string };
-      };
-      if (!data.installed) throw new Error();
-      client = {
-        clientId: data.installed.client_id ?? "",
-        clientSecret: data.installed.client_secret,
-      };
-    } catch {
-      throw new ConnectorError("google_desktop_client_required");
-    }
-  } else
-    client = {
-      clientId: process.env.LISA_GOOGLE_CLIENT_ID ?? "",
-      clientSecret: process.env.LISA_GOOGLE_CLIENT_SECRET,
-    };
-  if (!/^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(client.clientId))
-    throw new ConnectorError("google_client_not_configured");
-  return client;
-}
 
 export function parseGoogleCredential(value: string): GoogleCredential {
   try {

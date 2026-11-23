@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { GoogleReadonlyDriver, googleReadIntents } from "./google-driver.js";
 import { GOOGLE_SCOPES } from "./google-oauth.js";
 import type { CredentialAccess } from "./types.js";
@@ -7,9 +10,13 @@ import type { GoogleHttp } from "./google-http.js";
 const account = { id: "123", email: "fixture@example.com" };
 const signal = () => AbortSignal.timeout(5000);
 const dates = { timeMin: "2026-11-07T00:00:00+08:00", timeMax: "2026-11-08T00:00:00+08:00" };
-function credential(scopes: readonly string[], expiry = Date.now() + 3600_000) {
+function credential(
+  scopes: readonly string[],
+  expiry = Date.now() + 3600_000,
+  clientId = "fixture.apps.googleusercontent.com",
+) {
   let value = JSON.stringify({
-    clientId: "fixture.apps.googleusercontent.com",
+    clientId,
     accessToken: "fixture-access-token",
     refreshToken: "fixture-refresh-token",
     scopes: [...GOOGLE_SCOPES.identity, ...scopes],
@@ -27,6 +34,67 @@ function credential(scopes: readonly string[], expiry = Date.now() + 3600_000) {
   return { access, value: () => value, replacements: () => replacements };
 }
 const identity = { sub: account.id, email: account.email, email_verified: true };
+test("Gmail rejects the Luddi project before opening Google or using a stored grant", async () => {
+  const clientId = "276223031533-test.apps.googleusercontent.com";
+  const driver = new GoogleReadonlyDriver("gmail", {
+    client: async () => ({ clientId }),
+    http: async () => assert.fail("must not use or refresh a Luddi grant"),
+  });
+  assert.equal(await driver.configured(), false);
+  await assert.rejects(
+    driver.authorize("login", signal(), () => assert.fail("unexpected consent URL")),
+    /gmail_legacy_client/,
+  );
+  for (const expiry of [0, Date.now() + 3600_000]) {
+    const stored = credential(GOOGLE_SCOPES.gmail, expiry, clientId);
+    await assert.rejects(
+      driver.resources(stored.access, 1, signal()),
+      /google_reauthorization_required/,
+    );
+  }
+});
+test("Gmail configured() checks LISA_GMAIL_CLIENT_FILE and rejects Luddi clients only for Gmail", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-google-driver-cfg-"));
+  const gmailFile = path.join(dir, "gmail.json");
+  const googleFile = path.join(dir, "google.json");
+  const keys = [
+    "LISA_GOOGLE_CLIENT_FILE",
+    "LISA_GMAIL_CLIENT_FILE",
+    "LISA_GOOGLE_CLIENT_ID",
+  ] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  t.after(async () => {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  for (const k of keys) delete process.env[k];
+
+  await fs.writeFile(
+    gmailFile,
+    JSON.stringify({ installed: { client_id: "lisa.apps.googleusercontent.com" } }),
+  );
+  await fs.writeFile(
+    googleFile,
+    JSON.stringify({
+      installed: { client_id: "276223031533-test.apps.googleusercontent.com" },
+    }),
+  );
+
+  const calendar = new GoogleReadonlyDriver("google-calendar");
+  const gmail = new GoogleReadonlyDriver("gmail");
+
+  process.env.LISA_GMAIL_CLIENT_FILE = gmailFile;
+  assert.equal(await gmail.configured(), true);
+  assert.equal(await calendar.configured(), false);
+
+  delete process.env.LISA_GMAIL_CLIENT_FILE;
+  process.env.LISA_GOOGLE_CLIENT_FILE = googleFile;
+  assert.equal(await calendar.configured(), true);
+  assert.equal(await gmail.configured(), false);
+});
 test("Calendar scopes constrain events; selected resource/date checks reject before networking", async () => {
   let reads = 0;
   const http: GoogleHttp = async (url) => {

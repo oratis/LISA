@@ -600,6 +600,8 @@ LISA_IDLE_COMMITMENT_AWARE=1          # 选择加入：空闲时先看你即将�
 
 在本机聊天中点 **＋ → 浏览应用连接器**，或发送 `/connectors` 查看内置应用。发送 `/connectors Gmail` 可按名称或示例任务筛选。点击示例会把文字加入草稿，发送后进入该应用的只读连接流程。
 
+在 `~/.lisa/config.env` 中设置 `LISA_GMAIL_CLIENT_FILE=/桌面客户端JSON的绝对路径`，重启本机后端后，Gmail 会优先使用此客户端。曾通过 Luddi 测试应用连接的账号需要重新授权。Google 授予整个邮箱的只读权限，LISA 按你选定的标签读取邮件头和短摘要。公开发行时，应使用 LISA 品牌项目的桌面客户端，并通过 Google 对 `gmail.readonly` 的审核。[Google 受限权限审核说明](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification)
+
 游戏清单可从 **总览 → 应用连接器 → Game Library · Playnite** 进入。先在本机预览 CSV，再勾选游戏和字段。联网游戏连接器、游戏资料和地区价格查询默认关闭。主机运营者可按服务配置凭据进行测试。[本机配置与平台支持范围](RESEARCH_GAME_PLATFORM_CONNECTORS_2026-11-22.md#本机配置与验收状态)
 
 自定义 MCP 在本机 LISA 下次启动时加载，插件的 `.mcp.json` 也支持相同配置。HTTP 条目通过公网 HTTPS 443 端口连接免登录的 Streamable HTTP 服务，支持工具发现、工具调用及其 JSON / SSE 响应。带自定义请求头、查询串或重定向的端点会被拒绝。请选择信任的服务，每次调用的参数都会发送给该端点。`allowedTools` 按工具名精确选择，空数组表示不加载工具，省略则加载所有兼容工具。上例仅启用微软公开文档检索。[Microsoft Learn MCP 官方说明](https://learn.microsoft.com/en-us/training/support/mcp)

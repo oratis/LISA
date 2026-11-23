@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 ---
 <Base title="隐私" lang="zh-CN" description="LISA 云与本地 Mac 模式的账号、对话及 AI 数据处理说明。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-11-07</b></p>
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-11-08</b></p>
     <h1>隐私政策</h1>
     <p class="lede">
       LISA 是个人 AI 助手，支持由我们运营的 <strong>LISA Cloud</strong> 与
@@ -66,6 +66,12 @@ import Base from "../../layouts/Base.astro";
         同时发送的还有它在项目中读取的文件和命令输出。开启期间，Lisa Pocket 会把这些工具列为单独的接收方。
         也请查看它们的条款与设置。
       </p>
+    </section>
+
+    <section class="pol">
+      <p class="eyebrow"><b>本机聊天中的 Gmail</b></p>
+      <p>连接 Gmail 时，Google 会授予整个邮箱的只读权限。LISA 使用 Google 账号 ID 和邮箱地址识别这条连接，并列出标签供你选择。处理邮件任务时，LISA 从所选标签读取发件人、主题、日期、短摘要和邮件链接。这些结果会进入聊天，也可能发送给你选择的 AI 提供商，以回答本次请求。</p>
+      <p>授权令牌保存在你的本机后端。断开 Gmail 会移除本机连接，你也可以在 Google 账号中撤销授权。已进入聊天的邮件结果遵循该会话的保留与删除设置。</p>
     </section>
 
     <section class="pol">

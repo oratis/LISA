@@ -19,6 +19,7 @@ import { formatDigestText } from "../mail/digest.js";
 import { inferHost } from "../mail/hosts.js";
 import { buildAuthUrl, exchangeCode } from "../mail/google-oauth.js";
 import { gmailProfileEmail } from "../mail/connectors/gmail.js";
+import { gmailClient, isLuddiClient, type GoogleClient } from "../connectors/google-client.js";
 
 function parseFlags(args: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -69,14 +70,30 @@ function printAccounts(): void {
 
 /** Gmail OAuth via the loopback "installed app" flow. */
 async function connectGmail(flags: Record<string, string>): Promise<number> {
-  const clientId = flags["client-id"] ?? process.env.LISA_GOOGLE_CLIENT_ID ?? "";
-  const clientSecret = flags["client-secret"] ?? process.env.LISA_GOOGLE_CLIENT_SECRET ?? "";
+  let client: GoogleClient;
+  try {
+    client =
+      flags["client-id"] || flags["client-secret"]
+        ? {
+            clientId: flags["client-id"] ?? process.env.LISA_GOOGLE_CLIENT_ID ?? "",
+            clientSecret: flags["client-secret"] ?? process.env.LISA_GOOGLE_CLIENT_SECRET,
+          }
+        : await gmailClient();
+  } catch {
+    console.error(
+      "Set LISA_GMAIL_CLIENT_FILE to your Google Desktop app OAuth JSON, or pass --client-id and --client-secret.",
+    );
+    return 1;
+  }
+  const { clientId, clientSecret } = client;
+  if (isLuddiClient(clientId)) {
+    console.error(
+      "This client belongs to Luddi. Set LISA_GMAIL_CLIENT_FILE to the LISA Desktop app OAuth JSON and reconnect.",
+    );
+    return 1;
+  }
   if (!clientId || !clientSecret) {
-    console.error("Gmail OAuth needs a Google OAuth client id + secret.");
-    console.error("One-time setup: in a Google Cloud project, enable the Gmail API and create an");
-    console.error('OAuth client of type "Desktop app", then:');
-    console.error("  lisa mail connect --provider gmail --client-id <id> --client-secret <secret>");
-    console.error("  (or set LISA_GOOGLE_CLIENT_ID / LISA_GOOGLE_CLIENT_SECRET)");
+    console.error("Gmail needs both the desktop OAuth client ID and its client secret.");
     return 1;
   }
   const state = crypto.randomBytes(8).toString("hex");
