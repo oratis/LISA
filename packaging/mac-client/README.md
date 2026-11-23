@@ -1,6 +1,10 @@
 # Lisa.app — native Mac client
 
-**Pocket connection:** open **Lisa ▸ Account & Devices…**, sign in, then choose **Connect Lisa Pocket**. The account page shows the saved account and this Mac's live connection status. Pocket automatically uses encrypted LAN or cloud relay; no Tailscale is required. See [connection setup and deployment](../../docs/REMOTE_CONNECTIONS.md).
+On first launch, select **Continue with LISA Cloud** and sign in inside the app with the account used in Lisa Pocket. Select **LISA Cloud** in Pocket to use the same cloud conversations, memories and services on both devices. **Lisa ▸ Cloud Account…** opens the hosted account page, including sign-out.
+
+Choose **Use My Mac** to open your local history and tools. Switch later with the window’s workspace picker or the **Workspace** menu. Lisa remembers your choice. Existing installations with a saved main window start in My Mac. Cloud works without the local backend. Local and hosted histories stay separate.
+
+**Pocket connection to My Mac:** open **Lisa ▸ Account & Devices…**, sign in, then choose **Connect Lisa Pocket**. The account page shows the saved account and this Mac's live connection status. Pocket automatically uses encrypted LAN or cloud relay; no Tailscale is required. See [connection setup and deployment](../../docs/REMOTE_CONNECTIONS.md).
 
 Email sign-in has separate email and six-digit-code steps, with a resend countdown,
 inline errors, and an optional password route. A custom server is under **Advanced**.
@@ -39,7 +43,7 @@ lives under [`Sources/Lisa/Island/`](Sources/Lisa/Island/).)
 | Loads | `/` (the chat GUI) | `/island` |
 | How to show | opens at launch | Settings… ▸ Show Lisa Island |
 
-Talks only to `localhost:5757`.
+My Mac opens `http://localhost:5757/`. LISA Cloud opens `https://cloud.meetlisa.ai/` in its own web view.
 
 ## Requirements
 
@@ -180,9 +184,7 @@ Sources/Lisa/
 swift test    # Tests/LisaSetupTests
 ```
 
-Communication with LISA is identical to LisaIsland.app — all goes
-through `localhost:5757`. No state stored locally; killing the app
-loses nothing.
+Lisa Island uses the local backend in My Mac. The hosted workspace uses WebKit’s account cookies and has no native local-tool bridge.
 
 ## Distribution
 

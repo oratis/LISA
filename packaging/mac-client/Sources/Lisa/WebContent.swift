@@ -117,6 +117,23 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         load()
     }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        applyAppearance(UserDefaults.standard.string(forKey: "lisaAppearancePreference") ?? "system")
+        if webView?.url?.host != "localhost" && webView?.isLoading == false && reloadTimer == nil {
+            load()
+        }
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        // Stop background localhost retry polling when switched out of My Mac mode.
+        if view.window == nil {
+            reloadTimer?.invalidate()
+            reloadTimer = nil
+        }
+    }
+
     // MARK: - Load / retry
 
     @objc private func syncMotionVisibility() {
@@ -188,10 +205,12 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
 
     private func scheduleReload() {
         reloadTimer?.invalidate()
+        guard view.window != nil else { reloadTimer = nil; return }
         reloadTimer = Timer.scheduledTimer(
             withTimeInterval: 4.0,
             repeats: false
         ) { [weak self] _ in
+            self?.reloadTimer = nil
             self?.load()
         }
     }
@@ -230,7 +249,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         NotificationCenter.default.addObserver(
             forName: BackendController.statusChanged, object: nil, queue: .main
         ) { [weak self] note in
-            if (note.userInfo?["up"] as? Bool) == true { self?.load() }
+            if (note.userInfo?["up"] as? Bool) == true, self?.view.window != nil { self?.load() }
         }
     }
 
@@ -397,47 +416,30 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         decisionHandler(.grant)
     }
 
-    /// WKWebView on macOS does NOT provide a default file picker for
-    /// `<input type="file">` clicks — without this delegate method,
-    /// clicking the paperclip in the chat composer is a silent no-op.
-    /// We bridge it to a standard NSOpenPanel.
-    ///
-    /// `parameters.allowsMultipleSelection` honors the HTML `multiple`
-    /// attribute. We don't filter by MIME type from `accept=` (Apple
-    /// doesn't expose that on `WKOpenPanelParameters`), so the picker
-    /// shows everything — the chat backend already handles whatever
-    /// the user picks.
     func webView(
         _ webView: WKWebView,
         runOpenPanelWith parameters: WKOpenPanelParameters,
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping ([URL]?) -> Void
     ) {
-        // stderr log so we can tell at a glance whether WKWebView is
-        // forwarding the picker request to us. Visible via
-        // `log stream --process Lisa` or by launching from Terminal.
-        FileHandle.standardError.write(
-            Data("[lisa] runOpenPanel (multiple=\(parameters.allowsMultipleSelection))\n".utf8)
-        )
-        // Must dispatch to main — WKWebView delegate callbacks already
-        // run on main, but the NSOpenPanel sheet machinery is touchy
-        // about being on the main runloop, so be explicit.
-        DispatchQueue.main.async {
-            let panel = NSOpenPanel()
-            panel.canChooseFiles = true
-            panel.canChooseDirectories = false
-            panel.resolvesAliases = true
-            panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-            panel.message = "Select files to attach to your message"
-            panel.prompt = "Attach"
-            if let host = webView.window {
-                panel.beginSheetModal(for: host) { response in
-                    completionHandler(response == .OK ? panel.urls : nil)
-                }
-            } else {
-                let response = panel.runModal()
-                completionHandler(response == .OK ? panel.urls : nil)
-            }
+        webView.chooseAttachments(parameters, completionHandler: completionHandler)
+    }
+}
+
+extension WKWebView {
+    /// Bridge `<input type="file">` clicks to a sheet-attached `NSOpenPanel`,
+    /// because `WKWebView` on macOS provides no default file picker.
+    func chooseAttachments(_ parameters: WKOpenPanelParameters, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.resolvesAliases = true
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.message = "Select files to attach to your message"
+        panel.prompt = "Attach"
+        guard let window, window.attachedSheet == nil else { completionHandler(nil); return }
+        panel.beginSheetModal(for: window) { response in
+            completionHandler(response == .OK ? panel.urls : nil)
         }
     }
 }

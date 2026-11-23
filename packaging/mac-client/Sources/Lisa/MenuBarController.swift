@@ -72,6 +72,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     func uninstall() {
+        NotificationCenter.default.removeObserver(self, name: BackendController.statusChanged, object: nil)
+        lastLabel = ""
+        lastOffline = nil
         timer?.invalidate()
         timer = nil
         popover?.close()

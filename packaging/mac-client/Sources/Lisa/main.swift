@@ -6,7 +6,7 @@
 //  visible) and hands off to AppDelegate which owns the MainWindow.
 //
 //  Sibling to LisaIsland.app (the passive observer pill). Both apps wrap
-//  the same LISA web server at localhost:5757; this one points at `/`
+//  the local LISA web server in My Mac mode; this one can also open LISA Cloud
 //  for the full chat experience, LisaIsland points at `/island`.
 //
 
@@ -20,7 +20,7 @@ if MainActor.assumeIsolated({ CloudPreview.launchIfRequested() }) {
     exit(0)
 }
 #endif
-let delegate = AppDelegate()
+let delegate = MainActor.assumeIsolated { AppDelegate() }
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()

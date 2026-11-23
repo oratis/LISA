@@ -7,14 +7,19 @@
 //
 
 import AppKit
+import SwiftUI
 
 final class MainWindow: NSWindow {
     private static let defaultSize = CGSize(width: 1200, height: 800)
     private static let minSize     = CGSize(width: 600, height: 500)
 
-    private let content = WebContent()
+    private lazy var local = WebContent()
+    private lazy var cloud = CloudWorkspace()
+    private var workspace: Workspace = .welcome
+    private var picker = NSPopUpButton()
+    private var select: ((Workspace) -> Void)?
 
-    convenience init() {
+    convenience init(workspace: Workspace, onSelect: @escaping (Workspace) -> Void) {
         let frame = NSRect(origin: .zero, size: Self.defaultSize)
         self.init(
             contentRect: frame,
@@ -46,7 +51,7 @@ final class MainWindow: NSWindow {
         // had a small window on the old pixel-art shell) to land back on
         // the 1200×800 default once when they pick up the redesign.
         // After this single reset, subsequent resizes are remembered.
-        let autosaveKey = "ai.meetlisa.app.MainWindow.v2-redesign"
+        let autosaveKey = Workspace.frameName
         setFrameAutosaveName(autosaveKey)
 
         if !setFrameUsingName(autosaveKey) {
@@ -57,22 +62,70 @@ final class MainWindow: NSWindow {
             center()
         }
 
-        contentViewController = content
+        select = onSelect
+        picker.addItems(withTitles: [Workspace.cloud.title, Workspace.mac.title])
+        picker.setAccessibilityLabel(workspaceText("Workspace"))
+        picker.toolTip = workspaceText("Workspace")
+        picker.target = self
+        picker.action = #selector(workspacePicked)
+        picker.sizeToFit()
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .right
+        accessory.view = picker
+        addTitlebarAccessoryViewController(accessory)
+        display(workspace)
+    }
+
+    @objc private func workspacePicked() {
+        select?(picker.indexOfSelectedItem == 0 ? .cloud : .mac)
+    }
+
+    func display(_ next: Workspace) {
+        workspace = next
+        title = next.title
+        picker.isHidden = next == .welcome
+        appearance = nil
+        // The local shell draws its own draggable title bar. Hosted pages,
+        // including the login page, need the entire area below the native bar.
+        if next == .mac { styleMask.insert(.fullSizeContentView) }
+        else { styleMask.remove(.fullSizeContentView) }
+        titlebarAppearsTransparent = next == .mac
+        titleVisibility = next == .mac ? .hidden : .visible
+        switch next {
+        case .welcome:
+            contentViewController = NSHostingController(rootView: WorkspaceWelcome { [weak self] in self?.select?($0) })
+        case .cloud:
+            picker.selectItem(at: 0)
+            contentViewController = cloud
+        case .mac:
+            picker.selectItem(at: 1)
+            contentViewController = local
+        }
+    }
+
+    func openCloudAccount() {
+        guard workspace == .cloud else { return }
+        cloud.openAccount()
     }
 
     func reload() {
-        content.reload()
+        switch workspace {
+        case .mac: local.reload()
+        case .cloud: cloud.reload()
+        case .welcome: break
+        }
     }
 
     /// Fire the screenshot→composer flow in the hosted page; `onAttached`
     /// reports whether a shot was actually captured (vs cancelled).
     func triggerCapture(includeContext: Bool = false, onAttached: @escaping (Bool) -> Void) {
-        content.triggerCapture(includeContext: includeContext, onAttached: onAttached)
+        guard workspace == .mac else { onAttached(false); return }
+        local.triggerCapture(includeContext: includeContext, onAttached: onAttached)
     }
 
     /// Pre-fill the chat composer (never auto-sends) — used by the
     /// screen-advisor suggestion card via the island bridge.
     func prefillComposer(_ text: String) {
-        content.prefillComposer(text)
+        if workspace == .mac { local.prefillComposer(text) }
     }
 }
