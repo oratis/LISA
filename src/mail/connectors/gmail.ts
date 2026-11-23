@@ -4,6 +4,7 @@
  * `snippet` only (never the full body) — same privacy contract as IMAP.
  */
 import { tokenExpired, refreshAccessToken, type GoogleTokens } from "../google-oauth.js";
+import { isLuddiClient } from "../../connectors/google-client.js";
 import type { MailAccount, MailConnector, MailSecret, RawMail } from "../types.js";
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -71,6 +72,10 @@ export class GmailConnector implements MailConnector {
     if (!refreshToken || !clientId || !clientSecret) {
       throw new Error(`gmail account ${this.account.id} is not authorized (no OAuth tokens)`);
     }
+    if (isLuddiClient(clientId))
+      throw new Error(
+        "This Gmail account used the Luddi test client. Reconnect with the LISA desktop OAuth client.",
+      );
     if (accessToken && expiry && !tokenExpired(expiry, this.now())) return accessToken;
     const t = await refreshAccessToken(
       { refreshToken, clientId, clientSecret },

@@ -112,6 +112,7 @@ const githubErrors = {
   mcp_rate_limited: tr('connector.error.mcp_rate_limited'),
 
   google_client_not_configured: tr('connector.error.google_client_not_configured'),
+  gmail_legacy_client: tr('connector.error.gmail_legacy_client'),
   google_desktop_client_required: tr('connector.error.google_desktop_client_required'),
   google_reauthorization_required: tr('connector.error.google_reauthorization_required'),
   google_access_denied: tr('connector.error.google_access_denied'),
@@ -216,7 +217,7 @@ const connectorCards = {
     account: a => a.email, open: tr('connector.openGoogle'), loginUrl: googleLoginUrl,
   },
   gmail: {
-    name: 'Gmail', detail: tr('connector.gmailDetail'), authorizeDetail: tr('connector.authorizeDetail'),
+    name: 'Gmail', detail: tr('connector.gmailDetail'), authorizeDetail: tr('connector.gmailAuthorize'),
     modes: { login: tr('connector.auth.gmail') },
     account: a => a.email, open: tr('connector.openGoogle'), loginUrl: googleLoginUrl,
   },

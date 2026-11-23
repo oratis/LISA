@@ -4,6 +4,7 @@ import { sanitizeMailFields } from "../warden/hygiene-mail.js";
 import { redactKnownSecrets } from "../warden/secrets.js";
 import { ConnectorError, type CredentialAccess, type ReadonlyDriver } from "./types.js";
 import { googleHttp, type GoogleHttp } from "./google-http.js";
+import { gmailClient, isLuddiClient } from "./google-client.js";
 import {
   authorizeGoogle,
   googleClient,
@@ -100,8 +101,10 @@ export class GoogleReadonlyDriver implements ReadonlyDriver<GoogleAccount, Googl
   }
   async configured() {
     try {
-      await (this.options.client ?? googleClient)();
-      return true;
+      const client = await (
+        this.options.client ?? (this.id === "gmail" ? gmailClient : googleClient)
+      )();
+      return !(this.id === "gmail" && isLuddiClient(client.clientId));
     } catch {
       return false;
     }
@@ -167,8 +170,13 @@ export class GoogleReadonlyDriver implements ReadonlyDriver<GoogleAccount, Googl
           ? GOOGLE_SCOPES.freebusy
           : GOOGLE_SCOPES.events),
     ];
+    const client = await (
+      this.options.client ?? (this.id === "gmail" ? gmailClient : googleClient)
+    )();
+    if (this.id === "gmail" && isLuddiClient(client.clientId))
+      throw new ConnectorError("gmail_legacy_client");
     const credentials = await (this.options.authorize ?? authorizeGoogle)(
-      await (this.options.client ?? googleClient)(),
+      client,
       scopes,
       signal,
       progress,
@@ -187,6 +195,8 @@ export class GoogleReadonlyDriver implements ReadonlyDriver<GoogleAccount, Googl
     return credentials.use(async (value, replace) => {
       signal.throwIfAborted();
       let c = parseGoogleCredential(value);
+      if (this.id === "gmail" && isLuddiClient(c.clientId))
+        throw new ConnectorError(this.reauthorizationCode);
       const needed =
         this.id === "gmail"
           ? GOOGLE_SCOPES.gmail

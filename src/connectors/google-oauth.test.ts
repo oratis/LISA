@@ -2,6 +2,10 @@ import http from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { gmailClient, googleClient } from "./google-client.js";
 import { authorizeGoogle, GOOGLE_SCOPES, tokenResponse } from "./google-oauth.js";
 import { googleHttp } from "./google-http.js";
 
@@ -9,6 +13,38 @@ const client = {
   clientId: "fixture.apps.googleusercontent.com",
   clientSecret: "fixture-client-secret",
 };
+test("a Gmail desktop file overrides the shared Google client only for Gmail", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-gmail-client-"));
+  const file = path.join(dir, "desktop.json");
+  const sharedFile = process.env.LISA_GOOGLE_CLIENT_FILE;
+  const gmailFile = process.env.LISA_GMAIL_CLIENT_FILE;
+  const sharedId = process.env.LISA_GOOGLE_CLIENT_ID;
+  t.after(async () => {
+    for (const [key, original] of Object.entries({
+      LISA_GOOGLE_CLIENT_FILE: sharedFile,
+      LISA_GMAIL_CLIENT_FILE: gmailFile,
+      LISA_GOOGLE_CLIENT_ID: sharedId,
+    })) {
+      if (original === undefined) delete process.env[key];
+      else process.env[key] = original;
+    }
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  delete process.env.LISA_GOOGLE_CLIENT_FILE;
+  delete process.env.LISA_GMAIL_CLIENT_FILE;
+  process.env.LISA_GOOGLE_CLIENT_ID = "shared.apps.googleusercontent.com";
+  assert.equal((await gmailClient()).clientId, process.env.LISA_GOOGLE_CLIENT_ID);
+  process.env.LISA_GMAIL_CLIENT_FILE = file;
+  await assert.rejects(gmailClient(), /google_desktop_client_required/);
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      installed: { client_id: client.clientId, client_secret: client.clientSecret },
+    }),
+  );
+  assert.deepEqual(await gmailClient(), client);
+  assert.equal((await googleClient()).clientId, process.env.LISA_GOOGLE_CLIENT_ID);
+});
 test("native OAuth binds state and PKCE, rejects foreign callbacks, exchanges only once", async () => {
   let url!: URL, published!: () => void;
   const ready = new Promise<void>((resolve) => {

@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 ---
 <Base title="Privacy" lang="en" description="How LISA Cloud and local Mac mode process accounts, conversations, and AI requests.">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-11-07</b></p>
+    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-11-08</b></p>
     <h1>Privacy Policy</h1>
     <p class="lede">
       LISA is a personal AI assistant with two modes: <strong>LISA Cloud</strong>, operated
@@ -78,6 +78,18 @@ import Base from "../layouts/Base.astro";
         with files and command output it reads in the project. Lisa Pocket lists these tools
         as separate recipients while they are on. Review their terms and settings too.
       </p>
+    </section>
+
+    <section class="pol">
+      <p class="eyebrow"><b>Gmail in local chat</b></p>
+      <p>When you connect Gmail, Google grants read-only mailbox access. LISA uses your Google
+        account ID and email address to identify the connection and lists your labels so you can
+        choose which ones to read. For a mail task, LISA retrieves senders, subjects, dates,
+        short snippets and message links from the labels you select. These results enter the
+        chat and can be sent to the AI provider you selected to answer your request.</p>
+      <p>Your local backend stores the authorization tokens. Disconnecting Gmail removes the
+        local connection. You can also revoke access in your Google Account. Mail results already
+        included in a conversation follow that conversation’s retention and deletion settings.</p>
     </section>
 
     <section class="pol">
