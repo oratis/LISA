@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
+import { compactMessagesForProvider } from "./compaction.js";
 import type { StoredMessage } from "../types.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 import { openaiUsage } from "./usage.js";
@@ -22,7 +23,10 @@ export class OpenAIProvider implements Provider {
   }
 
   async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
-    const messages = anthropicToOpenAI(opts.systemPrompt, opts.messages);
+    const prepared = compactMessagesForProvider(opts.messages, {
+      enabled: opts.compaction === true,
+    });
+    const messages = anthropicToOpenAI(opts.systemPrompt, prepared.messages);
     const tools = opts.tools.map((t) => ({
       type: "function" as const,
       function: {
@@ -103,7 +107,8 @@ export class OpenAIProvider implements Provider {
 
       return {
         content,
-        stopReason: finish === "tool_calls" ? "tool_use" : "end_turn",
+        stopReason:
+          finish === "tool_calls" ? "tool_use" : finish === "length" ? "max_tokens" : "end_turn",
         usage: {
           inputTokens,
           outputTokens,
@@ -180,9 +185,11 @@ function anthropicToOpenAI(
           });
         }
       }
+      const joinedText = textParts.join("\n");
+      if (!joinedText && toolCalls.length === 0) continue;
       const assistant: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam = {
         role: "assistant",
-        content: textParts.join("\n") || null,
+        content: joinedText || null,
       };
       if (toolCalls.length) assistant.tool_calls = toolCalls;
       out.push(assistant);

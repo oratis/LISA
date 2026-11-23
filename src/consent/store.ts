@@ -28,7 +28,8 @@ export const SENSE_SIGNALS: ConsentSignal[] = ["screen", "voice", "clipboard", "
 export const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   screen: "foreground app/window names and (optionally) low-frequency screenshots",
   voice: "microphone audio for push-to-talk transcription",
-  clipboard: "clipboard contents when you copy",
+  clipboard:
+    "clipboard change timestamps and active app metadata when you copy (no contents stored)",
   selection: "text you select / point at",
   mail: "headers + a short snippet of your inbox mail, to classify it and build a daily digest",
 };

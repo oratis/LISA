@@ -27,6 +27,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Content, FunctionCallingConfigMode, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
 import { normalizeModelId } from "../billing/prices.js";
+import { compactMessagesForProvider } from "./compaction.js";
 import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
@@ -89,7 +90,10 @@ export class GeminiProvider implements Provider {
 
   async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
     const client = await this.getClient();
-    const contents = anthropicToGemini(opts.messages);
+    const prepared = compactMessagesForProvider(opts.messages, {
+      enabled: opts.compaction === true,
+    });
+    const contents = anthropicToGemini(prepared.messages);
     const tools =
       opts.tools.length > 0
         ? [
@@ -132,12 +136,14 @@ export class GeminiProvider implements Provider {
 
       let text = "";
       const toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+      let lastFinishReason: string | undefined;
       let inputTokens = 0;
       let outputTokens = 0;
       let cacheReadTokens = 0;
 
       for await (const chunk of stream) {
         const cand = chunk.candidates?.[0];
+        if (cand?.finishReason) lastFinishReason = cand.finishReason;
         if (cand?.finishReason === "MALFORMED_FUNCTION_CALL") {
           throw new Error("Gemini could not form a valid tool call. Please retry.");
         }
@@ -186,7 +192,12 @@ export class GeminiProvider implements Provider {
       // PROHIBITED_CONTENT, SPII, MALFORMED_FUNCTION_CALL, IMAGE_SAFETY.
       // Tool calls are signaled by the presence of functionCall parts, NOT a
       // distinct finishReason — so we infer from toolCalls.length.
-      const stopReason = toolCalls.length > 0 ? "tool_use" : "end_turn";
+      const stopReason =
+        toolCalls.length > 0
+          ? "tool_use"
+          : lastFinishReason === "MAX_TOKENS"
+            ? "max_tokens"
+            : "end_turn";
 
       return {
         content,
