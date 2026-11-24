@@ -722,6 +722,10 @@ async function main(): Promise<void> {
       signal: abortController.signal,
       model: args.model,
       taskFilter: args.subargs[1],
+      warden:
+        args.approval === "warden" || process.env.LISA_APPROVAL === "warden"
+          ? { approvalMode: "warden" }
+          : undefined,
     });
     for (const r of results) {
       if (r.silent) {
@@ -852,6 +856,10 @@ async function main(): Promise<void> {
         model: args.model,
         thinking: args.thinking,
         compaction: args.compaction,
+        warden:
+          args.approval === "warden" || process.env.LISA_APPROVAL === "warden"
+            ? { approvalMode: "warden" }
+            : undefined,
       });
       await router.start();
       console.error(`Lisa is now reachable on: ${adapters.map((a) => a.name).join(", ")}`);
@@ -1041,6 +1049,10 @@ async function main(): Promise<void> {
           signal: abortController.signal,
           model: args.model,
           idleMs: watcher.idleFor(),
+          warden:
+            args.approval === "warden" || process.env.LISA_APPROVAL === "warden"
+              ? { approvalMode: "warden" }
+              : undefined,
         });
         if (!r.silent) {
           process.stderr.write(`\n\n[★ while you were away]\n${r.text}\n\nyou> `);

@@ -1707,6 +1707,75 @@
         }
       }
     },
+    "/api/warden/provenance": {
+      "get": {
+        "operationId": "listWardenProvenance",
+        "parameters": [
+          {
+            "name": "taintedOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "tool",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "originId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Redacted provenance report of persistent self-state writes and linked taint sources.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WardenProvenanceResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/connectors/github/requests": {
       "get": {
         "operationId": "listGitHubConnectionRequests",
@@ -7952,6 +8021,10 @@
               "description": "Open set; v1 values: once, task, target, 24h, always."
             },
             "description": "Scopes this item may be approved with."
+          },
+          "challengeNonce": {
+            "type": "string",
+            "description": "Single-use cryptographic challenge nonce for signed native approvals."
           }
         },
         "additionalProperties": true
@@ -7988,6 +8061,16 @@
           "scope": {
             "type": "string",
             "description": "Open set; v1 values: once, task, target, 24h, always."
+          },
+          "signature": {
+            "type": "object",
+            "description": "Optional Ed25519 challenge-bound signature from a registered native approver.",
+            "properties": {
+              "approverId": { "type": "string" },
+              "nonce": { "type": "string" },
+              "signature": { "type": "string" }
+            },
+            "required": ["approverId", "nonce", "signature"]
           }
         },
         "additionalProperties": true
@@ -8325,6 +8408,37 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WardenAuditEntry"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenProvenanceResponse": {
+        "type": "object",
+        "required": [
+          "records",
+          "totalWritesScanned",
+          "taintedWritesScanned",
+          "toolsTouched"
+        ],
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "totalWritesScanned": {
+            "type": "integer"
+          },
+          "taintedWritesScanned": {
+            "type": "integer"
+          },
+          "toolsTouched": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         },

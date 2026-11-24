@@ -77,6 +77,45 @@ export function isBroadWorkspace(
   return (opts.lisaHomes ?? []).some((lisa) => isInsideReal(real, lisa));
 }
 
+export interface ChatWorkspaceResolution {
+  workspaceRoot: string;
+  /** False when no non-broad workspace could be resolved (Warden fails closed). */
+  confined: boolean;
+}
+
+/**
+ * Resolve a safe workspace root for interactive chat turns.
+ *
+ * When a server launches under launchd or Lisa.app, `process.cwd()` is `/` or
+ * `$HOME` (a broad workspace that confines nothing). If `cwd` is broad, an
+ * explicit `configuredRoot` (or `LISA_CHAT_WORKSPACE`) is used ONLY when it is
+ * absolute, not broad itself, and outside every Lisa home. Otherwise we return
+ * the resolved `cwd` with `confined: false`, keeping Warden fail-closed.
+ */
+export function resolveChatWorkspaceRoot(
+  cwd: string,
+  opts: {
+    configuredRoot?: string;
+    homeDir?: string;
+    lisaHomes?: readonly string[];
+  } = {},
+): ChatWorkspaceResolution {
+  const broadOpts = { homeDir: opts.homeDir, lisaHomes: opts.lisaHomes };
+  if (!isBroadWorkspace(cwd, broadOpts)) {
+    return { workspaceRoot: realPath(cwd), confined: true };
+  }
+  const candidate = opts.configuredRoot ?? process.env.LISA_CHAT_WORKSPACE;
+  if (
+    candidate &&
+    path.isAbsolute(candidate) &&
+    !isBroadWorkspace(candidate, broadOpts) &&
+    !(opts.lisaHomes ?? []).some((lisa) => isInsideProtected(lisa, candidate))
+  ) {
+    return { workspaceRoot: realPath(candidate), confined: true };
+  }
+  return { workspaceRoot: cwd ? realPath(cwd) : path.sep, confined: false };
+}
+
 /** Credential locations under a home directory: reading them always asks. */
 const CREDENTIAL_PATHS = [
   ".ssh",

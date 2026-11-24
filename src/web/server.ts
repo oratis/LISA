@@ -345,6 +345,7 @@ import {
 } from "./reachout-wiring.js";
 import { createTaskHost } from "./tasks-host.js";
 import { createTaskApprovalFactory } from "../warden/task-approval.js";
+import { resolveChatWorkspaceRoot } from "../warden/paths.js";
 import { createReachOutTransports } from "../reachout/deliver.js";
 import { cloudTasksEnabled } from "./tasks-api.js";
 import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
@@ -1126,12 +1127,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         request.chatControls,
         chatControlOptions(activeModel, policy.approval),
       );
+      const chatWorkspace = resolveChatWorkspaceRoot(chat.session.header.cwd || process.cwd(), {
+        homeDir: os.homedir(),
+        lisaHomes: [lisaHome(), lisaGlobalHome()],
+      }).workspaceRoot;
       const wardenTurn = await warden.turn({
         chatPermission: controls.permission,
         connectorContinuation: true,
         uid: null,
         sandboxMode: chat.session.header.sandboxMode,
-        workspaceRoot: chat.session.header.cwd,
+        workspaceRoot: chatWorkspace,
         tools: readTools,
         signal,
         conversationId: chat.session.id,
@@ -1898,6 +1903,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           model: activeModel,
           idleMs: watcher.idleFor(),
           userLanguageSample,
+          warden: warden.enabled
+            ? { inbox: warden.inbox, approvalMode: policy.approval }
+            : undefined,
         });
         if (result.silent) {
           logInfo("[idle] (silent)");
@@ -6447,6 +6455,10 @@ self.addEventListener('fetch', (event) => {
                 `sending ~${modelContext.estimatedTokens} history tokens`,
             );
           }
+          const chatWorkspace = resolveChatWorkspaceRoot(chat.session.header.cwd || process.cwd(), {
+            homeDir: os.homedir(),
+            lisaHomes: [lisaHome(), lisaGlobalHome()],
+          }).workspaceRoot;
           const wardenTurn = await warden.turn({
             chatPermission: controls?.permission,
             hostHookTools: chatTools
@@ -6460,7 +6472,7 @@ self.addEventListener('fetch', (event) => {
               .map((tool) => tool.name),
             uid: scopedUid(),
             sandboxMode: chat.session.header.sandboxMode,
-            workspaceRoot: process.cwd(),
+            workspaceRoot: chatWorkspace,
             tools: chatTools,
             signal: AbortSignal.any([abort.signal, turnAbort.signal]),
             conversationId: chat.session.id,
@@ -6476,7 +6488,7 @@ self.addEventListener('fetch', (event) => {
             systemPrompt: fresh.text + modelContext.systemSuffix + expressions.prompt,
             tools: chatTools,
             toolCtx: {
-              cwd: process.cwd(),
+              cwd: chatWorkspace,
               // Abort on server shutdown OR this client disconnecting (Stop).
               signal: AbortSignal.any([abort.signal, turnAbort.signal]),
               log: () => {},

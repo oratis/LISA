@@ -75,6 +75,7 @@ describe("warden API contract", () => {
       ["/api/warden/grants", "get"],
       ["/api/warden/grants/{id}", "delete"],
       ["/api/warden/audit", "get"],
+      ["/api/warden/provenance", "get"],
     ];
     for (const [route, method] of expected) {
       assert.ok(contract.paths[route]?.[method]?.operationId, `${method.toUpperCase()} ${route}`);
@@ -85,81 +86,85 @@ describe("warden API contract", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-warden-contract-"));
     const events: WardenEvent[] = [];
     const inbox = new WardenInbox({ emit: (event) => events.push(event) });
-    void inbox.request(req, {
-      home,
-      reason: "publish needs approval",
-      payload: { body: "LGTM", action: "pr_comment", repo: "o/r" },
-      primaryKeys: ["action", "repo", "body"],
-    });
-    for (let i = 0; i < 400 && events.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
-    const [item] = await inbox.list(null, home);
-    assertSatisfies("ApprovalItem", item as unknown as Record<string, unknown>);
-    assert.deepEqual(item!.scopes, ["once", "task", "target", "24h", "always"]);
+    try {
+      void inbox.request(req, {
+        home,
+        reason: "publish needs approval",
+        payload: { body: "LGTM", action: "pr_comment", repo: "o/r" },
+        primaryKeys: ["action", "repo", "body"],
+      });
+      for (let i = 0; i < 400 && events.length === 0; i++)
+        await new Promise((r) => setTimeout(r, 5));
+      const [item] = await inbox.list(null, home);
+      assertSatisfies("ApprovalItem", item as unknown as Record<string, unknown>);
+      assert.deepEqual(item!.scopes, ["once", "task", "target", "24h", "always"]);
 
-    // The SSE payload is the card: same fields, plus the event type.
-    const { type, ...card } = events[0] as unknown as Record<string, unknown>;
-    assert.equal(type, "approval_requested");
-    for (const key of Object.keys(card)) {
-      assert.ok(
-        contract.components.schemas.ApprovalItem!.properties?.[key],
-        `approval_requested.${key} is not in ApprovalItem`,
-      );
-    }
-    for (const key of [
-      "id",
-      "at",
-      "tool",
-      "category",
-      "targets",
-      "preview",
-      "digest",
-      "expiresAt",
-      "origin",
-    ]) {
-      assert.ok(card[key] !== undefined, `approval_requested.${key}`);
-    }
-
-    // The detail DTO: the item plus every field of the payload.
-    const detail = inbox.detail(null, item!.id);
-    assert.ok(detail);
-    assertSatisfies("ApprovalDetail", detail as unknown as Record<string, unknown>);
-    assert.deepEqual(
-      detail.fields.map((f) => f.key),
-      ["action", "repo", "body"],
-    );
-    for (const field of detail.fields) {
-      assertSatisfies("ApprovalPayloadField", field as unknown as Record<string, unknown>);
-    }
-    assert.deepEqual(
-      contract.components.schemas.ApprovalApproveRequest!.required,
-      ["digest"],
-      "the contract says approving needs the digest",
-    );
-
-    const resolved = await inbox.resolve(null, item!.id, {
-      approve: true,
-      scope: "task",
-      digest: req.digest,
-    });
-    assert.equal(resolved.ok, true);
-
-    const [grant] = await createGrants(req, "target", home);
-    assertSatisfies("WardenGrant", grant as unknown as Record<string, unknown>);
-
-    await auditDecision(
-      req,
-      { verdict: "ask", reason: "r", ruleId: "default:publish" },
-      { home, latencyMs: 2 },
-    );
-    const entries = await readAudit({ home });
-    for (const entry of entries) {
-      const schema = contract.components.schemas.WardenAuditEntry!;
-      for (const key of schema.required ?? []) {
-        assert.ok((entry as unknown as Record<string, unknown>)[key] !== undefined, key);
+      // The SSE payload is the card: same fields, plus the event type.
+      const { type, ...card } = events[0] as unknown as Record<string, unknown>;
+      assert.equal(type, "approval_requested");
+      for (const key of Object.keys(card)) {
+        assert.ok(
+          contract.components.schemas.ApprovalItem!.properties?.[key],
+          `approval_requested.${key} is not in ApprovalItem`,
+        );
       }
+      for (const key of [
+        "id",
+        "at",
+        "tool",
+        "category",
+        "targets",
+        "preview",
+        "digest",
+        "expiresAt",
+        "origin",
+      ]) {
+        assert.ok(card[key] !== undefined, `approval_requested.${key}`);
+      }
+
+      // The detail DTO: the item plus every field of the payload.
+      const detail = inbox.detail(null, item!.id);
+      assert.ok(detail);
+      assertSatisfies("ApprovalDetail", detail as unknown as Record<string, unknown>);
+      assert.deepEqual(
+        detail.fields.map((f) => f.key),
+        ["action", "repo", "body"],
+      );
+      for (const field of detail.fields) {
+        assertSatisfies("ApprovalPayloadField", field as unknown as Record<string, unknown>);
+      }
+      assert.deepEqual(
+        contract.components.schemas.ApprovalApproveRequest!.required,
+        ["digest"],
+        "the contract says approving needs the digest",
+      );
+
+      const resolved = await inbox.resolve(null, item!.id, {
+        approve: true,
+        scope: "task",
+        digest: req.digest,
+      });
+      assert.equal(resolved.ok, true);
+
+      const [grant] = await createGrants(req, "target", home);
+      assertSatisfies("WardenGrant", grant as unknown as Record<string, unknown>);
+
+      await auditDecision(
+        req,
+        { verdict: "ask", reason: "r", ruleId: "default:publish" },
+        { home, latencyMs: 2 },
+      );
+      const entries = await readAudit({ home });
+      for (const entry of entries) {
+        const schema = contract.components.schemas.WardenAuditEntry!;
+        for (const key of schema.required ?? []) {
+          assert.ok((entry as unknown as Record<string, unknown>)[key] !== undefined, key);
+        }
+      }
+    } finally {
+      await inbox.shutdown();
+      fs.rmSync(home, { recursive: true, force: true });
     }
-    await inbox.shutdown();
-    fs.rmSync(home, { recursive: true, force: true });
   });
 });
 
