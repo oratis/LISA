@@ -11,15 +11,19 @@
  * Every way an approval can end other than an explicit approve is a deny:
  * timeout, cancellation, capacity, tenant eviction, shutdown, restart.
  */
-import path from "node:path";
 import { logWarn } from "../log.js";
 import { auditQuietly, auditResolution } from "./audit.js";
 import { createGrants, revokeGrant, scopeProblem } from "./grants.js";
+import {
+  FileApprovalInboxStore,
+  type ApprovalInboxStore,
+  type PendingRecord,
+} from "./inbox-store.js";
 import { MAX_REVIEWABLE_BYTES, canonicalJson, displayPayload } from "./preview.js";
-import { newId, quarantineCorrupt, readJsonState, wardenDir, writeJsonAtomic } from "./store.js";
+import { newChallengeNonce, SignedApprovalVerifier } from "./signed-approval.js";
+import { newId } from "./store.js";
 import {
   GRANT_SCOPES,
-  isActionCategory,
   isGrantScope,
   type ActionRequest,
   type ApprovalRequestedEvent,
@@ -33,7 +37,6 @@ export const DEFAULT_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_HANDOFF_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_PENDING_PER_TENANT = 200;
 export const MAX_TENANTS = 500;
-const PENDING_VERSION = 1;
 
 export interface ApprovalOutcome {
   approved: boolean;
@@ -62,6 +65,8 @@ export interface InboxItemView {
   reason: string;
   /** Scopes this item can be approved with (empty for a handoff). */
   scopes: GrantScope[];
+  /** Single-use cryptographic challenge nonce for signed native approvals. */
+  challengeNonce?: string;
 }
 
 interface Item {
@@ -77,6 +82,8 @@ interface Item {
   scopes: GrantScope[];
   /** A "24h" approval is bound to the request's targets. */
   bindTargets: boolean;
+  /** Single-use challenge nonce for Ed25519 native approvers (memory only). */
+  challengeNonce?: string;
   /**
    * The full tool input the digest covers. IN MEMORY ONLY — never written to
    * pending.json, the audit log or an SSE event. Absent on an item restored
@@ -96,20 +103,6 @@ interface Tenant {
   touchedAt: number;
 }
 
-interface PendingRecord {
-  id: string;
-  kind: InboxItemKind;
-  createdAt: number;
-  expiresAt: number;
-  reason: string;
-  request: ActionRequest;
-}
-
-interface PendingFile {
-  version: typeof PENDING_VERSION;
-  items: PendingRecord[];
-}
-
 /** One pending item plus the whole payload its digest covers. */
 export interface InboxItemDetail {
   approval: InboxItemView;
@@ -125,7 +118,14 @@ export type ResolveError =
   | "invalid_scope"
   | "scope_not_applicable"
   | "digest_mismatch"
-  | "audit_failed";
+  | "audit_failed"
+  | "already_resolved"
+  | "signature_required"
+  | "invalid_signature"
+  | "unknown_approver"
+  | "approver_revoked"
+  | "nonce_mismatch"
+  | "signature_replayed";
 
 export type ResolveResult =
   | {
@@ -135,6 +135,7 @@ export type ResolveResult =
       scope?: GrantScope;
       grantIds?: string[];
       grantError?: string;
+      approverId?: string;
     }
   | { ok: false; error: ResolveError; message?: string };
 
@@ -145,6 +146,12 @@ export interface InboxOptions {
   maxPendingPerTenant?: number;
   maxTenants?: number;
   now?: () => number;
+  /** Pluggable durable store (default: atomic per-home FileApprovalInboxStore). */
+  store?: ApprovalInboxStore;
+  /** When true, approvals MUST carry a valid Ed25519 signature from a registered approver. */
+  requireSignedApprovals?: boolean;
+  /** Custom signed-approval verifier instance (defaults to a new SignedApprovalVerifier). */
+  signatureVerifier?: SignedApprovalVerifier;
 }
 
 export interface RequestOptions {
@@ -172,49 +179,6 @@ export interface RequestOptions {
    * is logged and changes nothing.
    */
   onQueued?: (item: InboxItemView) => void;
-}
-
-function pendingFile(home: string): string {
-  return path.join(wardenDir(home), "pending.json");
-}
-
-function parseRequest(value: unknown): ActionRequest | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const r = value as Record<string, unknown>;
-  if (typeof r.id !== "string" || typeof r.tool !== "string" || typeof r.digest !== "string") {
-    return null;
-  }
-  if (!isActionCategory(r.category) || typeof r.preview !== "string") return null;
-  if (!Array.isArray(r.targets) || !r.targets.every((t) => typeof t === "string")) return null;
-  if (!Array.isArray(r.dataClasses)) return null;
-  const origin = r.origin as Record<string, unknown> | undefined;
-  if (!origin || typeof origin !== "object" || typeof origin.kind !== "string") return null;
-  return value as ActionRequest;
-}
-
-function parsePendingFile(value: unknown): PendingFile | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const doc = value as Record<string, unknown>;
-  if (doc.version !== PENDING_VERSION || !Array.isArray(doc.items)) return null;
-  const items: PendingRecord[] = [];
-  for (const raw of doc.items) {
-    if (!raw || typeof raw !== "object") return null;
-    const r = raw as Record<string, unknown>;
-    if (typeof r.id !== "string" || (r.kind !== "approval" && r.kind !== "handoff")) return null;
-    if (typeof r.createdAt !== "number" || typeof r.expiresAt !== "number") return null;
-    if (typeof r.reason !== "string") return null;
-    const request = parseRequest(r.request);
-    if (!request) return null;
-    items.push({
-      id: r.id,
-      kind: r.kind,
-      createdAt: r.createdAt,
-      expiresAt: r.expiresAt,
-      reason: r.reason,
-      request,
-    });
-  }
-  return { version: PENDING_VERSION, items };
 }
 
 function tenantKey(uid: string | null): string {
@@ -246,6 +210,7 @@ function view(item: Item): InboxItemView {
     origin: req.origin,
     reason: item.reason,
     scopes: scopesFor(item),
+    ...(item.challengeNonce ? { challengeNonce: item.challengeNonce } : {}),
   };
 }
 
@@ -258,6 +223,9 @@ export class WardenInbox {
   private readonly maxPendingPerTenant: number;
   private readonly maxTenants: number;
   private readonly now: () => number;
+  private readonly store: ApprovalInboxStore;
+  private readonly requireSignedApprovals: boolean;
+  private readonly signatureVerifier: SignedApprovalVerifier;
   private closed = false;
 
   constructor(opts: InboxOptions = {}) {
@@ -267,6 +235,9 @@ export class WardenInbox {
     this.maxPendingPerTenant = opts.maxPendingPerTenant ?? MAX_PENDING_PER_TENANT;
     this.maxTenants = opts.maxTenants ?? MAX_TENANTS;
     this.now = opts.now ?? Date.now;
+    this.store = opts.store ?? new FileApprovalInboxStore();
+    this.requireSignedApprovals = opts.requireSignedApprovals === true;
+    this.signatureVerifier = opts.signatureVerifier ?? new SignedApprovalVerifier();
   }
 
   /**
@@ -310,6 +281,7 @@ export class WardenInbox {
       reason: opts.reason,
       scopes: opts.scopes ?? [...GRANT_SCOPES],
       bindTargets: opts.bindTargets === true,
+      challengeNonce: newChallengeNonce(),
       payload: { input: opts.payload, primaryKeys: opts.primaryKeys ?? [] },
     };
     const outcome = new Promise<ApprovalOutcome>((resolve) => {
@@ -417,7 +389,13 @@ export class WardenInbox {
   async resolve(
     uid: string | null,
     id: string,
-    answer: { approve: boolean; scope?: unknown; reason?: unknown; digest?: unknown },
+    answer: {
+      approve: boolean;
+      scope?: unknown;
+      reason?: unknown;
+      digest?: unknown;
+      signature?: unknown;
+    },
   ): Promise<ResolveResult> {
     const tenant = this.tenants.get(tenantKey(uid));
     const item = tenant?.items.get(id);
@@ -493,8 +471,73 @@ export class WardenInbox {
       };
     }
 
+    let approverId: string | undefined;
+    if (this.requireSignedApprovals && answer.signature === undefined) {
+      return {
+        ok: false,
+        error: "signature_required",
+        message: "A signed native approval is required for this request.",
+      };
+    }
+    if (answer.signature !== undefined) {
+      if (!item.challengeNonce) {
+        return {
+          ok: false,
+          error: "invalid_signature",
+          message: "This approval has no active signing challenge.",
+        };
+      }
+      const verified = await this.signatureVerifier.verify({
+        home: item.home,
+        approvalId: item.id,
+        digest: item.request.digest,
+        scope,
+        expectedNonce: item.challengeNonce,
+        expiresAt: item.expiresAt,
+        signature: answer.signature,
+        now: this.now(),
+      });
+      if (!verified.ok) {
+        return { ok: false, error: verified.error, message: verified.message };
+      }
+      approverId = verified.approverId;
+    }
+
     // Claim the item before any await so a concurrent approve/deny/expiry loses.
     if (!this.claim(item)) return { ok: false, error: "not_found" };
+
+    // Single-consumption durable claim via the pluggable inbox store.
+    let durableClaimed: boolean;
+    try {
+      durableClaimed = await this.store.claimResolution(item.home, {
+        id: item.id,
+        verdict: "approved",
+        at: this.now(),
+        ...(approverId ? { approverId } : {}),
+      });
+    } catch (err) {
+      logWarn(`[warden] approval durable claim failed: ${(err as Error).message}`);
+      await this.conclude(
+        item,
+        "denied",
+        { approved: false, reason: "The approval could not be durably claimed." },
+        { note: "durable resolution claim failed" },
+      );
+      return {
+        ok: false,
+        error: "audit_failed",
+        message: "The approval resolution could not be durably claimed.",
+      };
+    }
+    if (!durableClaimed) {
+      item.settle?.({ approved: false, reason: "This approval was already resolved." });
+      return {
+        ok: false,
+        error: "already_resolved",
+        message: "This approval was already resolved.",
+      };
+    }
+
     let grantIds: string[] | undefined;
     let grantError: string | undefined;
     if (scope !== "once") {
@@ -530,7 +573,15 @@ export class WardenInbox {
         message: "The approval could not be recorded in the audit log, so it was not applied.",
       };
     }
-    return { ok: true, id, verdict: "approved", scope: effective, grantIds, grantError };
+    return {
+      ok: true,
+      id,
+      verdict: "approved",
+      scope: effective,
+      grantIds,
+      grantError,
+      ...(approverId ? { approverId } : {}),
+    };
   }
 
   /** Deny everything pending and stop accepting requests (server shutdown). */
@@ -617,16 +668,10 @@ export class WardenInbox {
    * unexpired hand-offs are shown again.
    */
   private async recover(tenant: Tenant, uid: string | null): Promise<void> {
-    const file = pendingFile(tenant.home);
-    const read = await readJsonState(file, parsePendingFile);
-    if (read.state === "missing") return;
-    if (read.state === "corrupt") {
-      // Nothing is restored from a file that cannot be trusted.
-      await quarantineCorrupt(file, read.error);
-      return;
-    }
+    const records = await this.store.loadPending(tenant.home);
+    if (records.length === 0) return;
     const now = this.now();
-    for (const record of read.value.items) {
+    for (const record of records) {
       if (record.kind === "handoff" && record.expiresAt > now) {
         tenant.items.set(record.id, {
           id: record.id,
@@ -773,31 +818,28 @@ export class WardenInbox {
 
   /** Rewrite the durable mirror for a tenant. Failures are logged, never fatal. */
   private persist(tenant: Tenant): Promise<void> {
-    const file = pendingFile(tenant.home);
-    const previous = this.persistChains.get(file) ?? Promise.resolve();
+    const key = tenant.home;
+    const previous = this.persistChains.get(key) ?? Promise.resolve();
     const next = previous
       .catch(() => undefined)
       .then(async () => {
-        const doc: PendingFile = {
-          version: PENDING_VERSION,
-          items: [...tenant.items.values()].map((item) => ({
-            id: item.id,
-            kind: item.kind,
-            createdAt: item.createdAt,
-            expiresAt: item.expiresAt,
-            reason: item.reason,
-            request: item.request,
-          })),
-        };
+        const items: PendingRecord[] = [...tenant.items.values()].map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          createdAt: item.createdAt,
+          expiresAt: item.expiresAt,
+          reason: item.reason,
+          request: item.request,
+        }));
         try {
-          await writeJsonAtomic(file, doc);
+          await this.store.savePending(tenant.home, items);
         } catch (err) {
-          logWarn(`[warden] could not write pending.json: ${(err as Error).message}`);
+          logWarn(`[warden] could not persist pending approvals: ${(err as Error).message}`);
         }
       });
-    this.persistChains.set(file, next);
+    this.persistChains.set(key, next);
     void next.then(() => {
-      if (this.persistChains.get(file) === next) this.persistChains.delete(file);
+      if (this.persistChains.get(key) === next) this.persistChains.delete(key);
     });
     return next;
   }

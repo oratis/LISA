@@ -36,3 +36,48 @@ export { readAudit, appendAudit } from "./audit.js";
 export type { AuditEntry } from "./audit.js";
 export { isConversationTainted, markConversationTainted } from "./taint.js";
 export { wardenDir } from "./store.js";
+export { isBroadWorkspace, resolveChatWorkspaceRoot } from "./paths.js";
+export type { ChatWorkspaceResolution } from "./paths.js";
+export {
+  PERSISTENT_SELF_WRITE_TOOLS,
+  buildProvenanceReport,
+  queryProvenance,
+} from "./provenance.js";
+export type {
+  ProvenanceQuery,
+  ProvenanceRecord,
+  ProvenanceReport,
+  ProvenanceSourceRef,
+} from "./provenance.js";
+export { modelProviderFamily, runCrossFamilyReview } from "./cross-family.js";
+export type {
+  CrossFamilyDecision,
+  CrossFamilyGateOptions,
+  CrossFamilyGateResult,
+  CrossFamilyReviewer,
+  ProviderFamily,
+} from "./cross-family.js";
+export {
+  SignedApprovalVerifier,
+  approversFile,
+  canonicalApprovalChallenge,
+  loadApprovers,
+  newChallengeNonce,
+  parseApprovalSignature,
+  registerApprover,
+  revokeApprover,
+  signApprovalChallenge,
+} from "./signed-approval.js";
+export type {
+  ApprovalChallenge,
+  ApprovalSignature,
+  RegisteredApprover,
+  SignatureVerifyResult,
+} from "./signed-approval.js";
+export { FileApprovalInboxStore, MemoryApprovalInboxStore } from "./inbox-store.js";
+export type {
+  ApprovalInboxStore,
+  PendingRecord,
+  ResolutionClaim,
+  ResolutionVerdict,
+} from "./inbox-store.js";

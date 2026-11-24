@@ -11,8 +11,10 @@ import { withDream } from "../reve/record.js";
 import { takeReconsiderBlock } from "../reve/reconsider.js";
 import { kbGraphFile } from "../kb/paths.js";
 import { readTextOrEmpty } from "../fs-utils.js";
+import type { ApprovalMode } from "../approval.js";
 import type { ToolDefinition } from "../types.js";
 import type { Provider } from "../providers/types.js";
+import { WardenInbox, createWardenSession } from "../warden/index.js";
 
 function idleRunLock(): string {
   return path.join(lisaHome(), "idle.lock");
@@ -152,6 +154,11 @@ export async function runIdleOnce(opts: {
   userLanguageSample?: string;
   /** Injectable provider for deterministic tests. */
   provider?: Provider;
+  /** Optional Warden gating for idle runs (origin.kind = "autonomy", read+self only). */
+  warden?: {
+    approvalMode?: ApprovalMode;
+    inbox?: WardenInbox;
+  };
 }): Promise<IdleRunResult> {
   // Proactive-mode master switch (web/iOS "Proactive" toggle → ~/.lisa/autonomy/
   // state.json). When autonomy is off, idle reflection no-ops: Lisa only acts on
@@ -191,6 +198,10 @@ async function runIdleInner(
     signal: AbortSignal;
     model: string;
     provider?: Provider;
+    warden?: {
+      approvalMode?: ApprovalMode;
+      inbox?: WardenInbox;
+    };
   },
   idleMin: number,
   userLanguageSample?: string,
@@ -210,20 +221,39 @@ async function runIdleInner(
   // W9: the user's "please reconsider" notes, claimed into this run once.
   const reconsiderBlock = await takeReconsiderBlock();
   const maintenance = await readKbMaintenanceHints();
+  const idleTools = autonomousSubset(opts.tools);
+  const idleSandbox = sandboxModeForProfile("local-autonomy");
+  const wardenInbox =
+    opts.warden?.inbox ?? (opts.warden?.approvalMode === "warden" ? new WardenInbox() : undefined);
+  const wardenSession = wardenInbox
+    ? createWardenSession({
+        surface: "local-web",
+        uid: null,
+        origin: { kind: "autonomy", id: "idle" },
+        sandboxMode: idleSandbox,
+        workspaceRoot: opts.cwd,
+        inbox: wardenInbox,
+        tools: idleTools,
+        signal: opts.signal,
+        home: lisaHome(),
+      })
+    : undefined;
   try {
     const result = await runSubagent({
       prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.${langLine}${kbLine}${maintenance}${reconsiderBlock}`,
       systemPrompt: buildIdleSystemPrompt(),
       // Idle is fully self-driven and unattended — no shell / fs-mutation /
       // process-spawning tools by default (see AUTONOMOUS_BLOCKED_TOOL_NAMES).
-      tools: autonomousSubset(opts.tools),
+      tools: idleTools,
       cwd: opts.cwd,
       signal: opts.signal,
       model: opts.model,
       provider: opts.provider,
       // Unattended: confine to the untrusted-surface mode (defense in depth
       // atop the tool subset above). H2.
-      sandboxMode: sandboxModeForProfile("local-autonomy"),
+      sandboxMode: idleSandbox,
+      approval: wardenSession?.approval,
+      onEvent: wardenSession ? (event) => wardenSession.observe(event) : undefined,
       budgetTokens: IDLE_BUDGET_TOKENS || undefined,
       moodOrigin: "an idle turn while the user was away",
     });
