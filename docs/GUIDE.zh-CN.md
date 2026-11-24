@@ -360,7 +360,7 @@ LISA 内置一个**个人知识库**，仿照 [Andrej Karpathy 的三层 LLM wik
 - **她自己打理。** 空闲反思时她把记忆 + 日记提炼成 wiki 页面，并保持交叉引用一致 —— 就是 Karpathy 说的"你喂素材，系统自己长大"，只是这里由她自驱。
 - **Web 知识页。** 一个"知识"页，对两层都能实时搜索、浏览、阅读。
 
-v2.0 把这个"能存能搜的库"升级成**会自己长大的知识系统**（[PLAN_KNOWLEDGE_BASE_v2.0.md](PLAN_KNOWLEDGE_BASE_v2.0.md)）：
+v2.0 把这个"能存能搜的库"升级成**会自己长大的知识系统**（[PLAN_KNOWLEDGE_BASE_v2.0.md](./archive/plans/PLAN_KNOWLEDGE_BASE_v2.0.md)）：
 
 - **粘贴任意链接。** 知识页粘贴框、聊天气泡下的"存入知识库"按钮、`lisa kb add <url>`、或她自己调 `kb_ingest` —— 零依赖的正文抽取 + HTML→Markdown 管线把页面连出处 frontmatter（url · 站点 · 作者 · 发布时间）一起存下，按规范化 URL 去重，私网地址一律拒绝。站点适配器覆盖**微信公众号**（命中验证页会明确报错）、**B 站**和 **YouTube**（元数据 + 字幕，拿不到字幕自动降级为纯元数据 —— 字幕缺失从不算失败）。
 - **信息日报。** 把 RSS/Atom 源写进 `~/.lisa/kb/feeds.json`，她每天增量抓取、分类新条目、**按你来排序**（watchlist 权重 × 重要度 × 与你的 wiki 和记忆的重叠度），前 3 条全文入库，日报送进聊天 + 推送 —— 同时落进 `sources/`，可搜可蒸馏。没有 feeds 文件 = 整个能力完全惰性。

@@ -1,6 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { metricsSeries, renderMetricsTable, clampDays } from "./metrics.js";
+import {
+  metricsSeries,
+  renderMetricsTable,
+  clampDays,
+  computeReplayDriftMetrics,
+  renderReplayDriftReport,
+} from "./metrics.js";
+import { replaySessionFile } from "../sessions/replay.js";
 import { computeMetrics } from "./record.js";
 import type { DreamRecord, FileChange } from "./types.js";
 
@@ -128,5 +135,74 @@ describe("coherence metrics", () => {
     assert.equal(clampDays("abc"), 30);
     assert.equal(clampDays(9999), 365);
     assert.equal(clampDays("7"), 7);
+  });
+
+  test("computeReplayDriftMetrics analyzes v2 sessions and skips unrecorded v1 sessions", () => {
+    const v1 = replaySessionFile(
+      [
+        JSON.stringify({
+          type: "session",
+          id: "s-v1",
+          version: 1,
+          startedAt: "2026-10-01T00:00:00Z",
+          cwd: "/tmp",
+          model: "claude-sonnet-4-6",
+        }),
+        JSON.stringify({
+          type: "message",
+          ts: "2026-10-01T00:00:01Z",
+          message: { role: "assistant", content: "hi" },
+        }),
+      ].join("\n"),
+    );
+
+    const v2 = replaySessionFile(
+      [
+        JSON.stringify({
+          type: "session",
+          id: "s-v2",
+          version: 2,
+          startedAt: "2026-10-02T00:00:00Z",
+          cwd: "/tmp",
+          model: "claude-sonnet-4-6",
+        }),
+        JSON.stringify({
+          type: "prompt",
+          ts: "2026-10-02T00:00:00Z",
+          fingerprint: "fp-1",
+          reason: "initial",
+          text: "I am Lisa.\nI value honesty.",
+        }),
+        JSON.stringify({
+          type: "message",
+          ts: "2026-10-02T00:00:01Z",
+          message: { role: "assistant", content: "turn 1" },
+        }),
+        JSON.stringify({
+          type: "prompt",
+          ts: "2026-10-02T00:01:00Z",
+          fingerprint: "fp-2",
+          reason: "rebuilt",
+          text: "I am Lisa.\nI value honesty.\nI enjoy stargazing.",
+        }),
+        JSON.stringify({
+          type: "message",
+          ts: "2026-10-02T00:01:05Z",
+          message: { role: "assistant", content: "turn 2" },
+        }),
+      ].join("\n"),
+    );
+
+    const report = computeReplayDriftMetrics([v2, v1]);
+    assert.equal(report.sessionsAnalyzed, 1);
+    assert.equal(report.sessionsSkippedUnrecorded, 1);
+    assert.equal(report.totalTurns, 2);
+    assert.equal(report.promptRebuildCount, 1);
+    assert.equal(report.uniquePromptFingerprints, 2);
+    // 2 shared lines out of 3 union lines -> Jaccard distance = 1/3 ≈ 0.3333
+    assert.equal(report.meanPromptDrift, 0.3333);
+    assert.equal(report.perSession[0]?.sessionId, "s-v2");
+    assert.match(renderReplayDriftReport(report), /1 analyzed, 1 skipped pre-H3/);
+    assert.match(renderReplayDriftReport(report), /s-v2/);
   });
 });

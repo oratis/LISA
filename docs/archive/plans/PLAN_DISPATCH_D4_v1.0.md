@@ -1,6 +1,6 @@
 # PLAN · Dispatch D4 — multi-agent monitor + advisor actions
 
->展开 [PLAN_DISPATCH_v1.0.md](./PLAN_DISPATCH_v1.0.md) 的 D4。基线：main（v0.9.1+，已合入四支柱首块）。
+>展开 [PLAN_DISPATCH_v1.0.md](../../PLAN_DISPATCH_v1.0.md) 的 D4。基线：main（v0.9.1+，已合入四支柱首块）。
 > **先核查的结论(已对当前树验证)**：D4 里"advisor 建议可点"那一半 **0.9.1 已经做了**;真正没做的是 **多 agent 前端消费**。本计划据此收窄。
 
 ---

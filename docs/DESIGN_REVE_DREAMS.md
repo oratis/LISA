@@ -1,6 +1,6 @@
 # Design: auditable Dream (Reve dream records)
 
-Status: implemented in `src/reve/` (W9, part). Plan: [PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md](./PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) §W9 "可审计的 Dream". Related: [PLAN_REVE_v1.0.md](./PLAN_REVE_v1.0.md), [AUTONOMY_ROADMAP.md](./AUTONOMY_ROADMAP.md), [THREAT_MODEL.md](./THREAT_MODEL.md).
+Status: implemented in `src/reve/` (W9, part). Plan: [PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md](./PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) §W9 "可审计的 Dream". Related: [PLAN_REVE_v1.0.md](./archive/plans/PLAN_REVE_v1.0.md), [AUTONOMY_ROADMAP.md](./AUTONOMY_ROADMAP.md), [THREAT_MODEL.md](./THREAT_MODEL.md).
 
 ## What it is
 

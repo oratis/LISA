@@ -8,7 +8,7 @@ Typecheck green · full test suite green (**1018 tests**) · no breaking changes
 
 ## ✨ A gramophone in the Room (#256)
 
-Design + a 7-point pro/con debate: [`docs/PLAN_GRAMOPHONE_v1.0.md`](PLAN_GRAMOPHONE_v1.0.md).
+Design + a 7-point pro/con debate: [`docs/PLAN_GRAMOPHONE_v1.0.md`](./archive/plans/PLAN_GRAMOPHONE_v1.0.md).
 
 - **The object.** A pixel-art gramophone sits on the floor by the armchair.
   Click it and a **music player** slides up — same self-contained DOM/CSS as the

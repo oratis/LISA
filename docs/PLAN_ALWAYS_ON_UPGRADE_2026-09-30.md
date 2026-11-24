@@ -315,7 +315,7 @@
 
 **现状。**
 - Mac App 已内置后端（v0.26）。`lisa autostart install` 可以装 KeepAlive LaunchAgent，但 Mac App 不装 heartbeat。
-- iOS 只能经局域网或 Tailscale 直连 Mac，已知问题见 [PLAN_IOS_REACHABILITY_v1.0](PLAN_IOS_REACHABILITY_v1.0.md)。
+- iOS 只能经局域网或 Tailscale 直连 Mac，已知问题见 [PLAN_IOS_REACHABILITY_v1.0](./archive/plans/PLAN_IOS_REACHABILITY_v1.0.md)。
 - 推送是机器级的：ntfy 可用，APNs 要配 `LISA_APNS_*` 才生效，云端不允许推送。
 - 云版是另一个 Lisa。
 

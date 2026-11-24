@@ -13,6 +13,7 @@
  *   npx tsx scripts/replay-session.ts <session-id> --json     # full JSON to stdout
  *   npx tsx scripts/replay-session.ts <session-id> --turn 3   # one turn, verbatim
  *   npx tsx scripts/replay-session.ts --list                  # ids on disk
+ *   npx tsx scripts/replay-session.ts --metrics [--json]      # H3 offline persona drift report
  *
  * Sessions written before format version 2 have no recorded prompt; the script
  * says so explicitly rather than printing an empty persona, because "not
@@ -21,11 +22,36 @@
  * Read-only. It never writes to a session file.
  */
 import process from "node:process";
-import { replaySession } from "../src/sessions/replay.js";
+import { computeReplayDriftMetrics, renderReplayDriftReport } from "../src/reve/metrics.js";
+import { replaySession, type SessionReplay } from "../src/sessions/replay.js";
 import { listSessionsOnDisk } from "../src/sessions/list.js";
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+
+  if (argv.includes("--metrics")) {
+    const limitIdx = argv.indexOf("--limit");
+    const limit =
+      limitIdx !== -1 && argv[limitIdx + 1]
+        ? Math.max(1, Math.min(500, parseInt(argv[limitIdx + 1]!, 10) || 50))
+        : 50;
+    const sessions = (await listSessionsOnDisk()).slice(0, limit);
+    const replays: SessionReplay[] = [];
+    for (const s of sessions) {
+      try {
+        replays.push(await replaySession(s.id));
+      } catch {
+        // Skip unreadable/empty sessions rather than aborting batch analysis.
+      }
+    }
+    const report = computeReplayDriftMetrics(replays);
+    if (argv.includes("--json")) {
+      process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    } else {
+      console.log(renderReplayDriftReport(report));
+    }
+    return;
+  }
 
   if (argv.includes("--list") || argv.length === 0) {
     const sessions = await listSessionsOnDisk();
@@ -49,9 +75,7 @@ async function main(): Promise<void> {
   // `--turn` takes a value, so the token right after it is NOT the positional
   // id — otherwise `replay --turn 3 <id>` reads "3" as the id. (#357 review)
   const turnFlag = argv.indexOf("--turn");
-  const id = argv.find(
-    (a, i) => !a.startsWith("--") && (turnFlag === -1 || i !== turnFlag + 1),
-  );
+  const id = argv.find((a, i) => !a.startsWith("--") && (turnFlag === -1 || i !== turnFlag + 1));
   if (!id) throw new Error("no session id given");
   const replay = await replaySession(id);
 

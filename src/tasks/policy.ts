@@ -134,6 +134,7 @@ export const UNATTENDED_DENIED: Readonly<Record<string, string>> = Object.freeze
   // resumed run must not repeat them unseen.
   memory: "writes memory",
   set_mood: "changes the portrait",
+  room_decorate: "writes Lisa's room decor state",
   skill_manage: "writes skills (persistent prompt material)",
   soul_patch: "writes the soul",
   soul_journal: "writes the journal",

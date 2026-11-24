@@ -89,7 +89,7 @@ interface Embedder { embed(texts: string[]): Promise<number[][]>; }
 ### M4 · provider 层欠账复核
 - **abort：已修**，仅保持回归测试（三 provider passthrough 测试已在）。
 - **已核对、已修**（review 旧账已不成立）：
-  - maxIterations 静默截断 → **已修**：`agent.ts:403` 命中上限且仍想调用工具时把 stopReason 置为 `"max_iterations"` 并发 info 事件（另：本轮新增 `"budget_exceeded"`，见 [PLAN_REVE R2](./PLAN_REVE_v1.0.md)）。
+  - maxIterations 静默截断 → **已修**：`agent.ts:403` 命中上限且仍想调用工具时把 stopReason 置为 `"max_iterations"` 并发 info 事件（另：本轮新增 `"budget_exceeded"`，见 [PLAN_REVE R2](./archive/plans/PLAN_REVE_v1.0.md)）。
   - 空 content 入历史 → **已修**：`agent.ts:231` 跳过空 content 的 assistant 消息，避免下轮 Anthropic 400。
 - 仍存在的真欠账：
   - OpenAI/Gemini 路径无 compaction：要么实现简单截断压缩，要么文档明示仅 Anthropic 有。

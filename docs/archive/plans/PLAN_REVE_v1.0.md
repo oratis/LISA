@@ -1,12 +1,12 @@
 # PLAN · REVE — 自主反思与进化（v1.0）
 
-> 2026-11-07 的[记忆整理实现](REVE_MEMORY_CONSOLIDATION_2026-11-07.md)及[真实模型评测](REVE_LIVE_EVAL_2026-11-07.md)补充了纠错、来源和版本恢复的行为。
+> 2026-11-07 的[记忆整理实现](../../REVE_MEMORY_CONSOLIDATION_2026-11-07.md)及[真实模型评测](../../REVE_LIVE_EVAL_2026-11-07.md)补充了纠错、来源和版本恢复的行为。
 
-> 展开 [ROADMAP_v1.0.md §5](./ROADMAP_v1.0.md) 的 Reve 支柱。基线 v0.9.1。
+> 展开 [ROADMAP_v1.0.md §5](../../ROADMAP_v1.0.md) 的 Reve 支柱。基线 v0.9.1。
 > Reve = 现有 **Dreams** 系统的正式更名（idle 反思 + 会话末反思 + heartbeat + soul 演化）。
 > **本支柱最成熟，1.0 的工作是"硬化 / 可观测 / 有界 / 可度量"，不是加新能力**——
-> 这与 [PRODUCT_REVIEW_v0.9.md](./PRODUCT_REVIEW_v0.9.md) 的结论一致，也直接喂[论文](#7-与-roadmap--论文衔接)。
-> 上游设计见 [AUTONOMY_ROADMAP.md](./AUTONOMY_ROADMAP.md)（Phase 1–3 已落地）。
+> 这与 [PRODUCT_REVIEW_v0.9.md](../../PRODUCT_REVIEW_v0.9.md) 的结论一致，也直接喂[论文](#7-与-roadmap--论文衔接)。
+> 上游设计见 [AUTONOMY_ROADMAP.md](../../AUTONOMY_ROADMAP.md)（Phase 1–3 已落地）。
 >
 > **实现状态（branch `feat/reve-hardening`，0.10）**：
 > - **R1** reflect 质量门禁（坏 JSON 重试 + `<id>.error.json` 落盘 + underreflect 信号）✅
@@ -171,4 +171,4 @@ interface DesireEntry {
 
 ## 7. 与 roadmap / 论文衔接
 - Reve 是 0.10"先打深"的核心，**最先做**。
-- 对论文：R2 的成功度量 + R1 的反思质量 + soul git 历史 = 论文要的 **drift / long-horizon coherence 指标**；稳定性机制（`soul_object` / weekly examen / approval-gated skills）作为可开关 **ablation**。1.0 的 Reve 硬化与论文实验是同一批工作（[ROADMAP §9](./ROADMAP_v1.0.md)，[记忆: paper plan]）。
+- 对论文：R2 的成功度量 + R1 的反思质量 + soul git 历史 = 论文要的 **drift / long-horizon coherence 指标**；稳定性机制（`soul_object` / weekly examen / approval-gated skills）作为可开关 **ablation**。1.0 的 Reve 硬化与论文实验是同一批工作（[ROADMAP §9](../../ROADMAP_v1.0.md)，[记忆: paper plan]）。

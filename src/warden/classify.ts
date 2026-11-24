@@ -109,6 +109,7 @@ const SELF_TOOLS = new Set([
   "kb_ingest",
   "skill_manage",
   "set_mood",
+  "room_decorate",
   "reply_expression",
   "speak",
 ]);

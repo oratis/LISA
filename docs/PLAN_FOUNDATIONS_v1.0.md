@@ -94,10 +94,10 @@ interface ConsentState {
 ## 4. 可观测性
 
 四支柱都需要结构化日志 + "给人看"的面板，而非只有 LLM 自己读的文本 blob：
-- **Reve**：`AutonomyRun`（[PLAN_REVE R2](./PLAN_REVE_v1.0.md)）+ `lisa autonomy` 摘要。
+- **Reve**：`AutonomyRun`（[PLAN_REVE R2](./archive/plans/PLAN_REVE_v1.0.md)）+ `lisa autonomy` 摘要。
 - **Dispatch**：dispatch 账本 + DispatchEvent 流 + island 多 agent 面板。
 - **Sense**：`sense/events.jsonl` + island "正在采什么"指示。
-- **Soul**：`lisa soul summary`（[PLAN_REVE R3](./PLAN_REVE_v1.0.md)）。
+- **Soul**：`lisa soul summary`（[PLAN_REVE R3](./archive/plans/PLAN_REVE_v1.0.md)）。
 - 统一约定：结构化 JSONL 落 `~/.lisa/<domain>/*.jsonl`，有界 + 保留期；一个 `lisa status` 汇总入口。
 - 验收：
   - [ ] 每个支柱有一条 `lisa <domain>` 命令打印近期可读摘要。
@@ -113,7 +113,7 @@ interface ConsentState {
 
 ### 5.2 向后兼容
 - 现有 `~/.lisa/*`（config.env / soul / sessions / agents.json / heartbeat.json）格式不破坏；新增配置（`sense.json` / `consent.json`）独立文件，缺省即旧行为。
-- Dreams→Reve 更名平滑（旧键继续读，见 [PLAN_REVE R6](./PLAN_REVE_v1.0.md)）。
+- Dreams→Reve 更名平滑（旧键继续读，见 [PLAN_REVE R6](./archive/plans/PLAN_REVE_v1.0.md)）。
 
 ### 5.3 叙事诚实（1.0 硬指标）
 **叙事 = 代码**：第一个认真读代码的 contributor 每句都能对上。

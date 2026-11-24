@@ -128,7 +128,8 @@ export interface Capabilities {
   <br>证据：`src/sandbox/mode.ts:38` `code = "SANDBOX_UNAVAILABLE"`；测试 `mode.test.ts:108`（“a bounded mode on an unsupported platform refuses instead of degrading”）与 `:170`。
 - [x] `SessionHeader` 记录 `sandboxMode`，`version` 升到 2 且旧会话可读；
   <br>证据：`src/sessions/store.ts:51/65/72`（字段 + `version: 2`）；v1 兼容读在 `src/sessions/replay.ts:40`，由 `replay.test.ts` 的 `V1_HEADER` 覆盖。
-- [ ] `docs/FOOTPRINT.md` / README 的安全叙事同步更新（1.0 判定标准第 2 条：叙事 = 代码）。
+- [x] `docs/FOOTPRINT.md` / README 的安全叙事同步更新（1.0 判定标准第 2 条：叙事 = 代码）。
+  <br>证据：`docs/FOOTPRINT.md` 新增「Sandbox & isolation posture (H1 / H2)」一节，如实陈述三档 `sandboxMode`、fail-closed `SANDBOX_UNAVAILABLE`、fs/shell 同根约束及 `SessionHeader.sandboxMode` 会话级固定。
 
 ---
 
@@ -164,7 +165,7 @@ LISA 的会话 JSONL **已经**记录了 `tool_use` / `tool_result`（它们是 
 
 - [x] 会话 JSONL 含 `prompt` 条目，`SessionHeader.version` 同步升级（v1 → v2，旧会话仍可读）；
 - [x] 写一个离线脚本：读一条历史会话 → 重建每一轮的 `(system, messages)` 输入（`src/sessions/replay.ts` + `scripts/replay-session.ts`，随 #357 落地）；
-- [ ] 该脚本成为 Reve drift 指标与论文实验的取数入口（这是本项的真实交付物，不是日志本身）——**还没接上，是下一步**。
+- [x] 该脚本成为 Reve drift 指标与论文实验的取数入口（这是本项的真实交付物，不是日志本身）——已接通 `src/reve/metrics.ts` (`computeReplayDriftMetrics` / `renderReplayDriftReport`) 与 `scripts/replay-session.ts --metrics`。
 
 ---
 
