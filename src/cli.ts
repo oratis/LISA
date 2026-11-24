@@ -480,7 +480,7 @@ async function main(): Promise<void> {
 
   if (args.subcommand === "mcp") {
     const { runMcpCommand } = await import("./cli/mcp-serve.js");
-    process.exit(await runMcpCommand(args.subargs, { cwd }));
+    process.exit(await runMcpCommand(args.subargs, { cwd: process.cwd() }));
   }
 
   if (args.subcommand === "recipes") {

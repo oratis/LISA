@@ -22,10 +22,10 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import readline from "node:readline";
-import { kbListTool, kbReadTool, kbSearchTool } from "../kb/tool.js";
+import { kbTools } from "../kb/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
 import { lisaHome } from "../paths.js";
-import { readSoulState } from "../soul/store.js";
+import { readIdentity, readName, readPurpose, readSeed } from "../soul/store.js";
 import { createTask, listTasks } from "../tasks/store.js";
 import { parseNewTask } from "../tasks/validate.js";
 import { appendAudit } from "../warden/audit.js";
@@ -37,11 +37,7 @@ export const MCP_PROTOCOL_VERSION = "2025-03-26";
 export const MCP_HTTP_BODY_LIMIT = 256 * 1024;
 
 export type PortableMcpScope =
-  | "persona:read"
-  | "memory:read"
-  | "kb:read"
-  | "tasks:read"
-  | "tasks:write";
+  "persona:read" | "memory:read" | "kb:read" | "tasks:read" | "tasks:write";
 
 export const DEFAULT_PORTABLE_SCOPES: readonly PortableMcpScope[] = [
   "persona:read",
@@ -127,7 +123,8 @@ const TOOL_CATALOG: readonly PortableMcpToolDescriptor[] = [
   },
   {
     name: "lisa_kb_read",
-    description: "Read one page from Lisa's personal knowledge base by slug, or list pages if omitted.",
+    description:
+      "Read one page from Lisa's personal knowledge base by slug, or list pages if omitted.",
     scope: "kb:read",
     annotations: { readOnlyHint: true },
     inputSchema: {
@@ -169,7 +166,10 @@ const TOOL_CATALOG: readonly PortableMcpToolDescriptor[] = [
 export function parseScopes(raw: string | undefined): PortableMcpScope[] {
   if (!raw || !raw.trim()) return [...DEFAULT_PORTABLE_SCOPES];
   const out: PortableMcpScope[] = [];
-  for (const token of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+  for (const token of raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)) {
     if (!ALL_PORTABLE_SCOPES.has(token as PortableMcpScope)) {
       throw new Error(
         `Unknown MCP scope "${token}". Valid scopes: ${[...ALL_PORTABLE_SCOPES].join(", ")}`,
@@ -197,7 +197,9 @@ export class PortableLisaMcpServer {
 
   /** Tools visible to this server's granted scopes. */
   listTools(): Array<Omit<PortableMcpToolDescriptor, "scope">> {
-    return TOOL_CATALOG.filter((t) => this.scopes.has(t.scope)).map(({ scope: _s, ...rest }) => rest);
+    return TOOL_CATALOG.filter((t) => this.scopes.has(t.scope)).map(
+      ({ scope: _s, ...rest }) => rest,
+    );
   }
 
   /** Handle one JSON-RPC 2.0 request. Returns null for notifications (no id). */
@@ -244,7 +246,7 @@ export class PortableLisaMcpServer {
     }
 
     if (req.method === "tools/call") {
-      const params = (req.params ?? {}) as Record<string, unknown>;
+      const params = req.params ?? {};
       const name = typeof params.name === "string" ? params.name : "";
       const args =
         params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments)
@@ -313,14 +315,17 @@ export class PortableLisaMcpServer {
       let text: string;
       switch (name) {
         case "lisa_persona": {
-          const soul = await readSoulState();
+          const [seed, name, identity, purpose] = await Promise.all([
+            readSeed(),
+            readName().catch(() => "Lisa"),
+            readIdentity().catch(() => ""),
+            readPurpose().catch(() => ""),
+          ]);
           const card = {
-            name: "Lisa",
-            bornAt: soul.seed?.bornAt ?? null,
-            seed: soul.seed?.note ?? null,
-            mood: soul.mood?.current ?? "neutral",
-            identityExcerpt: soul.identity.slice(0, 1200),
-            userExcerpt: soul.user.slice(0, 800),
+            name: name || "Lisa",
+            bornAt: seed?.bornAt ?? null,
+            identityExcerpt: identity.slice(0, 1200),
+            purposeExcerpt: purpose.slice(0, 800),
           };
           text = JSON.stringify(card, null, 2);
           break;
@@ -350,17 +355,23 @@ export class PortableLisaMcpServer {
               error: { code: -32602, message: "query is required" },
             };
           }
-          text = await kbSearchTool.execute(
+          const kbSearch = kbTools.find((t) => t.name === "kb_search");
+          if (!kbSearch) throw new Error("kb_search tool unavailable");
+          const rawSearch = await kbSearch.execute(
             { query, limit: typeof args.limit === "number" ? args.limit : 10 },
             toolCtx,
           );
+          text = typeof rawSearch === "string" ? rawSearch : JSON.stringify(rawSearch);
           break;
         }
         case "lisa_kb_read": {
           const slug = typeof args.slug === "string" ? args.slug.trim() : "";
-          text = slug
-            ? await kbReadTool.execute({ slug }, toolCtx)
-            : await kbListTool.execute({}, toolCtx);
+          const tool = kbTools.find((t) => t.name === (slug ? "kb_read" : "kb_list"));
+          if (!tool) throw new Error("kb tool unavailable");
+          const rawRead = slug
+            ? await tool.execute({ slug }, toolCtx)
+            : await tool.execute({}, toolCtx);
+          text = typeof rawRead === "string" ? rawRead : JSON.stringify(rawRead);
           break;
         }
         case "lisa_task_list": {
@@ -526,78 +537,85 @@ export async function startPortableMcpHttpServer(
     );
   }
 
-  const server = http.createServer(async (req, res) => {
-    const baseHeaders = {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
-    };
-    const send = (status: number, body: unknown) => {
-      res.writeHead(status, baseHeaders);
-      res.end(JSON.stringify(body));
-    };
+  const server = http.createServer((req, res) => {
+    void (async () => {
+      const baseHeaders = {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      };
+      const send = (status: number, body: unknown) => {
+        res.writeHead(status, baseHeaders);
+        res.end(JSON.stringify(body));
+      };
 
-    if (!isLoopbackHostHeader(req.headers.host)) {
-      send(403, { error: "untrusted_host" });
-      return;
-    }
-    const crossSite = crossSiteProblem(req, true, null);
-    if (crossSite) {
-      send(403, { error: crossSite });
-      return;
-    }
-    if (!bearerMatches(req.headers.authorization, token)) {
-      res.writeHead(401, { ...baseHeaders, "www-authenticate": 'Bearer realm="lisa-mcp"' });
-      res.end(JSON.stringify({ error: "unauthorized" }));
-      return;
-    }
-
-    const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-    if (pathname !== "/mcp") {
-      send(404, { error: "not_found" });
-      return;
-    }
-    if (req.method !== "POST") {
-      send(405, { error: "method_not_allowed" });
-      return;
-    }
-    const ctype = String(req.headers["content-type"] ?? "").toLowerCase();
-    if (!ctype.startsWith("application/json")) {
-      send(415, { error: "content_type_must_be_json" });
-      return;
-    }
-
-    let raw: string;
-    try {
-      raw = await readCappedText(req, MCP_HTTP_BODY_LIMIT);
-    } catch (err) {
-      if (err instanceof BodyTooLargeError) {
-        send(413, { error: "body_too_large" });
+      if (!isLoopbackHostHeader(req.headers.host)) {
+        send(403, { error: "untrusted_host" });
         return;
       }
-      send(400, { error: "invalid_body" });
-      return;
-    }
+      const crossSite = crossSiteProblem(req, true, null);
+      if (crossSite) {
+        send(403, { error: crossSite });
+        return;
+      }
+      if (!bearerMatches(req.headers.authorization, token)) {
+        res.writeHead(401, { ...baseHeaders, "www-authenticate": 'Bearer realm="lisa-mcp"' });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      send(400, {
-        jsonrpc: "2.0",
-        id: null,
-        error: { code: -32700, message: "Parse error" },
-      });
-      return;
-    }
+      const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+      if (pathname !== "/mcp") {
+        send(404, { error: "not_found" });
+        return;
+      }
+      if (req.method !== "POST") {
+        send(405, { error: "method_not_allowed" });
+        return;
+      }
+      const ctype = String(req.headers["content-type"] ?? "").toLowerCase();
+      if (!ctype.startsWith("application/json")) {
+        send(415, { error: "content_type_must_be_json" });
+        return;
+      }
 
-    const reply = await mcp.handleMessage(parsed);
-    if (!reply) {
-      res.writeHead(202, { "cache-control": "no-store", "x-content-type-options": "nosniff" });
-      res.end();
-      return;
-    }
-    send(200, reply);
+      let raw: string;
+      try {
+        raw = await readCappedText(req, MCP_HTTP_BODY_LIMIT);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          send(413, { error: "body_too_large" });
+          return;
+        }
+        send(400, { error: "invalid_body" });
+        return;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        send(400, {
+          jsonrpc: "2.0",
+          id: null,
+          error: { code: -32700, message: "Parse error" },
+        });
+        return;
+      }
+
+      const reply = await mcp.handleMessage(parsed);
+      if (!reply) {
+        res.writeHead(202, { "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        res.end();
+        return;
+      }
+      send(200, reply);
+    })().catch(() => {
+      if (!res.headersSent) {
+        res.writeHead(500, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ error: "internal_error" }));
+      }
+    });
   });
 
   await new Promise<void>((resolve, reject) => {

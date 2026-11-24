@@ -29,9 +29,10 @@ export function recipesDir(home: string = lisaHome()): string {
 function stableSortValue(val: unknown): unknown {
   if (Array.isArray(val)) return val.map(stableSortValue);
   if (val && typeof val === "object") {
+    const record = val as Record<string, unknown>;
     const out: Record<string, unknown> = {};
-    for (const k of Object.keys(val as Record<string, unknown>).sort()) {
-      const v = (val as Record<string, unknown>)[k];
+    for (const k of Object.keys(record).sort()) {
+      const v = record[k];
       if (v !== undefined) out[k] = stableSortValue(v);
     }
     return out;
@@ -63,9 +64,11 @@ export function signRecipe(
 }
 
 /** Verify an optional Ed25519 recipe signature. */
-export function verifyRecipeSignature(
-  recipe: Recipe,
-): { present: boolean; valid: boolean; reason?: string } {
+export function verifyRecipeSignature(recipe: Recipe): {
+  present: boolean;
+  valid: boolean;
+  reason?: string;
+} {
   if (!recipe.signature) return { present: false, valid: false };
   const s = recipe.signature;
   if (s.algorithm !== "ed25519" || !s.publicKeyPem || !s.signature) {
@@ -103,8 +106,7 @@ function containsSecretOrPrivateMemory(raw: unknown): string | null {
 }
 
 export type RecipeValidationResult =
-  | { ok: true; recipe: Recipe; verified: boolean }
-  | { ok: false; error: string };
+  { ok: true; recipe: Recipe; verified: boolean } | { ok: false; error: string };
 
 export function validateRecipe(raw: unknown): RecipeValidationResult {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -199,7 +201,10 @@ export function validateRecipe(raw: unknown): RecipeValidationResult {
 
   const sigCheck = verifyRecipeSignature(recipe);
   if (sigCheck.present && !sigCheck.valid) {
-    return { ok: false, error: `Invalid recipe signature: ${sigCheck.reason ?? "verification failed"}` };
+    return {
+      ok: false,
+      error: `Invalid recipe signature: ${sigCheck.reason ?? "verification failed"}`,
+    };
   }
 
   return { ok: true, recipe, verified: sigCheck.present && sigCheck.valid };

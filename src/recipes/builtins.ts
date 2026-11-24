@@ -67,7 +67,8 @@ export const BUILTIN_RECIPES: readonly Recipe[] = [
     permissions: {
       tools: ["repo_digest", "review_diff"],
       categories: ["read"],
-      summary: "Reads local repository git metadata and diffs; performs no git writes or network calls.",
+      summary:
+        "Reads local repository git metadata and diffs; performs no git writes or network calls.",
     },
     task: {
       kind: "routine",
@@ -89,7 +90,8 @@ export const BUILTIN_RECIPES: readonly Recipe[] = [
     permissions: {
       tools: ["kb_list", "kb_read", "kb_write"],
       categories: ["read", "self"],
-      summary: "Reads captured KB sources and writes distilled wiki summaries inside your local KB.",
+      summary:
+        "Reads captured KB sources and writes distilled wiki summaries inside your local KB.",
     },
     task: {
       kind: "goal",

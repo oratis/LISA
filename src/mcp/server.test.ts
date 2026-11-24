@@ -20,7 +20,10 @@ describe("PortableLisaMcpServer (stdio + Streamable HTTP)", () => {
   test("stdio transport handles initialize, tools/list, scope gating, disabled-draft task creation, and Warden audit", async () => {
     const home = path.join(TMP, "home-stdio");
     fs.mkdirSync(path.join(home, "soul"), { recursive: true });
-    fs.writeFileSync(path.join(home, "soul", "IDENTITY.md"), "I am Lisa. sk-ant-secret12345678901234567890");
+    fs.writeFileSync(
+      path.join(home, "soul", "IDENTITY.md"),
+      "I am Lisa. sk-ant-secret12345678901234567890",
+    );
 
     await homeScope.run(home, async () => {
       const server = new PortableLisaMcpServer({
