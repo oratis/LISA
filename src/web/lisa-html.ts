@@ -190,6 +190,8 @@ ${opts.connectorCatalog ? CONNECTOR_MARKS : ""}
       <button class="nav-item" type="button" data-view="settings"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="nav-label">Settings</span></button>
     </nav>
 
+    <button class="sb-improve-btn" id="sbImproveBtn" type="button" title="Improve LISA (personal capabilities &amp; safe rollback)">✦ Improve LISA</button>
+
     <!-- (currently wanting / agents / mail / reflection → right panel) -->
     <!-- (SOUL/SKILLS/TOOLS/PLANS → top function bar; MEMORY → rail view) -->
     <!-- (Proactive / Compact toggles moved into the Settings rail view) -->
@@ -313,6 +315,7 @@ ${opts.connectorCatalog ? CONNECTOR_MARKS : ""}
     <section class="view" id="viewMail"></section>
     <section class="view" id="viewTasks"></section>
     <section class="view" id="viewSettings"></section>
+    <section class="view" id="viewImprove"></section>
   </div>
 
   <nav class="mobile-only mobile-tabs" id="mobileTabs" aria-label="Main navigation">

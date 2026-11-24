@@ -106,6 +106,10 @@ export interface Skill {
 export interface SessionHeader {
   /** Older logs have no author scope. Only explicit owner sessions share reflection evidence. */
   origin?: "owner" | "channel";
+  /** Session purpose: regular chat (default) vs dedicated Improve LISA session. */
+  kind?: "chat" | "improvement";
+  /** For improvement sessions, the originating chat session id (if triggered from one). */
+  originSessionId?: string;
   type: "session";
   id: string;
   /**

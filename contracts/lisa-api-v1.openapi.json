@@ -5702,6 +5702,140 @@
           }
         }
       }
+    },
+    "/api/improve": {
+      "get": {
+        "operationId": "listImprovements",
+        "summary": "List personal improvement records and currently active capabilities",
+        "responses": {
+          "200": {
+            "description": "Profile version, improvement records, and active capabilities.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["profileVersion", "items", "activeCapabilities"],
+                  "properties": {
+                    "profileVersion": { "type": "integer" },
+                    "items": { "type": "array", "items": { "type": "object" } },
+                    "activeCapabilities": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Cross-site request refused." }
+        }
+      },
+      "post": {
+        "operationId": "createImprovement",
+        "summary": "Create a new improvement draft and dedicated improvement session",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title", "goal"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "goal": { "type": "string" },
+                  "kind": { "type": "string", "enum": ["skill", "preference", "workflow"] },
+                  "packageId": { "type": "string" },
+                  "originSessionId": { "type": "string" },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["path", "content"],
+                      "properties": {
+                        "path": { "type": "string" },
+                        "content": { "type": "string" }
+                      }
+                    }
+                  },
+                  "requiredCapabilities": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created improvement record and improvement session id." },
+          "400": { "description": "Invalid improvement payload." },
+          "403": { "description": "Trusted local owner required or cross-site request refused." }
+        }
+      }
+    },
+    "/api/improve/{id}": {
+      "get": {
+        "operationId": "getImprovement",
+        "summary": "Fetch one improvement record by id",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Improvement record." },
+          "404": { "description": "Not found." }
+        }
+      }
+    },
+    "/api/improve/{id}/preview": {
+      "post": {
+        "operationId": "previewImprovement",
+        "summary": "Validate an improvement ChangeSet and compute its content digest",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Preview result with acceptance cases and digest." },
+          "400": { "description": "Preview validation failed." },
+          "403": { "description": "Trusted local owner required." }
+        }
+      }
+    },
+    "/api/improve/{id}/apply": {
+      "post": {
+        "operationId": "applyImprovement",
+        "summary": "Atomically apply a previewed personal capability ChangeSet (digest-bound + CAS)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Applied capability version and updated record." },
+          "400": { "description": "ChangeSet is not preview_ready." },
+          "403": { "description": "Trusted local owner required." },
+          "404": { "description": "Improvement not found." },
+          "409": { "description": "Digest mismatch or baseProfileVersion CAS conflict." }
+        }
+      }
+    },
+    "/api/improve/{id}/rollback": {
+      "post": {
+        "operationId": "rollbackImprovement",
+        "summary": "Roll back an applied capability without modifying sessions or memory",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Rolled back improvement record." },
+          "403": { "description": "Trusted local owner required." }
+        }
+      }
+    },
+    "/api/improve/{id}/export": {
+      "post": {
+        "operationId": "exportImprovementContribution",
+        "summary": "Export a de-privatized community package and guided Draft PR metadata",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Contribution export metadata and compare URL." },
+          "400": { "description": "Export rejected (for example secret or personal path detected)." },
+          "403": { "description": "Trusted local owner required." }
+        }
+      }
     }
   },
   "components": {
