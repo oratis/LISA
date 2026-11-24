@@ -13,7 +13,7 @@
 
 **开源 AI Personal Assistant（个人 AI 助手），帮助你规划、写作和整理个人知识。** 用 Lisa 规划一天、起草消息、整理个人知识库，或在 Mac 上协调编程 agent。可以使用托管的 LISA Cloud 聊天，也可以自行运行、选择模型。
 
-[官网](https://meetlisa.ai) · [使用指南](docs/GUIDE.zh-CN.md) · [0.33.0 更新内容](docs/RELEASE_v0.33.0.md) · [最新版本](https://github.com/oratis/LISA/releases/latest) · [路线图](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
+[官网](https://meetlisa.ai) · [使用指南](docs/GUIDE.zh-CN.md) · [0.34.0 更新内容](docs/RELEASE_v0.34.0.md) · [最新版本](https://github.com/oratis/LISA/releases/latest) · [路线图](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=QggT1pvKpBU"><img src="assets/demo-thumbnail.png" alt="在 YouTube 观看 LISA 0.32 影片" width="860"></a><br>
@@ -88,11 +88,11 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 
 ## 开发状态
 
-**v0.33.0** 新增本机游戏清单导入与新版应用连接器目录。联网游戏服务默认关闭。详见[发布说明](docs/RELEASE_v0.33.0.md)及[更新日志](CHANGELOG.md)。
+**v0.34.0** 新增 Web 与 iOS Tasks 视图及隔离产物预览、Warden 全链路加固与 Ed25519 签名审批/溯源、Portable LISA MCP 服务与 Recipe Gallery、Improve LISA M0/M1 个人能力与安全回滚、Cursor/Gemini CLI 调度、Mac 独立 Room 窗口与房间自主布置，以及零外发本地遥测账本。详见[发布说明](docs/RELEASE_v0.34.0.md)及[更新日志](CHANGELOG.md)。
 
 | 方向 | 当前状态 |
 | --- | --- |
-| Mac app、CLI 与自托管 Web | 0.33.0 新增游戏清单与连接器目录 |
+| Mac app、CLI 与自托管 Web | 0.34.0 新增 Tasks UI、Portable MCP、Recipe Gallery、Improve LISA M0/M1、Warden 加固、Mac 云工作区与独立 Room 窗口 |
 | Fleet：时间线、每轮 diff、交接、文件恢复、确认合并、清理与配额 | 已随 Mac/CLI 0.32.0 发布。使用真实 Claude 供应商的第二台 Mac 验收已通过；新建文件 Write 与远程 Codex 实测不在该验收范围内。在 Pocket 查看被分享的任务需要包含该功能的 Pocket 版本 |
 | Mac 连接与账号会话 | 已实现局域网/中继恢复、会话续期和撤销；真机 iPhone 网络切换验收仍待完成 |
 | Lisa Pocket（iOS） | **1.4 已在美区 App Store 上架**（2026 年 11 月 15 日发布），包含 Room 与 iPad 更新。增加多 Mac 切换和任务审批的完整扩展构建仍在内部 TestFlight |

@@ -13,7 +13,7 @@
 
 **An open-source AI Personal Assistant for planning, writing and personal knowledge.** Plan a day, draft a message, build a personal knowledge base, or coordinate coding agents from your Mac. Use LISA Cloud for hosted chat, or run your own instance with your choice of model.
 
-[Website](https://meetlisa.ai) · [Guide](docs/GUIDE.md) · [What's new in 0.33.0](docs/RELEASE_v0.33.0.md) · [Latest release](https://github.com/oratis/LISA/releases/latest) · [Roadmap](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
+[Website](https://meetlisa.ai) · [Guide](docs/GUIDE.md) · [What's new in 0.34.0](docs/RELEASE_v0.34.0.md) · [Latest release](https://github.com/oratis/LISA/releases/latest) · [Roadmap](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=QggT1pvKpBU"><img src="assets/demo-thumbnail.png" alt="Watch the LISA 0.32 film on YouTube" width="860"></a><br>
@@ -88,11 +88,11 @@ The **reach-out gate** applies source controls, quiet hours, deduplication and b
 
 ## Development status
 
-**v0.33.0** adds game library imports, online game services that are off by default and a refreshed app connector directory. See the [release notes](docs/RELEASE_v0.33.0.md) and [changelog](CHANGELOG.md).
+**v0.34.0** adds Web and iOS Tasks views with contained artifact previews, hardened Warden with Ed25519 challenge-bound approvals and provenance tracking, Portable LISA MCP server and Recipe Gallery, Improve LISA M0/M1 personal capabilities, Cursor and Gemini CLI dispatch, a dedicated Mac Room window, and a zero-egress local telemetry ledger. See the [release notes](docs/RELEASE_v0.34.0.md) and [changelog](CHANGELOG.md).
 
 | Area | Status |
 | --- | --- |
-| Mac app, CLI and self-hosted web | 0.33.0 adds game library and connector updates |
+| Mac app, CLI and self-hosted web | 0.34.0 adds Tasks UI, Portable MCP, Recipe Gallery, Improve LISA M0/M1, Warden hardening, Mac Cloud workspace, and Room window |
 | Fleet: timelines, per-turn diffs, handoffs, file restore, confirmed merge, cleanup and quotas | Shipped in Mac/CLI 0.32.0. A second-Mac acceptance run with a live Claude provider passed; new-file Write and live remote Codex were not part of it. Viewing shared tasks in Pocket needs a Pocket build that includes it |
 | Mac connections and account sessions | LAN/relay recovery, session renewal and revocation are implemented. Network-switch acceptance on a physical iPhone is still pending |
 | Lisa Pocket (iOS) | **1.4 is live** on the US App Store, released November 15, 2026, with the Room and iPad refresh. The complete-extension build, which adds multi-Mac switching and task approvals, remains in internal TestFlight |
