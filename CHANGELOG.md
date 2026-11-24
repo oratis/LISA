@@ -7,6 +7,20 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.34.0] — 2026-11-24
+
+Lisa 0.34.0 lands the full post-0.33 product, security, and platform alignment wave across the Mac app, CLI, self-hosted web shell, and Lisa Pocket (iOS). It adds a dedicated Web and iOS Tasks view with workspace-contained artifact previews, hardens Warden across chat, channels, and autonomous runs with Ed25519 challenge-bound approvals and provenance tracking, introduces the Portable LISA MCP server and Recipe Gallery, launches Improve LISA M0/M1 personal capabilities with safe rollback, expands dispatch to Cursor and Gemini CLI, adds a dedicated Mac Room window and sovereign room decoration, and introduces a zero-egress local telemetry ledger.
+
+- Tasks UI, client capabilities, and contained artifact preview
+- Hardened Warden, provenance, and composer controls
+- Portable LISA MCP server and Recipe Gallery
+- Improve LISA M0/M1 (personal capabilities & safe rollback)
+- Multi-agent dispatch, provider compaction, Sense, and Telemetry
+- Mac, Web, Room, Harness, and Console polish
+- Follow-up verification
+
+[Release notes](docs/RELEASE_v0.34.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.34.0)
+
 ## [0.33.0] — 2026-11-22
 
 Lisa 0.33.0 adds local game library imports and product icons across the connector directory, chat picker and permission cards. Online game connectors are off by default. Dashboard cards show setup requirements and the current grant. The directory works at phone widths and supports keyboard navigation. The iOS Room and native Mac account and device windows also have updated layouts. Pocket changes follow its separate native release channel.

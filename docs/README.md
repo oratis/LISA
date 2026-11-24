@@ -120,6 +120,8 @@ several are cited by name from source comments.
 
 ## Releases
 
+- [v0.34.0 — Always-on Tasks, Hardened Warden, Portable MCP, and Improve LISA](./RELEASE_v0.34.0.md)
+- [v0.33.0 — Game libraries and app connectors](./RELEASE_v0.33.0.md)
 - [v0.32.0 — Follow the work, review each turn](./RELEASE_v0.32.0.md) · [release checklist](./RELEASE_CHECKLIST_v0.32.0.md)
 - [v0.31.0 — Your other Macs, more of your apps](./RELEASE_v0.31.0.md)
 - [v0.30.3 — A clearer account and Pocket experience](./RELEASE_v0.30.3.md)
