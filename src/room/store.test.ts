@@ -28,7 +28,13 @@ describe("room decor store and tool (Phase 4)", () => {
       await setRoomTheme("stargazer", homeA);
       await setRoomLighting("warm", homeA);
       const { item } = await placeRoomItem(
-        { id: "brass-lamp", slot: "desk", label: "Brass desk lamp", emoji: "🪔", note: "Late-night reading" },
+        {
+          id: "brass-lamp",
+          slot: "desk",
+          label: "Brass desk lamp",
+          emoji: "🪔",
+          note: "Late-night reading",
+        },
         homeA,
       );
       assert.equal(item.id, "brass-lamp");
@@ -39,10 +45,7 @@ describe("room decor store and tool (Phase 4)", () => {
       assert.equal(stateB.items.length, 0);
 
       // Update in place preserves item count.
-      await placeRoomItem(
-        { id: "brass-lamp", slot: "window", label: "Warm window lamp" },
-        homeA,
-      );
+      await placeRoomItem({ id: "brass-lamp", slot: "window", label: "Warm window lamp" }, homeA);
       const afterUpdate = await readRoomDecor(homeA);
       assert.equal(afterUpdate.theme, "stargazer");
       assert.equal(afterUpdate.lighting, "warm");

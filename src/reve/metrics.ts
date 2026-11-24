@@ -163,8 +163,10 @@ function jaccardDistance(a: string, b: string): number {
  * counted in `sessionsSkippedUnrecorded` rather than treated as empty personas.
  */
 export function computeReplayDriftMetrics(replays: readonly SessionReplay[]): ReplayDriftReport {
-  const sorted = [...replays].sort((a, b) =>
-    a.header.startedAt.localeCompare(b.header.startedAt) || a.header.id.localeCompare(b.header.id),
+  const sorted = [...replays].sort(
+    (a, b) =>
+      a.header.startedAt.localeCompare(b.header.startedAt) ||
+      a.header.id.localeCompare(b.header.id),
   );
 
   let sessionsAnalyzed = 0;

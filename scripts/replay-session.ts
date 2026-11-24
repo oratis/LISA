@@ -75,9 +75,7 @@ async function main(): Promise<void> {
   // `--turn` takes a value, so the token right after it is NOT the positional
   // id — otherwise `replay --turn 3 <id>` reads "3" as the id. (#357 review)
   const turnFlag = argv.indexOf("--turn");
-  const id = argv.find(
-    (a, i) => !a.startsWith("--") && (turnFlag === -1 || i !== turnFlag + 1),
-  );
+  const id = argv.find((a, i) => !a.startsWith("--") && (turnFlag === -1 || i !== turnFlag + 1));
   if (!id) throw new Error("no session id given");
   const replay = await replaySession(id);
 

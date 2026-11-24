@@ -20,7 +20,7 @@ import {
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { createReadStream, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import crypto from "node:crypto";
 import { RelayBroker } from "../remote/broker.js";
 import { RemoteHost } from "../remote/host.js";

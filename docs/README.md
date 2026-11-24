@@ -55,10 +55,7 @@ Open work. Each plan carries its own status line — trust that over this table.
 | [PLAN_SENSE_SOCIAL_CONNECTORS_v1.0.md](./PLAN_SENSE_SOCIAL_CONNECTORS_v1.0.md) | Conversational social publishing through connected accounts. |
 | [PLAN_DISPATCH_v1.0.md](./PLAN_DISPATCH_v1.0.md) | The unified command layer over local CLI agents + TakoAPI. |
 | [Remote Mac agent design](./PLAN_REMOTE_MAC_AGENTS_2026-11-08.md) | Three-Mac design, first implementation, setup and validation of Claude Code approvals and reconnects. Physical-host acceptance remains open. |
-| [PLAN_DISPATCH_D2B_v1.0.md](./archive/plans/PLAN_DISPATCH_D2B_v1.0.md) | D2b — an A2A adapter putting remote agents in the hub. |
-| [PLAN_DISPATCH_D4_v1.0.md](./archive/plans/PLAN_DISPATCH_D4_v1.0.md) | D4 — the multi-agent monitor and advisor actions. |
 | [PLAN_OBSERVER_DEEPENING_v1.0.md](./PLAN_OBSERVER_DEEPENING_v1.0.md) | Tier-2 fidelity for the codex / opencode / aider observers. |
-| [PLAN_REVE_v1.0.md](./archive/plans/PLAN_REVE_v1.0.md) | Hardening autonomous reflection: quality gates, budgets, observability. |
 | [PLAN_MODEL_v1.0.md](./PLAN_MODEL_v1.0.md) | From "bring your own endpoint" to real local deployment. |
 | [PLAN_FOUNDATIONS_v1.0.md](./PLAN_FOUNDATIONS_v1.0.md) | The cross-cutting floor the other three stand on: consent, security, tests. |
 
@@ -77,22 +74,16 @@ Open work. Each plan carries its own status line — trust that over this table.
 |---|---|
 | [PLAN_HARNESS_ALIGNMENT_v1.0.md](./PLAN_HARNESS_ALIGNMENT_v1.0.md) | Aligning with the DeepSeek harness: capability seam, sandbox modes, prompt in the session log. |
 | [T3 Code agent workflow proposal](./PLAN_T3_CODE_AGENT_WORKFLOWS_2026-11-11.md) | Three implemented Fleet phases: timelines, scoped Pocket viewing, per-turn diffs and agent handoffs; optional follow-up proposals remain separate. See the [user guide](FLEET.md). |
-| [PLAN_KNOWLEDGE_BASE_v2.0.md](./archive/plans/PLAN_KNOWLEDGE_BASE_v2.0.md) | Knowledge base v2: URL ingest, the daily brief, the link graph. |
-| [PLAN_DESIRE_EVOLUTION_v1.0.md](./archive/plans/PLAN_DESIRE_EVOLUTION_v1.0.md) | Why her wishes didn't change with a conversation, and how to fix it without breaking sovereignty. |
 | [PLAN_MAIL_v1.0.md](./PLAN_MAIL_v1.0.md) | The read-only mailbox and its daily digest. |
-| [PLAN_MODEL_TUNING_v1.0.md](./archive/plans/PLAN_MODEL_TUNING_v1.0.md) | Per-model knobs worth keeping for the Anthropic provider. |
 
 **Clients and surfaces**
 
 | Plan | Scope |
 |---|---|
 | [IOS_COMPANION_PLAN.md](./IOS_COMPANION_PLAN.md) | The Lisa Pocket design. |
-| [PLAN_IOS_ONBOARDING_v1.0.md](./archive/plans/PLAN_IOS_ONBOARDING_v1.0.md) | First launch and pairing on iOS. |
-| [PLAN_IOS_REACHABILITY_v1.0.md](./archive/plans/PLAN_IOS_REACHABILITY_v1.0.md) | "Always reach Lisa" — R1–R4 landed, R5 waits on cloud accounts. |
 | [PLAN_MAC_APP_STORE_v1.0.md](./PLAN_MAC_APP_STORE_v1.0.md) | Whether Lisa.app can ship on the Mac App Store (verdict: only the thin client). |
 | [MAC_ISLAND_PLAN.md](./MAC_ISLAND_PLAN.md) | The menu-bar island. |
-| [PLAN_ROOM_v1.0.md](./PLAN_ROOM_v1.0.md) | The room she lives in — research and design. Phase 1 landed; v2.0 is archived. |
-| [PLAN_GRAMOPHONE_v1.0.md](./archive/plans/PLAN_GRAMOPHONE_v1.0.md) | Opt-in ambient music in the room. |
+| [PLAN_ROOM_v1.0.md](./PLAN_ROOM_v1.0.md) | The room she lives in — research and design (Phases 1–4 landed; v2.0 is archived). |
 | [PLAN_WEBSITE_REBUILD_v1.0.md](./PLAN_WEBSITE_REBUILD_v1.0.md) | Rebuilding meetlisa.ai in the Hakko design language. |
 
 **Older plans, kept for their reasoning**
@@ -112,7 +103,16 @@ several are cited by name from source comments.
 |---|---|
 | [PLAN_AUTH_OTP_GOOGLE_v1.0.md](./archive/plans/PLAN_AUTH_OTP_GOOGLE_v1.0.md) | Email-OTP + Google Sign-In (status: IMPLEMENTED, 2026-07-24). |
 | [PLAN_KNOWLEDGE_BASE_v1.0.md](./archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) | The 3-layer personal knowledge base (PRs #235–#242). |
+| [PLAN_KNOWLEDGE_BASE_v2.0.md](./archive/plans/PLAN_KNOWLEDGE_BASE_v2.0.md) | Knowledge base v2: URL ingest, the daily brief, the link graph. |
 | [HANDOFF_KNOWLEDGE_BASE_v2.0.md](./archive/plans/HANDOFF_KNOWLEDGE_BASE_v2.0.md) | The K-series handoff; the work landed in v0.21.0. |
+| [PLAN_REVE_v1.0.md](./archive/plans/PLAN_REVE_v1.0.md) | Hardening autonomous reflection: quality gates, budgets, observability. |
+| [PLAN_DISPATCH_D2B_v1.0.md](./archive/plans/PLAN_DISPATCH_D2B_v1.0.md) | D2b — A2A adapter putting remote agents in the hub. |
+| [PLAN_DISPATCH_D4_v1.0.md](./archive/plans/PLAN_DISPATCH_D4_v1.0.md) | D4 — multi-agent monitor and advisor actions. |
+| [PLAN_DESIRE_EVOLUTION_v1.0.md](./archive/plans/PLAN_DESIRE_EVOLUTION_v1.0.md) | Desire evolution while preserving sovereignty. |
+| [PLAN_MODEL_TUNING_v1.0.md](./archive/plans/PLAN_MODEL_TUNING_v1.0.md) | Per-model knobs for the Anthropic provider. |
+| [PLAN_IOS_ONBOARDING_v1.0.md](./archive/plans/PLAN_IOS_ONBOARDING_v1.0.md) | First launch and pairing on iOS. |
+| [PLAN_IOS_REACHABILITY_v1.0.md](./archive/plans/PLAN_IOS_REACHABILITY_v1.0.md) | "Always reach Lisa" — R1–R5 reachability and cloud relay. |
+| [PLAN_GRAMOPHONE_v1.0.md](./archive/plans/PLAN_GRAMOPHONE_v1.0.md) | Opt-in ambient music in the room. |
 | [PLAN_UI_SESSION_SHELL_v1.0.md](./archive/plans/PLAN_UI_SESSION_SHELL_v1.0.md) | The three-column session shell, phases 1–3 (PRs #343–#345). |
 | [PLAN_UI_SESSION_SHELL_v1.1.md](./archive/plans/PLAN_UI_SESSION_SHELL_v1.1.md) | Its follow-up wave F1–F7 (PRs #346–#350). |
 | [PLAN_ROOM_v2.0.md](./archive/plans/PLAN_ROOM_v2.0.md) | The room's life system, phases A–E (PRs #221, #222 + 换景). |

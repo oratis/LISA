@@ -22,11 +22,11 @@ import {
   type RoomTheme,
 } from "../room/store.js";
 
-export const roomDecorateTool: ToolDefinition = {
+export const roomDecorateTool: ToolDefinition<Record<string, unknown>> = {
   name: "room_decorate",
   description:
     "View or customize Lisa's own room decor (<lisaHome>/soul/room.json): choose a room theme, adjust ambient lighting, or place/remove personal props (max 12).",
-  input_schema: {
+  inputSchema: {
     type: "object",
     properties: {
       action: {
@@ -46,7 +46,8 @@ export const roomDecorateTool: ToolDefinition = {
       },
       id: {
         type: "string",
-        description: "Optional item id for place_item (update in place) or required for remove_item.",
+        description:
+          "Optional item id for place_item (update in place) or required for remove_item.",
       },
       slot: {
         type: "string",
@@ -55,7 +56,8 @@ export const roomDecorateTool: ToolDefinition = {
       },
       label: {
         type: "string",
-        description: "Short display label for the item (required for action=place_item, max 64 chars).",
+        description:
+          "Short display label for the item (required for action=place_item, max 64 chars).",
       },
       emoji: {
         type: "string",

@@ -5836,6 +5836,32 @@
           "403": { "description": "Trusted local owner required." }
         }
       }
+    },
+    "/api/room/decor": {
+      "get": {
+        "operationId": "getRoomDecor",
+        "summary": "Read Lisa's sovereign room decoration state (<lisaHome>/soul/room.json)",
+        "responses": {
+          "200": {
+            "description": "Current room theme, lighting, and placed props.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["version", "theme", "lighting", "items", "updatedAt"],
+                  "properties": {
+                    "version": { "type": "integer" },
+                    "theme": { "type": "string" },
+                    "lighting": { "type": "string" },
+                    "items": { "type": "array", "items": { "type": "object" } },
+                    "updatedAt": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
