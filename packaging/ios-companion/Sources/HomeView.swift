@@ -35,6 +35,20 @@ struct HomeView: View {
                     ScrollView {
                         VStack(spacing: Theme.Space.m) {
                             moodHero
+                            NavigationLink { TasksView() } label: {
+                                HStack(spacing: Theme.Space.m) {
+                                    Image(systemName: "checklist").font(.title3).foregroundStyle(Theme.accent)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Tasks & deliverables").font(.headline).foregroundStyle(Theme.text)
+                                        Text("Schedules, goals, run history and artifacts")
+                                            .font(.caption).foregroundStyle(Theme.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right").foregroundStyle(Theme.tertiary)
+                                }
+                                .consoleCard()
+                            }
+                            .buttonStyle(.plain)
                             if app.connectionMode == .mac {
                                 operationLinks
                                 if app.proactiveAvailable { ProactiveBanner() }

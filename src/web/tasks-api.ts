@@ -18,6 +18,11 @@
  */
 import type http from "node:http";
 import {
+  publicArtifactsForRun,
+  resolveTaskArtifact,
+  type PublicTaskArtifact,
+} from "../tasks/artifacts.js";
+import {
   confirmationKey,
   confirmationView,
   confirmTask,
@@ -73,12 +78,17 @@ export interface TasksApiOptions {
  * RESULTS of side-effecting calls — internal state, and potentially sensitive —
  * so only its size leaves the process.
  */
-export function publicRun(
-  run: TaskRun,
-): Omit<TaskRun, "executedDigests" | "effects"> & { sideEffects: number } {
-  const { executedDigests, effects, ...rest } = run;
+export function publicRun(run: TaskRun): Omit<
+  TaskRun,
+  "executedDigests" | "effects" | "artifacts"
+> & {
+  sideEffects: number;
+  artifacts?: PublicTaskArtifact[];
+} {
+  const { executedDigests, effects, artifacts, ...rest } = run;
   return {
     ...rest,
+    ...(artifacts ? { artifacts: publicArtifactsForRun(run) } : {}),
     sideEffects: effects ? effects.length : Object.keys(executedDigests ?? {}).length,
   };
 }
@@ -106,7 +116,8 @@ export async function handleTasksApi(
   rawUrl: string,
   opts: TasksApiOptions,
 ): Promise<boolean> {
-  const pathname = new URL(rawUrl, "http://127.0.0.1").pathname;
+  const parsedUrl = new URL(rawUrl, "http://127.0.0.1");
+  const pathname = parsedUrl.pathname;
   if (pathname !== "/api/tasks" && !pathname.startsWith("/api/tasks/")) return false;
 
   if (opts.cloud && !(opts.cloudEnabled ?? cloudTasksEnabled())) {
@@ -137,7 +148,7 @@ export async function handleTasksApi(
     }
   }
   const parts = pathname.split("/").slice(3); // after /api/tasks
-  const [id, sub, runId, extra] = parts;
+  const [id, sub, runId, sub2, artifactId, extra] = parts;
 
   try {
     // ── collection ──
@@ -342,6 +353,41 @@ export async function handleTasksApi(
       // Only runs the task itself lists: a guessed id cannot read another file.
       const loaded = isSafeId(runId) && task.runs.includes(runId) ? await loadRun(id, runId) : null;
       if (!loaded) {
+        json(res, 404, { error: "not_found" });
+        return true;
+      }
+      if (sub2 === "artifacts" && artifactId !== undefined) {
+        const resolved = await resolveTaskArtifact(loaded.run, decodeURIComponent(artifactId));
+        if (!resolved.ok) {
+          json(res, resolved.status, { error: resolved.error });
+          return true;
+        }
+        if (resolved.kind === "link") {
+          json(res, 200, {
+            id: resolved.id,
+            kind: "link",
+            title: resolved.title,
+            url: resolved.url,
+          });
+          return true;
+        }
+        const wantsDownload = parsedUrl.searchParams.get("download") === "1";
+        const disposition =
+          wantsDownload || resolved.forceAttachment
+            ? `attachment; filename="${resolved.filename.replace(/"/g, "_")}"`
+            : `inline; filename="${resolved.filename.replace(/"/g, "_")}"`;
+        res.writeHead(200, {
+          "content-type": resolved.contentType,
+          "content-length": String(resolved.body.byteLength),
+          "content-disposition": disposition,
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "default-src 'none'; sandbox",
+          "cache-control": "no-store",
+        });
+        res.end(resolved.body);
+        return true;
+      }
+      if (sub2 !== undefined) {
         json(res, 404, { error: "not_found" });
         return true;
       }
