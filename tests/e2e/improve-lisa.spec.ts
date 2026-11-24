@@ -31,7 +31,9 @@ test.describe("Improve LISA M0/M1", () => {
     await page.locator("#impGoal").fill("Summarize weekly PRs and open blockers in bullet form.");
     await page
       .locator("#impContent")
-      .fill("---\nname: weekly-release-digest\ndescription: Summarize weekly PRs cleanly\n---\n\n# Weekly Release Digest\n\nList highlights and blockers.\n");
+      .fill(
+        "---\nname: weekly-release-digest\ndescription: Summarize weekly PRs cleanly\n---\n\n# Weekly Release Digest\n\nList highlights and blockers.\n",
+      );
     await page.locator('#improveCreateForm button[type="submit"]').click();
 
     const card = page.locator("[data-imp-card]").first();

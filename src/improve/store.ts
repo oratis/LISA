@@ -89,7 +89,9 @@ function computeChangeSetDigest(
 
 async function readState(home: string): Promise<ImprovementsState> {
   try {
-    const raw = JSON.parse(await fsp.readFile(stateFile(home), "utf8")) as Partial<ImprovementsState>;
+    const raw = JSON.parse(
+      await fsp.readFile(stateFile(home), "utf8"),
+    ) as Partial<ImprovementsState>;
     if (raw && raw.version === IMPROVE_SCHEMA_VERSION && Array.isArray(raw.items)) {
       return {
         version: IMPROVE_SCHEMA_VERSION,
@@ -239,8 +241,12 @@ export async function createImprovement(
   home: string = lisaHome(),
   now: number = Date.now(),
 ): Promise<ImprovementRecord> {
-  const title = String(input.title ?? "").trim().slice(0, 120);
-  const goal = String(input.goal ?? "").trim().slice(0, 2000);
+  const title = String(input.title ?? "")
+    .trim()
+    .slice(0, 120);
+  const goal = String(input.goal ?? "")
+    .trim()
+    .slice(0, 2000);
   if (!title || !goal) {
     throw new Error("Improvement title and goal are required.");
   }
@@ -286,7 +292,9 @@ export async function createImprovement(
         id: newId("imp"),
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
         ...(input.originSessionId ? { originSessionId: input.originSessionId } : {}),
-        ...(input.originMessageIds ? { originMessageIds: input.originMessageIds.slice(0, 20) } : {}),
+        ...(input.originMessageIds
+          ? { originMessageIds: input.originMessageIds.slice(0, 20) }
+          : {}),
         packageId,
         kind,
         title,
@@ -352,14 +360,15 @@ export async function previewImprovement(
       );
       const acceptanceCases = runSyntheticChecks(item.kind, checked.files);
       const allPassed = acceptanceCases.every((c) => c.passed);
-      const changed = !item.changeSet || item.changeSet.digest !== digest;
+      const prev = item.changeSet;
+      const changed = !prev || prev.digest !== digest;
 
       item.changeSet = {
-        id: item.changeSet?.id ?? newId("cs"),
-        revision: changed ? (item.changeSet?.revision ?? 0) + 1 : item.changeSet.revision,
+        id: prev?.id ?? newId("cs"),
+        revision: !prev ? 1 : changed ? prev.revision + 1 : prev.revision,
         baseProfileVersion: opts.rebaseToCurrentProfile
           ? state.profileVersion
-          : (item.changeSet?.baseProfileVersion ?? state.profileVersion),
+          : (prev?.baseProfileVersion ?? state.profileVersion),
         files: checked.files,
         digest,
         requiredCapabilities,
@@ -376,7 +385,11 @@ export async function previewImprovement(
 
 export type ApplyImprovementResult =
   | { ok: true; record: ImprovementRecord; version: CapabilityVersion; alreadyActive: boolean }
-  | { ok: false; error: "not_found" | "not_preview_ready" | "digest_mismatch" | "upstream_conflict"; message: string };
+  | {
+      ok: false;
+      error: "not_found" | "not_preview_ready" | "digest_mismatch" | "upstream_conflict";
+      message: string;
+    };
 
 /**
  * Atomically apply a previewed improvement to `<lisaHome>/improvements/active/<packageId>/`.

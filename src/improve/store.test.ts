@@ -89,7 +89,11 @@ describe("Improve LISA M0/M1 personal capability store", () => {
       home,
     );
     const second = await createImprovement(
-      { title: "Second Cap", goal: "Add second skill", files: [{ path: "SKILL.md", content: "v2" }] },
+      {
+        title: "Second Cap",
+        goal: "Add second skill",
+        files: [{ path: "SKILL.md", content: "v2" }],
+      },
       home,
     );
 
@@ -103,11 +107,7 @@ describe("Improve LISA M0/M1 personal capability store", () => {
     if (!conflict.ok) assert.equal(conflict.error, "upstream_conflict");
 
     // Re-previewing rebases to current profileVersion and succeeds.
-    const p2Rebased = await previewImprovement(
-      second.id,
-      { rebaseToCurrentProfile: true },
-      home,
-    );
+    const p2Rebased = await previewImprovement(second.id, { rebaseToCurrentProfile: true }, home);
     assert.equal((await applyImprovement(second.id, p2Rebased.changeSet!.digest, home)).ok, true);
 
     // Rollback removes active capability without touching MEMORY.md.
@@ -144,7 +144,10 @@ describe("Improve LISA M0/M1 personal capability store", () => {
         title: "Leaky Skill",
         goal: "Contains secret",
         files: [
-          { path: "SKILL.md", content: "token=sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+          {
+            path: "SKILL.md",
+            content: "token=sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          },
         ],
       },
       home,

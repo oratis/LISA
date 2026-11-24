@@ -13,6 +13,7 @@
     loading: false,
     error: null,
     notice: null,
+    draft: { title: '', kind: 'skill', goal: '', content: '' },
   };
 
   function esc(s) {
@@ -79,14 +80,14 @@
     if (state.tab === 'new') {
       html +=
         '<form class="improve-card" id="improveCreateForm">' +
-        '<div class="improve-field"><label for="impTitle">What should Lisa do better?</label><input id="impTitle" required maxlength="120" placeholder="Weekly GitHub brief"></div>' +
+        '<div class="improve-field"><label for="impTitle">What should Lisa do better?</label><input id="impTitle" required maxlength="120" placeholder="Weekly GitHub brief" value="' + esc(state.draft.title) + '"></div>' +
         '<div class="improve-field"><label for="impKind">Capability type</label><select id="impKind">' +
-        '<option value="skill">Personal skill (SKILL.md)</option>' +
-        '<option value="preference">Behavior preference (JSON)</option>' +
-        '<option value="workflow">Workflow template</option>' +
+        '<option value="skill"' + (state.draft.kind === 'skill' ? ' selected' : '') + '>Personal skill (SKILL.md)</option>' +
+        '<option value="preference"' + (state.draft.kind === 'preference' ? ' selected' : '') + '>Behavior preference (JSON)</option>' +
+        '<option value="workflow"' + (state.draft.kind === 'workflow' ? ' selected' : '') + '>Workflow template</option>' +
         '</select></div>' +
-        '<div class="improve-field"><label for="impGoal">Goal and expected behavior</label><textarea id="impGoal" rows="3" required placeholder="Describe the behavior change, format, or constraint."></textarea></div>' +
-        '<div class="improve-field"><label for="impContent">Draft capability content (optional)</label><textarea id="impContent" rows="4" placeholder="Leave blank to generate a clean starter template."></textarea></div>' +
+        '<div class="improve-field"><label for="impGoal">Goal and expected behavior</label><textarea id="impGoal" rows="3" required placeholder="Describe the behavior change, format, or constraint.">' + esc(state.draft.goal) + '</textarea></div>' +
+        '<div class="improve-field"><label for="impContent">Draft capability content (optional)</label><textarea id="impContent" rows="4" placeholder="Leave blank to generate a clean starter template.">' + esc(state.draft.content) + '</textarea></div>' +
         '<div class="improve-form-acts"><button type="submit" class="view-act">Create improvement draft</button></div>' +
         '</form>';
     }
@@ -173,14 +174,29 @@
 
     var form = root.querySelector('#improveCreateForm');
     if (form) {
+      var titleEl = /** @type {HTMLInputElement} */ (root.querySelector('#impTitle'));
+      var kindEl = /** @type {HTMLSelectElement} */ (root.querySelector('#impKind'));
+      var goalEl = /** @type {HTMLTextAreaElement} */ (root.querySelector('#impGoal'));
+      var contentEl = /** @type {HTMLTextAreaElement} */ (root.querySelector('#impContent'));
+      var syncDraft = function () {
+        state.draft.title = titleEl ? titleEl.value : '';
+        state.draft.kind = kindEl ? kindEl.value : 'skill';
+        state.draft.goal = goalEl ? goalEl.value : '';
+        state.draft.content = contentEl ? contentEl.value : '';
+      };
+      if (titleEl) titleEl.addEventListener('input', syncDraft);
+      if (kindEl) kindEl.addEventListener('change', syncDraft);
+      if (goalEl) goalEl.addEventListener('input', syncDraft);
+      if (contentEl) contentEl.addEventListener('input', syncDraft);
       form.addEventListener('submit', function (e) {
         e.preventDefault();
+        syncDraft();
         state.error = null;
         state.notice = null;
-        var title = /** @type {HTMLInputElement} */ (root.querySelector('#impTitle')).value.trim();
-        var kind = /** @type {HTMLSelectElement} */ (root.querySelector('#impKind')).value;
-        var goal = /** @type {HTMLTextAreaElement} */ (root.querySelector('#impGoal')).value.trim();
-        var content = /** @type {HTMLTextAreaElement} */ (root.querySelector('#impContent')).value;
+        var title = state.draft.title.trim();
+        var kind = state.draft.kind;
+        var goal = state.draft.goal.trim();
+        var content = state.draft.content;
         /** @type {Record<string, unknown>} */
         var body = { title: title, kind: kind, goal: goal };
         if (content.trim()) {
@@ -196,6 +212,7 @@
             render();
             return;
           }
+          state.draft = { title: '', kind: 'skill', goal: '', content: '' };
           state.notice = 'Created improvement draft. Run Preview & check before applying.';
           state.tab = 'history';
           void refresh();

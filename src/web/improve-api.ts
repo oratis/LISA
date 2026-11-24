@@ -204,11 +204,7 @@ export async function handleImproveApi(
       const result = await applyImprovement(id, digest, opts.home);
       if (!result.ok) {
         const status =
-          result.error === "not_found"
-            ? 404
-            : result.error === "not_preview_ready"
-              ? 400
-              : 409;
+          result.error === "not_found" ? 404 : result.error === "not_preview_ready" ? 400 : 409;
         json(res, status, { error: result.error, message: result.message });
         return true;
       }
