@@ -478,6 +478,16 @@ async function main(): Promise<void> {
     process.exit(await runTelemetryCommand(args.subargs));
   }
 
+  if (args.subcommand === "mcp") {
+    const { runMcpCommand } = await import("./cli/mcp-serve.js");
+    process.exit(await runMcpCommand(args.subargs, { cwd }));
+  }
+
+  if (args.subcommand === "recipes") {
+    const { runRecipesCommand } = await import("./cli/recipes.js");
+    process.exit(await runRecipesCommand(args.subargs));
+  }
+
   if (args.subcommand === "sense") {
     const { runSenseCommand } = await import("./cli/sense.js");
     process.exit(await runSenseCommand(args.subargs));

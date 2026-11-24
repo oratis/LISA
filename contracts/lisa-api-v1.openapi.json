@@ -1335,6 +1335,37 @@
         }
       }
     },
+    "/api/recipes": {
+      "get": {
+        "operationId": "listRecipes",
+        "description": "List validated built-in and local shareable recipes with explicit permission manifests (no secrets or personal memory).",
+        "responses": {
+          "200": {
+            "description": "Validated recipe catalog.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["recipes"],
+                  "properties": {
+                    "recipes": {
+                      "type": "array",
+                      "items": { "type": "object", "additionalProperties": true }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/approvals": {
       "get": {
         "operationId": "listApprovals",

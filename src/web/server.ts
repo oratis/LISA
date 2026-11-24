@@ -397,6 +397,7 @@ import {
   toolsForCapabilityProfile,
   isNonCanonicalPath,
 } from "./capabilities.js";
+import { listRecipes } from "../recipes/store.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import { configStatusPayload, parseConfigSave } from "./config-api.js";
 import { attachSseHeartbeat } from "./sse.js";
@@ -3707,6 +3708,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/edition") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(editionInfo()));
+      return;
+    }
+
+    // Recipe Gallery catalog (W11) — built-in + local validated recipes (no secrets/personal memory).
+    if (req.method === "GET" && (url === "/api/recipes" || url.startsWith("/api/recipes?"))) {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ recipes: await listRecipes(lisaHome()) }));
       return;
     }
 

@@ -115,6 +115,10 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
     forget: "no_user_text",
     what: "local-only lifecycle and usage counters (enums, booleans, and buckets; no user text)",
   },
+  recipes: {
+    forget: "no_user_text",
+    what: "shareable recipe blueprints (permission manifests and task templates; no personal memory or secrets)",
+  },
   analytics: {
     forget: "no_user_text",
     what: "hosted-edition funnel events (hashed account keys, event names, status codes)",
