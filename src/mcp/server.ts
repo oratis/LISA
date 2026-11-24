@@ -24,7 +24,7 @@ import http from "node:http";
 import readline from "node:readline";
 import { kbTools } from "../kb/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
-import { lisaHome } from "../paths.js";
+import { homeScope, lisaHome } from "../paths.js";
 import { readIdentity, readName, readPurpose, readSeed } from "../soul/store.js";
 import { createTask, listTasks } from "../tasks/store.js";
 import { parseNewTask } from "../tasks/validate.js";
@@ -252,7 +252,7 @@ export class PortableLisaMcpServer {
         params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments)
           ? (params.arguments as Record<string, unknown>)
           : {};
-      return await this.callTool(id, name, args);
+      return await homeScope.run(this.home, () => this.callTool(id, name, args));
     }
 
     return {

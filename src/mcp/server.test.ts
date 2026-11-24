@@ -21,7 +21,7 @@ describe("PortableLisaMcpServer (stdio + Streamable HTTP)", () => {
     const home = path.join(TMP, "home-stdio");
     fs.mkdirSync(path.join(home, "soul"), { recursive: true });
     fs.writeFileSync(
-      path.join(home, "soul", "IDENTITY.md"),
+      path.join(home, "soul", "identity.md"),
       "I am Lisa. sk-ant-secret12345678901234567890",
     );
 
