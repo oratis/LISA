@@ -23,8 +23,10 @@ import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
 import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import { beginDream, beginDreamForKind } from "../reve/record.js";
+import type { ApprovalMode } from "../approval.js";
 import type { ToolDefinition } from "../types.js";
 import type { Provider } from "../providers/types.js";
+import { WardenInbox, createWardenSession } from "../warden/index.js";
 import {
   HEARTBEAT_RUN_LOCK_STALE_MS,
   heartbeatRunLockPath,
@@ -68,6 +70,11 @@ export async function runHeartbeatOnce(opts: {
   signal: AbortSignal;
   model: string;
   taskFilter?: string;
+  warden?: {
+    approvalMode?: ApprovalMode;
+    inbox?: WardenInbox;
+    approvalTimeoutMs?: number;
+  };
 }): Promise<HeartbeatRunResult[]> {
   // Proactive-mode master switch (web/iOS "Proactive" toggle → ~/.lisa/autonomy/
   // state.json). When autonomy is off, the heartbeat no-ops entirely — no
@@ -100,6 +107,11 @@ async function runHeartbeatInner(opts: {
   signal: AbortSignal;
   model: string;
   taskFilter?: string;
+  warden?: {
+    approvalMode?: ApprovalMode;
+    inbox?: WardenInbox;
+    approvalTimeoutMs?: number;
+  };
 }): Promise<HeartbeatRunResult[]> {
   // Fire any due scheduled dispatches first (cheap, no LLM turn — just spawns).
   try {
@@ -215,6 +227,31 @@ async function runHeartbeatInner(opts: {
     // W9: the examen and the desire review are reflective passes → audited
     // dream (src/reve). A no-op handle for every other task kind.
     const dream = await beginDreamForKind(runKind, task.name);
+    const heartbeatSandbox = sandboxModeForProfile("local-autonomy");
+    const wardenInbox =
+      opts.warden?.inbox ??
+      (opts.warden?.approvalMode === "warden"
+        ? new WardenInbox({ defaultTimeoutMs: opts.warden.approvalTimeoutMs ?? 1_000 })
+        : undefined);
+    const wardenSession = wardenInbox
+      ? createWardenSession({
+          surface: "local-web",
+          uid: null,
+          // Self-driven desires & builtins run under `autonomy` (read+self only, never blocks);
+          // user-authored heartbeat.json chores run under `routine` (audited & gated).
+          origin:
+            runKind === "heartbeat"
+              ? { kind: "routine", id: task.name }
+              : { kind: "autonomy", id: task.name },
+          sandboxMode: heartbeatSandbox,
+          workspaceRoot: opts.cwd,
+          inbox: wardenInbox,
+          tools,
+          signal: opts.signal,
+          home: lisaHome(),
+          approvalTimeoutMs: opts.warden?.approvalTimeoutMs ?? 1_000,
+        })
+      : undefined;
     let result;
     try {
       result = await dream.run(() =>
@@ -227,7 +264,9 @@ async function runHeartbeatInner(opts: {
           model: opts.model,
           moodOrigin: `a ${runKind} turn`,
           // Unattended self-driven run — confine to the untrusted-surface mode. H2.
-          sandboxMode: sandboxModeForProfile("local-autonomy"),
+          sandboxMode: heartbeatSandbox,
+          approval: wardenSession?.approval,
+          onEvent: wardenSession ? (event) => wardenSession.observe(event) : undefined,
         }),
       );
     } catch (err) {

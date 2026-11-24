@@ -20,6 +20,7 @@ import { logWarn } from "../log.js";
 import path from "node:path";
 import { fileMutationTargets } from "./classify.js";
 import { auditDecision, auditQuietly } from "./audit.js";
+import { runCrossFamilyReview, type CrossFamilyGateOptions } from "./cross-family.js";
 import { loadGrants, useGrants, type LoadedGrants } from "./grants.js";
 import type { ApprovalOutcome, InboxItemView, WardenInbox } from "./inbox.js";
 import { evaluate, type PolicyResult } from "./policy.js";
@@ -121,6 +122,11 @@ export interface WardenSessionOptions {
   /** The pending approval was answered, expired or cancelled. */
   onApprovalSettled?: (outcome: ApprovalOutcome, req: ActionRequest) => void | Promise<void>;
   dataClassHints?: DataClass[];
+  /**
+   * Optional monotonic cross-family review gate. Runs ONLY on non-benign
+   * actions the base policy allowed, and may only tighten `allow` → `ask`/`deny`.
+   */
+  crossFamilyReview?: Omit<CrossFamilyGateOptions, "signal">;
   log?: (msg: string) => void;
   now?: () => number;
 }
@@ -292,6 +298,27 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
           verdict: "ask",
           reason: "The grant covering this action is no longer available.",
           ruleId: "system:grant-unavailable",
+          scopes: ["once"],
+        };
+      }
+    }
+
+    if (opts.crossFamilyReview && result.verdict === "allow" && !BENIGN.has(req.category)) {
+      const review = await runCrossFamilyReview(req, {
+        ...opts.crossFamilyReview,
+        signal: opts.signal,
+      });
+      if (review.verdict === "deny") {
+        result = {
+          verdict: "deny",
+          reason: review.reason,
+          ruleId: review.ruleId,
+        };
+      } else if (review.verdict === "ask") {
+        result = {
+          verdict: "ask",
+          reason: review.reason,
+          ruleId: review.ruleId,
           scopes: ["once"],
         };
       }
