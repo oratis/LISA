@@ -22,6 +22,7 @@
   },
   "include": [
     "src/web/assets/client/main.js",
+    "src/web/assets/client/tasks.js",
     "src/web/assets/client/reve.js",
     "src/web/assets/client/expressions.js",
     "src/web/assets/client/improve.js",

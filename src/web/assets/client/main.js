@@ -2319,6 +2319,14 @@ function connectEvents() {
       if (typeof window.lisaApprovalRequested === 'function') window.lisaApprovalRequested(ev);
     } else if (ev.type === 'approval_resolved') {
       if (typeof window.lisaApprovalResolved === 'function') window.lisaApprovalResolved(ev);
+    } else if (
+      ev.type === 'task_updated' ||
+      ev.type === 'task_deleted' ||
+      ev.type === 'task_run_started' ||
+      ev.type === 'task_run_finished' ||
+      ev.type === 'task_result'
+    ) {
+      if (window.LisaTasks && typeof window.LisaTasks.onEvent === 'function') window.LisaTasks.onEvent(ev);
     }
   });
   es.onerror = () => {
@@ -6322,6 +6330,7 @@ if ('serviceWorker' in navigator) {
     sense: document.getElementById('viewSense'),
     memory: document.getElementById('viewMemory'),
     mail: document.getElementById('viewMail'),
+    tasks: document.getElementById('viewTasks'),
     settings: document.getElementById('viewSettings'),
     kb: document.getElementById('viewKb'),
     improve: document.getElementById('viewImprove'),
@@ -6385,9 +6394,18 @@ if ('serviceWorker' in navigator) {
     if (name === 'improve') {
       if (!loaded.improve) {
         loaded.improve = true;
-        if (window.LisaImprove) window.LisaImprove.mount(views.improve);
+        if (window.LisaImprove && views.improve) window.LisaImprove.mount(views.improve);
       } else if (window.LisaImprove) {
         window.LisaImprove.refresh();
+      }
+      return;
+    }
+    if (name === 'tasks') {
+      if (!loaded.tasks) {
+        loaded.tasks = true;
+        if (window.LisaTasks && views.tasks) window.LisaTasks.mount(views.tasks);
+      } else if (window.LisaTasks) {
+        window.LisaTasks.refresh();
       }
       return;
     }
@@ -6505,6 +6523,7 @@ if ('serviceWorker' in navigator) {
     views.dashboard.innerHTML =
       '<div class="view-head"><div><h2>' + esc(LISA_LOCALE === 'zh-CN' ? '总览' : 'Dashboard') + '</h2><div class="vh-sub">' + esc(LISA_LOCALE === 'zh-CN' ? '任务、动态与已连接的应用' : 'Tasks, activity and connected apps') + '</div></div>' +
       '<div class="dash-actions">' + (hasConnectors ? '<button type="button" class="view-act dash-catalog" id="dashCatalog">' + esc(tr('dashboard.connectors.title')) + '</button>' : '') +
+      '<button type="button" class="btn-secondary" id="dashOpenTasks">' + esc(LISA_LOCALE === 'zh-CN' ? '任务与产物' : 'Tasks') + '</button>' +
       '<button class="view-act" id="dashDelegate">' + esc(tr('control.delegate')) + '</button></div></div>' +
       '<div class="view-scroll" id="dashScroll"><div id="dashOperations"><div class="view-empty">' + esc(tr('control.loading')) + '</div></div>' + (hasConnectors ? '<section id="dashboardConnectors" class="dc-section" tabindex="-1" aria-label="' + esc(tr('dashboard.connectors.title')) + '"></section>' : '') + '</div>';
     var catalogButton = document.getElementById('dashCatalog');
@@ -6515,6 +6534,8 @@ if ('serviceWorker' in navigator) {
     });
     var del = document.getElementById('dashDelegate');
     if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
+    var dashTasks = document.getElementById('dashOpenTasks');
+    if (dashTasks) dashTasks.addEventListener('click', function () { showView('tasks'); });
     renderDashboard();
     void loadDashboardConnectors();
   }

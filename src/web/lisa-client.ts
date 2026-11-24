@@ -25,6 +25,8 @@ export const MAIN_CLIENT_JS =
   "\n" +
   readFileSync(new URL("./assets/client/expressions.js", import.meta.url), "utf8") +
   "\n" +
+  readFileSync(new URL("./assets/client/tasks.js", import.meta.url), "utf8") +
+  "\n" +
   readFileSync(new URL("./assets/client/improve.js", import.meta.url), "utf8") +
   "\n" +
   readFileSync(new URL("./assets/client/main.js", import.meta.url), "utf8") +

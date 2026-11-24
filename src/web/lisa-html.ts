@@ -313,6 +313,7 @@ ${opts.connectorCatalog ? CONNECTOR_MARKS : ""}
     <section class="view" id="viewMemory"></section>
     <section class="view" id="viewKb"></section>
     <section class="view" id="viewMail"></section>
+    <section class="view" id="viewTasks"></section>
     <section class="view" id="viewSettings"></section>
     <section class="view" id="viewImprove"></section>
   </div>
