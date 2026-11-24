@@ -75,8 +75,8 @@ deliberately short:
 | Size | Role |
 | --- | --- |
 | 11.5px | The floor. Metadata, labels, tree rows, secondary lines. Nothing smaller carries text. |
-| 12 – 13px | Body text, chat messages, form controls |
-| 14 – 16px | Section headings, the composer on mobile (16px prevents iOS Safari auto-zoom) |
+| 12.5px | Body copy, form controls, buttons |
+| 14 – 16px | Chat messages (`15px`), inputs (`16px` prevents iOS Safari auto-zoom), section headings |
 | 18 – 22px | Identity name, modal titles |
 
 8px survives only on three non-text decorations. Before this pass the shell used 10px and 10.5px
@@ -84,8 +84,8 @@ for metadata; those were raised to 11.5px, which is why it is by far the most co
 
 ## Space, radius, motion
 
-- **Grid**: 8px. Padding and gaps are multiples of 4 with 6/10/14 as the common in-between steps.
-- **Radius**: 8px is the default; 6px for small chips, 9–12px for cards and inputs, 999px for pills.
+- **Grid**: 8px (sidebar width `272px`). Padding and gaps are multiples of 4 with 6/10/14 as the common in-between steps.
+- **Radius scale** (`:root` variables): `--r-sm` (`6px` tags/badges), `--r-md` (`9px` buttons/inputs/small cards), `--r-lg` (`12px` cards/tiles), `--r-xl` (`16px` panels/modals), `--r-pill` (`999px` pills/switches).
 - **Motion**: 0.12s for colour/background transitions, 0.18–0.24s for layout and overlays. All
   non-essential animation sits inside `@media (prefers-reduced-motion: no-preference)`, and a
   `prefers-reduced-motion: reduce` block neutralises the rest.

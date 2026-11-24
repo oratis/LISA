@@ -2,10 +2,32 @@ import AppKit
 import SwiftUI
 
 enum CloudStyle {
-    static let accent = Color(red: 0.45, green: 0.35, blue: 0.95)
+    static let appearanceChanged = Notification.Name("ai.meetlisa.appearanceChanged")
+
+    // D-18: follow active theme — Cyan (#6ad4ff) in dark (Nebula), Indigo (#4f5bd5) in light (Calm).
+    static let accent = Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return isDark
+            ? NSColor(srgbRed: 106.0 / 255.0, green: 212.0 / 255.0, blue: 1.0, alpha: 1.0)
+            : NSColor(srgbRed: 79.0 / 255.0, green: 91.0 / 255.0, blue: 213.0 / 255.0, alpha: 1.0)
+    })
+    static let onAccent = Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return isDark
+            ? NSColor(srgbRed: 10.0 / 255.0, green: 16.0 / 255.0, blue: 36.0 / 255.0, alpha: 1.0)
+            : .white
+    })
     static let background = Color(nsColor: .windowBackgroundColor)
     static let card = Color(nsColor: .controlBackgroundColor)
     static let border = Color.primary.opacity(0.08)
+
+    static var savedAppearance: NSAppearance? {
+        switch UserDefaults.standard.string(forKey: "lisaAppearancePreference") {
+        case "calm": return NSAppearance(named: .aqua)
+        case "nebula": return NSAppearance(named: .darkAqua)
+        default: return nil
+        }
+    }
 }
 
 struct CloudCard<Content: View>: View {
@@ -24,7 +46,7 @@ struct CloudPrimaryButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(size: 14, weight: .semibold))
             .frame(maxWidth: .infinity).padding(.horizontal, 16).padding(.vertical, 13)
-            .foregroundColor(.white)
+            .foregroundColor(CloudStyle.onAccent)
             .background(CloudStyle.accent.opacity(configuration.isPressed ? 0.8 : 1),
                         in: RoundedRectangle(cornerRadius: 11))
             .contentShape(RoundedRectangle(cornerRadius: 11))
@@ -157,6 +179,14 @@ func cloudWindow(title: String, height: CGFloat = 650) -> NSWindow {
     window.isMovableByWindowBackground = true
     window.isReleasedWhenClosed = false
     window.minSize = NSSize(width: 460, height: 540)
+    window.appearance = CloudStyle.savedAppearance
+    NotificationCenter.default.addObserver(
+        forName: CloudStyle.appearanceChanged, object: nil, queue: .main
+    ) { [weak window] _ in
+        MainActor.assumeIsolated {
+            window?.appearance = CloudStyle.savedAppearance
+        }
+    }
     window.center()
     return window
 }

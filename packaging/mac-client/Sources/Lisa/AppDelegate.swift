@@ -177,6 +177,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         mainWindow?.reload()
     }
 
+    @MainActor @objc func findInPage(_ sender: Any?) {
+        showMainWindow()
+        mainWindow?.triggerFind()
+    }
+
     // MARK: - About / Updates
 
     @MainActor @objc func showPocket(_ sender: Any?) {
@@ -246,10 +251,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let choice: Workspace = menuItem.action == #selector(chooseCloud(_:)) ? .cloud : .mac
             menuItem.state = choice == workspace ? .on : .off
         case #selector(showAccount(_:)):
-            menuItem.title = workspace == .cloud ? workspaceText("Cloud Account…") : "Account & Devices…"
+            menuItem.title = workspace == .cloud ? workspaceText("Cloud Account…") : "Lisa Account…"
             return workspace != .welcome
         case #selector(reloadChat(_:)):
             return workspace != .welcome
+        case #selector(findInPage(_:)):
+            return workspace == .mac
         case #selector(openBackendSetup(_:)), #selector(openPreferences(_:)), #selector(showPocket(_:)),
              #selector(captureForLisa(_:)), #selector(captureContextForLisa(_:)):
             return workspace == .mac
@@ -289,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Backend install / update wizard (UX-7) — also opens on its own when the
         // app can't find the `lisa` CLI at start.
         let setupItem = NSMenuItem(
-            title: "Set Up Backend…",
+            title: "Set Up Lisa…",
             action: #selector(openBackendSetup(_:)),
             keyEquivalent: ""
         )
@@ -297,7 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         appMenu.addItem(setupItem)
         // Managed inference (B8d): sign in once, run key-free via LISA Cloud.
         let accountItem = NSMenuItem(
-            title: "Account & Devices…",
+            title: "Lisa Account…",
             action: #selector(showAccount(_:)),
             keyEquivalent: ""
         )
@@ -361,6 +368,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenu.addItem(.separator())
+        let findItem = NSMenuItem(
+            title: "Find…",
+            action: #selector(findInPage(_:)),
+            keyEquivalent: "f"
+        )
+        findItem.target = self
+        editMenu.addItem(findItem)
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
 
@@ -392,11 +407,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         contextItem.keyEquivalentModifierMask = [.control, .option, .shift]
         viewMenu.addItem(contextItem)
         viewMenu.addItem(.separator())
-        viewMenu.addItem(NSMenuItem(
+        let fullScreenItem = NSMenuItem(
             title: "Enter Full Screen",
             action: #selector(NSWindow.toggleFullScreen(_:)),
             keyEquivalent: "f"
-        ))
+        )
+        fullScreenItem.keyEquivalentModifierMask = [.control, .command]
+        viewMenu.addItem(fullScreenItem)
         viewItem.submenu = viewMenu
         mainMenu.addItem(viewItem)
 

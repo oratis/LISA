@@ -154,16 +154,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             tooltip = "Lisa · backend not running\nStart: lisa serve --web"
         case .idle:
             label = ""
-            tooltip = "Lisa · no Claude sessions active"
+            tooltip = "Lisa · no agents active"
         case .working(let n):
             label = " ▷ \(n)"
-            tooltip = "Lisa · \(n) Claude session\(n == 1 ? "" : "s") working"
+            tooltip = "Lisa · \(n) agent\(n == 1 ? "" : "s") working"
         case .waiting(let n):
             label = " ▶︎ \(n)"
-            tooltip = "Lisa · \(n) Claude session\(n == 1 ? "" : "s") waiting for you — click for details"
+            tooltip = "Lisa · \(n) agent\(n == 1 ? "" : "s") waiting for you — click for details"
         case .error(let n):
             label = " ✕ \(n)"
-            tooltip = "Lisa · \(n) Claude session\(n == 1 ? "" : "s") errored"
+            tooltip = "Lisa · \(n) agent\(n == 1 ? "" : "s") errored"
         }
         if label != lastLabel {
             button.title = label
@@ -298,14 +298,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 v.addArrangedSubview(wrappedLabel(
                     why, size: 10.5, color: .tertiaryLabelColor, width: inner))
             }
-            let start = NSButton(title: starting ? "Starting…" : "Start Lisa backend",
+            let start = NSButton(title: starting ? "Starting…" : "Start Lisa",
                                  target: self, action: #selector(startBackend))
             start.bezelStyle = .rounded
             start.keyEquivalent = "\r"
             start.isEnabled = !starting
             // Second door (UX-7): "isn't running" and "was never installed" look
             // identical from here, so offer the wizard next to the start button.
-            let setup = NSButton(title: "Set Up…", target: self, action: #selector(openBackendSetup))
+            let setup = NSButton(title: "Set Up Lisa…", target: self, action: #selector(openBackendSetup))
             setup.bezelStyle = .rounded
             setup.isEnabled = !starting
             let startRow = NSStackView(views: [start, setup])
@@ -404,6 +404,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         v.spacing = 6
         v.translatesAutoresizingMaskIntoConstraints = false
         let t = NSTextField(labelWithString: "AGENTS · \(sessions.count) ACTIVE")
+        t.setAccessibilityLabel("\(sessions.count) active agents")
         t.font = .systemFont(ofSize: 10, weight: .semibold)
         t.textColor = .tertiaryLabelColor
         v.addArrangedSubview(t)
@@ -572,7 +573,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // Full-width "Pair iPhone…" — shows a scannable QR. Needs the backend up
         // (it mints a device token), so it's hidden in the offline popover.
         if !offline {
-            let pair = NSButton(title: "Connect iPhone…", target: self, action: #selector(pairPhone))
+            let pair = NSButton(title: "Connect Lisa Pocket…", target: self, action: #selector(pairPhone))
             pair.bezelStyle = .rounded
             pair.translatesAutoresizingMaskIntoConstraints = false
             pair.widthAnchor.constraint(equalToConstant: inner).isActive = true

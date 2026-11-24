@@ -159,14 +159,15 @@
     return node;
   }
   async function mountSettings(target) {
+    const label = document.createElement('div');
+    label.className = 'view-sec-label';
+    label.textContent = tr('expressions.title');
+    target.prepend(label);
     const box = document.createElement('section');
-    box.className = 'v-card expression-settings';
-    const title = document.createElement('h3');
-    title.textContent = tr('expressions.title');
-    box.append(title);
+    box.className = 'set-card expression-settings';
     const display = document.createElement('select');
     display.id = 'expressionDisplay';
-    display.setAttribute('aria-label', title.textContent);
+    display.setAttribute('aria-label', tr('expressions.title'));
     ['auto', 'static', 'emoji', 'off'].forEach((v) =>
       display.add(new Option(tr('expressions.' + v), v)),
     );
@@ -174,12 +175,34 @@
     frequency.id = 'expressionFrequency';
     frequency.setAttribute('aria-label', tr('expressions.frequency'));
     ['restrained', 'lively'].forEach((v) => frequency.add(new Option(tr('expressions.' + v), v)));
-    const note = document.createElement('p');
-    note.textContent = tr('expressions.note');
+    display.classList.add('set-input', 'set-theme');
+    frequency.classList.add('set-input', 'set-theme');
+    const mkRow = (nameText, subText, ctrl) => {
+      const r = document.createElement('div');
+      r.className = 'set-row';
+      const main = document.createElement('div');
+      main.className = 'set-main';
+      const n = document.createElement('div');
+      n.className = 'set-name';
+      n.textContent = nameText;
+      main.appendChild(n);
+      if (subText) {
+        const s = document.createElement('div');
+        s.className = 'set-sub';
+        s.textContent = subText;
+        main.appendChild(s);
+      }
+      r.append(main, ctrl);
+      return r;
+    };
     const status = document.createElement('p');
     status.setAttribute('role', 'status');
-    box.append(display, frequency, note, status);
-    target.prepend(box);
+    box.append(
+      mkRow('Display mode', tr('expressions.note'), display),
+      mkRow('Frequency', '', frequency),
+      status,
+    );
+    label.after(box);
     display.disabled = frequency.disabled = true;
     await refresh();
     display.value = prefs.display;

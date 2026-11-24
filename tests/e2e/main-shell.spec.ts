@@ -43,7 +43,7 @@ test.describe("main shell", () => {
     // Composer.
     await expect(page.locator("#form #input")).toBeVisible();
     await expect(page.locator("#form #sendBtn")).toBeVisible();
-    await expect(page.locator("#input")).toHaveAttribute("placeholder", /Talk to Lisa/);
+    await expect(page.locator("#input")).toHaveAttribute("placeholder", /Message Lisa/);
   });
 
   test("nav switches views without a reload", async ({ page }) => {

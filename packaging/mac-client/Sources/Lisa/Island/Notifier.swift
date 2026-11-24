@@ -94,15 +94,16 @@ final class Notifier: NSObject, @preconcurrency UNUserNotificationCenterDelegate
         completionHandler([.banner, .sound])
     }
 
-    /// Click on a notification → open the full LISA chat GUI.
+    /// Click on a notification → activate the Lisa app window rather than opening an external browser tab.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         defer { completionHandler() }
-        if let url = URL(string: "http://localhost:5757/") {
-            NSWorkspace.shared.open(url)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: IslandContent.showMainWindowNotification, object: nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 }

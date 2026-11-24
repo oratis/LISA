@@ -145,7 +145,7 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
           body.starting .av  { color: #6ad4ff; }
           @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
         </style></head><body>
-          <div class="pill" onclick="wake()" title="Lisa backend offline — click to start">
+          <div id="pill" class="pill" onclick="wake()" title="Lisa is offline — click to start">
             <div class="av">☾</div>
             <div class="txt"><div class="label" id="lbl">offline</div><div class="hint" id="hint">click to start</div></div>
             <div class="dot"></div>

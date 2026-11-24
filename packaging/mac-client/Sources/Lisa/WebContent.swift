@@ -203,6 +203,13 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         )
     }
 
+    func triggerFind() {
+        webView.evaluateJavaScript(
+            "window.lisaOpenFind ? window.lisaOpenFind() : document.getElementById('fnSearchBtn')?.click();",
+            completionHandler: nil
+        )
+    }
+
     private func scheduleReload() {
         reloadTimer?.invalidate()
         guard view.window != nil else { reloadTimer = nil; return }
@@ -241,6 +248,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         view.appearance = appearance
         view.window?.appearance = appearance
         webView.underPageBackgroundColor = .windowBackgroundColor
+        NotificationCenter.default.post(name: CloudStyle.appearanceChanged, object: preference)
     }
 
     /// Reload the chat as soon as the backend reports up (snappier than waiting
@@ -287,7 +295,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
         <title>LISA — backend offline</title>
         <style>
-          :root { color-scheme: dark; --bg:#0b1024; --card:#161c3c; --fg:#e8eaff;
+          :root { color-scheme: dark; --bg:#07091a; --card:#141a40; --fg:#e8eaff;
             --secondary:#aeb5d3; --muted:#969fbe; --accent:#6ad4ff; --on-accent:#0a1024;
             --border:#303858; --well:#0c1126; --error:#ff95a8; }
           :root[data-theme="light"] { color-scheme:light; --bg:#f5f6fa; --card:#fff; --fg:#1b2430;
@@ -304,21 +312,21 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
             -webkit-font-smoothing:antialiased; }
           body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:56px 24px 24px; }
           .card { width:min(560px, 100%); padding:32px; background:var(--card);
-            border:1px solid var(--border); border-radius:20px; box-shadow:0 16px 48px rgba(32,45,70,.08); }
+            border:1px solid var(--border); border-radius:16px; box-shadow:0 16px 48px rgba(32,45,70,.08); }
           h1 { font-size:26px; margin:0 0 10px; letter-spacing:-.025em; }
           p.sub { margin:0 0 24px; color:var(--secondary); font-size:15px; line-height:1.65; }
           h2 { font-size:13px; font-weight:600; color:var(--secondary); margin:24px 0 10px; }
           pre { margin:0; padding:12px 14px; background:var(--well); color:var(--fg);
-            border:1px solid var(--border); border-radius:10px; font:12.5px/1.6 ui-monospace, Menlo, monospace;
+            border:1px solid var(--border); border-radius:9px; font:12.5px/1.6 ui-monospace, Menlo, monospace;
             white-space:pre-wrap; overflow-wrap:anywhere; user-select:all; }
           .row { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
           button { flex:1; min-height:44px; padding:12px 16px; font:600 14px system-ui;
-            border-radius:12px; cursor:pointer; background:var(--accent); color:var(--on-accent); border:0; }
+            border-radius:9px; cursor:pointer; background:var(--accent); color:var(--on-accent); border:0; }
           button:hover { filter:brightness(.95); }
           button.ghost { background:var(--card); color:var(--fg); border:1px solid var(--border); }
           button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
           button:disabled { opacity:.6; cursor:default; }
-          .err { margin-top:18px; padding:12px; border-radius:10px; background:var(--well);
+          .err { margin-top:18px; padding:12px; border-radius:9px; background:var(--well);
             color:var(--error); border:1px solid var(--border); font:12px/1.6 ui-monospace, Menlo, monospace;
             overflow-wrap:anywhere; user-select:text; }
           .hint { color:var(--muted); font-size:13px; margin-top:20px; line-height:1.6; }
@@ -326,7 +334,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         <div class=\"card\">
           <h1>Let’s reconnect Lisa</h1>
           <p class=\"sub\">
-            Lisa’s local service isn’t responding yet. Start it below to get back
+            Lisa isn’t responding yet. Start Lisa below to get back
             to your conversations.
           </p>
 
@@ -335,7 +343,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
             <button class=\"ghost\" onclick=\"location.assign('http://localhost:5757/')\">Retry</button>
           </div>
           <div class=\"row\">
-            <button class=\"ghost\" onclick=\"setupBackend()\">Set&nbsp;up&nbsp;backend…</button>
+            <button class=\"ghost\" onclick=\"setupBackend()\">Set&nbsp;Up&nbsp;Lisa…</button>
           </div>
           <script>
             function startBackend() {

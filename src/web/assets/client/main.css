@@ -57,6 +57,13 @@
     --focus-ring: 2px solid var(--accent);
     --focus-ring-offset: 2px;
 
+    /* Corner radius scale (D-9). */
+    --r-sm: 6px;
+    --r-md: 9px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+    --r-pill: 999px;
+
     /* Legacy tokens — kept so the unchanged modal / cfg / birth
        overlay styles below still resolve. The new shell + chat use
        the modern tokens above. */
@@ -655,16 +662,18 @@
   .delegate-btn {
     width: 100%;
     margin: 2px 0 8px;
-    font-size: 11.5px;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 34px;
     padding: 6px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--claude, #ff8c42);
-    background: rgba(255,140,66,0.14);
-    color: var(--claude, #ff8c42);
+    border-radius: var(--r-md);
+    border: 1px solid var(--accent-glow);
+    background: var(--accent-soft);
+    color: var(--accent);
     cursor: pointer;
     transition: background 0.12s ease;
   }
-  .delegate-btn:hover { background: rgba(255,140,66,0.26); }
+  .delegate-btn:hover { background: var(--accent-glow); }
   /* Delegate dialog (rendered in the shared modal). */
   .delegate-modal { display: flex; flex-direction: column; gap: 8px; }
   .delegate-modal .dm-label {
@@ -680,11 +689,11 @@
   .delegate-modal .dm-task { resize: vertical; min-height: 88px; font-family: inherit; }
   .delegate-modal .dm-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
   .delegate-modal .dm-start {
-    font-size: 13px; line-height: 1.2; padding: 8px 16px; border-radius: 8px;
-    border: 1px solid var(--brand, #6ad4ff); background: rgba(106,212,255,0.16);
-    color: var(--brand, #6ad4ff); cursor: pointer;
+    font-size: 12px; font-weight: 600; line-height: 1.2; min-height: 36px; padding: 8px 14px; border-radius: var(--r-md);
+    border: 0; background: var(--accent);
+    color: var(--on-accent); cursor: pointer;
   }
-  .delegate-modal .dm-start:hover { background: rgba(106,212,255,0.28); }
+  .delegate-modal .dm-start:hover { filter: brightness(0.95); }
   .delegate-modal .dm-start:disabled { opacity: 0.5; cursor: default; }
   .delegate-modal .dm-err { color: var(--err-color, #ff5577); font-size: 12px; white-space: pre-wrap; }
   .delegate-modal .dm-note { font-size: 11.5px; color: var(--fg-3); line-height: 1.4; margin-top: 2px; }
@@ -3974,3 +3983,105 @@ body.force-compact #form { grid-template-columns: 36px 36px 36px minmax(0, 1fr) 
 }
 .permission-options button:hover, .permission-options button[aria-pressed="true"] { background: var(--accent-soft); }
 .permission-options small { display: block; color: var(--fg-2); margin-top: 3px; line-height: 1.4; }
+
+/* ── Sidebar tightening (D-1) ───────────────────────────────── */
+.sidebar {
+  gap: 12px;
+  padding: 14px 12px 10px;
+}
+.identity {
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 11px;
+  padding: 8px 10px;
+}
+.identity .avatar-wrap { width: 48px; height: 48px; }
+.identity .mood { margin-top: 2px; }
+.identity .identity-desire { -webkit-line-clamp: 1; margin-top: 2px; }
+.nav-list { gap: 4px; }
+.nav-item { min-height: 48px; padding: 7px 4px 6px; gap: 5px; }
+@media (max-height: 700px) and (min-width: 721px) {
+  .identity .sub, .identity .identity-desire { display: none; }
+  .identity .avatar-wrap { width: 40px; height: 40px; }
+  .identity { grid-template-columns: 40px minmax(0, 1fr); padding-bottom: 6px; }
+  .nav-item { min-height: 38px; padding: 0; }
+  .nav-item .nav-label { display: none; }
+}
+
+/* ── Rightbar drawer on medium desktop windows (D-4) ────────── */
+@media (min-width: 721px) and (max-width: 1360px) {
+  body:not(.rb-collapsed) .frame {
+    grid-template-columns: 272px minmax(0, 1fr);
+    grid-template-areas:
+      "titlebar titlebar"
+      "sidebar  main";
+  }
+  body:not(.rb-collapsed) .rightbar {
+    position: fixed;
+    top: 46px;
+    right: 10px;
+    bottom: 10px;
+    width: 320px;
+    z-index: 40;
+    box-shadow: var(--shadow-elevated);
+  }
+}
+
+/* ── Function bar groups, uniform icons, switches, empty states (D-3..D-15) ─ */
+.fnbar { gap: 2px; }
+.fbar-sep {
+  width: 1px; height: 18px; flex: none; margin: 0 5px; background: var(--border-strong);
+}
+.plus-menu .g, .mem-btn .mem-ico {
+  display: inline-flex; width: 18px; height: 18px; color: var(--fg-2); align-items: center; justify-content: center;
+}
+.plus-menu .g svg, .mem-btn .mem-ico svg { width: 18px; height: 18px; display: block; }
+.plus-menu button { white-space: nowrap; }
+
+.v-toggle.as-switch {
+  width: 38px; height: 20px; min-height: 20px; padding: 0; border-radius: var(--r-pill);
+  position: relative; font-size: 0; color: transparent;
+}
+.v-toggle.as-switch::after {
+  content: ""; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--fg-3); transition: transform 140ms ease, background 140ms ease;
+}
+.v-toggle.as-switch.on { background: var(--proactive-soft); border-color: var(--proactive-glow); }
+.v-toggle.as-switch.on::after { transform: translateX(18px); background: var(--proactive); }
+#viewSense .consent-name { text-transform: capitalize; }
+.expression-settings select { font-size: 12.5px; padding: 8px 10px; margin: 0; background: var(--bg-3); min-height: 35px; }
+@media (max-width: 720px) {
+  .expression-settings select { font-size: 16px; min-height: 44px; padding: 10px 12px; }
+}
+.expression-settings p:empty { display: none; }
+
+.kb-ingestbar { padding: 14px clamp(16px, 3vw, 28px) 0; }
+.kb-searchbar { padding-top: 8px; }
+.kb-ingest-url, .kb-search { height: 36px; border-radius: var(--r-md); font-size: 13px; padding: 0 12px; }
+.kb-ingest-go { height: 36px; padding: 0 14px; font-size: 12px; font-weight: 600; border-radius: var(--r-md); }
+.kb-list.is-empty { width: auto; flex: 1; border-right: 0; }
+
+.lisa-empty-state {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 6px; padding: 44px 24px 36px; max-width: 420px; margin: 0 auto;
+}
+.lisa-empty-state img { width: 132px; height: 132px; object-fit: contain; margin-bottom: 6px; }
+.lisa-empty-state h3 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--fg); }
+.lisa-empty-state p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--fg-2); }
+.lisa-empty-state .acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.btn-secondary {
+  font: inherit; font-size: 12px; font-weight: 600; min-height: 36px; padding: 8px 13px;
+  border-radius: var(--r-md); color: var(--fg); background: var(--bg-3); border: 1px solid var(--border-strong); cursor: pointer;
+}
+
+/* ── Birth ritual opaque backdrop + scrollable steps (D-12) ──── */
+.birth-overlay { background: var(--bg-deep); }
+.birth-overlay::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(60% 50% at 50% 0%, var(--accent-soft), transparent 70%);
+}
+.birth-content { display: flex; flex-direction: column; overflow: hidden; }
+.birth-content > * { flex: none; }
+#birthSteps { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.birth-final { margin-top: 22px; }
+.birth-enter { margin-top: 16px; }
+.cfg-save { border-radius: var(--r-md); min-height: 36px; font-size: 12px; font-weight: 600; letter-spacing: 0; box-shadow: none; }
