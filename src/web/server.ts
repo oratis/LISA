@@ -322,6 +322,7 @@ import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
 import { handleMemoryApi } from "./memory-api.js";
 import { handleReveApi } from "./reve-api.js";
+import { handleImproveApi } from "./improve-api.js";
 import {
   createWebWarden,
   handleWardenApi,
@@ -397,6 +398,7 @@ import {
   toolsForCapabilityProfile,
   isNonCanonicalPath,
 } from "./capabilities.js";
+import { listRecipes } from "../recipes/store.js";
 import { buildClientCapabilities } from "./client-capabilities.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import { configStatusPayload, parseConfigSave } from "./config-api.js";
@@ -3657,6 +3659,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    const improveTrust = wardenTrust({
+      cloud,
+      loopback: isLoopbackAddress(remoteAddr),
+      accountUid,
+    });
+    if (
+      await handleImproveApi(req, res, url, {
+        home: lisaHome(),
+        cwd: process.cwd(),
+        model: activeModel,
+        allowChange: improveTrust.allowApproval,
+        loopbackTrust: improveTrust.loopbackTrust,
+      })
+    ) {
+      return;
+    }
+
     // Per-request gate for high-risk control actions from REMOTE callers. The Mac
     // owner (loopback) is never gated; a remote (token) device may take only what
     // the Mac-side policy permits. denyRemote() writes the 403 and returns true
@@ -3715,6 +3734,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/edition") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(editionInfo()));
+      return;
+    }
+
+    // Recipe Gallery catalog (W11) — built-in + local validated recipes (no secrets/personal memory).
+    if (req.method === "GET" && (url === "/api/recipes" || url.startsWith("/api/recipes?"))) {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ recipes: await listRecipes(lisaHome()) }));
       return;
     }
 

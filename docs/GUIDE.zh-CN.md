@@ -802,3 +802,28 @@ MIT — 见 [LICENSE](../LICENSE)。
 默认截图按钮或 Mac 全局 `⌃⌥S` 只采集图片。选择“截图并采集前台窗口文字”或 `⌃⌥⇧S` 才会读取截图前的前台窗口标题、有限的辅助功能文字和坐标。之后点附件上的“查看窗口上下文”检查全文，勾选“发送时附带此窗口上下文”才会在发送消息时增加文本附件；默认不附带。
 
 上下文不是完整的辅助功能树，且不保证与选中的截图区域/窗口一致。坐标是全局屏幕点，不是图片像素；敏感输入控件会跳过，其他文字请自行检查，不想分享时保持不勾选。缺少辅助功能权限或 helper 时仍可只发图片。Mac app 内置 helper；CLI/npm 首次采集上下文需 Swift 工具链。不会自动弹出权限申请，也不会后台采集。截图和上下文仅对本机所有者开放，发送前不记录窗口文字；发送后与普通聊天附件遵循相同保存/模型供应商规则。
+
+## 可携带的 LISA（MCP 服务与配方画廊）
+
+通过受作用域控制、默认只读的 MCP 服务，把你自己的 LISA（人格摘要、记忆检索、个人知识库、任务列表与可选的草稿任务创建）带进 Claude Desktop、Claude Code 或 Cursor：
+
+```bash
+# 默认 stdio 传输（默认仅开放只读 scope）
+lisa mcp serve
+
+# 可选仅绑定 127.0.0.1 的 Streamable HTTP 传输（必须配置 Bearer Token）
+lisa mcp serve --http --port 3741 --token "$LISA_MCP_HTTP_TOKEN" --scope persona:read,memory:read,kb:read,tasks:read
+```
+
+每次 MCP 调用都会做敏感信息脱敏并记入 Warden 审计日志；`lisa_task_create` 需显式授予 `--scope tasks:write`，且始终创建为停用草稿。
+
+可分享的例行任务、关注器与目标遵循“只传配方、不传隐私”原则，可通过 `lisa recipes` 与 `GET /api/recipes` 管理：
+
+```bash
+lisa recipes list
+lisa recipes show morning-briefing
+lisa recipes install morning-briefing --dry-run
+lisa recipes install morning-briefing
+```
+
+配方自带显式权限清单、支持可选 Ed25519 签名、拒绝内嵌密钥，且安装后始终保持停用草稿，待你审阅后手动开启。

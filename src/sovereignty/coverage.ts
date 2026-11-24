@@ -96,6 +96,10 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   "otp.json": { forget: "not_scanned", what: "sign-in codes by email address" },
   "current-mood.json": { forget: "not_scanned", what: "current mood and its origin label" },
   "import-backups": { forget: "not_scanned", what: "data backed up by `lisa import --replace`" },
+  improvements: {
+    forget: "not_scanned",
+    what: "personal capability drafts, versions, activation checkpoints, and contribution exports",
+  },
 
   "expression-preferences.json": {
     forget: "no_user_text",
@@ -114,6 +118,10 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   telemetry: {
     forget: "no_user_text",
     what: "local-only lifecycle and usage counters (enums, booleans, and buckets; no user text)",
+  },
+  recipes: {
+    forget: "no_user_text",
+    what: "shareable recipe blueprints (permission manifests and task templates; no personal memory or secrets)",
   },
   analytics: {
     forget: "no_user_text",
