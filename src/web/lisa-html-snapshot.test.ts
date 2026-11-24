@@ -75,13 +75,13 @@ describe("the client sources are real files, not template literals", () => {
   test("the exported constants are exactly the file contents", () => {
     assert.equal(
       MAIN_CSS,
-      ["main.css", "connectors.css", "reve.css"]
+      ["main.css", "connectors.css", "reve.css", "improve.css"]
         .map((name) => readFileSync(new URL(name, clientDir), "utf8"))
         .join("\n"),
     );
     assert.equal(
       MAIN_CLIENT_JS,
-      ["reve.js", "expressions.js", "main.js", "connectors.js"]
+      ["reve.js", "expressions.js", "improve.js", "main.js", "connectors.js"]
         .map((name) => readFileSync(new URL(name, clientDir), "utf8"))
         .join("\n"),
     );

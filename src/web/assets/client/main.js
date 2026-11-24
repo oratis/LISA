@@ -6324,6 +6324,7 @@ if ('serviceWorker' in navigator) {
     mail: document.getElementById('viewMail'),
     settings: document.getElementById('viewSettings'),
     kb: document.getElementById('viewKb'),
+    improve: document.getElementById('viewImprove'),
   };
   var loaded = {};
   var active = 'chat';
@@ -6381,6 +6382,15 @@ if ('serviceWorker' in navigator) {
     // KB builds once, then refreshes its list on every re-show (it changes).
     if (name === 'kb') { if (!loaded.kb) { loaded.kb = true; loadKb(); } else { loadKbList(); } return; }
     if (name === 'reve' && loaded.reve) { window.LisaReve.refresh(); return; }
+    if (name === 'improve') {
+      if (!loaded.improve) {
+        loaded.improve = true;
+        if (window.LisaImprove) window.LisaImprove.mount(views.improve);
+      } else if (window.LisaImprove) {
+        window.LisaImprove.refresh();
+      }
+      return;
+    }
     if (loaded[name]) return;
     loaded[name] = true;
     if (name === 'dashboard') loadDashboard();
@@ -6400,6 +6410,8 @@ if ('serviceWorker' in navigator) {
     for (var i = 0; i < items.length; i++) {
       items[i].classList.toggle('active', items[i].getAttribute('data-view') === name);
     }
+    var impBtn = document.getElementById('sbImproveBtn');
+    if (impBtn) impBtn.classList.toggle('active', name === 'improve');
     if (name !== 'chat') loadView(name);
     else if (!window.matchMedia('(max-width: 720px)').matches) { try { document.getElementById('input').focus(); } catch (e) {} }
     document.body.dataset.view = name;
@@ -6411,6 +6423,10 @@ if ('serviceWorker' in navigator) {
     var btn = e.target && e.target.closest ? e.target.closest('.nav-item') : null;
     if (btn && btn.getAttribute('data-view')) showView(btn.getAttribute('data-view'));
   });
+  var sbImproveBtn = document.getElementById('sbImproveBtn');
+  if (sbImproveBtn) {
+    sbImproveBtn.addEventListener('click', function () { showView('improve'); });
+  }
   window.lisaShowView = showView;
 
   // (The Room iframe → parent "message" bridge lives at module scope near the
@@ -7833,7 +7849,7 @@ if ('serviceWorker' in navigator) {
   // separate panel. Returning to Chat never summons the keyboard by itself.
   sidebar.addEventListener('click', event => {
     if (!narrow.matches || !menu.open) return;
-    if (event.target.closest('.nav-item, .tleaf, #sbNewSession')) {
+    if (event.target.closest('.nav-item, .tleaf, #sbNewSession, #sbImproveBtn')) {
       menu.close();
       if (event.target.closest('.tleaf, #sbNewSession')) window.lisaShowView('chat');
     }

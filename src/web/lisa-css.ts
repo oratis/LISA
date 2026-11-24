@@ -25,4 +25,6 @@ export const MAIN_CSS =
   "\n" +
   readFileSync(new URL("./assets/client/connectors.css", import.meta.url), "utf8") +
   "\n" +
-  readFileSync(new URL("./assets/client/reve.css", import.meta.url), "utf8");
+  readFileSync(new URL("./assets/client/reve.css", import.meta.url), "utf8") +
+  "\n" +
+  readFileSync(new URL("./assets/client/improve.css", import.meta.url), "utf8");

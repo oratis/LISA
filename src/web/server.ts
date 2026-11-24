@@ -323,6 +323,7 @@ import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
 import { handleMemoryApi } from "./memory-api.js";
 import { handleReveApi } from "./reve-api.js";
+import { handleImproveApi } from "./improve-api.js";
 import {
   createWebWarden,
   handleWardenApi,
@@ -3652,6 +3653,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         uid: scopedUid(),
         home: lisaHome(),
         ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+      })
+    ) {
+      return;
+    }
+
+    const improveTrust = wardenTrust({
+      cloud,
+      loopback: isLoopbackAddress(remoteAddr),
+      accountUid,
+    });
+    if (
+      await handleImproveApi(req, res, url, {
+        home: lisaHome(),
+        cwd: process.cwd(),
+        model: activeModel,
+        allowChange: improveTrust.allowApproval,
+        loopbackTrust: improveTrust.loopbackTrust,
       })
     ) {
       return;
