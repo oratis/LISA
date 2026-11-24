@@ -515,6 +515,68 @@ final class LisaClient: FleetReading, FleetDecisionSending {
     }
 
     // ── read ──
+    func clientCapabilities() async throws -> ClientCapabilities {
+        try await decode("/api/client-capabilities", as: ClientCapabilities.self)
+    }
+
+    func tasks() async throws -> [LisaTask] {
+        struct Reply: Decodable { let tasks: [LisaTask] }
+        return try await decode("/api/tasks", as: Reply.self).tasks
+    }
+
+    func taskRuns(_ id: String) async throws -> [LisaTaskRun] {
+        struct Reply: Decodable { let runs: [LisaTaskRun] }
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await decode("/api/tasks/\(enc)/runs", as: Reply.self).runs
+    }
+
+    func runTask(_ id: String) async throws -> LisaTask? {
+        struct Reply: Decodable { let task: LisaTask? }
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await decode("/api/tasks/\(enc)/run", method: "POST", json: [:], as: Reply.self).task
+    }
+
+    func setTaskEnabled(_ id: String, enabled: Bool) async throws -> LisaTask {
+        struct Reply: Decodable { let task: LisaTask }
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await decode("/api/tasks/\(enc)", method: "PATCH", json: ["enabled": enabled], as: Reply.self).task
+    }
+
+    func cancelTask(_ id: String) async throws -> LisaTask? {
+        struct Reply: Decodable { let task: LisaTask? }
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await decode("/api/tasks/\(enc)/cancel", method: "POST", json: [:], as: Reply.self).task
+    }
+
+    func taskArtifactPreview(taskId: String, runId: String, artifact: LisaTaskArtifact) async throws -> LisaTaskArtifactPreview {
+        let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+        let r = runId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? runId
+        let a = artifact.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? artifact.id
+        let path = "/api/tasks/\(t)/runs/\(r)/artifacts/\(a)"
+        let req = try makeRequest(path, method: "GET", timeout: Self.restTimeout)
+        let (bytes, resp) = try await data(for: req, path: path)
+        try LisaAPICompatibility.validate(resp)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(code) else { throw LisaError.server(.from(resp, body: bytes)) }
+        let ctype = ((resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream").lowercased()
+        if artifact.kind == "link" {
+            struct LinkReply: Decodable { let url: String }
+            let decoded = try JSONDecoder().decode(LinkReply.self, from: bytes)
+            guard let url = URL(string: decoded.url), url.scheme == "http" || url.scheme == "https" else {
+                throw LisaError.decode
+            }
+            return LisaTaskArtifactPreview(title: artifact.displayTitle, contentType: ctype, text: nil, linkURL: url, byteCount: bytes.count)
+        }
+        let isText = ctype.hasPrefix("text/") || ctype.hasPrefix("application/json")
+        return LisaTaskArtifactPreview(
+            title: artifact.displayTitle,
+            contentType: ctype,
+            text: isText ? String(data: bytes, encoding: .utf8) : nil,
+            linkURL: nil,
+            byteCount: bytes.count
+        )
+    }
+
     func sessions() async throws -> [AgentSession] { try await decode("/api/agents/sessions", as: SessionsResponse.self).sessions }
     /// Lisa's own chat sessions — the roster's LISA group (v1.1).
     func lisaSessions() async throws -> [LisaSessionInfo] { try await decode("/api/sessions", as: LisaSessionsResponse.self).sessions }
