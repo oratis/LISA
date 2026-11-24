@@ -11,7 +11,9 @@ import SwiftUI
 
 final class MainWindow: NSWindow {
     private static let defaultSize = CGSize(width: 1200, height: 800)
-    private static let minSize     = CGSize(width: 600, height: 500)
+    // D-17: keep Mac ≥721px so the Web shell stays in desktop layout and never
+    // collapses its mobile header under the traffic lights or DragHandleView.
+    private static let minSize     = CGSize(width: 721, height: 500)
 
     private lazy var local = WebContent()
     private lazy var cloud = CloudWorkspace()
@@ -127,5 +129,10 @@ final class MainWindow: NSWindow {
     /// screen-advisor suggestion card via the island bridge.
     func prefillComposer(_ text: String) {
         if workspace == .mac { local.prefillComposer(text) }
+    }
+
+    /// D-16: open in-conversation find (⌘F from Edit ▸ Find…).
+    func triggerFind() {
+        if workspace == .mac { local.triggerFind() }
     }
 }

@@ -2782,7 +2782,16 @@ async function startBirthStream() {
     const ev = queue.shift();
     if (ev.kind === 'step') {
       currentDetail = appendBirthStep(ev.name);
-      typewriter(currentDetail, ev.detail || '', () => {
+      let detailText = ev.detail || '';
+      if (ev.name === 'seed' && /^born \d{4}-\d\d-\d\dT/.test(detailText)) {
+        const today = new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+        detailText = 'born ' + today + ', on this Mac';
+      }
+      typewriter(currentDetail, detailText, () => {
         processing = false;
         processQueue();
       });
@@ -3557,6 +3566,7 @@ function openFind() {
   fnFind.focus();
   fnFind.select();
 }
+window.lisaOpenFind = openFind;
 function findIsOpen() { return !!fnFind && fnFind.style.display !== 'none'; }
 function closeFind() {
   if (!fnFind) return;
@@ -3663,6 +3673,7 @@ const SHORTCUTS = [
   ['⌘K / Ctrl+K', 'kbd.switch'],
   ['⌘/ / Ctrl+/', 'kbd.focus'],
   ['⌘F / Ctrl+F', 'kbd.find'],
+  ['⌃⌘F', 'Full screen (Mac app)'],
   ['Esc', 'kbd.close'],
   ['Enter / Shift+Enter', 'kbd.send'],
   ['?', 'kbd.help'],
@@ -3806,7 +3817,8 @@ document.addEventListener('keydown', function (e) {
   const applyRb = () => {
     document.body.classList.toggle('rb-collapsed', collapsed);
     const btn = document.getElementById('fnPanel');
-    if (btn) btn.classList.toggle('active', collapsed);
+    // D-5: highlight means "the right rail is showing".
+    if (btn) btn.classList.toggle('active', !collapsed);
     syncBadge();
   };
   applyRb();
@@ -3827,7 +3839,7 @@ document.addEventListener('keydown', function (e) {
     // preference: a blocked agent is worth stealing 320px for exactly once.
     // Deliberately NOT persisted — the next reload returns to the collapsed
     // default, so this can never become a sticky layout the user didn't pick.
-    if (needsDecision && collapsed && !touched && !autoExpanded) {
+    if (needsDecision && collapsed && !touched && !autoExpanded && window.innerWidth > 1360) {
       autoExpanded = true;
       collapsed = false;
     }
@@ -4214,6 +4226,7 @@ async function runChat(message, filesToSend, expression) {
         window.lisaMarkUnread(sid);
       }
     }
+    if (typeof window.lisaRefreshSessions === 'function') window.lisaRefreshSessions();
     refreshChatWhenIdle();
   }
 }
@@ -5257,9 +5270,7 @@ if ('serviceWorker' in navigator) {
   // matchMedia listener keeps it right across rotation and window resizes.
   const composerNarrow = window.matchMedia('(max-width: 720px)');
   function composerHint() {
-    return composerNarrow.matches
-      ? 'Talk to Lisa…'
-      : 'Talk to Lisa…  (Enter to send · Shift+Enter for newline)';
+    return 'Message Lisa…';
   }
   function setComposerLocked(on) {
     try {
@@ -6286,6 +6297,7 @@ if ('serviceWorker' in navigator) {
   setInterval(() => window.refreshClaudeSessions(), 60_000);
   setInterval(window.refreshMail, 5 * 60_000);
   setInterval(refreshSessionsBadge, 5 * 60_000);
+  window.lisaRefreshSessions = refreshSessionsBadge;
   // Cheap resync for the tokens section; chat_end gives the fast path.
   setInterval(refreshTokens, 5 * 60_000);
 })();
@@ -6784,12 +6796,18 @@ if ('serviceWorker' in navigator) {
         sessions.forEach(function (s) { html += ctrlRowHTML(s); });
         html += '</div>';
       } else {
-        html += '<div class="control-empty"><span class="control-empty-icon" aria-hidden="true">⌘</span><h3>' + esc(tr('control.emptyTitle')) + '</h3><p>' +
-          esc(tr(views.control.dataset.remoteFleet === 'true' ? 'control.emptyHelp' : 'control.emptyLocalHelp')) + '</p><button class="view-act" id="ctrlEmptyStart">' + esc(tr('control.delegate')) + '</button>' +
+        html += '<div class="lisa-empty-state"><img src="/assets/visuals/soft-ink-v1/stickers/lisa-make-a-plan.png" alt=""><h3>' +
+          esc(tr('control.emptyTitle')) + '</h3><p>' +
+          esc(tr(views.control.dataset.remoteFleet === 'true' ? 'control.emptyHelp' : 'control.emptyLocalHelp')) +
+          '</p><div class="acts"><button class="view-act" id="ctrlEmptyStart">' + esc(tr('control.delegate')) +
+          '</button>' + (views.control.dataset.remoteFleet === 'true'
+            ? '<button type="button" class="btn-secondary" id="ctrlEmptyRemote">' + esc(tr('control.remote')) + '</button>'
+            : '') + '</div>' +
           (observation && !observation.detected ? '<p class="control-empty-note">' + esc(tr('control.missing')) + '</p>' : '') + '</div>';
       }
       scroll.innerHTML = html;
       scroll.querySelector('#ctrlEmptyStart')?.addEventListener('click', function () { document.getElementById('ctrlDelegate').click(); });
+      scroll.querySelector('#ctrlEmptyRemote')?.addEventListener('click', function () { selectControlTab('remote', true); });
       var toggle = scroll.querySelector('#codexObservation');
       var conversations = scroll.querySelector('#codexConversations');
       if (toggle) toggle.addEventListener('click', changeObservation);
@@ -6919,9 +6937,9 @@ if ('serviceWorker' in navigator) {
       html += '</div><div class="view-sec-label">Consent</div><div class="v-card">';
       if (!grants.length) html += '<div class="view-empty" style="padding:6px 0">No signals configured.</div>';
       grants.forEach(function (g) {
-        html += '<div class="v-row"><div class="v-main"><div class="v-name">' + esc(g.signal) + '</div>' +
+        html += '<div class="v-row"><div class="v-main"><div class="v-name consent-name">' + esc(g.signal) + '</div>' +
           (g.description ? '<div class="v-sub">' + esc(g.description) + '</div>' : '') + '</div>' +
-          '<button class="v-toggle' + (g.granted ? ' on' : '') + '" data-signal="' + esc(g.signal) + '" data-on="' + (g.granted ? '1' : '0') + '">' + (g.granted ? 'on' : 'off') + '</button></div>';
+          '<button class="v-toggle as-switch' + (g.granted ? ' on' : '') + '" data-signal="' + esc(g.signal) + '" data-on="' + (g.granted ? '1' : '0') + '" role="switch" aria-checked="' + (g.granted ? 'true' : 'false') + '" aria-label="' + esc(g.signal) + '">' + (g.granted ? 'on' : 'off') + '</button></div>';
       });
       html += '</div><div class="view-sec-label">Recently sensed</div><div class="v-card">';
       if (!events.length) html += '<div class="view-empty" style="padding:6px 0">Nothing captured.</div>';
@@ -7028,8 +7046,15 @@ if ('serviceWorker' in navigator) {
     accounts = accounts || [];
     var needs = (digest && digest.needsYou) ? digest.needsYou : [];
     var html = '';
+    var headConnect = document.getElementById('mailConnectBtn');
+    var sweepBtn = document.getElementById('mailSweepBtn');
+    if (headConnect) headConnect.style.display = accounts.length ? '' : 'none';
+    if (sweepBtn && sweepBtn.parentElement) sweepBtn.parentElement.style.display = accounts.length ? '' : 'none';
     if (!accounts.length) {
-      html += '<div class="v-card"><div class="view-empty" style="padding:6px 0">No mailbox connected yet. Connect one for a daily classified digest — read-only, stored locally (0600).</div></div>';
+      html += '<div class="lisa-empty-state"><img src="/assets/visuals/soft-ink-v1/stickers/lisa-tea-break.png" alt="">' +
+        '<h3>No mailbox connected</h3>' +
+        '<p>Connect one and Lisa sorts it into a daily digest. Read-only, stored locally (0600).</p>' +
+        '<div class="acts"><button type="button" class="view-act" id="mailEmptyConnect">＋ Connect mailbox</button></div></div>';
     } else {
       html += '<div class="view-sec-label">Digest</div><div class="v-card">';
       html += '<div class="mail-summary">' + esc(digest && digest.summary ? digest.summary : 'No digest yet — sweep to build one.') + '</div>';
@@ -7049,6 +7074,8 @@ if ('serviceWorker' in navigator) {
       html += '</div>';
     }
     scroll.innerHTML = html;
+    var emptyConnect = document.getElementById('mailEmptyConnect');
+    if (emptyConnect) emptyConnect.addEventListener('click', function () { if (window.lisaOpenMailModal) window.lisaOpenMailModal(); });
     var btns = scroll.querySelectorAll('[data-mail-act]');
     for (var b = 0; b < btns.length; b++) {
       btns[b].addEventListener('click', function (ev) {
@@ -7314,9 +7341,14 @@ if ('serviceWorker' in navigator) {
   // ── Knowledge base view (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
   function kbRenderList(entries, container) {
     if (!entries || !entries.length) {
-      container.innerHTML = '<div class="view-empty">Nothing here yet. In Chat, select messages and "Add to KB", or ask Lisa to save something.</div>';
+      container.classList.add('is-empty');
+      container.innerHTML =
+        '<div class="lisa-empty-state"><img src="/assets/visuals/soft-ink-v1/stickers/lisa-thinking.png" alt="">' +
+        '<h3>Nothing saved yet</h3>' +
+        '<p>Paste a link above, or select messages in Chat and choose Add to KB.</p></div>';
       return;
     }
+    container.classList.remove('is-empty');
     var html = '';
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i];

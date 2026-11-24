@@ -51,12 +51,12 @@ final class BackendSetupController: NSObject, NSWindowDelegate {
     // ── controls (built once) ──
     private let spinner = NSProgressIndicator()
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
-    private let nodeRow = ChecklistRow(title: "Node.js \(BackendSetup.minimumNodeMajor) or newer")
+    private let nodeRow = ChecklistRow(title: "Node.js \(BackendSetup.minimumNodeMajor).\(BackendSetup.minimumNodeMinor) or newer")
     private let cliRow = ChecklistRow(title: "Lisa backend (\(BackendSetup.npmPackage))")
     private let detail = NSStackView()
     private let logScroll = NSScrollView()
     private let logView = NSTextView()
-    private lazy var recheckButton = NSButton(title: "Re-check", target: self, action: #selector(recheck))
+    private lazy var recheckButton = NSButton(title: "Check Again", target: self, action: #selector(recheck))
     private lazy var closeButton = NSButton(title: "Close", target: self, action: #selector(closeWindow))
 
     private let contentWidth: CGFloat = 540
@@ -367,7 +367,7 @@ final class BackendSetupController: NSObject, NSWindowDelegate {
                 "~/.lisa/backend.log has the reason — usually a missing API key or a port already in use. Fix that, then try again.",
                 size: 12, color: .secondaryLabelColor))
             detail.addArrangedSubview(row(button("Open backend.log", #selector(openBackendLog)),
-                                          button("Try again", #selector(startBackend), primary: true)))
+                                          button("Retry", #selector(startBackend), primary: true)))
         }
         if busy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         recheckButton.isEnabled = !busy
@@ -384,7 +384,7 @@ final class BackendSetupController: NSObject, NSWindowDelegate {
             nodeRow.set(.fail, detail: "not found on your login shell's PATH")
             cliRow.set(.pending, detail: "needs Node.js first")
         case .nodeTooOld(let found, _):
-            nodeRow.set(.fail, detail: "\(found) — \(BackendSetup.minimumNodeMajor)+ required")
+            nodeRow.set(.fail, detail: "\(found) — \(BackendSetup.minimumNodeMajor).\(BackendSetup.minimumNodeMinor)+ required")
             cliRow.set(.pending, detail: "needs a newer Node.js first")
         case .cliMissing(let node):
             nodeRow.set(.ok, detail: node)
@@ -400,7 +400,7 @@ final class BackendSetupController: NSObject, NSWindowDelegate {
                                                   size: 12, color: .secondaryLabelColor))
                 detail.addArrangedSubview(button("Update backend", #selector(updateBackend)))
             } else {
-                detail.addArrangedSubview(row(button("Start backend", #selector(startBackend), primary: true),
+                detail.addArrangedSubview(row(button("Start Lisa", #selector(startBackend), primary: true),
                                               button("Update backend", #selector(updateBackend))))
             }
         case .nodeMissing(let brew), .nodeTooOld(_, let brew):
@@ -413,9 +413,9 @@ final class BackendSetupController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Two ways to get Node.js, then Re-check. Homebrew first when it's present.
+    /// Two ways to get Node.js, then Check Again. Homebrew first when it's present.
     private func renderNodeOptions(brewAvailable: Bool) {
-        detail.addArrangedSubview(wrapped("Install Node.js first — either way works — then click Re-check:",
+        detail.addArrangedSubview(wrapped("Install Node.js first — either way works — then click Check Again:",
                                           size: 12, color: .secondaryLabelColor))
         detail.addArrangedSubview(sectionLabel(brewAvailable ? "1 · With Homebrew (in Terminal)" : "1 · With Homebrew"))
         detail.addArrangedSubview(row(codeBox(BackendSetup.brewNodeCommand), button("Copy", #selector(copyBrewNode))))

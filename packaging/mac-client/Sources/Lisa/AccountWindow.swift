@@ -52,7 +52,7 @@ struct CloudAccountView: View {
                     if model.needsApply {
                         CloudNoticeView(notice: CloudNotice(text: model.applicationMessage,
                                                            kind: model.applyFailed ? .warning : .information))
-                        Button(model.applying ? "Applying…" : "Apply cloud model settings…") { confirmApply = true }
+                        Button(model.applying ? "Applying…" : "Apply account settings…") { confirmApply = true }
                             .disabled(model.applying || model.busy || connection.busy)
                     }
                     Label("Your conversations stay on this Mac.", systemImage: "lock.shield")

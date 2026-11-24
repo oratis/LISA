@@ -36,6 +36,12 @@ export const LOGIN_HTML = `<!doctype html>
     width: min(92vw, 380px); padding: 32px 28px; border-radius: 16px;
     background: var(--page-card); border: 1px solid var(--page-border);
   }
+  .login-avatar {
+    display: block; width: 56px; height: 56px; margin: 0 auto 14px;
+    border-radius: 50%; object-fit: cover; object-position: 50% 22%;
+    border: 1px solid var(--page-border); background: var(--page-bg);
+  }
+  .card h1, .card p.sub { text-align: center; }
   h1 { font-size: 22px; margin-bottom: 4px; }
   p.sub { color: var(--page-muted); font-size: 14px; margin-bottom: 22px; }
   label { display: block; font-size: 13px; color: var(--page-muted); margin: 12px 0 4px; }
@@ -69,7 +75,8 @@ export const LOGIN_HTML = `<!doctype html>
 </head>
 <body>
 <div class="card">
-  <h1>LISA Cloud</h1>
+  <img class="login-avatar" src="/assets/icon-192.png" alt="Lisa" width="56" height="56">
+  <h1>Welcome back</h1>
   <p class="sub">Sign in to reach your Lisa. A free usage allowance refreshes every day.</p>
   <div id="apple-wrap">
     <button id="apple-btn" type="button"> Sign in with Apple</button>

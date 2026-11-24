@@ -84,7 +84,7 @@ final class PairController {
             case .notLocalhost: return "Pairing can only be started on the Mac itself."
             case .http(let c):  return "The Lisa backend returned an error (HTTP \(c))."
             case .noToken:      return "The Lisa backend didn't return a pairing token."
-            case .unreachable:  return "Lisa's backend isn't running. Start it, then try Pair iPhone again."
+            case .unreachable:  return "Lisa isn't running. Start Lisa, then try Connect Lisa Pocket again."
             }
         }
     }
@@ -286,7 +286,7 @@ final class PairController {
 
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 480),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        w.title = "Pair iPhone"
+        w.title = "Connect Lisa Pocket"
         w.contentView = container
         w.setContentSize(container.fittingSize)
         w.isReleasedWhenClosed = false
