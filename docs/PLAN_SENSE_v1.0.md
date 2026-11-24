@@ -122,7 +122,7 @@ class SenseService {
 // 3. 写 memory/store.ts append + 本地 embedding 索引（与 Model M2 共用）
 ```
 
-蒸馏质量受 Reve 反思门禁约束（[PLAN_REVE_v1.0.md R1](./PLAN_REVE_v1.0.md)）。raw 截图/音频在本地完成判定后即删（沿用 `vision/capture.ts` 的 finally 删除范式）。
+蒸馏质量受 Reve 反思门禁约束（[PLAN_REVE_v1.0.md R1](./archive/plans/PLAN_REVE_v1.0.md)）。raw 截图/音频在本地完成判定后即删（沿用 `vision/capture.ts` 的 finally 删除范式）。
 
 ---
 

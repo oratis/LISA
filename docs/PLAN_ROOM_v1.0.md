@@ -39,7 +39,9 @@ Phase 1 已实现并本地验证（隔离服务器 + 浏览器逐状态截图）
 
 **如何查看**：`npm run build && lisa serve --web`，打开 GUI 点侧栏 `⌂ Room`（或直接访问 `http://localhost:<port>/room`）。
 
-**待办（下一阶段）**：手动换装/换景、`current_desire` 道具化、你→她便签、独立壁纸窗（Phase 3，照抄 Island 的 Swift 容器）、她自己布置房间（`~/.lisa/soul/room.json`，Phase 4）。
+**后续阶段落地记录**：
+- **Phase 3（Mac 独立 Room 窗）**：已落地 `packaging/mac-client/Sources/Lisa/RoomWindow.swift`（`RoomWindowController` + `RoomWindowConfig`、`View → Open Room Window ⌘⇧R`、loopback `/room` 导航白名单、最小化/关闭可见性回传 `lisa-room-visibility`）及 `RoomWindowTests.swift`。
+- **Phase 4（她的主权布置）**：已落地 `<lisaHome>/soul/room.json` 原子存储（`src/room/store.ts`）、`room_decorate` 内置工具（`src/tools/room_decorate.ts`，Warden `SELF_TOOLS`）、以及 `GET /api/room/decor`（已抽离至 `src/web/routes/room-routes.ts`）。
 
 ---
 

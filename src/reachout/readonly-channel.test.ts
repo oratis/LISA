@@ -63,6 +63,7 @@ const AUTONOMOUS_ALLOWED: Record<string, Reach> = {
   kb_ingest: "self", // fetch → KB; unattended runs are limited to the feeds watchlist
   kb_write: "self",
   memory: "self",
+  room_decorate: "self",
   set_mood: "self",
   skill_manage: "self",
   soul_feel: "self",

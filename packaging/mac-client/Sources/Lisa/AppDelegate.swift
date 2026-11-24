@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func updateLocalServices() {
         IslandController.shared.setWorkspaceActive(workspace == .mac)
+        RoomWindowController.shared.setWorkspaceActive(workspace == .mac)
         guard workspace == .mac else {
             HotkeyManager.shared.unregister()
             MenuBarController.shared.uninstall()
@@ -177,6 +178,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         mainWindow?.reload()
     }
 
+    @MainActor @objc func openRoomWindow(_ sender: Any?) {
+        guard workspace == .mac else { return }
+        RoomWindowController.shared.show()
+    }
+
     @MainActor @objc func findInPage(_ sender: Any?) {
         showMainWindow()
         mainWindow?.triggerFind()
@@ -258,7 +264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case #selector(findInPage(_:)):
             return workspace == .mac
         case #selector(openBackendSetup(_:)), #selector(openPreferences(_:)), #selector(showPocket(_:)),
-             #selector(captureForLisa(_:)), #selector(captureContextForLisa(_:)):
+             #selector(captureForLisa(_:)), #selector(captureContextForLisa(_:)),
+             #selector(openRoomWindow(_:)):
             return workspace == .mac
         default: break
         }
@@ -394,6 +401,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             action: #selector(reloadChat(_:)),
             keyEquivalent: "r"
         ))
+        let roomItem = NSMenuItem(
+            title: "Open Room Window",
+            action: #selector(openRoomWindow(_:)),
+            keyEquivalent: "R"
+        )
+        roomItem.keyEquivalentModifierMask = [.command, .shift]
+        roomItem.target = self
+        viewMenu.addItem(roomItem)
         // Vision — also reachable from the menu (global ⌃⌥S works anywhere).
         let captureItem = NSMenuItem(
             title: "Screenshot for Lisa",

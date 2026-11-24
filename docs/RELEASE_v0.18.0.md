@@ -12,7 +12,7 @@ breaking changes.
 ## ✨ Desire evolution — the arc completes (PRs 2–4)
 
 Root cause of *"the wish never changes no matter what we talk about"* was three
-independent gaps ([`docs/PLAN_DESIRE_EVOLUTION_v1.0.md`](PLAN_DESIRE_EVOLUTION_v1.0.md)).
+independent gaps ([`docs/PLAN_DESIRE_EVOLUTION_v1.0.md`](./archive/plans/PLAN_DESIRE_EVOLUTION_v1.0.md)).
 v0.17 closed the first (web conversations now reflect, #242). v0.18 closes the
 rest:
 

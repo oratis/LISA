@@ -20,6 +20,7 @@ import { mcpTool } from "./mcp.js";
 import { signalAgentTool } from "./signal_agent.js";
 import { agentRecapTool } from "./agent_recap.js";
 import { provenanceTool } from "./provenance.js";
+import { roomDecorateTool } from "./room_decorate.js";
 import { skillManageTool } from "../skills/tool.js";
 import {
   desireCloseTool,
@@ -110,6 +111,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     signalAgentTool,
     agentRecapTool,
     provenanceTool,
+    roomDecorateTool,
     // Personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md):
     // kb_search / kb_read / kb_list (read) + kb_add / kb_write (jailed writes).
     ...kbTools,

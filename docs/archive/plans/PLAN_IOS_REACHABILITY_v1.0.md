@@ -34,7 +34,7 @@ debate on *how far* to go.
 ## The thesis (unchanged): local-first, reachable everywhere
 
 The fix must not betray "your AI on your machine." Per
-[PLAN_IDENTITY_v1.0.md](PLAN_IDENTITY_v1.0.md) Decision 2, the private
+[PLAN_IDENTITY_v1.0.md](../../PLAN_IDENTITY_v1.0.md) Decision 2, the private
 always-reachable path is **Tailscale** (E2E, no data in any cloud) — not a
 LISA-run relay. So: **guide users onto Tailscale, tell the truth on failure, and
 never crash on a cancelled request.**

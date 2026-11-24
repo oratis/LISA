@@ -49,7 +49,7 @@
 
 ### 落地架构
 - 接入 [PLAN_SENSE §2.2](./PLAN_SENSE_v1.0.md) 的 **SenseService 常驻循环**(与 chat 解耦),consent 闸在 source 启动处。
-- 蒸馏:命中的事件经低频 distill 落 `memory`(结构化摘要,非 raw),受 [Reve 反思门禁](./PLAN_REVE_v1.0.md) 约束。
+- 蒸馏:命中的事件经低频 distill 落 `memory`(结构化摘要,非 raw),受 [Reve 反思门禁](./archive/plans/PLAN_REVE_v1.0.md) 约束。
 - 本地 embedding(Model M2,已合)给蒸馏检索不离机。
 
 ---

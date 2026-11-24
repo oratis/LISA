@@ -1,7 +1,7 @@
 # PLAN · Dispatch D2b — A2A adapter (remote agents in the hub)
 
-> 展开 [PLAN_DISPATCH_v1.0.md](./PLAN_DISPATCH_v1.0.md) D2(b)。基线：main(v0.9.1+,D2a `takoapi` 工具已合)。
-> TakoAPI 事实见 [ROADMAP_v1.0.md §4](./ROADMAP_v1.0.md):A2A(`/v1/agents/{slug}/message`、`/stream`、TaskState)+ OpenAI shim。
+> 展开 [PLAN_DISPATCH_v1.0.md](../../PLAN_DISPATCH_v1.0.md) D2(b)。基线：main(v0.9.1+,D2a `takoapi` 工具已合)。
+> TakoAPI 事实见 [ROADMAP_v1.0.md §4](../../ROADMAP_v1.0.md):A2A(`/v1/agents/{slug}/message`、`/stream`、TaskState)+ OpenAI shim。
 
 ---
 

@@ -4,8 +4,8 @@
 > ① 每天自动抓取并总结成信息日报；② 粘贴任意链接（公众号 / 网站 / B站 / YouTube）
 > 一键转成带出处的 Markdown 知识；③ 所有知识用 index 织成链接图，memory 通过 link 调取。
 >
-> 参考：[docs/PLAN_KNOWLEDGE_BASE_v1.0.md](archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md)（已 shipped #235–#242）、
-> [src/kb/](../src/kb/)、[src/mail/](../src/mail/)（日报调度的现成范式）、[src/prompt.ts](../src/prompt.ts)。
+> 参考：[docs/PLAN_KNOWLEDGE_BASE_v1.0.md](./PLAN_KNOWLEDGE_BASE_v1.0.md)（已 shipped #235–#242）、
+> [src/kb/](../../../src/kb/)、[src/mail/](../../../src/mail/)（日报调度的现成范式）、[src/prompt.ts](../../../src/prompt.ts)。
 >
 > **Status:** 提案（待评审） · **日期:** 2026-07-23 · **Author:** Claude (for Oratis)
 > 本文含**现状 review（含 1 个已确认 bug）+ 完整设计 + 正反方辩论 + 分阶段 PR 计划**。
@@ -31,41 +31,41 @@ idle 蒸馏（v1.0 已有）→ 长成 wiki。K3 是黏合剂，也是最该先�
 
 | 层 | 代码 | 状态 |
 |---|---|---|
-| 存储 | [src/kb/store.ts](../src/kb/store.ts) | frontmatter 读写、`addSource` / `writeWiki` / `removeEntry`、`withFileLock` + git commit、每次写入重建 `index.md` |
-| 路径与越狱防护 | [src/kb/paths.ts](../src/kb/paths.ts) | `~/.lisa/kb/{sources,wiki}`，`entryFile()` 用 `assertSafeSlug` 做唯一收口 |
-| 检索 | [src/kb/search.ts](../src/kb/search.ts) | TF-IDF + mtime 指纹缓存 |
-| 工具 | [src/kb/tool.ts](../src/kb/tool.ts) | `kb_search` / `kb_read` / `kb_list` / `kb_add` / `kb_write` |
-| 常驻上下文 | [src/prompt.ts:158](../src/prompt.ts#L158) | SCHEMA.md（4KB 上限）+ index.md（2.6KB 上限）注入系统提示；`getPromptFingerprint` 含 KB 目录 → 会话内热重载 |
-| 自主蒸馏 | [src/idle/runner.ts:148](../src/idle/runner.ts#L148) | idle 时读 index，提示 Lisa 用 `kb_write` 把新 source 蒸馏进 wiki |
-| Web | [src/web/server.ts:2567](../src/web/server.ts#L2567) + [lisa-client.ts:2670](../src/web/lisa-client.ts#L2670) | `/api/kb{,/search,/entry,/add,/remove}` + Knowledge 视图 + 聊天选中消息存入 KB |
-| 权限子集 | [src/tools/registry.ts:204](../src/tools/registry.ts#L204) | `kb_add`/`kb_write` **remote-blocked、autonomous-allowed** |
+| 存储 | [src/kb/store.ts](../../../src/kb/store.ts) | frontmatter 读写、`addSource` / `writeWiki` / `removeEntry`、`withFileLock` + git commit、每次写入重建 `index.md` |
+| 路径与越狱防护 | [src/kb/paths.ts](../../../src/kb/paths.ts) | `~/.lisa/kb/{sources,wiki}`，`entryFile()` 用 `assertSafeSlug` 做唯一收口 |
+| 检索 | [src/kb/search.ts](../../../src/kb/search.ts) | TF-IDF + mtime 指纹缓存 |
+| 工具 | [src/kb/tool.ts](../../../src/kb/tool.ts) | `kb_search` / `kb_read` / `kb_list` / `kb_add` / `kb_write` |
+| 常驻上下文 | [src/prompt.ts:158](../../../src/prompt.ts#L158) | SCHEMA.md（4KB 上限）+ index.md（2.6KB 上限）注入系统提示；`getPromptFingerprint` 含 KB 目录 → 会话内热重载 |
+| 自主蒸馏 | [src/idle/runner.ts:148](../../../src/idle/runner.ts#L148) | idle 时读 index，提示 Lisa 用 `kb_write` 把新 source 蒸馏进 wiki |
+| Web | [src/web/server.ts:2567](../../../src/web/server.ts#L2567) + [lisa-client.ts:2670](../../../src/web/lisa-client.ts#L2670) | `/api/kb{,/search,/entry,/add,/remove}` + Knowledge 视图 + 聊天选中消息存入 KB |
+| 权限子集 | [src/tools/registry.ts:204](../../../src/tools/registry.ts#L204) | `kb_add`/`kb_write` **remote-blocked、autonomous-allowed** |
 
 ### 1.2 五个缺口（每个都对应本次的具体工作）
 
-**G1 · 没有摄取通道。** 现有 [`web_fetch`](../src/tools/web_fetch.ts) 只做**有损纯文本**——
-`htmlToText`（[web_fetch.ts:115](../src/tools/web_fetch.ts#L115)）把所有标签、标题层级、
+**G1 · 没有摄取通道。** 现有 [`web_fetch`](../../../src/tools/web_fetch.ts) 只做**有损纯文本**——
+`htmlToText`（[web_fetch.ts:115](../../../src/tools/web_fetch.ts#L115)）把所有标签、标题层级、
 列表、代码块、链接、图片全部抹平成一坨文本。它能防 SSRF（`fetchFollowingSafeRedirects`
 逐跳校验，值得复用），但产出**不是 Markdown、没有元数据、没有去重、也不落库**。
 "粘贴链接变知识"目前是零。
 
 **G2 · 没有 KB 的定时任务。** 全仓唯一的每日调度是 mail
-（[server.ts:606](../src/web/server.ts#L606) 的 30 分钟轮询 + `isDigestDue` 纯函数 +
+（[server.ts:606](../../../src/web/server.ts#L606) 的 30 分钟轮询 + `isDigestDue` 纯函数 +
 重启补跑），KB 侧没有任何定时器、没有 watchlist、没有"昨天到今天新增了什么"的概念。
 
 **G3 · slug 铸造是纯 ASCII 的（对中文内容是硬伤）。**
-`normalizeSlug`（[src/soul/slug.ts](../src/soul/slug.ts)）执行
+`normalizeSlug`（[src/soul/slug.ts](../../../src/soul/slug.ts)）执行
 `replace(/[^a-z0-9]+/g, "-")` —— 一个中文标题会被整条剃成空串，`addSource`
 随即回退到 `entry-<timestamp>`。**今天每一条中文来源都会拿到一个无意义的时间戳
 slug**，而本次要灌进来的正是公众号 / B 站这类中文内容。必须先修。
 
 **G4 · index.md 是平铺 TOC，`[[slug]]` 没人解析。**
-`regenerateIndexLocked`（[store.ts:192](../src/kb/store.ts#L192)）输出的是
+`regenerateIndexLocked`（[store.ts:192](../../../src/kb/store.ts#L192)）输出的是
 "标题 + 前 100 字"的两段列表。SCHEMA.md 里写着"用 `[[slug]]` 互链"
-（[src/kb/schema.ts:20](../src/kb/schema.ts#L20)），但全仓**没有任何代码读它**——
+（[src/kb/schema.ts:20](../../../src/kb/schema.ts#L20)），但全仓**没有任何代码读它**——
 没有反向链接、没有孤儿检测、没有图。`sources:` frontmatter 记了出处却从不被查询。
 
 **G5 · 中文检索实际上是坏的（已实测确认）。** 两处 tokenizer
-（[kb/search.ts:45](../src/kb/search.ts#L45) 与 [memory/vector.ts:212](../src/memory/vector.ts#L212)）
+（[kb/search.ts:45](../../../src/kb/search.ts#L45) 与 [memory/vector.ts:212](../../../src/memory/vector.ts#L212)）
 逻辑相同：把非 `[a-z0-9一-鿿\s]` 换成空格后**按空白切分**。中文不带空格，所以
 
 ```
@@ -126,7 +126,7 @@ YouTube 2025–2026 上线了 PO Token 机制，`youtube-transcript-api` 为此�
 所以设计上**不把字幕当作成功条件**：拿不到就落"元数据 + 简介 + 显式的
 `transcript: unavailable(reason)`"，并在返回值里告诉用户可以补贴文稿。
 分层顺序固定为 `内建 API → yt-dlp（可选外部二进制，PATH 上有才用）→ 仅元数据`。
-（进一步可选：`yt-dlp` 下音频 → 复用 [src/voice/transcribe.ts](../src/voice/transcribe.ts)
+（进一步可选：`yt-dlp` 下音频 → 复用 [src/voice/transcribe.ts](../../../src/voice/transcribe.ts)
 的 Whisper/Scribe 转写。成本高，默认关，`LISA_KB_ASR=1` 才开。）
 
 **不做的事**（写进文档避免以后跑偏）：不做公众号历史文章批量爬取、不做需要登录态的
@@ -159,7 +159,7 @@ macOS 的 NFD/NFC 归一化、git 的 `core.precomposeunicode`、URL 编码，�
 
 ### 2.5 出处 frontmatter（store.ts 需要一处小改）
 
-当前 `serializeEntry`（[store.ts:90](../src/kb/store.ts#L90)）字段是硬编码的。
+当前 `serializeEntry`（[store.ts:90](../../../src/kb/store.ts#L90)）字段是硬编码的。
 加一个 `extra?: Record<string, string>` 透传，摄取写入：
 
 ```yaml
@@ -190,9 +190,9 @@ via: paste | brief | share       # 怎么进来的
 | 入口 | 形态 |
 |---|---|
 | 工具 | `kb_ingest(url, title?, tags?, distill?)` |
-| CLI | `lisa kb add <url> [--tag x] [--distill]`（新 `lisa kb` 子命令，照 [src/cli/mail.ts](../src/cli/mail.ts) 的形状） |
+| CLI | `lisa kb add <url> [--tag x] [--distill]`（新 `lisa kb` 子命令，照 [src/cli/mail.ts](../../../src/cli/mail.ts) 的形状） |
 | Web · Knowledge 视图 | 顶部一个"粘贴链接"输入框 → 进度 → 成功后直接打开该条 |
-| Web · 聊天 | 用户消息里检测到裸 URL → 气泡下方出现"存入知识库"小按钮（复用已有的 `/api/kb/add` 交互模式，[lisa-client.ts:1337](../src/web/lisa-client.ts#L1337)） |
+| Web · 聊天 | 用户消息里检测到裸 URL → 气泡下方出现"存入知识库"小按钮（复用已有的 `/api/kb/add` 交互模式，[lisa-client.ts:1337](../../../src/web/lisa-client.ts#L1337)） |
 | 移动端分享 | iOS/Mac 分享面板 → `POST /api/kb/ingest`。**本次不做**，但 HTTP 接口按能被分享面板直接调用来设计 |
 
 ---
@@ -217,7 +217,7 @@ via: paste | brief | share       # 怎么进来的
 ```
 
 文件不存在或 `feeds` 为空 → **整个能力完全惰性**（与 mail 未连账号时一致，
-[server.ts:588](../src/web/server.ts#L588) 的判据）。
+[server.ts:588](../../../src/web/server.ts#L588) 的判据）。
 
 **RSS/Atom 是主干**，理由是它零依赖可解析、且覆盖面最广：
 YouTube 频道仍开放 `feeds/videos.xml?channel_id=`；绝大多数博客/新闻站有 feed。
@@ -230,8 +230,8 @@ YouTube 频道仍开放 `feeds/videos.xml?channel_id=`；绝大多数博客/新�
 
 | 步骤 | mail 的实现 | KB 版 |
 |---|---|---|
-| 是否该跑 | `isDigestDue(last, now, hour)` 纯函数（[mail/scheduler.ts:19](../src/mail/scheduler.ts#L19)） | `isBriefDue(...)` 同签名 |
-| 定时 | 30 分钟 `setInterval` + 20 秒重启补跑（[server.ts:606](../src/web/server.ts#L606)） | 同 |
+| 是否该跑 | `isDigestDue(last, now, hour)` 纯函数（[mail/scheduler.ts:19](../../../src/mail/scheduler.ts#L19)） | `isBriefDue(...)` 同签名 |
+| 定时 | 30 分钟 `setInterval` + 20 秒重启补跑（[server.ts:606](../../../src/web/server.ts#L606)） | 同 |
 | 拉取 | IMAP 增量（seen-UID） | 各 feed 增量（`lastSeenId` + 发布时间） |
 | 分类 | `classifyMail` 批量小模型 → category + importance | `classifyItems` 同形状：`{category, importance 0–3, oneLine}` |
 | 成品 | `buildDigest` 纯函数 → `DailyDigest` | `buildBrief` 纯函数 → `DailyBrief` |
@@ -269,7 +269,7 @@ mail 的 digest 只是通知，KB 的 brief 是**语料**。
 
 ### 3.4 成本闸门
 
-抄 heartbeat 的做法（[heartbeat/config.ts:20](../src/heartbeat/config.ts#L20) 的
+抄 heartbeat 的做法（[heartbeat/config.ts:20](../../../src/heartbeat/config.ts#L20) 的
 `budgetTokens` + `DEFAULT_HEARTBEAT_BUDGET_TOKENS`）：`feeds.json` 的 `budgetTokens`
 默认 120k/天，超了就跳过剩余条目并**记日志而非静默丢弃**。分类走一次批量调用，
 不是一条一个请求。
@@ -300,12 +300,12 @@ interface KbGraph {
 
 边的三个来源：正文里的 `[[slug]]` / `[[slug|显示文本]]`、wiki 页的 `sources:` frontmatter
 （v1.0 已经在写，只是没人读）、source 的 `url` 与 brief 的引用。
-缓存策略直接复用 `search.ts` 那套 mtime+size 指纹（[search.ts:75](../src/kb/search.ts#L75)），
+缓存策略直接复用 `search.ts` 那套 mtime+size 指纹（[search.ts:75](../../../src/kb/search.ts#L75)），
 KB 不变时零成本。
 
 ### 4.2 index.md 从"平铺 TOC"变成"MOC（内容地图）"
 
-约束没变：注入系统提示时被砍到 2.6KB（[prompt.ts:165](../src/prompt.ts#L165)）。
+约束没变：注入系统提示时被砍到 2.6KB（[prompt.ts:165](../../../src/prompt.ts#L165)）。
 所以 KB 一大，平铺列表就会被从中间截断——**恰恰是最有价值的枢纽页被切掉**。改成：
 
 ```markdown
@@ -341,7 +341,7 @@ _3 条孤儿页待整理：… （idle 时处理）_
 这是三条需求里最容易做偏的一条，说清机制：
 
 1. **memory 里存 link，不存内容。** `MEMORY.md` 只有 4KB 上限
-   （[memory/store.ts:5](../src/memory/store.ts#L5)），本来就装不下知识。
+   （[memory/store.ts:5](../../../src/memory/store.ts#L5)），本来就装不下知识。
    约定 memory 条目可以写 `[[kb:oauth]]`，例如
    `- 用户在做 OAuth 迁移，细节见 [[kb:oauth]]`。
 2. **常驻提示里 link 自解释。** 组装系统提示时，把 memory 行里的 `[[kb:slug]]`
@@ -365,8 +365,8 @@ _3 条孤儿页待整理：… （idle 时处理）_
 ```
 
 二元组是中文检索里"零依赖 / 无词典 / 召回优先"的标准做法，且对 IDF 友好。
-**两处都要改**（[kb/search.ts:45](../src/kb/search.ts#L45)、
-[memory/vector.ts:212](../src/memory/vector.ts#L212)），因为 memory_search 面对的
+**两处都要改**（[kb/search.ts:45](../../../src/kb/search.ts#L45)、
+[memory/vector.ts:212](../../../src/memory/vector.ts#L212)），因为 memory_search 面对的
 中文对话记录有一模一样的问题。改完索引缓存指纹会自然失效，无需迁移。
 
 ---
@@ -423,7 +423,7 @@ _3 条孤儿页待整理：… （idle 时处理）_
 ### D3 — 自主运行能不能摄取任意链接？（本文最重要的一条）
 - **正**：Lisa 主动读、主动补充知识，才是"会长大的知识库"。
 - **反**：`AUTONOMOUS_BLOCKED_TOOL_NAMES` 的注释已经点名了这个风险
-  （[registry.ts:146](../src/tools/registry.ts#L146)）——"web_fetch 内容里的间接注入
+  （[registry.ts:146](../../../src/tools/registry.ts#L146)）——"web_fetch 内容里的间接注入
   可能种下恶意 desire"。而 KB 比那更危险一步：摄取内容会进 `index.md`，
   而 `index.md` **每一轮都注入系统提示**。这是一条从"任意网页"到"常驻提示词"的直通路。
 - **共识（采纳，三重收口）**：
@@ -436,7 +436,7 @@ _3 条孤儿页待整理：… （idle 时处理）_
 ### D4 — 抓取要不要新开一个 consent signal？
 - **正**：定时对外发网络请求，形态上接近 mail（mail 有 `mail` consent）。
 - **反**：consent 框架管的是**敏感的环境采集**（屏幕/麦克风/剪贴板/邮件内容）
-  （[consent/store.ts:31](../src/consent/store.ts#L31)）。抓取的是**用户自己填进
+  （[consent/store.ts:31](../../../src/consent/store.ts#L31)）。抓取的是**用户自己填进
   watchlist 的公开 URL**，既不涉他人隐私也不涉本机环境；多一个开关是仪式感不是安全。
 - **共识（采纳）**：不新增 consent signal。`feeds.json` 缺失/为空即完全惰性，
   这已经是与 mail 完全同构的"默认关"。但 UI 上必须显示"每日 N 点会去拉这 M 个源"。
@@ -481,8 +481,8 @@ _3 条孤儿页待整理：… （idle 时处理）_
 | **K-D · memory ⇄ link** | `[[kb:slug]]` 在系统提示里补标题；`kb_read` 接受 wikilink；idle 蒸馏回写 link；`kb_read` 附反向链接 | 提示里 link 带标题；蒸馏后 memory 出现 link |
 | **K-E · 摄取引擎** | `readability.ts` + `html-to-md.ts` + `provenance.ts` + generic 适配器 + `kb_ingest` 工具 + 去重 | HTML→MD 结构保真（标题/列表/代码/表格）；SSRF 复用测试；同 URL 去重 |
 | **K-F · 站点适配器** | wechat / bilibili / youtube / b23 短链 + `yt-dlp` 可选分层 + 降级路径 | 用**离线 HTML 固件**测提取（不打真实网络）；字幕缺失时的降级断言 |
-| **K-G · 摄取界面** | `POST /api/kb/ingest`、Knowledge 视图粘贴框、聊天 URL "存入知识库"按钮、`lisa kb add <url>` CLI | HTTP 契约测试；快照测试（[lisa-html-snapshot.test.ts](../src/web/lisa-html-snapshot.test.ts)） |
-| **K-H · 日报** | `kb/feeds/`（RSS/Atom 解析、增量、分类、`buildBrief` 纯函数、`isBriefDue`）+ server 定时器 + push + brief 落 Layer 1 + Brief 视图 | 纯函数全覆盖（照 [mail/digest.test.ts](../src/mail/digest.test.ts)）；空 watchlist 完全惰性；预算超限跳过并记日志 |
+| **K-G · 摄取界面** | `POST /api/kb/ingest`、Knowledge 视图粘贴框、聊天 URL "存入知识库"按钮、`lisa kb add <url>` CLI | HTTP 契约测试；快照测试（[lisa-html-snapshot.test.ts](../../../src/web/lisa-html-snapshot.test.ts)） |
+| **K-H · 日报** | `kb/feeds/`（RSS/Atom 解析、增量、分类、`buildBrief` 纯函数、`isBriefDue`）+ server 定时器 + push + brief 落 Layer 1 + Brief 视图 | 纯函数全覆盖（照 [mail/digest.test.ts](../../../src/mail/digest.test.ts)）；空 watchlist 完全惰性；预算超限跳过并记日志 |
 | **K-I · 收尾** | SCHEMA.md 补三段工作流；`kb_ingest` 自主受限（D3 三重收口）；周报 heartbeat 模板；本文状态改 shipped | 自主子集里 `kb_ingest` 受 watchlist 限制；`origin: web` 不进 index 摘录 |
 
 **排序理由**：K-B/K-C/K-D 先行看着"不出活"，但它们是另外两条的地基——
@@ -496,12 +496,12 @@ _3 条孤儿页待整理：… （idle 时处理）_
 ## 8. 隐私 · 安全 · 成本
 
 - **SSRF**：所有出站抓取走既有的 `fetchFollowingSafeRedirects`
-  （[web_fetch.ts:75](../src/tools/web_fetch.ts#L75)，逐跳校验私网/回环），不另起 fetch。
+  （[web_fetch.ts:75](../../../src/tools/web_fetch.ts#L75)，逐跳校验私网/回环），不另起 fetch。
 - **提示注入**（最需要盯的面）：外部内容 → `index.md` → 系统提示是一条真实通路。
   三重收口见 D3：自主摄取限 watchlist、`origin: web` 不进索引摘录、
   `kb_read` 外部内容加不可信围栏。
 - **越狱**：摄取仍然只经 `addSource()` → `entryFile()` → `assertSafeSlug()` 这条唯一收口
-  （[paths.ts:48](../src/kb/paths.ts#L48)），不新增写路径。
+  （[paths.ts:48](../../../src/kb/paths.ts#L48)），不新增写路径。
 - **凭据**：B 站 `SESSDATA` 之类由用户自愿填入 `feeds.json`，`0600`，**不进 git、不进提示词、
   不随 KB 仓库提交**（`kb/.gitignore` 排除 `feeds.json`）。
 - **ToS 与礼貌**：尊重 `robots.txt`、每站串行 + 退避、真实 UA 标识 `Lisa/…`；
@@ -518,9 +518,9 @@ _3 条孤儿页待整理：… （idle 时处理）_
 **开放问题**
 1. 图片怎么办？公众号图片有 referer 校验，外链在 KB 里大概率显示不出来。
    选项：（a）只留链接（本次默认）；（b）下载到 `kb/assets/`（占空间但离线可读）。倾向 (b) 但放到 K-F 之后单独评估。
-2. `sources/` 会长很大之后，`listEntries()` 每次全量读盘重解析（[store.ts:163](../src/kb/store.ts#L163)）
+2. `sources/` 会长很大之后，`listEntries()` 每次全量读盘重解析（[store.ts:163](../../../src/kb/store.ts#L163)）
    会变慢——需要一个元数据缓存。**过千条再做**，别提前优化。
-3. 语义检索：v1.0 就留了口子（复用 [memory/embedding.ts](../src/memory/embedding.ts) 的
+3. 语义检索：v1.0 就留了口子（复用 [memory/embedding.ts](../../../src/memory/embedding.ts) 的
    可选 Ollama 嵌入）。CJK 二元组修完后先看 TF-IDF 够不够，不够再上。
 4. 日报的"值得读"判定要不要让用户反馈（👍/👎）来调权重？这会把它从静态规则变成
    会学习的东西——很诱人，但先跑两周静态版本看真实噪声率再定。

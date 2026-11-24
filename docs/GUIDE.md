@@ -384,7 +384,7 @@ LISA has a built-in **personal knowledge base** modeled on [Andrej Karpathy's 3-
 - **She tends it on her own.** During idle reflection she distills memory + journal into wiki pages and keeps cross-references consistent — Karpathy's "you feed sources, the system builds itself," but self-driven.
 - **Web Knowledge view.** A Knowledge tab with live search, browse, and read over both layers.
 
-v2.0 turns the store into a **knowledge system that grows on its own** ([PLAN_KNOWLEDGE_BASE_v2.0.md](PLAN_KNOWLEDGE_BASE_v2.0.md)):
+v2.0 turns the store into a **knowledge system that grows on its own** ([PLAN_KNOWLEDGE_BASE_v2.0.md](./archive/plans/PLAN_KNOWLEDGE_BASE_v2.0.md)):
 
 - **Save any link.** Paste a URL in the Knowledge view, tap 存入知识库 under a chat message, run `lisa kb add <url>`, or let her call `kb_ingest` — a zero-dependency readability + HTML→Markdown pipeline captures the page with provenance frontmatter (url · site · author · published), dedupes by canonical URL, and never fetches private/loopback hosts. Site adapters handle **WeChat articles** (verification-page aware), **Bilibili** and **YouTube** (metadata + subtitles, degrading gracefully to metadata-only — a missing transcript is never a failure).
 - **Daily brief.** Put RSS/Atom feeds in `~/.lisa/kb/feeds.json` and every morning she sweeps them incrementally, classifies the new items, ranks them **against you** (watchlist weight × importance × overlap with your wiki and memory), full-text-ingests the top 3, and delivers a brief to chat + push — also written into `sources/` so it's searchable and distillable. No feeds file = the whole capability is inert.

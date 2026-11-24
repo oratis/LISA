@@ -71,6 +71,22 @@ Fill in from `scripts/footprint.ts` on your machine + config.
 | _pending_ | — | idle (claude-code only) | — | — | — |
 | _pending_ | — | `screen` granted | — | — | — |
 
+## Sandbox & isolation posture (H1 / H2)
+
+Lisa's filesystem and shell tools run through the `ToolContext.caps` capability seam
+(`src/capabilities/local.ts`, `src/capabilities/sandboxed.ts`, `src/sandbox/mode.ts`):
+
+- **Three explicit `sandboxMode` levels**: `read-only`, `workspace-write`, and
+  `danger-full-access`.
+- **Fail-closed on unsupported hosts**: requesting `read-only` or `workspace-write`
+  without OS-level enforcement (macOS Seatbelt or Linux bubblewrap) throws
+  `SANDBOX_UNAVAILABLE` rather than silently degrading to an unconfined shell.
+- **Unified fs + shell root**: `write`, `edit`, and `apply_patch` resolve realpaths
+  against the same workspace root as `bash`, rejecting `../` and symlink escapes.
+- **Session-pinned posture**: `SessionHeader.sandboxMode` (format `version: 2`) is
+  fixed at session creation so changing config mid-run never widens an in-flight
+  session.
+
 ## Distribution footprint
 
 `npm i -g @oratis/lisa` ships `dist/` (which contains `src/web/assets`

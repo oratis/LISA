@@ -29,7 +29,7 @@ import { FleetError, fleetRoute, fleetViewRoute, VIEW_API } from "../remote/flee
 import type { FleetApi } from "../remote/fleet/api.js";
 import { trackShutdown } from "./shutdown.js";
 import { fileURLToPath } from "node:url";
-import { listRoomMusic, toPublicTrack } from "./room-music.js";
+import { handleRoomRoutes } from "./routes/room-routes.js";
 import { runAgent } from "../agent.js";
 import {
   ReadonlyConnector,
@@ -193,7 +193,6 @@ import {
 import { enforceErrorShape, errorBody, errorMessage } from "./error-shape.js";
 import { closeInterruptedToolCalls, unfinishedTurnIndex } from "./chat-retry.js";
 import { ipRateOk } from "../billing/limits.js";
-import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
 import { CodexTitles, codexTitleKey } from "../integrations/codex/titles.js";
 import { codexObservationStatus, setCodexObservation } from "../integrations/codex/observation.js";
@@ -3760,14 +3759,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
-    // Room — an ambient, state-driven pixel-art living space where Lisa "lives".
-    // Reuses /events + /api/island/ping. See docs/PLAN_ROOM_v1.0.md.
-    if (req.method === "GET" && (url === "/room" || url.startsWith("/room?"))) {
-      res.writeHead(200, {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store",
-      });
-      res.end(ROOM_HTML);
+    // Room — HTML, sovereign room decor, and gramophone playlist/Range routes.
+    if (await handleRoomRoutes(req, res, url, { musicDir: MUSIC_DIR })) {
       return;
     }
 
@@ -5966,60 +5959,6 @@ self.addEventListener('fetch', (event) => {
         req.off("close", onClose);
         res.off("close", onClose);
         run.listeners.delete(listener);
-        res.end();
-      }
-      return;
-    }
-
-    // Room gramophone playlist: bundled tracks + the user's ~/.lisa/music/*.mp3.
-    if (req.method === "GET" && url === "/api/room/music") {
-      const tracks = (await listRoomMusic(MUSIC_DIR)).map(toPublicTrack);
-      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-      res.end(JSON.stringify(tracks));
-      return;
-    }
-    // Stream one track by opaque id, with HTTP Range support so seeking works.
-    // The id is resolved back to a path only via listRoomMusic, so there is no
-    // path-traversal surface even for user drop-in files.
-    if (req.method === "GET" && url.startsWith("/api/room/music/file/")) {
-      const id = decodeURIComponent(url.slice("/api/room/music/file/".length));
-      const track = (await listRoomMusic(MUSIC_DIR)).find((t) => t.id === id);
-      if (!track) {
-        res.writeHead(404, { "content-type": "text/plain" });
-        res.end("no such track");
-        return;
-      }
-      try {
-        const total = (await fs.stat(track.filePath)).size;
-        const base = {
-          "content-type": "audio/mpeg",
-          "accept-ranges": "bytes",
-          "cache-control": "public, max-age=86400",
-        };
-        const range = req.headers.range;
-        const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
-        if (m) {
-          let start = m[1] ? parseInt(m[1], 10) : 0;
-          let end = m[2] ? parseInt(m[2], 10) : total - 1;
-          if (!Number.isFinite(start) || start < 0) start = 0;
-          if (!Number.isFinite(end) || end >= total) end = total - 1;
-          if (start > end || start >= total) {
-            res.writeHead(416, { "content-range": `bytes */${total}` });
-            res.end();
-            return;
-          }
-          res.writeHead(206, {
-            ...base,
-            "content-range": `bytes ${start}-${end}/${total}`,
-            "content-length": String(end - start + 1),
-          });
-          createReadStream(track.filePath, { start, end }).pipe(res);
-        } else {
-          res.writeHead(200, { ...base, "content-length": String(total) });
-          createReadStream(track.filePath).pipe(res);
-        }
-      } catch {
-        res.writeHead(404);
         res.end();
       }
       return;
