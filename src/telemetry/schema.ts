@@ -392,6 +392,8 @@ export const CLI_COMMANDS = keysOfExhaustive<CliCommand>({
   warden: true,
   reve: true,
   telemetry: true,
+  mcp: true,
+  recipes: true,
   forget: true,
   export: true,
   import: true,
