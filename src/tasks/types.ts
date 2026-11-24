@@ -280,8 +280,20 @@ export interface Task {
   cancelRequestedAt?: number;
   /** Why the task is `queued`: a manual "run now", a retry, or a watcher hit with its input. */
   queued?: { manual?: boolean; input?: string };
+  /** Additive Goal progress milestones & completion evidence (kind = "goal"). */
+  goalMilestones?: GoalMilestone[];
+  /** Optional next review timestamp (epoch ms) for goal tasks. */
+  goalNextReviewAt?: number;
   /** Run ids, oldest first, capped at MAX_RUNS_PER_TASK. */
   runs: string[];
+}
+
+export interface GoalMilestone {
+  id: string;
+  title: string;
+  done: boolean;
+  evidence?: string;
+  updatedAt?: number;
 }
 
 export type TaskRunState =
@@ -396,6 +408,8 @@ export function tokensSpent(run: Pick<TaskRun, "tokens">): number {
 }
 
 export interface TaskArtifact {
+  /** Optional stable artifact identifier (legacy records omit this and fall back to index). */
+  id?: string;
   kind: "text" | "link" | "file";
   title?: string;
   value: string;

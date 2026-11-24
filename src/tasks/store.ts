@@ -312,6 +312,8 @@ export type NewTask = Pick<Task, "kind" | "title" | "instruction" | "origin"> &
       | "createdDisabled"
       | "state"
       | "nextRunAt"
+      | "goalMilestones"
+      | "goalNextReviewAt"
     >
   > & { id?: string };
 
@@ -345,6 +347,8 @@ export async function createTask(input: NewTask, now = Date.now()): Promise<Task
     updatedAt: now,
     ...(enabled ? { enabledAt: now } : {}),
     ...(input.nextRunAt !== undefined ? { nextRunAt: input.nextRunAt } : {}),
+    ...(input.goalMilestones ? { goalMilestones: input.goalMilestones } : {}),
+    ...(input.goalNextReviewAt !== undefined ? { goalNextReviewAt: input.goalNextReviewAt } : {}),
     authFailureCount: 0,
     runs: [],
   };

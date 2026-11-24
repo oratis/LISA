@@ -1335,6 +1335,88 @@
         }
       }
     },
+    "/api/tasks/{id}/runs/{runId}/artifacts/{artifactId}": {
+      "get": {
+        "operationId": "getTaskRunArtifact",
+        "description": "Authorized, workspace-contained preview or download of one task run artifact.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "in": "path",
+            "name": "artifactId",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "in": "query",
+            "name": "download",
+            "required": false,
+            "schema": { "type": "string", "enum": ["1"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact bytes (with nosniff and sandbox CSP) or validated link JSON.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/client-capabilities": {
+      "get": {
+        "operationId": "getClientCapabilities",
+        "description": "Truthful read-only summary of what this server and authenticated caller support. Does not grant permissions.",
+        "responses": {
+          "200": {
+            "description": "Client capability snapshot.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "edition",
+                    "surface",
+                    "profile",
+                    "location",
+                    "canApprove",
+                    "tasks",
+                    "approvals",
+                    "connectors",
+                    "localTools",
+                    "cloudWorkspace",
+                    "artifacts"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/approvals": {
       "get": {
         "operationId": "listApprovals",

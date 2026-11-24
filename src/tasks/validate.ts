@@ -22,6 +22,7 @@ import {
   TASK_HOSTS,
   TASK_KINDS,
   TASK_NOTIFY,
+  type GoalMilestone,
   type ScheduleSpec,
   type Task,
   type TaskBudget,
@@ -307,6 +308,41 @@ function shapeProblem(
   return null;
 }
 
+function parseGoalMilestones(v: unknown): Result<GoalMilestone[]> {
+  if (!Array.isArray(v) || v.length > 50) {
+    return fail("goalMilestones must be a list of at most 50 milestones");
+  }
+  const out: GoalMilestone[] = [];
+  for (let i = 0; i < v.length; i++) {
+    const raw = v[i];
+    if (!isObject(raw)) return fail(`goalMilestones[${i}] must be an object`);
+    const id =
+      typeof raw.id === "string" && raw.id.trim() ? raw.id.trim().slice(0, 64) : `m${i + 1}`;
+    const title = text(raw.title, `goalMilestones[${i}].title`, 200);
+    if (!title.ok) return title;
+    const done = raw.done === true;
+    let evidence: string | undefined;
+    if (raw.evidence !== undefined) {
+      if (typeof raw.evidence !== "string" || raw.evidence.length > 1000) {
+        return fail(`goalMilestones[${i}].evidence must be a string up to 1000 characters`);
+      }
+      if (raw.evidence.trim()) evidence = raw.evidence.trim();
+    }
+    const updatedAt =
+      typeof raw.updatedAt === "number" && Number.isFinite(raw.updatedAt)
+        ? raw.updatedAt
+        : undefined;
+    out.push({
+      id,
+      title: title.value,
+      done,
+      ...(evidence ? { evidence } : {}),
+      ...(updatedAt !== undefined ? { updatedAt } : {}),
+    });
+  }
+  return { ok: true, value: out };
+}
+
 /**
  * Validate the body of a create request. The result is always DISABLED: the
  * caller decides whether this origin may enable a task (the API may, the model
@@ -365,6 +401,17 @@ export function parseNewTask(
     if (!budget.ok) return budget;
     value.budget = budget.value;
   }
+  if (body.goalMilestones !== undefined) {
+    const ms = parseGoalMilestones(body.goalMilestones);
+    if (!ms.ok) return ms;
+    value.goalMilestones = ms.value;
+  }
+  if (body.goalNextReviewAt !== undefined) {
+    if (typeof body.goalNextReviewAt !== "number" || !Number.isFinite(body.goalNextReviewAt)) {
+      return fail("goalNextReviewAt must be a finite timestamp in ms");
+    }
+    value.goalNextReviewAt = Math.floor(body.goalNextReviewAt);
+  }
   const problem = shapeProblem(value.kind, value.schedule, value.trigger);
   return problem ? fail(problem) : { ok: true, value };
 }
@@ -379,6 +426,8 @@ const EDITABLE = [
   "budget",
   "notify",
   "host",
+  "goalMilestones",
+  "goalNextReviewAt",
 ] as const;
 
 /**
@@ -442,6 +491,22 @@ export function applyTaskEdit(task: Task, body: unknown, ctx: ValidateContext): 
     if (!budget.ok) return budget.error;
     next.budget = budget.value;
   }
+  if (body.goalMilestones !== undefined) {
+    if (body.goalMilestones === null) delete next.goalMilestones;
+    else {
+      const ms = parseGoalMilestones(body.goalMilestones);
+      if (!ms.ok) return ms.error;
+      next.goalMilestones = ms.value;
+    }
+  }
+  if (body.goalNextReviewAt !== undefined) {
+    if (body.goalNextReviewAt === null) delete next.goalNextReviewAt;
+    else if (typeof body.goalNextReviewAt !== "number" || !Number.isFinite(body.goalNextReviewAt)) {
+      return "goalNextReviewAt must be a finite timestamp in ms";
+    } else {
+      next.goalNextReviewAt = Math.floor(body.goalNextReviewAt);
+    }
+  }
   const problem = shapeProblem(next.kind, next.schedule, next.trigger);
   if (problem) return problem;
   // A task whose envelope cannot be used (found so on disk) takes no other
@@ -459,5 +524,7 @@ export function applyTaskEdit(task: Task, body: unknown, ctx: ValidateContext): 
   if (!next.envelope) delete task.envelope;
   if (!next.watch) delete task.watch;
   if (!next.envelopeConfirmation) delete task.envelopeConfirmation;
+  if (!next.goalMilestones) delete task.goalMilestones;
+  if (next.goalNextReviewAt === undefined) delete task.goalNextReviewAt;
   return null;
 }

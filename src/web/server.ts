@@ -397,6 +397,7 @@ import {
   toolsForCapabilityProfile,
   isNonCanonicalPath,
 } from "./capabilities.js";
+import { buildClientCapabilities } from "./client-capabilities.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import { configStatusPayload, parseConfigSave } from "./config-api.js";
 import { attachSseHeartbeat } from "./sse.js";
@@ -3707,6 +3708,36 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/edition") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(editionInfo()));
+      return;
+    }
+
+    // Truthful read-only client capabilities descriptor (A01).
+    // Describes what this server + authenticated caller supports; never grants permissions.
+    if (
+      req.method === "GET" &&
+      (url === "/api/client-capabilities" || url.startsWith("/api/client-capabilities?"))
+    ) {
+      const trust = wardenTrust({
+        cloud,
+        loopback: isLoopbackAddress(remoteAddr),
+        accountUid,
+      });
+      const localOwner =
+        !cloud &&
+        !accountUid &&
+        isLoopbackAddress(remoteAddr) &&
+        !crossSiteProblem(req, true, null);
+      const caps = buildClientCapabilities({
+        edition: cloud ? "cloud" : "mac",
+        surface: policy.surface,
+        profile: localOwner ? capabilityProfile : cloud ? "cloud-chat" : "remote-device",
+        canApprove: trust.allowApproval,
+        localOwner,
+        connectorsEnabled: !!githubConnector && localOwner,
+        cloudWorkspaceConfigured: Boolean(process.env.LISA_CLOUD_URL?.trim()),
+      });
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(caps));
       return;
     }
 
