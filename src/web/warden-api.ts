@@ -29,6 +29,7 @@ import { WardenInbox, type ResolveResult } from "../warden/inbox.js";
 import { KnownUrls, createWardenSession } from "../warden/session.js";
 import { isConversationTainted, markConversationTainted } from "../warden/taint.js";
 import { appendAudit, readAudit } from "../warden/audit.js";
+import { queryProvenance } from "../warden/provenance.js";
 import { loadGrants, revokeGrant } from "../warden/grants.js";
 import { LOCKED_CATEGORIES, RulesValidationError, loadRules, saveRules } from "../warden/rules.js";
 import {
@@ -234,6 +235,13 @@ const RESOLVE_STATUS: Record<string, number> = {
   scope_not_applicable: 400,
   digest_mismatch: 409,
   audit_failed: 500,
+  already_resolved: 409,
+  signature_required: 403,
+  invalid_signature: 403,
+  unknown_approver: 403,
+  approver_revoked: 403,
+  nonce_mismatch: 409,
+  signature_replayed: 409,
 };
 
 function sendResolve(res: http.ServerResponse, result: ResolveResult): void {
@@ -344,6 +352,7 @@ export async function handleWardenApi(
               approve: true,
               scope: body.scope,
               digest: body.digest,
+              signature: body.signature,
             })
           : await opts.inbox.resolve(opts.uid, id, { approve: false, reason: body.reason });
       sendResolve(res, result);
@@ -430,6 +439,26 @@ export async function handleWardenApi(
       return true;
     }
 
+    if (pathname === "/api/warden/provenance") {
+      if (method !== "GET") {
+        json(res, 405, { error: "method_not_allowed" });
+        return true;
+      }
+      const raw = Number(parsedUrl.searchParams.get("limit") ?? "50");
+      const limit = Number.isFinite(raw) ? Math.max(1, Math.min(Math.floor(raw), 200)) : 50;
+      const taintedParam = parsedUrl.searchParams.get("taintedOnly");
+      const taintedOnly = taintedParam === "1" || taintedParam === "true";
+      const tool = parsedUrl.searchParams.get("tool")?.trim() || undefined;
+      const originId = parsedUrl.searchParams.get("originId")?.trim() || undefined;
+      const taskId = parsedUrl.searchParams.get("taskId")?.trim() || undefined;
+      json(
+        res,
+        200,
+        await queryProvenance({ home: opts.home, taintedOnly, tool, originId, taskId, limit }),
+      );
+      return true;
+    }
+
     json(res, 404, { error: "warden_route_not_found" });
     return true;
   } catch (err) {
@@ -512,7 +541,14 @@ export function createWebWarden(
   const timeoutMs =
     opts.approvalTimeoutMs ??
     (Number.isFinite(envTimeout) && envTimeout >= 1000 ? envTimeout : undefined);
-  const inbox = new WardenInbox({ emit, defaultTimeoutMs: timeoutMs });
+  const requireSignedApprovals =
+    process.env.LISA_WARDEN_REQUIRE_SIGNED_APPROVALS === "1" ||
+    process.env.LISA_WARDEN_REQUIRE_SIGNED_APPROVALS === "true";
+  const inbox = new WardenInbox({
+    emit,
+    defaultTimeoutMs: timeoutMs,
+    requireSignedApprovals,
+  });
   const enabled = policy.approval === "warden";
   // URLs seen per conversation (in memory; after a restart nothing is "known",
   // which only makes a tainted fetch ask). Insertion-ordered LRU.

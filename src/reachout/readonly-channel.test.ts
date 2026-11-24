@@ -33,6 +33,7 @@ type Reach = "read" | "self" | "device";
 const AUTONOMOUS_ALLOWED: Record<string, Reach> = {
   advise_now: "read",
   agent_recap: "read",
+  provenance: "read",
   dispatch_status: "read",
   github_link: "read", // builds a URL from the local repo; opens nothing
   grep: "read",

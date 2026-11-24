@@ -46,6 +46,8 @@ export interface SubagentOptions {
    * folder-only filesystem and sandbox. Unset ⇒ the host's own (H1).
    */
   caps?: ToolContext["caps"];
+  /** Optional observer for tool/turn events (e.g. Warden taint tracking). */
+  onEvent?: (event: import("./types.js").AgentEvent) => void;
 }
 
 export interface SubagentResult {
@@ -83,6 +85,7 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
     effort: opts.effort ?? "low",
     onEvent: (event) => {
       if (event.type === "tool_call_start") toolCallCount++;
+      opts.onEvent?.(event);
     },
     maxIterations: 32,
     budgetTokens: opts.budgetTokens,

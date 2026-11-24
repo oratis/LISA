@@ -1,11 +1,21 @@
 import { runAgent } from "../agent.js";
+import type { ApprovalMode } from "../approval.js";
 import { getIdleWatcher } from "../idle/watcher.js";
+import { lisaHome } from "../paths.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, type PromptSnapshot } from "../prompt.js";
 import { durableReflectionSummary, reflectOnSession } from "../reflect.js";
 import { SessionStore } from "../sessions/store.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import type { StoredMessage, ToolDefinition } from "../types.js";
+import {
+  KnownUrls,
+  WardenInbox,
+  createWardenSession,
+  isConversationTainted,
+  markConversationTainted,
+  type RuntimeSurface,
+} from "../warden/index.js";
 import type { ChannelAdapter, IncomingMessage } from "./types.js";
 
 export interface RouterOptions {
@@ -32,6 +42,13 @@ export interface RouterOptions {
    * can't reach past the workspace. Unset ⇒ the environment default.
    */
   sandboxMode?: import("../sandbox/mode.js").SandboxMode;
+  /** Optional Warden gating for IM channel turns (origin.kind = "channel"). */
+  warden?: {
+    approvalMode?: ApprovalMode;
+    inbox?: WardenInbox;
+    surface?: RuntimeSurface;
+    approvalTimeoutMs?: number;
+  };
 }
 
 interface ThreadContext {
@@ -40,6 +57,8 @@ interface ThreadContext {
   thread: string;
   session: SessionStore;
   history: StoredMessage[];
+  knownUrls: KnownUrls;
+  tainted: boolean;
   busy: boolean;
   /** queued messages while busy. */
   queue: IncomingMessage[];
@@ -49,9 +68,15 @@ export class ChannelRouter {
   private threads = new Map<string, ThreadContext>();
   private snapshot?: PromptSnapshot;
   private opts: RouterOptions;
+  private wardenInbox?: WardenInbox;
 
   constructor(opts: RouterOptions) {
     this.opts = opts;
+    if (opts.warden?.inbox) {
+      this.wardenInbox = opts.warden.inbox;
+    } else if (opts.warden?.approvalMode === "warden") {
+      this.wardenInbox = new WardenInbox({ defaultTimeoutMs: opts.warden.approvalTimeoutMs });
+    }
   }
 
   async start(): Promise<void> {
@@ -85,6 +110,8 @@ export class ChannelRouter {
       thread: msg.threadId ?? msg.from,
       session,
       history: [],
+      knownUrls: new KnownUrls(),
+      tainted: false,
       busy: false,
       queue: [],
     };
@@ -123,19 +150,53 @@ export class ChannelRouter {
   ): Promise<void> {
     if (!this.snapshot) throw new Error("router not started");
     const provider = providerForModel(this.opts.model);
+    const turnTools = this.opts.toolsFor?.(channel.name) ?? this.opts.tools;
+    const turnSandbox = this.opts.sandboxMode ?? sandboxModeForProfile("remote-device");
+    const home = lisaHome();
+    let wardenSession: ReturnType<typeof createWardenSession> | undefined;
+    if (this.wardenInbox) {
+      const carried =
+        ctx.tainted ||
+        (await isConversationTainted(ctx.session.id, {
+          home,
+          hasHistory: ctx.history.length > 0,
+        }));
+      wardenSession = createWardenSession({
+        surface: this.opts.warden?.surface ?? "local-web",
+        uid: null,
+        origin: { kind: "channel", id: ctx.key },
+        sandboxMode: turnSandbox,
+        workspaceRoot: this.opts.cwd,
+        inbox: this.wardenInbox,
+        tools: turnTools,
+        signal: this.opts.signal,
+        home,
+        initialTaint: carried,
+        knownUrls: ctx.knownUrls,
+        userText: msg.text,
+        approvalTimeoutMs: this.opts.warden?.approvalTimeoutMs,
+        onTaint: () => {
+          ctx.tainted = true;
+          void markConversationTainted(ctx.session.id, home).catch(() => undefined);
+        },
+      });
+    }
     try {
       const result = await runAgent({
         provider,
         systemPrompt: this.snapshot.text,
-        tools: this.opts.toolsFor?.(channel.name) ?? this.opts.tools,
+        tools: turnTools,
         toolCtx: {
           cwd: this.opts.cwd,
           signal: this.opts.signal,
           log: () => {},
           // Channels are remote-origin/untrusted; default to the confined
           // untrusted-surface mode unless the operator pinned one explicitly.
-          sandboxMode: this.opts.sandboxMode ?? sandboxModeForProfile("remote-device"),
+          sandboxMode: turnSandbox,
+          approval: wardenSession?.approval,
         },
+        approval: wardenSession?.approval,
+        onEvent: wardenSession ? (event) => wardenSession.observe(event) : undefined,
         history: ctx.history,
         userMessage: msg.text,
         model: this.opts.model,

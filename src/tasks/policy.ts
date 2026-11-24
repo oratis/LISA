@@ -77,6 +77,7 @@ export const UNATTENDED_READ_ONLY: Readonly<Record<string, InputCheck>> = Object
   soul_history: (i) => optionalNumber(i.limit),
   soul_diff: (i) => optionalNumber(i.limit),
   agent_recap: anyInput,
+  provenance: anyInput,
   kb_search: anyInput,
   kb_read: anyInput,
   kb_list: anyInput,

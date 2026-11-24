@@ -88,6 +88,7 @@ const READ_TOOLS = new Set([
   "soul_diff",
   "npm_info",
   "agent_recap",
+  "provenance",
   "advise_now",
   "github_link",
 ]);
