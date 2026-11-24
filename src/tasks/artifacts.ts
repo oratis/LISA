@@ -215,7 +215,12 @@ export async function resolveTaskArtifact(
   if (!rawPath || rawPath.includes("\0")) {
     return { ok: false, status: 403, error: "artifact_path_denied" };
   }
-  const candidate = path.isAbsolute(rawPath) ? rawPath : path.resolve(wsReal, rawPath);
+  const candidate = path.isAbsolute(rawPath)
+    ? path.resolve(rawPath)
+    : path.resolve(wsReal, rawPath);
+  if (!isInsideDir(wsReal, candidate)) {
+    return { ok: false, status: 403, error: "artifact_path_denied" };
+  }
   let realTarget: string;
   try {
     realTarget = await fsp.realpath(candidate);
